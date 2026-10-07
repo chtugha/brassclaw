@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-02",
+    "description": "Pure-logic guard: validates a raw 'slots' list of length 0..4 with every item an exact integer in 2..6, and returns {ok, slots: original if valid else []}. No I/O, imports, host calls, exceptions or upstream-validation assumption. Empty list is valid.",
+    "content": "def classify_slots(raw):\n    if not isinstance(raw, list) or not all(isinstance(x, int) and not isinstance(x, bool) and 2 <= x <= 6 for x in raw) or not 0 <= len(raw) <= 4:\n        return {'ok': False, 'slots': []}\n    return {'ok': True, 'slots': raw}\nresult = classify_slots(inputs.get('slots'))"
+  }
+}

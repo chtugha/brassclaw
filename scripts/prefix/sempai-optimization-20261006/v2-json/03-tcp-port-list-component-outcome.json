@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We repeatedly need to reject invalid TCP-port lists before any network action."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline-design mode. The requested class-22 pure-logic component is a valid, self-contained deterministic usage: it validates a typed `ports` input (nonempty list of exact integers in 1..65535, booleans rejected, missing/null/scalar/empty/out-of-range failing closed) and returns {valid, ports} without any host call, I/O, import or UUID. The payload is a single supported constructor draft (name/description/content) with no guessed UUIDs, no approval claims and no Markdown. The only gap is the typed-runner prerequisite (the `inputs` mapping and Monty integer-transport support), which is documented in the description rather than claimed as deployed. No prompt repair is justified: the volatile message is a reusable design request, not a malformed packet, and the task is component drafting, not conversation rewriting. No provider capabilities were invoked; the model/provider metadata is not used to infer runtime support. No Q1/Q2 or activation occurred.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-tcp-port-list",
+        "description": "Pure-logic validation of a TCP-port list. Accepts a nonempty list of exact integers, each in 1..65535 inclusive. Booleans are invalid; missing, null, scalar, empty, bool elements and out-of-range values fail closed without raising an exception. Returns {valid: boolean, ports: original list if valid else []}. Typed-input contract: the consuming step supplies `ports` via the step-local `inputs` mapping (recipe.md target interface, not guaranteed deployed runtime support). Missing/null/wrong-type inputs stop binding before dispatch. This is deterministic pure logic with zero host calls and zero LLM calls; a Tier-0 Recipe can consume it once the typed runner and integer transport are implemented. No imports, I/O, host calls or UUIDs.",
+        "content": "ports = inputs[\"ports\"]\nif not isinstance(ports, list) or len(ports) == 0:\n    result = {\"valid\": False, \"ports\": []}\nelse:\n    valid = True\n    for p in ports:\n        if isinstance(p, bool) or not isinstance(p, int) or not (1 <= p <= 65535):\n            valid = False\n            break\n    result = {\"valid\": valid, \"ports\": ports if valid else []}"
+      }
+    }
+  ]
+}

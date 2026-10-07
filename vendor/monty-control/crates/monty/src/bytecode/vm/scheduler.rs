@@ -8,6 +8,7 @@
 use std::{collections::VecDeque, mem};
 
 use ahash::AHashMap;
+use monty_types::{ExecutionControlError, ResourceError};
 use smallvec::{SmallVec, smallvec};
 
 use super::FrameNamespace;
@@ -18,6 +19,17 @@ use crate::{
     intern::FunctionId,
     value::Value,
 };
+
+/// Instance-lifetime identities must never wrap, in release builds either.
+/// Refuse the exhausted counter before mutating it or taking heap ownership.
+fn next_identity(counter: &mut u32) -> RunResult<u32> {
+    let next = counter
+        .checked_add(1)
+        .ok_or(ResourceError::Control(ExecutionControlError::IdentityExhausted))?;
+    let identity = *counter;
+    *counter = next;
+    Ok(identity)
+}
 
 /// Live tasks are runnable or blocked; completion removes the task from the scheduler.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -197,10 +209,8 @@ impl Scheduler {
     /// Allocates a new CallId for an external function call.
     ///
     /// The counter always increments, even for sync resolution, to keep IDs unique.
-    pub fn allocate_call_id(&mut self) -> CallId {
-        let id = CallId::new(self.next_call_id);
-        self.next_call_id += 1;
-        id
+    pub fn allocate_call_id(&mut self) -> RunResult<CallId> {
+        next_identity(&mut self.next_call_id).map(CallId::new)
     }
 
     /// Registers a freshly created `ExternalFuture` for `call_id`.
@@ -248,22 +258,22 @@ impl Scheduler {
 
     /// Spawns a new task from a coroutine, enforcing one-task-per-coroutine.
     ///
-    /// Returns `None` if `coroutine_id` is already driving a task —
+    /// Returns `Ok(None)` if `coroutine_id` is already driving a task —
     /// caught here because cross-gather reuse can hit two spawns while
     /// both coroutine states are still `New`, so the state check in
-    /// `await_coroutine` doesn't catch it. Callers translate `None`
+    /// `await_coroutine` doesn't catch it. Callers translate `Ok(None)`
     /// into a `RuntimeError: cannot reuse already awaited coroutine`.
     /// Both `coroutine_id` and the `GatherSlot` built from `gather_id` become
     /// **owning** references held by the new task; the matching `dec_ref`
     /// happens in [`Scheduler::cancel_task`]. It takes `gather_id` rather than
-    /// a ready-made `Awaiter` so the `None` return above has nothing to unwind.
-    pub fn spawn(&mut self, heap: &Heap, coroutine_id: HeapId, gather_id: Option<HeapId>) -> Option<TaskId> {
+    /// a ready-made `Awaiter` so rejection has nothing to unwind. Exhaustion
+    /// returns an uncatchable resource error before taking any references.
+    pub fn spawn(&mut self, heap: &Heap, coroutine_id: HeapId, gather_id: Option<HeapId>) -> RunResult<Option<TaskId>> {
         if self.coroutine_to_task.contains_key(&coroutine_id) {
-            return None;
+            return Ok(None);
         }
 
-        let task_id = TaskId::new(self.next_task_id);
-        self.next_task_id += 1;
+        let task_id = TaskId::new(next_identity(&mut self.next_task_id)?);
 
         // Take ownership of the heap references — the task now holds an inc_ref'd
         // pointer to its coroutine and (if applicable) its enclosing gather.
@@ -283,7 +293,7 @@ impl Scheduler {
         self.coroutine_to_task.insert(coroutine_id, task_id);
         self.ready_queue.push_back(task_id);
 
-        Some(task_id)
+        Ok(Some(task_id))
     }
 
     /// Gets the next ready task from the queue.
@@ -427,5 +437,31 @@ impl Scheduler {
 impl Default for Scheduler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use crate::exception_private::RunError;
+
+    #[test]
+    fn exhausted_call_ids_never_wrap_or_recover() {
+        let mut scheduler = Scheduler::new();
+        assert_eq!(scheduler.allocate_call_id().unwrap().raw(), 0);
+        scheduler.next_call_id = u32::MAX - 1;
+        assert_eq!(scheduler.allocate_call_id().unwrap().raw(), u32::MAX - 1);
+        for _ in 0..2 {
+            assert!(matches!(scheduler.allocate_call_id(), Err(RunError::UncatchableExc(_))));
+            assert_eq!(scheduler.next_call_id, u32::MAX);
+        }
+    }
+
+    #[test]
+    fn exhausted_task_counter_is_rejected_before_ownership_changes() {
+        let mut counter = u32::MAX - 1;
+        assert_eq!(next_identity(&mut counter).unwrap(), u32::MAX - 1);
+        assert!(matches!(next_identity(&mut counter), Err(RunError::UncatchableExc(_))));
+        assert_eq!(counter, u32::MAX);
     }
 }

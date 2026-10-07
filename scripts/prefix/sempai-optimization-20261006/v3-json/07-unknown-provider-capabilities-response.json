@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a8cfc7e127e14ab2",
+  "object": "chat.completion",
+  "created": 1791319032,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"No change to the volatile tail. The packet carries no provider capabilities and a null catalogue_revision, so supported roles, Tool encoding and reasoning syntax are unknown and must not be inferred from the model name. The instruction is to keep messages unchanged, emit no proposals and explain the missing facts. No justified prompt repair is requested or supported, so the original user message is echoed verbatim. No component was proposed: authoring a provider prompt fix requires resolved provider capabilities and a supported sink, neither of which is present here. The missing facts are: (1) model revision/protocol adapter, (2) supported system/developer roles, (3) Tool call/result schema and argument encoding, (4) thinking/reasoning mode and structured-output schema, (5) effective context capacity and output limits, (6) generation/injection mode. These remain unknown and are not inferred.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72422,
+    "total_tokens": 72680,
+    "completion_tokens": 258,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Drafted one unapproved pure-logic class-22 component pc-transfer-06 using the supplied target inputs contract. It classifies raw offset with a helper, invokes that helper at module scope and assigns its returned object to result. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-06",
+        "description": "Classify raw offset: missing -> {kind:\"missing\",offset:null}; explicit null -> {kind:\"null\",offset:null}; exact integer 2..11 -> {kind:\"integer\",offset:original}; other -> {kind:\"invalid\",offset:null}. No bool/float/coercion/defaults/exceptions. Uses a helper, invokes it at module scope and assigns its returned object to result. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "def classify_offset(value):\n    if 'offset' not in inputs:\n        return {'kind': 'missing', 'offset': None}\n    if value is None:\n        return {'kind': 'null', 'offset': None}\n    valid = type(value) is int and 2 <= value <= 11\n    return {'kind': 'integer', 'offset': value} if valid else {'kind': 'invalid', 'offset': None}\nresult = classify_offset(inputs.get('offset'))"
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ]
+}

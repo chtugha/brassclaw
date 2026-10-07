@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-timeout-ms",
+    "description": "Pure-logic validator for raw timeout_ms candidates. Reads the raw candidate with inputs.get so missing and null are distinct invalid outcomes. Valid means an exact integer in 0..7500 inclusive; booleans and floats are invalid. Every outcome assigns result={valid,timeout_ms} with no exceptions or coercion.",
+    "content": "# Raw candidate: missing and null are distinct invalid outcomes; no coercion.\ntimeout_ms = inputs.get(\"timeout_ms\")\nvalid = isinstance(timeout_ms, int) and not isinstance(timeout_ms, bool) and 0 <= timeout_ms <= 7500\nresult = {\"valid\": valid, \"timeout_ms\": timeout_ms if valid else None}"
+  }
+}

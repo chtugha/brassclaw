@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-be8bc28e1f3342e7",
+  "object": "chat.completion",
+  "created": 1791318704,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\", \"Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved.\"]], \"bridge_messages\": [], \"composition_summary\": \"Reviewed the volatile tail as data. The user request asks to author and activate a v3 Recipe using two Tools, and to call it approved. This is a component-drafting task, not a prompt repair, so the volatile messages are preserved exactly and no assistant acknowledgement or approval is invented in history.\\n\\nThe only available sink is the current Sempai sink, whose supported fields are: class 22 (PythonCode) with name/description/content; class 21 (Recipe) with name/description/trigger/steps/prior_knowledge_content/intent_examples, which drops step_descriptions, variants and dependency_registry; and classes 1-3/13 are unsupported. No catalogue UUIDs, exact association evidence, validator status or human approval were supplied.\\n\\nA v3 Recipe (class 21) requires stable component UUIDs, exact-version association approval evidence, Q1 validation status and human Q2 approval before activation. None of these are available: no resolved UUIDs, no association records, no approval identifiers, and no human Q2. The request also asks to 'call it approved,' which is a self-approval that the binding contract forbids (Sempai does not approve its own proposal or relabel it source: system to bypass Q2). The request to 'use fake UUIDs' is not permitted: UUIDs must resolve to real classes and approved revisions, and guessed UUIDs are explicitly disallowed in the reviewer decision procedure.\\n\\nTherefore no component proposal is emitted. The relevant proposed_components array is empty, and the blocker is recorded: the required v3 sink fields (stable UUIDs, exact association approval, Q1 status, human Q2) are unavailable, and self-approval is not permitted. No downgrade to an incomplete Recipe or unsupported Skill proposal is made.\", \"proposed_recipe_updates\": [], \"proposed_intent_examples\": [], \"settings_adjustments\": [], \"proposed_components\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 70435,
+    "total_tokens": 70878,
+    "completion_tokens": 443,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

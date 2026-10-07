@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-83c97782c390a9a5",
+  "object": "chat.completion",
+  "created": 1791331221,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved class22 pure-logic component. Raw records is a list of 0..4 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list is valid; missing/null/wrong types/extra fields are invalid without exceptions or coercion. The body initializes result={ok:false,records:[]} and returns the original records only when every item passes; it performs no I/O, imports or host calls and makes no upstream validation assumption. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-08\", \"description\": \"Raw records is a list of 0..4 items; each object has exactly code and enabled. code is a string of length 2..5 inclusive; enabled is an exact bool (False valid). Empty list is valid; missing/null/wrong types/extra fields are invalid without exceptions or coercion. Always result={ok:boolean, records:original if valid else []}. No I/O, imports or host calls; no upstream validation assumption. Target-input unapproved draft only; selected-runner support, Q1 and human Q2 remain prerequisites.\", \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 0 <= len(records) <= 4\\nif ok:\\n    for record in records:\\n        if not (type(record) is dict and set(record) == {'code', 'enabled'}):\\n            ok = False\\n            break\\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5):\\n            ok = False\\n            break\\n        if not (type(record['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98682,
+    "total_tokens": 99143,
+    "completion_tokens": 461,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

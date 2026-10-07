@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Preserved the volatile tail unchanged. The only authorized edit was replacing the duplicated system content 'Answer accurately accurately.' with exactly 'Answer accurately.'; the user message was kept byte-for-byte. No provider facts, capabilities, tool or thinking syntax were inferred (target_provider_metadata is null), and no components, recipe updates, intent examples or settings changes were proposed.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

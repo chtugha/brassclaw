@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the volatile tail and the requested class-22 component. The tail is a single user request to author one deterministic guard; no prompt repair is justified, so the volatile messages are echoed unchanged and no bridge messages are added. The requested component is a pure-logic class-22 PythonCode draft, which the supported sink accepts (name/description/content). The body is executable Python: it reads raw candidate fields with inputs.get (missing and null stay distinct), validates all required fields before any arithmetic, treats booleans as non-integers, and assigns result on every path. It returns an explicit invalid-result object {retry: false} for missing/null/invalid data rather than raising, and never replays a completed effect. The description retains the live global Tool policy, cancellation, resource limits, attempt-freshness and typed-runner gaps, and states the guard is evidence-conditioned, not dispatch permission. No I/O, imports or host calls are used. No other proposal arrays are populated per the test scope.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need a reusable deterministic guard before considering a retry."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-retry-eligibility",
+        "description": "Pure-logic deterministic guard that returns whether a candidate retry is eligible. It is evidence-conditioned, not dispatch permission: it never replays a completed effect and never grants dispatch. True only when outcome is retryable, attempt < max_attempts, operation_state is not completed, and read_only or dedup_verified is true. Missing, null or invalid data fails closed with retry=false. This guard does not replace live global Tool policy, cancellation, resource limits, attempt-freshness checks or actual deduplication evidence; the typed inputs['...'] interface is a target contract that requires actual runner support. No I/O, imports or host calls.",
+        "content": "def check_retry_eligibility(operation_state, outcome, attempt, max_attempts, read_only, dedup_verified):\n    if not isinstance(operation_state, str) or not isinstance(outcome, str):\n        return {'retry': False}\n    if operation_state not in ('completed', 'unknown', 'not_started'):\n        return {'retry': False}\n    if outcome not in ('retryable', 'terminal'):\n        return {'retry': False}\n    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt <= 0:\n        return {'retry': False}\n    if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts <= 0:\n        return {'retry': False}\n    if not isinstance(read_only, bool) or not isinstance(dedup_verified, bool):\n        return {'retry': False}\n    if operation_state == 'completed':\n        return {'retry': False}\n    if outcome != 'retryable':\n        return {'retry': False}\n    if attempt >= max_attempts:\n        return {'retry': False}\n    if not (read_only or dedup_verified):\n        return {'retry': False}\n    return {'retry': True}"
+      }
+    }
+  ],
+  "proposed_recipe_updates": []
+}

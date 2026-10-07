@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-07",
+    "description": "Pure-logic guard: validate a raw list of 1..3 records, each with exactly code (string length 2..5) and enabled (exact bool), and return {ok, records} echoing the original list only when valid. No I/O, imports, host calls or upstream validation assumption. Empty, missing, null, wrong-type, extra-field or out-of-range inputs yield {ok: false, records: []} without exceptions or coercion.",
+    "content": "def classify_records(records):\n    if not (type(records) is list and 1 <= len(records) <= 3):\n        result = {'ok': False, 'records': []}\n    else:\n        valid = True\n        for rec in records:\n            if not (type(rec) is dict and set(rec.keys()) == {'code', 'enabled'}\n                    and type(rec['code']) is str and 2 <= len(rec['code']) <= 5\n                    and type(rec['enabled']) is bool):\n                valid = False\n                break\n        if not valid:\n            result = {'ok': False, 'records': []}\n        else:\n            result = {'ok': True, 'records': records}\n    return result\nresult = classify_records(inputs.get('records'))"
+  }
+}

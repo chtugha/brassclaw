@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9d0ffa1e6f7654e3",
+  "object": "chat.completion",
+  "created": 1791358879,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"explicitly authorized edit\", \"result\": \"apply the single authorized edit only\"}, {\"guard\": \"no proposals / new messages / provider assumptions\", \"result\": \"emit no proposed_components, no new messages, no provider facts\"}, {\"guard\": \"preserve roles/order/user content\", \"result\": \"copy volatile_messages verbatim\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"system content -> 'Antworte knapp.'\"], \"prerequisites\": [\"Q1\", \"human Q2\"], \"notes\": \"Authorized edit is a single system-content change; roles, order and user content are preserved verbatim. No component drafted; no provider facts inferred (model\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98284,
+    "total_tokens": 98448,
+    "completion_tokens": 164,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

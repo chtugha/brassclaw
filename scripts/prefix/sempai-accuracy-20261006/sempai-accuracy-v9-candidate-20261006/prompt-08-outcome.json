@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Audit only; no edit authorized. Echoed every message exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no rewrite or inferred capability facts were applied. No component or proposal was emitted.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ]
+}

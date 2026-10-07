@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Audit-only request with no edits authorized. Echoed both messages verbatim. No proposals, new messages, or changes were made. Target provider protocol/roles/tool/reasoning capabilities are unknown and were not inferred from the model name. No components were proposed.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Keep it concise concise."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

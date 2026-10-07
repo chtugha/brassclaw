@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied volatile tail exactly (one user message, unchanged). Drafted one class-22 pure-logic component pc-check-channel-list per the request. The body reads channels with inputs.get('channels') so an absent key is a valid empty-list outcome rather than a KeyError, validates each element as a non-bool integer in 0..255 inclusive, and returns {ok, channels} with the original list when valid or [] otherwise. No exceptions, imports, host calls, I/O or coercion are used; result is assigned on every branch. Intents and settings arrays are empty as required. Note: class 21/1-3/13 sinks are unsupported in this host, so no Recipe or other-class proposals were emitted; only the requested class-22 draft is proposed. Typed-input transport and Monty execution remain target prerequisites, not established runtime support.",
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate a channel list; no channels is a valid choice."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-channel-list",
+        "description": "Pure-logic guard that validates a raw channel list. Accepts a list, including an empty list, whose items are exact integers 0..255 inclusive. Rejects bool, float, null, missing and wrong types. Returns {ok, channels} with the original list when valid or [] otherwise. No exceptions, imports, host calls, I/O or coercion.",
+        "content": "def check_channel_list(channels):\n    if not isinstance(channels, list):\n        return {'ok': False, 'channels': []}\n    ok = True\n    for item in channels:\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\n            ok = False\n            break\n    return {'ok': ok, 'channels': channels if ok else []}\nresult = check_channel_list(inputs.get('channels'))"
+      }
+    }
+  ],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "settings_adjustments": []
+}

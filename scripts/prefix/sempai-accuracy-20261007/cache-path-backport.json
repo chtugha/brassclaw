@@ -1,0 +1,363 @@
+{
+  "generation": "3c6b8ac31b98e5b0c418befd071efb0fd5ded723613aa6f70aec8cfcae2dea1f",
+  "requests": [
+    {
+      "label": "initial",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply READY."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 8,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-8cfae6d0c1fff5fa",
+        "object": "chat.completion",
+        "created": 1791361583,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "READY.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97848,
+          "completion_tokens": 3,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 0,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 49.018
+    },
+    {
+      "label": "native",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply READY."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 8,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-b21f21d97e4409c8",
+        "object": "chat.completion",
+        "created": 1791361632,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "READY.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97848,
+          "completion_tokens": 3,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.115
+    },
+    {
+      "label": "displacement",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply READY."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 8,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a-displacement"
+      },
+      "response": {
+        "id": "chatcmpl-ae8d6e9b2412dd07",
+        "object": "chat.completion",
+        "created": 1791361633,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "READY.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97848,
+          "completion_tokens": 3,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 0,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 49.118
+    },
+    {
+      "label": "after_displacement",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply READY."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 8,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-bd89ed7f3fa0b8f7",
+        "object": "chat.completion",
+        "created": 1791361682,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "READY.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97848,
+          "completion_tokens": 3,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 97152
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.349
+    },
+    {
+      "label": "repeat",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply READY."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 8,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-92247fba2c6749ac",
+        "object": "chat.completion",
+        "created": 1791361683,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "READY.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97848,
+          "completion_tokens": 3,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.119
+    }
+  ],
+  "service_settings_changed": false,
+  "structured": false,
+  "prefix_fingerprint_verified": true,
+  "input_tokens": 97845,
+  "external_restore_exercised": true,
+  "all_answers_correct": true,
+  "external_restore_check_passed": true,
+  "scope": "Short sentinel and cache-path check; not a model capability benchmark"
+}

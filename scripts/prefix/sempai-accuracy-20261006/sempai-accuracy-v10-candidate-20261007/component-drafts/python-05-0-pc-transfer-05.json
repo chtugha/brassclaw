@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-05",
+    "description": "Raw rank must be an exact integer in 1..10 inclusive. Missing or null is invalid (no default). Accept only exact integers 1..10; reject bool/float/string/wrong types. Always result={accepted:boolean, rank:original if accepted else null}. No exceptions, no coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "rank = inputs.get('rank')\naccepted = type(rank) is int and not type(rank) is bool and 1 <= rank <= 10\nresult = {'accepted': accepted, 'rank': rank if accepted else None}"
+  }
+}

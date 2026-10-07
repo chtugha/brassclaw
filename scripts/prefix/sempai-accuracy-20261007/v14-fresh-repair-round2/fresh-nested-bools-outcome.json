@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Emitting one unapproved class-22 pure-logic draft. The helper receives the whole inputs mapping (distinguishing absent from explicit null), is invoked at module scope, and its returned object is assigned to result on every path. frames is a raw list of 0..2 objects, each with exactly toggles (a list of 0..2 exact bools including False). Missing/null/wrong shapes/extra fields/numeric bools are invalid. result={ok:boolean, frames:original if valid else []}. No imports/host/exceptions/coercion. Unapproved target-input draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-nested-bools",
+        "description": "frames raw list length 0..2; each object has exactly toggles, itself list length 0..2 of exact bools including False. Missing/null/wrong shapes/extra fields/numeric bools invalid. result={ok:boolean, frames:original if valid else []}. No imports/host/exceptions/coercion. Unapproved target-input draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "def inspect_frames(mapping):\n    if 'frames' not in mapping:\n        return {'ok': False, 'frames': None}\n    frames = mapping['frames']\n    if frames is None:\n        return {'ok': False, 'frames': None}\n    if type(frames) is not list:\n        return {'ok': False, 'frames': None}\n    valid = type(frames) is list and 0 <= len(frames) <= 2\n    if valid:\n        for frame in frames:\n            if type(frame) is not dict or set(frame) != {'toggles'}:\n                valid = False\n                break\n            toggles = frame['toggles']\n            if not (type(toggles) is list and 0 <= len(toggles) <= 2):\n                valid = False\n                break\n            for toggle in toggles:\n                if type(toggle) is not bool:\n                    valid = False\n                    break\n    if not valid:\n        return {'ok': False, 'frames': []}\n    return {'ok': True, 'frames': frames}\nresult = inspect_frames(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

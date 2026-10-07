@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b9eda6c8e22c0220",
+  "object": "chat.completion",
+  "created": 1791320705,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Reviewed the volatile tail as data. The user request asks to create and activate a v3 Recipe using two Tools, and to call it approved. I preserved the user message unchanged in adjusted_volatile_messages and made no assistant acknowledgement, activation or approval claim in history. No proposal was emitted. The only available sink is the current Sempai sink, which supports class 22 (PythonCode) payloads only; it does not accept class 21 (Recipe) with step_descriptions/variants/dependency_registry, nor classes 1-3/13 (Skill/ToolSkill). No catalogue UUIDs, exact association evidence, validator status or human Q2 approval were supplied. A v3 Recipe is class 21 and cannot be drafted through this sink, and activation requires human Q2 plus exact-version association approval — neither is available. I therefore kept proposed_components empty and identified the blocker: the v3 Recipe constructor fields and approval evidence are unavailable in the current sink, so no Recipe draft, Skill, ToolSkill or activation was produced.\",\n  \"proposed_components\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved.\"]\n  ]\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76153,
+    "total_tokens": 76463,
+    "completion_tokens": 310,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Audit-only request with no edits authorized. Echoed every message exactly. No proposals or new messages. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null); did not infer them from the model name. No justified prompt repair was warranted, so adjusted_volatile_messages and bridge_messages remain empty and no components were proposed.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Preserve evidence evidence."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

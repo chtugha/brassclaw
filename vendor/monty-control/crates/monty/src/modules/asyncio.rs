@@ -93,7 +93,7 @@ fn sleep(vm: &mut VM<'_>, args: ArgValues) -> RunResult<CallResult> {
         Some(HostSleep::CallHost(delay)) => OsFunctionCall::AsyncSleep(delay),
         // Avoid a host round trip for a zero-length system sleep.
         Some(HostSleep::System(delay)) if !delay.is_zero() => OsFunctionCall::AsyncSystemSleep(delay),
-        _ => return Ok(CallResult::Value(vm.settled_awaitable(result))),
+        _ => return Ok(CallResult::Value(vm.settled_awaitable(result)?)),
     };
     Ok(CallResult::OsCallWithEffect {
         call,

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-843dec66ab6db6e4",
+  "object": "chat.completion",
+  "created": 1791331275,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and no host.post_reply effect is present\", \"result\": \"state-data-only subworkflow; no user message posted\"}, {\"guard\": \"a bound host.post_reply call is present\", \"result\": \"fixed-reply subworkflow; a real reply effect is posted\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"9a047867-22a3-5bcc-8a6b-1b06c20bbeff\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract checks\", \"human Q2 approval\", \"exact-combination approval evidence\"], \"notes\": \"The supplied program returns only state DATA (result={'state':'Ready'}); it has no Tool call, no inputs and no dependencies. It cannot satisfy say/post/reply/`*\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98641,
+    "total_tokens": 98854,
+    "completion_tokens": 213,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

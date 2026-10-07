@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8cc4c7125df64476",
+  "object": "chat.completion",
+  "created": 1791319046,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate a channel list; no channels is a valid choice.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Drafted one class-22 pure-logic candidate pc-check-channel-list (name/description/content only). It accepts an optional channels input that may be absent or any raw JSON, and returns {ok:boolean, channels:original list if valid else []}. Validity requires a list whose every item is an exact integer in 0..255 inclusive; booleans, floats, null, missing and wrong types are rejected. The body uses inputs.get(\\\"channels\\\") so absence is a valid choice, treats bool as not an int, validates all items before returning, and assigns result on every path without exceptions, imports, host calls or coercion. This is an unapproved offline-design draft; the host sink supports class 22 name/description/content only, and no submission, activation or human Q2 occurred. No compatibility/intent/settings updates were proposed.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-channel-list\",\n        \"description\": \"Pure-logic validator for a channel list. Accepts an optional channels input that may be absent or any raw JSON. A valid value is a list whose every item is an exact integer in 0..255 inclusive. Booleans, floats, null, missing and wrong types are rejected. Returns {ok:boolean, channels:original list if valid else []}. No exceptions, imports, host calls or coercion.\",\n        \"content\": \"channels = inputs.get(\\\"channels\\\")\\nvalid = isinstance(channels, list) and len(channels) > 0\\nif valid:\\n    for item in channels:\\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\\n            valid = False\\n            break\\nresult = {\\\"ok\\\": valid, \\\"channels\\\": channels if valid else []}\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72503,
+    "total_tokens": 72983,
+    "completion_tokens": 480,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

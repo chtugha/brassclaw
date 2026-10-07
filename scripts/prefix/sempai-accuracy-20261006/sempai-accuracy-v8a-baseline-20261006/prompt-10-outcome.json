@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Audit-only request with no edits authorized. Echoed both messages verbatim. Target provider metadata is null (model, protocol_capabilities, catalogue_revision all null), so no provider capability inference is possible; the instruction explicitly forbids inferring from the model name. No prompt repair is permitted, so no proposals are generated. The volatile tail is preserved exactly as supplied.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Use metric units units."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

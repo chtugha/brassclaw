@@ -1,6 +1,9 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
+  "montyVm.allocationCountRetired": "Monty 1.0 hat Allokationszähler-Limits entfernt. Frühere Werte bleiben zur Nachvollziehbarkeit erhalten und begrenzen die Ausführung nicht.",
+  "montyVm.retiredAllocationValue": "Früherer Allokationszähler (schreibgeschützt)",
+  "montyVm.maxDurationDesc": "Maximale aktive VM-Rechenzeit pro Aufgabe in Sekunden; ohne Leerlauf und externe Wartezeiten.",
   "language.name": "Deutsch",
   "language.switch": "Sprache geändert",
 

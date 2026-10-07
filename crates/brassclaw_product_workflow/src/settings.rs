@@ -164,8 +164,13 @@ pub struct MontyVmSettings {
     pub revision: u64,
     /// Maximum active VM compute time per task in seconds (default: 600).
     pub max_duration_secs: u64,
-    /// Maximum cumulative allocations attributable to one task.
+    /// Compatibility response field. Always None: Monty 1.0 removed this limit.
     pub max_allocations: Option<u64>,
+    /// Explicit support status; historical values do not configure execution.
+    pub allocation_count_limit_supported: bool,
+    /// Original stored count preserved by the upgrade, read-only and not bytes.
+    #[serde(default)]
+    pub retired_max_allocations: Option<u64>,
     /// Shared Monty heap ceiling in bytes; excludes host process memory.
     pub max_memory_bytes: Option<u64>,
     /// Number of consecutive failures before the VM is auto-rolled back.
@@ -192,6 +197,7 @@ pub struct UpdateMontyVmSettingsRequest {
     /// Compare-and-set revision from GET. Required by durable stores.
     pub expected_revision: Option<u64>,
     pub max_duration_secs: Option<u64>,
+    /// Retained to explicitly reject old API clients; positive values are unsupported.
     pub max_allocations: Option<u64>,
     pub max_memory_bytes: Option<u64>,
     pub failure_rollback_threshold: Option<u32>,
@@ -330,7 +336,9 @@ pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
         revision: 0,
         max_duration_secs: 600,
-        max_allocations: Some(5_000_000),
+        max_allocations: None,
+        allocation_count_limit_supported: false,
+        retired_max_allocations: None,
         max_memory_bytes: Some(128 * 1024 * 1024),
         failure_rollback_threshold: 3,
         prior_knowledge_token_budget: 100_000,

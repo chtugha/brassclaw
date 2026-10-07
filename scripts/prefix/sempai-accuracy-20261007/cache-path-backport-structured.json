@@ -1,0 +1,378 @@
+{
+  "generation": "3c6b8ac31b98e5b0c418befd071efb0fd5ded723613aa6f70aec8cfcae2dea1f",
+  "requests": [
+    {
+      "label": "initial",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return exactly {\"status\":\"READY\"}."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 16,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "structured_outputs": {
+          "grammar": "root ::= \"{\\\"status\\\":\\\"READY\\\"}\""
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-875df8939ea9b32c",
+        "object": "chat.completion",
+        "created": 1791361699,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"status\":\"READY\"}",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97850,
+          "total_tokens": 97856,
+          "completion_tokens": 6,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 2.352
+    },
+    {
+      "label": "native",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return exactly {\"status\":\"READY\"}."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 16,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "structured_outputs": {
+          "grammar": "root ::= \"{\\\"status\\\":\\\"READY\\\"}\""
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-a97e09fa3dcc01ed",
+        "object": "chat.completion",
+        "created": 1791361701,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"status\":\"READY\"}",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97850,
+          "total_tokens": 97856,
+          "completion_tokens": 6,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.118
+    },
+    {
+      "label": "displacement",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return exactly {\"status\":\"READY\"}."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 16,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "structured_outputs": {
+          "grammar": "root ::= \"{\\\"status\\\":\\\"READY\\\"}\""
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a-displacement"
+      },
+      "response": {
+        "id": "chatcmpl-a71d7ae600ede1ae",
+        "object": "chat.completion",
+        "created": 1791361702,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"status\":\"READY\"}",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97850,
+          "total_tokens": 97856,
+          "completion_tokens": 6,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 97152
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.431
+    },
+    {
+      "label": "after_displacement",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return exactly {\"status\":\"READY\"}."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 16,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "structured_outputs": {
+          "grammar": "root ::= \"{\\\"status\\\":\\\"READY\\\"}\""
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-9df257f820d61707",
+        "object": "chat.completion",
+        "created": 1791361703,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"status\":\"READY\"}",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97850,
+          "total_tokens": 97856,
+          "completion_tokens": 6,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 97152
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.38
+    },
+    {
+      "label": "repeat",
+      "request": {
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Return exactly {\"status\":\"READY\"}."
+          }
+        ],
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        },
+        "temperature": 0,
+        "max_tokens": 16,
+        "kv_transfer_params": {
+          "cached_token_stats": true
+        },
+        "structured_outputs": {
+          "grammar": "root ::= \"{\\\"status\\\":\\\"READY\\\"}\""
+        },
+        "cache_salt": "sempai-cache-path-backport-20261007-a"
+      },
+      "response": {
+        "id": "chatcmpl-b9cdc937e77d6b10",
+        "object": "chat.completion",
+        "created": 1791361705,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "{\"status\":\"READY\"}",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97850,
+          "total_tokens": 97856,
+          "completion_tokens": 6,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "seconds": 1.131
+    }
+  ],
+  "service_settings_changed": false,
+  "structured": true,
+  "prefix_fingerprint_verified": true,
+  "input_tokens": 97850,
+  "external_restore_exercised": true,
+  "all_answers_correct": true,
+  "external_restore_check_passed": true,
+  "scope": "Short sentinel and cache-path check; not a model capability benchmark"
+}

@@ -1,0 +1,14 @@
+{
+  "sempai-compiler.py": "9f45c3c719b213b35368d39b3c166dfe2efee37f7d6caad892ce87c45e34f03a",
+  "sempai-worked-examples.md": "66d3f2d54ebd6e3b07123521902408643471cc64cd01013e991f0035d52456c5",
+  "sempai-worked-examples.json": "eb3e2dd179ba0a35f6311778cc556c9d11e7accd8af9dd436b05aa76fb7d7071",
+  "sempai-worked-examples.receipt.json": "2399b0b17ee29e15cff70abcd3ff0580223266a5900d33fab264ad2769dac308",
+  "evaluate_sempai_prefix.py": "eae601bc2a95fd8a91d4859d06dfa7dfadceff6f640190864e6358203e356562",
+  "check_sempai_candidates.py": "966003d6fa1d6d4a4d7392d32ad65a48a1dc96ab1acb6b1dc36480f6a6252edb",
+  "validate_sempai_teaching.py": "4095812570a44bb98ac3c3def665acb179a22b226161f0fc25b0fde2991dfb59",
+  "compare_sempai_accuracy.py": "f1c8c589ee08fd12eb6018ac31e8911673920a05dfd8e8d235bf8b567796183a",
+  "deploy_prefix_systemd.py": "3c8b321ce065dc250e310a370c2c26fada72d76443fec466843d9eb8f1d561b5",
+  "sempai-reference-policy.json": "0e746f982c4e698051bbb5df6565287fbd179212bc6acd094c861b1b6c29575e",
+  "test_sempai_compiler.py": "24a881b2d4210838ac1a0fd3c1c78bab2b171dccc24402b9c219b483e4bad997",
+  "frozen-cases.json": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20"
+}

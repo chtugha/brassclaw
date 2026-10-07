@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-89f81fa8a927c746",
+  "object": "chat.completion",
+  "created": 1791319832,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Reviewed the packet as an offline-design component-drafting request. The task is a single class-22 pure-logic validator (pc-check-tcp-port-list) with a well-defined contract: accept a nonempty list of exact integers in 1..65535, reject booleans, scalars, empty lists, null, out-of-range and wrong-type elements, and always assign result = {valid, ports}. The requested payload (name/description/content) matches the supported class-22 constructor, so one component draft is emitted. The content is executable Python with no imports, I/O, host calls or UUIDs; it uses inputs.get for the raw candidate, validates all required fields before any access, treats booleans as non-integers, and returns an invalid-result object rather than raising. The description carries the target input/result contract and the missing typed-runner prerequisite, with no approval claims. No volatile-tail change is justified: the user request is a design instruction, not a prompt repair, and the stable base is preserved. No provider capability was invoked; the draft is unapproved pending Q1/Q2 and host execution.\",\n  \"settings_adjustments\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [[\"user\", \"We repeatedly need to reject invalid TCP-port lists before any network action.\"]],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-tcp-port-list\",\n        \"description\": \"Pure-logic validator that inspects a raw candidate TCP-port list and returns an explicit invalid-result object without raising. Target input contract: the consuming Recipe supplies a step-local mapping inputs['ports'] that must be a nonempty list of exact integers, each in 1..65535 inclusive. Booleans are not integers and are rejected; scalars, empty lists, null, missing keys and out-of-range values fail closed. The outer input contract admits the raw candidate shape (including absent/null/wrong-type) so the validator can inspect it; the inner validation implements the rule. Read the candidate with inputs.get('ports') or an explicit presence branch, never inputs['ports'], because absence is a valid invalid-result. Do not raise for malformed data; return {valid: false, ports: []} for any invalid candidate and {valid: true, ports: <original list>} only when every element is a valid integer in range. Missing and null remain distinct: an absent key yields valid=false with empty ports; an explicit null also yields valid=false. Validate all required fields before any access or arithmetic. Missing typed-runner support is a prerequisite: the target inputs['ports'] mapping and typed integer transport are a target interface, not guaranteed deployed runtime support; the selected Monty runner must preserve exact integer semantics and reject booleans before dispatch. No approval claims.\",\n        \"content\": \"ports = inputs.get('ports')\\nvalid = isinstance(ports, list) and len(ports) > 0\\nif valid:\\n    for port in ports:\\n        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:\\n            valid = False\\n            break\\nresult = {'valid': valid, 'ports': ports if valid else []}\"\n      }\n    }\n  ]\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73644,
+    "total_tokens": 74379,
+    "completion_tokens": 735,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-beecffe873b3312c",
+  "object": "chat.completion",
+  "created": 1791357745,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'quota' not in inputs:\", \"result\": \"{'kind': 'missing', 'quota': None}\"}, {\"guard\": \"elif inputs['quota'] is None:\", \"result\": \"{'kind': 'null', 'quota': None}\"}, {\"guard\": \"elif type(inputs['quota']) is int and 4 <= inputs['quota'] <= 13:\", \"result\": \"{'kind': 'integer', 'quota': inputs['quota']}\"}, {\"guard\": \"else:\", \"result\": \"{'kind': 'invalid', 'quota': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"no observed tests/submission/activation\"], \"notes\": \"Classify raw quota: missing -> {kind:'missing',quota:null}; explicit null -> {kind:'null',quota:null}; exact integer 4..13 -> {kind:'integer',quota:original}; 0\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98409,
+    "total_tokens": 98637,
+    "completion_tokens": 228,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

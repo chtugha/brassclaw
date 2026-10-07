@@ -1,0 +1,63 @@
+{
+  "source": "recipe.md section 7, fixed-readiness-reply example",
+  "canonical_reply_intents": [
+    "say ready",
+    "reply ready",
+    "post ready",
+    "tell me you are ready",
+    "please say ready",
+    "respond with ready",
+    "send a readiness reply",
+    "give me a readiness response",
+    "answer with ready",
+    "please post the word ready"
+  ],
+  "observations": [
+    {
+      "response": "sempai-optimization-v8a-feedback-20261006/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": true,
+      "canonical_overlap": 10
+    },
+    {
+      "response": "sempai-optimization-v8a-feedback-round2-20261006/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": false,
+      "canonical_overlap": 0
+    },
+    {
+      "response": "sempai-optimization-v8a-feedback-round3-20261006/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": false,
+      "canonical_overlap": 0
+    },
+    {
+      "response": "sempai-optimization-v8a-schema-count-20261006/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": true,
+      "canonical_overlap": 10
+    },
+    {
+      "response": "v2-json/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": false,
+      "canonical_overlap": 8
+    },
+    {
+      "response": "v3-json/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": true,
+      "canonical_overlap": 10
+    },
+    {
+      "response": "v4-schema/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": false,
+      "canonical_overlap": 1
+    },
+    {
+      "response": "v5-schema/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": true,
+      "canonical_overlap": 10
+    },
+    {
+      "response": "v7-schema-count/06-offline-v3-recipe-design-response.json",
+      "exact_canonical_reply_intents": false,
+      "canonical_overlap": 1
+    }
+  ],
+  "interpretation": "Exact copying is observed; causal attribution to example interference remains a hypothesis requiring controlled lexical/effect contrasts."
+}

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-03",
+    "description": "Raw lag may be omitted or any JSON value. Accept exact integer -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "def inspect_lag(value):\n    accepted = type(value) is int and -1 <= value <= 8\n    return {'accepted': accepted, 'lag': value if accepted else None}\nresult = inspect_lag(inputs.get('lag'))"
+  }
+}

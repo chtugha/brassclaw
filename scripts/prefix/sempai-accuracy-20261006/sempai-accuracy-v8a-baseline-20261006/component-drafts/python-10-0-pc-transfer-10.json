@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-10",
+    "description": "Pure-logic raw TTL classifier. Reads a raw candidate with inputs.get('ttl') and returns an advisory decision object only: absent key -> {kind:'missing',ttl:null}; explicit null -> {kind:'null',ttl:null}; exact integer in 6..15 -> {kind:'integer',ttl:original}; anything else -> {kind:'invalid',ttl:null}. No bool/float coercion, no defaults, no exceptions, no imports, no I/O, no host calls. Typed inputs are a target interface requiring runner support; this is an unapproved draft.",
+    "content": "def classify_ttl(raw):\n    ttl = inputs.get('ttl')\n    if 'ttl' not in inputs:\n        result = {'kind': 'missing', 'ttl': None}\n    elif ttl is None:\n        result = {'kind': 'null', 'ttl': None}\n    elif type(ttl) is bool:\n        result = {'kind': 'invalid', 'ttl': None}\n    elif type(ttl) is int and 6 <= ttl <= 15:\n        result = {'kind': 'integer', 'ttl': ttl}\n    else:\n        result = {'kind': 'invalid', 'ttl': None}\n    return result"
+  }
+}

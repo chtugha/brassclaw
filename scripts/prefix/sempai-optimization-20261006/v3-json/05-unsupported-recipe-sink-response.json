@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-991641fe411e48c3",
+  "object": "chat.completion",
+  "created": 1791319009,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\", \"Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline-design mode with no catalogue UUIDs, association evidence, validator status or human Q2 supplied. The requested artifact is a v3 Recipe (class 21) using two Tools, activated as approved. The current Sempai sink supports class 21 only with name/description/trigger/steps/prior_knowledge_content/intent_examples and drops step_descriptions, variants and dependency_registry, so a complete v3 Recipe cannot be proposed through it. No resolved component identities were provided, so no UUIDs, association evidence or approval can be emitted. Human Q2 approval is required for authored changes and was not supplied. No proposal was submitted or activated. The user message is preserved as data; no activation is claimed.\", \"proposed_recipe_updates\": [], \"proposed_intent_examples\": [], \"settings_adjustments\": [], \"proposed_components\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72479,
+    "total_tokens": 72698,
+    "completion_tokens": 219,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

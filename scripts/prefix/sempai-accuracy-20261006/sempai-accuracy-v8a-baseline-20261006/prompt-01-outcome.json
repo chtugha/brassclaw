@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail exactly. The only permitted change is replacing system content with exactly \"Antworte sachlich.\"; the user message was kept byte-for-byte. The user message \"Keep my exact request and punctuation: {a:1}.\" is preserved unchanged. No proposals or other changes were made. The target_provider_metadata carries null model, max_model_len, protocol_capabilities and catalogue_revision, so no provider facts were inferred or reported. The standalone citation is a source-question benchmark and does not apply prompt changes or create/approve components, so proposed_components, proposed_recipe_updates, proposed_intent_examples and settings_adjustments remain empty.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Antworte sachlich."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

@@ -1,0 +1,580 @@
+{
+  "manual_review_inputs": [
+    {
+      "id": "recipe-00",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-00. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "compute the ready state data",
+        "return the ready state object",
+        "produce the fixed ready object",
+        "obtain the ready result data",
+        "calculate the ready state result",
+        "yield the ready state object",
+        "get the fixed ready state data",
+        "build the ready state object",
+        "evaluate the ready data subworkflow",
+        "derive the fixed ready state result"
+      ],
+      "description": "Offline unapproved fixed-data-return subworkflow; no Tool calls and no posted message",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "9a047867-22a3-5bcc-8a6b-1b06c20bbeff"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ],
+          "stepnumber": 1,
+          "knowledge": "orchestrator",
+          "goal": "Return state data",
+          "content": "Use the supplied offline fixture",
+          "type": "component",
+          "include": [
+            "9a047867-22a3-5bcc-8a6b-1b06c20bbeff"
+          ],
+          "tool_bindings": [],
+          "dependencies": null
+        }
+      ]
+    },
+    {
+      "id": "recipe-01",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode d0a73787-74ae-55cb-b6a0-25131936e06d with content result = host.post_reply(answer='Ready'); unapproved ToolSkill a6ed3264-13bc-56ae-9de7-064df4b3d2ce binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-01. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "say ready",
+        "reply ready",
+        "post ready",
+        "send the ready reply",
+        "respond with ready",
+        "tell me ready",
+        "please say ready",
+        "please reply ready",
+        "post the fixed ready message",
+        "send the fixed ready message"
+      ],
+      "description": "Offline full-v3 export only; unapproved draft, no submission or activation. Posts exactly the fixed word as a user reply using the bound existing Tool. No runtime/approval claims.",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "a6ed3264-13bc-56ae-9de7-064df4b3d2ce"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "d0a73787-74ae-55cb-b6a0-25131936e06d"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-02",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode 6ca96ef8-0b75-572f-987b-38c88d423828 with content result = {'state': 'Healthy'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-02. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "compute the healthy state data",
+        "return the healthy state object",
+        "produce the fixed healthy object",
+        "obtain the healthy result data",
+        "calculate the healthy state result",
+        "yield the healthy state object",
+        "get the fixed healthy state data",
+        "build the healthy state object",
+        "evaluate the healthy data subworkflow",
+        "derive the fixed healthy state result"
+      ],
+      "description": "Offline full-v3 export only. Returns state DATA; no posted message. Unapproved draft; Q1 and human Q2 required. Current sink cannot preserve full v3 fields.",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "6ca96ef8-0b75-572f-987b-38c88d423828"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-03",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3 with content result = host.post_reply(answer='Healthy'); unapproved ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548 binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-03. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "say healthy",
+        "reply healthy",
+        "post healthy",
+        "send the healthy reply",
+        "respond with healthy",
+        "tell me healthy",
+        "please say healthy",
+        "please reply healthy",
+        "post the fixed healthy message",
+        "send the fixed healthy message"
+      ],
+      "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply(answer:string). No execution, submission, Q1/Q2 or activation. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only.",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "95a56828-1af9-58d3-8b46-107c7a1fb548"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "52840069-3cd9-5ba7-bfe2-e160739911b3"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-04",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode d4808be6-83e3-5831-b710-c7f2ce88c711 with content result = {'state': 'Available'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-04. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "compute the available state data",
+        "return the available state object",
+        "produce the fixed available object",
+        "obtain the available result data",
+        "calculate the available state result",
+        "yield the available state object",
+        "get the fixed available state data",
+        "build the available state object",
+        "evaluate the available data subworkflow",
+        "derive the fixed available state result"
+      ],
+      "description": "Offline unapproved available-data-result subworkflow; no Tool calls and no posted message",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved available-data-result subworkflow; no Tool calls and no posted message",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "d4808be6-83e3-5831-b710-c7f2ce88c711"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ],
+          "stepnumber": 1,
+          "knowledge": "orchestrator",
+          "goal": "Return state data",
+          "content": "Use the supplied offline fixture",
+          "type": "component",
+          "include": [
+            "d4808be6-83e3-5831-b710-c7f2ce88c711"
+          ],
+          "tool_bindings": [],
+          "dependencies": null
+        }
+      ]
+    },
+    {
+      "id": "recipe-05",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode ca75d647-4f0e-5a35-abe7-cee7353e03c2 with content result = host.post_reply(answer='Available'); unapproved ToolSkill 9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7 binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-05. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "say available",
+        "reply available",
+        "post available",
+        "send the available reply",
+        "respond with available",
+        "tell me available",
+        "please say available",
+        "please reply available",
+        "post the fixed available message",
+        "send the fixed available message"
+      ],
+      "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "ca75d647-4f0e-5a35-abe7-cee7353e03c2"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-06",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode c7983481-a51f-5068-ba4a-11220f293cd3 with content result = {'state': 'Stable'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-06. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "compute the stable state data",
+        "return the stable state object",
+        "produce the fixed stable object",
+        "obtain the stable result data",
+        "calculate the stable state result",
+        "yield the stable state object",
+        "get the fixed stable state data",
+        "build the stable state object",
+        "evaluate the stable data subworkflow",
+        "derive the fixed stable state result"
+      ],
+      "description": "Offline unapproved stable data-result subworkflow; returns state data only, no Tool calls and no posted message",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved stable data-result subworkflow; returns state data only, no Tool calls and no posted message",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "c7983481-a51f-5068-ba4a-11220f293cd3"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "c7983481-a51f-5068-ba4a-11220f293cd3"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ],
+          "step_link": "0:1-0:E"
+        }
+      ]
+    },
+    {
+      "id": "recipe-07",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502 with content result = host.post_reply(answer='Stable'); unapproved ToolSkill 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-07. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "say stable",
+        "reply stable",
+        "post stable",
+        "send the stable reply",
+        "respond with stable",
+        "tell me stable",
+        "please say stable",
+        "please reply stable",
+        "post the fixed stable message",
+        "send the fixed stable message"
+      ],
+      "description": "Offline unapproved stable-reply subworkflow; binding then Python calls existing host.post_reply",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "8002e1ff-f3d9-57f7-8a1c-62b33b0da73a"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "249e49eb-fc44-5605-aa6d-6b7299216502"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-08",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a with content result = {'state': 'Idle'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-08. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "compute the idle state data",
+        "return the idle state object",
+        "produce the fixed idle object",
+        "obtain the idle result data",
+        "calculate the idle state result",
+        "yield the idle state object",
+        "get the fixed idle state data",
+        "build the idle state object",
+        "evaluate the idle data subworkflow",
+        "derive the fixed idle state result"
+      ],
+      "description": "Offline unapproved idle data-result subworkflow; no Tool calls and no posted message",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved idle data-result subworkflow; no Tool calls and no posted message",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "d14b7a42-2c12-57e8-9cf1-59d7e576182a"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ],
+          "stepnumber": 1,
+          "knowledge": "orchestrator",
+          "goal": "Return state data",
+          "content": "Use the supplied offline fixture",
+          "type": "component",
+          "include": [
+            "d14b7a42-2c12-57e8-9cf1-59d7e576182a"
+          ],
+          "tool_bindings": [],
+          "dependencies": null
+        }
+      ]
+    },
+    {
+      "id": "recipe-09",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode cc52df93-9358-5238-9317-23fea95aa6ef with content result = host.post_reply(answer='Idle'); unapproved ToolSkill 2e335c7f-8081-53a6-aa2d-2aede7926726 binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-09. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "say idle",
+        "reply idle",
+        "post idle",
+        "send the idle reply",
+        "respond with idle",
+        "tell me idle",
+        "please say idle",
+        "please reply idle",
+        "post the fixed idle message",
+        "send the fixed idle message"
+      ],
+      "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply(answer:string). No runtime/approval claims. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "2e335c7f-8081-53a6-aa2d-2aede7926726"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "cc52df93-9358-5238-9317-23fea95aa6ef"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-10",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode a059d0bb-4a87-5eba-b029-93581dd81b54 with content result = {'state': 'Prepared'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-10. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "compute the prepared state data",
+        "return the prepared state object",
+        "produce the fixed prepared object",
+        "obtain the prepared result data",
+        "calculate the prepared state result",
+        "yield the prepared state object",
+        "get the fixed prepared state data",
+        "build the prepared state object",
+        "evaluate the prepared data subworkflow",
+        "derive the fixed prepared state result"
+      ],
+      "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "a059d0bb-4a87-5eba-b029-93581dd81b54"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recipe-11",
+      "source_instruction": "Offline full-v3 export ONLY. host allocated unapproved draft PythonCode 5e27ba17-04a3-5357-bee2-00a87cac9ae1 with content result = host.post_reply(answer='Prepared'); unapproved ToolSkill 6d31defa-e5d3-5103-bd01-49143f9d47f6 binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-11. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.",
+      "intents": [
+        "say prepared",
+        "reply prepared",
+        "post prepared",
+        "send the prepared reply",
+        "respond with prepared",
+        "tell me prepared",
+        "please say prepared",
+        "please reply prepared",
+        "post the fixed prepared message",
+        "send the fixed prepared message"
+      ],
+      "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply. Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+      "steps": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "6d31defa-e5d3-5103-bd01-49143f9d47f6"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "5e27ba17-04a3-5357-bee2-00a87cac9ae1"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "production_q1": false,
+  "manual_intents_match_requested_state_and_effect": true,
+  "exact_execution_sequence_passed": false,
+  "rejected_duplicate_sequence_case": "recipe-06",
+  "note": "All twelve intent sets mention the requested state and distinguish data from posted replies. Recipe-06 still rejects because it repeats the supplied component step. This is finite offline review, not production Q1/human Q2."
+}

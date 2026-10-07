@@ -8,11 +8,34 @@ publish = false
 [workspace]
 
 [dependencies]
+tracing = "0.1"
 brassclaw_monty_host = { path = "../../crates/brassclaw_monty_host" }
 serde_json = "1"
 sha2 = "0.10"
-tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "fs", "sync", "net"] }
+futures = "0.3"
+tempfile = "3"
+async-trait = "0.1"
+chrono = "0.4"
+tokio-postgres = "0.7"
+deadpool-postgres = "0.14"
+thiserror = "2"
+brassclaw_reborn = { path = "../../crates/brassclaw_reborn" }
+brassclaw_threads = { path = "../../crates/brassclaw_threads" }
+brassclaw_turns = { path = "../../crates/brassclaw_turns" }
+brassclaw_loop_support = { path = "../../crates/brassclaw_loop_support" }
+brassclaw_host_api = { path = "../../crates/brassclaw_host_api" }
+brassclaw_pg = { path = "../../crates/brassclaw_pg" }
+brassclaw_embedded_postgres = { path = "../../crates/brassclaw_embedded_postgres" }
+brassclaw_interceptor = { path = "../../crates/brassclaw_interceptor" }
 brassclaw_resources = { path = "../../crates/brassclaw_resources" }
+brassclaw_authorization = { path = "../../crates/brassclaw_authorization" }
+brassclaw_extensions = { path = "../../crates/brassclaw_extensions" }
+brassclaw_filesystem = { path = "../../crates/brassclaw_filesystem" }
+brassclaw_host_runtime = { path = "../../crates/brassclaw_host_runtime" }
+brassclaw_processes = { path = "../../crates/brassclaw_processes" }
+brassclaw_triggers = { path = "../../crates/brassclaw_triggers" }
+brassclaw_trust = { path = "../../crates/brassclaw_trust" }
 monty = { path = "../../vendor/monty-control/crates/monty" }
 monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
 monty-alloc = { path = "../../vendor/monty-control/crates/monty-alloc", features = ["exit-code"] }

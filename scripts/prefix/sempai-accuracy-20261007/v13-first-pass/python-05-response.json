@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9ab71194ee65d8ef",
+  "object": "chat.completion",
+  "created": 1791329273,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Drafted one unapproved pure-logic class22 component. Raw rank may omit or hold any JSON value; exact int 1..10 inclusive is accepted (bool/float/other invalid). Missing and null both yield {accepted:false,rank:null} with no exceptions or coercion. Module-level result is assigned on every path. No imports, I/O, host calls, Tool dispatch, submission, Q1/Q2 or activation occurred.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-05\",\n        \"description\": \"Raw rank may omit or contain any JSON value. Accept exact integers 1..10 inclusive (not bool/float). Always result={accepted:boolean,rank:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"rank = inputs.get('rank')\\naccepted = type(rank) is int and not type(rank) is bool and 1 <= rank <= 10\\nresult = {'accepted': accepted, 'rank': rank if accepted else None}\"\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 96987,
+    "total_tokens": 97334,
+    "completion_tokens": 347,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

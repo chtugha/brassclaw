@@ -122,10 +122,9 @@ impl ModelCostTable for ZeroCostTable {
 /// known per-token price via `brassclaw_llm::costs::model_cost`) so the
 /// accountant can compute actual USD spend on every reconcile.
 ///
-/// Profiles missing from the table fall back to `None`, which the
-/// accountant treats as zero-cost (free/local). That matches the safety
-/// direction we want: an unknown provider must not silently overstate
-/// spend.
+/// Profiles missing from the table return `None`. The production accountant
+/// then applies its configured conservative fallback price. Known free/local
+/// models must have an explicit zero-cost entry or use `ZeroCostTable`.
 #[derive(Debug, Default, Clone)]
 pub struct StaticModelCostTable {
     costs: HashMap<ModelProfileId, ModelCost>,

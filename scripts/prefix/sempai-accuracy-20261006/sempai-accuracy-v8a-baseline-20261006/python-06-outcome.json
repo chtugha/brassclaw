@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (no justified prompt repair). Drafted one pure-logic class-22 component pc-transfer-06: it classifies a raw offset field as missing/null/integer(2..11)/invalid using a helper, invoking it at module scope and assigning its returned object to result. The body uses inputs.get for presence, exact type checks (int, not bool), range 2..11, and returns only the declared fields with no coercion, defaults, exceptions or I/O. This is an unapproved draft; typed inputs require runner support and no observed tests/submission/activation occurred.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-06",
+        "description": "Classify a raw offset field into missing, null, integer(2..11) or invalid. Pure logic; no Tool call, no I/O, no host calls. Returns only the declared kind and offset fields.",
+        "content": "def classify_offset(raw):\n    if 'offset' not in inputs:\n        result = {'kind': 'missing', 'offset': None}\n    else:\n        offset = inputs['offset']\n        if offset is None:\n            result = {'kind': 'null', 'offset': None}\n        elif type(offset) is int and not type(offset) is bool and 2 <= offset <= 11:\n            result = {'kind': 'integer', 'offset': offset}\n        else:\n            result = {'kind': 'invalid', 'offset': None}\n    return result\nresult = classify_offset(inputs.get('offset'))"
+      }
+    }
+  ]
+}

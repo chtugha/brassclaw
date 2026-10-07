@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-86522bbee7f8b315",
+  "object": "chat.completion",
+  "created": 1791324169,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Drafted one unapproved pure-logic class-22 component pc-transfer-03 per the supplied target inputs contract. Raw inputs may omit lag or contain any JSON value; accepted is an exact integer in -1..8 inclusive (bool/float/other types invalid); invalid/missing returns {accepted:false,lag:null} with no exceptions or coercion. A helper is defined and invoked at module scope, and its returned object is assigned to result. No imports, I/O or host calls. Conversation preserved unchanged; no execution, submission, Q1/Q2 or activation was performed by this reviewer.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-03\",\n        \"description\": \"Raw lag may be omitted or any JSON value. Accept exact integer -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"def inspect_lag(value):\\n    accepted = type(value) is int and -1 <= value <= 8\\n    return {'accepted': accepted, 'lag': value if accepted else None}\\nresult = inspect_lag(inputs.get('lag'))\"\n      }\n    }\n  ],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97425,
+    "total_tokens": 97809,
+    "completion_tokens": 384,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

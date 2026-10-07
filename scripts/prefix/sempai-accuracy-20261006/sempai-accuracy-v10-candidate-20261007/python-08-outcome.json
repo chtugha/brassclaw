@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-08 that classifies raw quota: missing -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..12 -> {kind:\"integer\",quota:original}; other -> {kind:\"invalid\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. The body has a module-level result assignment and no Markdown. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-08",
+        "description": "Classify raw quota: missing -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..12 -> {kind:\"integer\",quota:original}; other -> {kind:\"invalid\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "quota = inputs.get('quota')\nif quota is None:\n    result = {'kind': 'missing', 'quota': None}\nelif type(quota) is int and 4 <= quota <= 12:\n    result = {'kind': 'integer', 'quota': quota}\nelse:\n    result = {'kind': 'invalid', 'quota': None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

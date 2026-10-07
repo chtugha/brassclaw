@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We repeatedly need to reject invalid TCP-port lists before any network action."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the request as an offline-design component draft. The host's supported proposal sink accepts class 22 payloads with name/description/content, so one class-22 pure-logic component is proposed. The component is deterministic Tier-0 logic: it validates a nonempty list of exact integers in 1..65535 inclusive, fails closed (returns valid=false with empty ports) on missing/null/scalar/empty/bool/out-of-range inputs, and always assigns result = {valid, ports}. It contains no imports, I/O, host calls or UUIDs. The description records the target input/result contract and the missing typed-runner prerequisite (the inputs mapping and Monty integer transport are a target interface, not guaranteed deployed support). No approval claims are made; the draft remains unapproved pending Q1, human Q2 and behavioral validation. No prompt repair was justified, so the volatile message is echoed unchanged. proposed_recipe_updates, proposed_intent_examples, settings_adjustments and proposed_components beyond the one class-22 entry are empty.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-tcp-port-list",
+        "description": "Pure-logic validation of a TCP-port list. Accepts only a nonempty list of exact integers, each in 1..65535 inclusive. Missing, null, scalar, empty, bool elements and out-of-range values fail closed by returning valid=false with ports=[]. Always assigns result = {valid: boolean, ports: original list if valid else []}. No imports, I/O, host calls or UUIDs. Target input/result contract: input mapping key 'ports' must be a nonempty list; each element must be an integer (not a boolean) in 1..65535 inclusive; a missing or null 'ports' key yields valid=false. Missing typed-runner prerequisite: the inputs mapping and Monty integer transport are a target interface, not guaranteed deployed runtime support; the selected runner must preserve exact integer semantics and reject booleans before dispatch. No approval claims.",
+        "content": "ports = inputs.get(\"ports\")\nvalid = isinstance(ports, list) and len(ports) > 0\nif valid:\n    for p in ports:\n        if isinstance(p, bool) or not isinstance(p, int) or not 1 <= p <= 65535:\n            valid = False\n            break\nresult = {\"valid\": valid, \"ports\": ports if valid else []}"
+      }
+    }
+  ]
+}

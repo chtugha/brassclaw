@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-07T07:40:15.236590+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "fresh-presence-helper",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.945
+    },
+    {
+      "id": "fresh-boolean-helper",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.201
+    },
+    {
+      "id": "fresh-nested-bools",
+      "error": "name 'fields' is not defined",
+      "seconds": 6.781
+    },
+    {
+      "id": "fresh-missing-default",
+      "error": "name 'fields' is not defined",
+      "seconds": 5.431
+    },
+    {
+      "id": "fresh-sent-data",
+      "error": "name 'fields' is not defined",
+      "seconds": 7.562
+    },
+    {
+      "id": "fresh-sent-reply",
+      "error": "name 'fields' is not defined",
+      "seconds": 11.595
+    },
+    {
+      "id": "fresh-discarded-data",
+      "error": "name 'fields' is not defined",
+      "seconds": 5.605
+    },
+    {
+      "id": "fresh-discarded-reply",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.847
+    },
+    {
+      "id": "fresh-evidence-completed",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.416
+    },
+    {
+      "id": "fresh-evidence-unknown",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.739
+    },
+    {
+      "id": "fresh-authorized-0",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.587
+    },
+    {
+      "id": "fresh-authorized-1",
+      "error": "name 'fields' is not defined",
+      "seconds": 4.47
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [
+    "fresh-authorized-0",
+    "fresh-authorized-1"
+  ],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "single_layout_requested": true,
+  "cache_salt": "sempai-v14-serial-full-20261007-a",
+  "evaluator_sha256": "d6b706e3b05df3bfe782448c2fb9171fa3204e1d5d65903ca7e74b3ca82cb68e",
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b"
+}

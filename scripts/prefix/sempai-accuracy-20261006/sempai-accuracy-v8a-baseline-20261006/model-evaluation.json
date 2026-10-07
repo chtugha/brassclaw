@@ -1,0 +1,1414 @@
+{
+  "date": "2026-10-06T21:43:50.052698+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "python-00",
+      "usage": {
+        "prompt_tokens": 76880,
+        "total_tokens": 77315,
+        "completion_tokens": 435,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.013
+    },
+    {
+      "id": "python-01",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77344,
+        "completion_tokens": 481,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.883
+    },
+    {
+      "id": "python-02",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77285,
+        "completion_tokens": 422,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 8.781
+    },
+    {
+      "id": "python-03",
+      "usage": {
+        "prompt_tokens": 76880,
+        "total_tokens": 77301,
+        "completion_tokens": 421,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 8.776
+    },
+    {
+      "id": "python-04",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77317,
+        "completion_tokens": 454,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.365
+    },
+    {
+      "id": "python-05",
+      "usage": {
+        "prompt_tokens": 76864,
+        "total_tokens": 77223,
+        "completion_tokens": 359,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 7.587
+    },
+    {
+      "id": "python-06",
+      "usage": {
+        "prompt_tokens": 76895,
+        "total_tokens": 77339,
+        "completion_tokens": 444,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.181
+    },
+    {
+      "id": "python-07",
+      "usage": {
+        "prompt_tokens": 76878,
+        "total_tokens": 77389,
+        "completion_tokens": 511,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 10.437
+    },
+    {
+      "id": "python-08",
+      "usage": {
+        "prompt_tokens": 76878,
+        "total_tokens": 77336,
+        "completion_tokens": 458,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.418
+    },
+    {
+      "id": "python-09",
+      "usage": {
+        "prompt_tokens": 76895,
+        "total_tokens": 77358,
+        "completion_tokens": 463,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.544
+    },
+    {
+      "id": "python-10",
+      "usage": {
+        "prompt_tokens": 76878,
+        "total_tokens": 77444,
+        "completion_tokens": 566,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 11.439
+    },
+    {
+      "id": "python-11",
+      "usage": {
+        "prompt_tokens": 76878,
+        "total_tokens": 77397,
+        "completion_tokens": 519,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 10.566
+    },
+    {
+      "id": "contrast-00",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77315,
+        "completion_tokens": 452,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.302
+    },
+    {
+      "id": "contrast-01",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77341,
+        "completion_tokens": 478,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.807
+    },
+    {
+      "id": "contrast-02",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77314,
+        "completion_tokens": 451,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.299
+    },
+    {
+      "id": "contrast-03",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77320,
+        "completion_tokens": 457,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.393
+    },
+    {
+      "id": "contrast-04",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77367,
+        "completion_tokens": 504,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 10.307
+    },
+    {
+      "id": "contrast-05",
+      "usage": {
+        "prompt_tokens": 76863,
+        "total_tokens": 77291,
+        "completion_tokens": 428,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 8.919
+    },
+    {
+      "id": "contrast-06",
+      "usage": {
+        "prompt_tokens": 76881,
+        "total_tokens": 77416,
+        "completion_tokens": 535,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 10.841
+    },
+    {
+      "id": "contrast-07",
+      "usage": {
+        "prompt_tokens": 76881,
+        "total_tokens": 77451,
+        "completion_tokens": 570,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 11.522
+    },
+    {
+      "id": "contrast-08",
+      "usage": {
+        "prompt_tokens": 76881,
+        "total_tokens": 77355,
+        "completion_tokens": 474,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.747
+    },
+    {
+      "id": "contrast-09",
+      "usage": {
+        "prompt_tokens": 76881,
+        "total_tokens": 77365,
+        "completion_tokens": 484,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.979
+    },
+    {
+      "id": "contrast-10",
+      "usage": {
+        "prompt_tokens": 76881,
+        "total_tokens": 77394,
+        "completion_tokens": 513,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 10.508
+    },
+    {
+      "id": "contrast-11",
+      "usage": {
+        "prompt_tokens": 76881,
+        "total_tokens": 77466,
+        "completion_tokens": 585,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 11.804
+    },
+    {
+      "id": "recipe-00",
+      "usage": {
+        "prompt_tokens": 76992,
+        "total_tokens": 77235,
+        "completion_tokens": 243,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": false,
+      "response_contract_passed": false,
+      "seconds": 5.519
+    },
+    {
+      "id": "recipe-01",
+      "usage": {
+        "prompt_tokens": 77037,
+        "total_tokens": 77957,
+        "completion_tokens": 920,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 18.13
+    },
+    {
+      "id": "recipe-02",
+      "usage": {
+        "prompt_tokens": 76995,
+        "total_tokens": 77300,
+        "completion_tokens": 305,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": false,
+      "response_contract_passed": false,
+      "seconds": 6.688
+    },
+    {
+      "id": "recipe-03",
+      "usage": {
+        "prompt_tokens": 77041,
+        "total_tokens": 78076,
+        "completion_tokens": 1035,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 20.31
+    },
+    {
+      "id": "recipe-04",
+      "usage": {
+        "prompt_tokens": 76992,
+        "total_tokens": 77254,
+        "completion_tokens": 262,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": false,
+      "response_contract_passed": false,
+      "seconds": 5.873
+    },
+    {
+      "id": "recipe-05",
+      "usage": {
+        "prompt_tokens": 77040,
+        "total_tokens": 78131,
+        "completion_tokens": 1091,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 21.308
+    },
+    {
+      "id": "recipe-06",
+      "usage": {
+        "prompt_tokens": 76994,
+        "total_tokens": 77295,
+        "completion_tokens": 301,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": false,
+      "response_contract_passed": false,
+      "seconds": 6.631
+    },
+    {
+      "id": "recipe-07",
+      "usage": {
+        "prompt_tokens": 77043,
+        "total_tokens": 78024,
+        "completion_tokens": 981,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 19.301
+    },
+    {
+      "id": "recipe-08",
+      "usage": {
+        "prompt_tokens": 76995,
+        "total_tokens": 77428,
+        "completion_tokens": 433,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": false,
+      "response_contract_passed": false,
+      "seconds": 9.068
+    },
+    {
+      "id": "recipe-09",
+      "usage": {
+        "prompt_tokens": 77038,
+        "total_tokens": 78086,
+        "completion_tokens": 1048,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 20.505
+    },
+    {
+      "id": "recipe-10",
+      "usage": {
+        "prompt_tokens": 76992,
+        "total_tokens": 77450,
+        "completion_tokens": 458,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": false,
+      "response_contract_passed": false,
+      "seconds": 9.529
+    },
+    {
+      "id": "recipe-11",
+      "usage": {
+        "prompt_tokens": 77039,
+        "total_tokens": 77965,
+        "completion_tokens": 926,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 18.267
+    },
+    {
+      "id": "prompt-00",
+      "usage": {
+        "prompt_tokens": 76832,
+        "total_tokens": 77053,
+        "completion_tokens": 221,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": false,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": false,
+      "no_proposals": true,
+      "seconds": 5.013
+    },
+    {
+      "id": "prompt-01",
+      "usage": {
+        "prompt_tokens": 76843,
+        "total_tokens": 77073,
+        "completion_tokens": 230,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 5.19
+    },
+    {
+      "id": "prompt-02",
+      "usage": {
+        "prompt_tokens": 76832,
+        "total_tokens": 77015,
+        "completion_tokens": 183,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 4.313
+    },
+    {
+      "id": "prompt-03",
+      "usage": {
+        "prompt_tokens": 76835,
+        "total_tokens": 77092,
+        "completion_tokens": 257,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": false,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": false,
+      "no_proposals": true,
+      "seconds": 5.701
+    },
+    {
+      "id": "prompt-04",
+      "usage": {
+        "prompt_tokens": 76835,
+        "total_tokens": 77060,
+        "completion_tokens": 225,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 5.115
+    },
+    {
+      "id": "prompt-05",
+      "usage": {
+        "prompt_tokens": 76835,
+        "total_tokens": 77061,
+        "completion_tokens": 226,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 5.135
+    },
+    {
+      "id": "prompt-06",
+      "usage": {
+        "prompt_tokens": 76841,
+        "total_tokens": 76976,
+        "completion_tokens": 135,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 3.418
+    },
+    {
+      "id": "prompt-07",
+      "usage": {
+        "prompt_tokens": 76849,
+        "total_tokens": 76995,
+        "completion_tokens": 146,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 3.661
+    },
+    {
+      "id": "prompt-08",
+      "usage": {
+        "prompt_tokens": 76841,
+        "total_tokens": 77024,
+        "completion_tokens": 183,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 4.311
+    },
+    {
+      "id": "prompt-09",
+      "usage": {
+        "prompt_tokens": 76843,
+        "total_tokens": 77015,
+        "completion_tokens": 172,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 4.107
+    },
+    {
+      "id": "prompt-10",
+      "usage": {
+        "prompt_tokens": 76843,
+        "total_tokens": 77013,
+        "completion_tokens": 170,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 4.106
+    },
+    {
+      "id": "prompt-11",
+      "usage": {
+        "prompt_tokens": 76843,
+        "total_tokens": 76967,
+        "completion_tokens": 124,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 3.252
+    },
+    {
+      "id": "evidence-00",
+      "usage": {
+        "prompt_tokens": 76974,
+        "total_tokens": 77394,
+        "completion_tokens": 420,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 8.794
+    },
+    {
+      "id": "evidence-01",
+      "usage": {
+        "prompt_tokens": 76977,
+        "total_tokens": 77316,
+        "completion_tokens": 339,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.292
+    },
+    {
+      "id": "evidence-02",
+      "usage": {
+        "prompt_tokens": 76974,
+        "total_tokens": 77305,
+        "completion_tokens": 331,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.147
+    },
+    {
+      "id": "evidence-03",
+      "usage": {
+        "prompt_tokens": 76977,
+        "total_tokens": 77329,
+        "completion_tokens": 352,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.551
+    },
+    {
+      "id": "evidence-04",
+      "usage": {
+        "prompt_tokens": 76974,
+        "total_tokens": 77353,
+        "completion_tokens": 379,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 8.045
+    },
+    {
+      "id": "evidence-05",
+      "usage": {
+        "prompt_tokens": 76977,
+        "total_tokens": 77349,
+        "completion_tokens": 372,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.916
+    },
+    {
+      "id": "evidence-06",
+      "usage": {
+        "prompt_tokens": 76974,
+        "total_tokens": 77302,
+        "completion_tokens": 328,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.1
+    },
+    {
+      "id": "evidence-07",
+      "usage": {
+        "prompt_tokens": 76977,
+        "total_tokens": 77321,
+        "completion_tokens": 344,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.383
+    },
+    {
+      "id": "evidence-08",
+      "usage": {
+        "prompt_tokens": 76974,
+        "total_tokens": 77272,
+        "completion_tokens": 298,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.53
+    },
+    {
+      "id": "evidence-09",
+      "usage": {
+        "prompt_tokens": 76977,
+        "total_tokens": 77365,
+        "completion_tokens": 388,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 8.195
+    },
+    {
+      "id": "evidence-10",
+      "usage": {
+        "prompt_tokens": 76980,
+        "total_tokens": 77328,
+        "completion_tokens": 348,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.497
+    },
+    {
+      "id": "evidence-11",
+      "usage": {
+        "prompt_tokens": 79811,
+        "total_tokens": 83311,
+        "completion_tokens": 3500,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "length",
+      "error": "Unterminated string starting at: line 9 column 14 (char 1500)",
+      "seconds": 68.382
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20"
+}

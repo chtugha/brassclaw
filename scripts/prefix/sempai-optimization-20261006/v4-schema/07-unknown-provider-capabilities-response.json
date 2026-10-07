@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b5f290abd20b8039",
+  "object": "chat.completion",
+  "created": 1791319888,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline-design review-test with no justified prompt repair. The packet carries no provider capabilities (protocol_capabilities=null, catalogue_revision=null) and only a model name, so supported roles, Tool-call/result encoding and reasoning syntax are unknown and must not be inferred. The single user message is a review request, not a prompt to repair, so the volatile tail is preserved unchanged and no proposals are emitted. No component was drafted: a provider-prompt repair requires resolved provider metadata and a supported sink, neither of which is present here. No submission or activation occurred.\",\n  \"settings_adjustments\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]\n  ],\n  \"proposed_components\": []\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73550,
+    "total_tokens": 73744,
+    "completion_tokens": 194,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

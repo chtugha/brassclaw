@@ -51,9 +51,11 @@ fn take_pending_gate_stash() -> Option<crate::runtime::messaging::ThreadOutcome>
         .flatten()
 }
 
-use monty::{
-    ExcType, ExtFunctionResult, LimitedTracker, MontyDate, MontyDateTime, MontyException,
-    MontyObject, MontyRun, NameLookupResult, OsFunction, PrintWriter, ResourceLimits, RunProgress,
+use monty::{MontyRun, RunProgress};
+use monty_types::{
+    CompileOptions, ExcType, ExtFunctionResult, MontyDate, MontyDateTime, MontyException,
+    MontyObject, MontyTimeZone, NameLookupResult, OsFunctionCall, PrintWriter, ResourceLimits,
+    ResourceTracker,
 };
 use tracing::debug;
 
@@ -78,22 +80,15 @@ const OUTPUT_TRUNCATE_LEN: usize = 8_000;
 /// Maximum characters for a preview prefix in compact metadata.
 const OUTPUT_PREVIEW_LEN: usize = 200;
 
-/// Build a `MontyObject::DateTime` for the current instant.
-///
-/// Honors `args[0]` when it is a `MontyTimeZone` (aware datetime with that
-/// fixed offset) or `MontyObject::None` (naive datetime in UTC, matching
-/// CPython's `datetime.datetime.now()` behavior without a tz). Anything
-/// else is treated as "no tz" rather than raising — we prefer the LLM get
-/// a usable clock read even if it passes a weird argument.
-fn build_datetime_now(args: &[MontyObject]) -> MontyObject {
+/// Answer Monty's typed datetime clock request, retaining its fixed timezone.
+fn build_datetime_now(timezone: Option<&MontyTimeZone>) -> MontyObject {
     use chrono::{DateTime, Datelike, FixedOffset, Timelike, Utc};
 
     let utc_now: DateTime<Utc> = Utc::now();
 
-    let (offset_seconds, timezone_name) = match args.first() {
-        Some(MontyObject::TimeZone(tz)) => (Some(tz.offset_seconds), tz.name.clone()),
-        _ => (None, None),
-    };
+    let (offset_seconds, timezone_name) = timezone
+        .map(|timezone| (Some(timezone.offset_seconds), timezone.name.clone()))
+        .unwrap_or((None, None));
 
     let aware = offset_seconds
         .and_then(FixedOffset::east_opt)
@@ -121,7 +116,7 @@ fn build_datetime_now(args: &[MontyObject]) -> MontyObject {
         )
     };
 
-    MontyObject::DateTime(MontyDateTime {
+    MontyObject::datetime(MontyDateTime {
         year,
         month,
         day,
@@ -134,7 +129,7 @@ fn build_datetime_now(args: &[MontyObject]) -> MontyObject {
     })
 }
 
-/// Build a `MontyObject::Date` for today's UTC date.
+/// Build a `MontyObject::date` for today's UTC date.
 ///
 /// Python's `date.today()` is timezone-naive (local date on CPython); we
 /// return UTC to avoid host-clock timezone surprises inside the sandbox.
@@ -144,32 +139,21 @@ fn build_date_today() -> MontyObject {
     use chrono::{Datelike, Utc};
 
     let today = Utc::now().date_naive();
-    MontyObject::Date(MontyDate {
+    MontyObject::date(MontyDate {
         year: today.year(),
         month: today.month() as u8,
         day: today.day() as u8,
     })
 }
 
-/// Default resource limits for Monty execution.
-///
-/// `max_duration` is wall-clock from VM start and ticks during inline
-/// gate-await pauses (we await user input *inside* the same Monty
-/// execution). 30s is what catches runaway CPU-bound scripts that
-/// don't allocate (`while True: x += 1`); raising it to "30 min so
-/// human approvals fit" hangs those tests. Tradeoff: with 30s, an
-/// approval that takes longer than 30s timeouts the script and the
-/// user has to retry. Most approvals come back in seconds; longer
-/// ones are a documented limitation. A proper "active CPU vs paused"
-/// timer split is on the follow-up list (see
-/// `docs/plans/2026-05-01-codeact-inline-gate-await.md`).
-/// Maximum allocation steps for the scripting VM (1 M ops).
-const SCRIPTING_MAX_ALLOCATIONS: usize = 1_000_000;
-
+/// Legacy engine feed limits during the coordinated 1.0 migration.
+/// Feed time counts executing VM time and excludes host waits. The upstream
+/// allocation-count setting was removed; these old fixed counters are retired.
+/// Persisted operator settings require their separate explicit migration before
+/// this adapter can become the production global hosting path.
 fn default_limits() -> ResourceLimits {
-    ResourceLimits::new()
-        .max_duration(Duration::from_secs(30))
-        .max_allocations(SCRIPTING_MAX_ALLOCATIONS)
+    ResourceLimits::default()
+        .max_feed_duration(Duration::from_secs(30))
         .max_memory(64 * 1024 * 1024) // 64 MB
 }
 
@@ -179,7 +163,7 @@ fn default_limits() -> ResourceLimits {
 /// The compiled-in default is ~2 KB; this cap is generous but prevents
 /// pathological inputs from causing avoidable CPU/memory pressure on the
 /// store write path.
-const MAX_ORCHESTRATOR_SOURCE_BYTES: usize = 256 * 1024;
+pub const MAX_PYTHON_UTILITY_SOURCE_BYTES: usize = 256 * 1024;
 
 /// Check whether `code` is syntactically valid Python without executing it.
 ///
@@ -195,33 +179,98 @@ const MAX_ORCHESTRATOR_SOURCE_BYTES: usize = 256 * 1024;
 /// runtime in the Monty sandbox (resource limits, host-function gating, no
 /// filesystem/network access).
 ///
-/// **Runtime cost**: `MontyRun::new()` **parses and prepares only** — it
-/// builds the AST and interns, but does not allocate the heap, create
-/// namespaces, or step any Python instructions. Upstream docstring:
-/// "This only parses and prepares the code - no heap or namespaces are
-/// created yet. Call `run_snapshot()` with inputs to start execution."
-/// No module-level code runs here. Cost scales with parser input size,
-/// so we bound inputs at `MAX_ORCHESTRATOR_SOURCE_BYTES` (256 KB; the
-/// compiled-in default is ~2 KB) to keep the store write path from
-/// becoming a CPU/memory amplifier for pathological patches. The call is
-/// wrapped in `catch_unwind` because the Monty parser, like most
-/// hand-written Rust parsers, is not panic-audited for every adversarial
-/// input.
-pub fn validate_python_syntax(code: &str) -> Result<(), String> {
-    if code.len() > MAX_ORCHESTRATOR_SOURCE_BYTES {
+/// Parsing runs in the packaged disposable worker, with a hard allocator
+/// limit and a kill/reap deadline. No Python executes in the application.
+pub async fn validate_python_syntax(code: &str) -> Result<(), String> {
+    if code.len() > MAX_PYTHON_UTILITY_SOURCE_BYTES {
         return Err(format!(
-            "orchestrator source too large: {} bytes (limit: {MAX_ORCHESTRATOR_SOURCE_BYTES})",
+            "orchestrator source too large: {} bytes (limit: {MAX_PYTHON_UTILITY_SOURCE_BYTES})",
             code.len()
         ));
     }
-    let code_owned = code.to_string();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        MontyRun::new(code_owned, "validate.py", vec![])
-    })) {
-        Ok(Ok(_)) => Ok(()),
-        Ok(Err(e)) => Err(format!("syntax error: {e}")),
-        Err(_) => Err("parser panic during syntax validation".into()),
+    let request = brassclaw_monty_host::utility::UtilityRequest::Parse {
+        source: code.to_owned(),
+        bounds: utility_bounds(),
+    };
+    match execute_utility(request).await {
+        Ok(brassclaw_monty_host::utility::UtilityOutput::Parsed) => Ok(()),
+        Ok(_) => Err("invalid syntax-worker reply".into()),
+        Err(error) if error.is_syntax_error() => Err(format!("syntax error: {error}")),
+        Err(error) => Err(format!("syntax validation unavailable: {error}")),
     }
+}
+
+/// Technical transport bounds, independent of token accounting. The physical
+/// allocator backstop applies only to the disposable worker, including parsing.
+fn utility_bounds() -> brassclaw_monty_host::VmBounds {
+    brassclaw_monty_host::VmBounds {
+        max_source_bytes: MAX_PYTHON_UTILITY_SOURCE_BYTES,
+        max_compiled_source_bytes: MAX_PYTHON_UTILITY_SOURCE_BYTES * 2,
+        max_feeds: 1,
+        max_stdout_bytes: 1024 * 1024,
+        execution_slice: Duration::from_secs(5),
+        max_value_depth: 64,
+        max_value_nodes: 262_144,
+        max_value_bytes: 8 * 1024 * 1024,
+    }
+}
+
+enum PythonUtilityFailure {
+    Unavailable(std::io::Error),
+    Worker(Box<brassclaw_monty_host::utility::UtilityError>),
+}
+impl PythonUtilityFailure {
+    fn is_syntax_error(&self) -> bool {
+        match self {
+            Self::Unavailable(_) => false,
+            Self::Worker(error) => error.diagnostic.as_deref().is_some_and(|diagnostic| {
+                diagnostic
+                    .lines()
+                    .any(|line| line.trim_start().starts_with("SyntaxError:"))
+            }),
+        }
+    }
+}
+impl std::fmt::Display for PythonUtilityFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable(error) => write!(formatter, "Monty worker unavailable: {error}"),
+            Self::Worker(error) => {
+                write!(
+                    formatter,
+                    "pure Python utility (tool calls are not permitted): {error}"
+                )?;
+                if let Some(diagnostic) = &error.diagnostic {
+                    write!(formatter, ": {diagnostic}")?;
+                }
+                if let Some(failure) = &error.containment_error {
+                    write!(formatter, "; containment: {failure}")?;
+                }
+                if let Some(failure) = &error.reap_error {
+                    write!(formatter, "; reap: {failure}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+async fn execute_utility(
+    request: brassclaw_monty_host::utility::UtilityRequest,
+) -> Result<brassclaw_monty_host::utility::UtilityOutput, PythonUtilityFailure> {
+    let executable = brassclaw_monty_host::process::installed_worker()
+        .map_err(PythonUtilityFailure::Unavailable)?;
+    brassclaw_monty_host::utility::execute(
+        &executable,
+        request,
+        brassclaw_monty_host::process::ProcessLimits {
+            hard_memory_bytes: 64 * 1024 * 1024,
+            max_frame_bytes: 16 * 1024 * 1024,
+            response_timeout: Duration::from_secs(5),
+        },
+    )
+    .await
+    .map_err(|error| PythonUtilityFailure::Worker(Box::new(error)))
 }
 
 // ── Result types ────────────────────────────────────────────
@@ -444,33 +493,33 @@ fn build_context_inputs(
         .map(|msg| {
             let mut pairs = vec![
                 (
-                    MontyObject::String("role".into()),
-                    MontyObject::String(format!("{:?}", msg.role)),
+                    MontyObject::string("role"),
+                    MontyObject::string(format!("{:?}", msg.role)),
                 ),
                 (
-                    MontyObject::String("content".into()),
-                    MontyObject::String(msg.content.clone()),
+                    MontyObject::string("content"),
+                    MontyObject::string(msg.content.clone()),
                 ),
             ];
             if let Some(ref name) = msg.action_name {
                 pairs.push((
-                    MontyObject::String("action_name".into()),
-                    MontyObject::String(name.clone()),
+                    MontyObject::string("action_name"),
+                    MontyObject::string(name.clone()),
                 ));
             }
             MontyObject::dict(pairs)
         })
         .collect();
     names.push("context".into());
-    values.push(MontyObject::List(messages));
+    values.push(MontyObject::list(messages));
 
     // `goal` — the thread's goal string
     names.push("goal".into());
-    values.push(MontyObject::String(thread.goal.clone()));
+    values.push(MontyObject::string(thread.goal.clone()));
 
     // `step_number` — current step index
     names.push("step_number".into());
-    values.push(MontyObject::Int(thread.step_count as i64));
+    values.push(MontyObject::int(thread.step_count as i64));
 
     // `state` — persisted variables from previous code steps.
     // This is a dict that accumulates: return values, tool results, etc.
@@ -486,8 +535,8 @@ fn build_context_inputs(
         .filter_map(|m| {
             let call_id = m.action_call_id.as_ref()?;
             Some((
-                MontyObject::String(call_id.clone()),
-                MontyObject::String(m.content.clone()),
+                MontyObject::string(call_id.clone()),
+                MontyObject::string(m.content.clone()),
             ))
         })
         .collect();
@@ -503,7 +552,7 @@ fn build_context_inputs(
         .map(|vtz| vtz.name().to_string())
         .unwrap_or_else(|| "UTC".into());
     names.push("user_timezone".into());
-    values.push(MontyObject::String(tz));
+    values.push(MontyObject::string(tz));
 
     (names, values)
 }
@@ -645,7 +694,12 @@ async fn execute_code_with_skills_inner(
 
     // Parse and compile (wrap in catch_unwind — Monty 0.0.x can panic)
     let runner = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        MontyRun::new(code.to_string(), "step.py", input_names)
+        MontyRun::new(
+            code.to_string(),
+            "step.py",
+            input_names,
+            CompileOptions::default(),
+        )
     })) {
         Ok(Ok(runner)) => runner,
         Ok(Err(e)) => {
@@ -676,13 +730,13 @@ async fn execute_code_with_skills_inner(
     };
 
     // Start execution with resource limits and context inputs
-    let tracker = LimitedTracker::new(default_limits());
+    let tracker = ResourceTracker::new(default_limits());
 
     let run_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         runner.start(
             input_values,
             tracker,
-            PrintWriter::CollectString(&mut stdout),
+            PrintWriter::collect_string(&mut stdout),
         )
     }));
 
@@ -732,6 +786,11 @@ async fn execute_code_with_skills_inner(
     let mut call_counter = 0u32;
     loop {
         match progress {
+            RunProgress::ControlYield(_) => {
+                return Err(EngineError::Effect {
+                    reason: "unexpected control yield in legacy scripting adapter".into(),
+                });
+            }
             RunProgress::Complete(obj) => {
                 return Ok(CodeExecutionResult {
                     return_value: monty_to_json(&obj),
@@ -750,7 +809,13 @@ async fn execute_code_with_skills_inner(
                 let str_call_id = format!("code_call_{call_counter}");
                 let monty_call_id = call.call_id;
                 let action_name = call.function_name.clone();
-                let params = monty_args_to_json(&call.args, &call.kwargs);
+                let args: Vec<_> = call.args.args().map(|value| value.to_owned()).collect();
+                let kwargs: Vec<_> = call
+                    .args
+                    .kwargs()
+                    .map(|(key, value)| (key.to_owned(), value.to_owned()))
+                    .collect();
+                let params = monty_args_to_json(&args, &kwargs);
 
                 debug!(action = %action_name, call_id = %str_call_id, monty_id = monty_call_id, "Monty: function call");
 
@@ -765,14 +830,13 @@ async fn execute_code_with_skills_inner(
                 // class of "NoneType can't be awaited" failures.
                 let sync_result = match action_name.as_str() {
                     "FINAL" => {
-                        let answer = call.args.first().map(monty_to_string).unwrap_or_default();
+                        let answer = args.first().map(monty_to_string).unwrap_or_default();
                         final_answer = Some(answer);
                         pending_futures.insert(monty_call_id, PendingFuture::ready_none());
                         None
                     }
                     "FINAL_VAR" => {
-                        let var_name = call
-                            .args
+                        let var_name = args
                             .first()
                             .map(monty_to_string)
                             .unwrap_or_else(|| "result".into());
@@ -785,8 +849,8 @@ async fn execute_code_with_skills_inner(
                     // to run the LLM call and tool call concurrently.
                     "llm_query" => match llm {
                         Some(llm) => {
-                            let args = call.args.clone();
-                            let kwargs = call.kwargs.clone();
+                            let args = args.clone();
+                            let kwargs = kwargs.clone();
                             let llm = llm.clone();
                             let handle = tokio::spawn(async move {
                                 handle_llm_query_standalone(&args, &kwargs, &llm).await
@@ -804,8 +868,8 @@ async fn execute_code_with_skills_inner(
                     },
                     "llm_query_batched" => match llm {
                         Some(llm) => {
-                            let args = call.args.clone();
-                            let kwargs = call.kwargs.clone();
+                            let args = args.clone();
+                            let kwargs = kwargs.clone();
                             let llm = llm.clone();
                             let handle = tokio::spawn(async move {
                                 handle_llm_query_batched_standalone(&args, &kwargs, &llm).await
@@ -825,10 +889,10 @@ async fn execute_code_with_skills_inner(
                         let entries: Vec<(MontyObject, MontyObject)> = known_actions
                             .iter()
                             .map(|name| {
-                                (MontyObject::String(name.clone()), MontyObject::Bool(true))
+                                (MontyObject::string(name.clone()), MontyObject::bool(true))
                             })
                             .collect();
-                        Some(ExtFunctionResult::Return(MontyObject::Dict(entries.into())))
+                        Some(ExtFunctionResult::Return(MontyObject::dict(entries)))
                     }
                     _ => None, // tool call — handled async below
                 };
@@ -836,7 +900,7 @@ async fn execute_code_with_skills_inner(
                 if let Some(ext_result) = sync_result {
                     // Sync resume for builtins
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        call.resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                        call.resume(ext_result, PrintWriter::collect_string(&mut stdout))
                     })) {
                         Ok(Ok(p)) => progress = p,
                         Ok(Err(e)) => {
@@ -877,7 +941,7 @@ async fn execute_code_with_skills_inner(
                 // resume_pending and continue — no preflight needed.
                 if pending_futures.contains_key(&monty_call_id) {
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        call.resume_pending(PrintWriter::CollectString(&mut stdout))
+                        call.resume_pending(PrintWriter::collect_string(&mut stdout))
                     })) {
                         Ok(Ok(p)) => progress = p,
                         Ok(Err(e)) => {
@@ -962,7 +1026,7 @@ async fn execute_code_with_skills_inner(
 
                         // Resume with pending future — Python gets ExternalFuture
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            call.resume_pending(PrintWriter::CollectString(&mut stdout))
+                            call.resume_pending(PrintWriter::collect_string(&mut stdout))
                         })) {
                             Ok(Ok(p)) => progress = p,
                             Ok(Err(e)) => {
@@ -997,7 +1061,7 @@ async fn execute_code_with_skills_inner(
                     PreflightResult::Denied(ext_result) => {
                         // Resume with error — Python sees an exception
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            call.resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                            call.resume(ext_result, PrintWriter::collect_string(&mut stdout))
                         })) {
                             Ok(Ok(p)) => progress = p,
                             Ok(Err(e)) => {
@@ -1106,7 +1170,7 @@ async fn execute_code_with_skills_inner(
                                 Some(outcome.script_message(&gate_action_name)),
                             ));
                             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                call.resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                                call.resume(ext_result, PrintWriter::collect_string(&mut stdout))
                             })) {
                                 Ok(Ok(p)) => progress = p,
                                 Ok(Err(e)) => {
@@ -1190,7 +1254,7 @@ async fn execute_code_with_skills_inner(
                                 );
 
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    call.resume_pending(PrintWriter::CollectString(&mut stdout))
+                                    call.resume_pending(PrintWriter::collect_string(&mut stdout))
                                 })) {
                                     Ok(Ok(p)) => progress = p,
                                     Ok(Err(e)) => {
@@ -1228,7 +1292,10 @@ async fn execute_code_with_skills_inner(
                                 // error to Python so the script can handle
                                 // it (or crash uncaught).
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    call.resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                                    call.resume(
+                                        ext_result,
+                                        PrintWriter::collect_string(&mut stdout),
+                                    )
                                 })) {
                                     Ok(Ok(p)) => progress = p,
                                     _ => {
@@ -1256,7 +1323,10 @@ async fn execute_code_with_skills_inner(
                                     )),
                                 ));
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    call.resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                                    call.resume(
+                                        ext_result,
+                                        PrintWriter::collect_string(&mut stdout),
+                                    )
                                 })) {
                                     Ok(Ok(p)) => progress = p,
                                     _ => {
@@ -1328,7 +1398,7 @@ async fn execute_code_with_skills_inner(
                 }
 
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    resolve.resume(results, PrintWriter::CollectString(&mut stdout))
+                    resolve.resume(results, PrintWriter::collect_string(&mut stdout))
                 })) {
                     Ok(Ok(p)) => progress = p,
                     Ok(Err(e)) => {
@@ -1367,22 +1437,16 @@ async fn execute_code_with_skills_inner(
 
                 let result = if known_actions.contains(&name) {
                     debug!(name = %name, "Monty: resolved as tool function");
-                    NameLookupResult::Value(MontyObject::Function {
-                        name: name.clone(),
-                        docstring: None,
-                    })
+                    NameLookupResult::Value(MontyObject::function(name.clone(), None))
                 } else if name == "globals" || name == "locals" {
-                    NameLookupResult::Value(MontyObject::Function {
-                        name: name.clone(),
-                        docstring: None,
-                    })
+                    NameLookupResult::Value(MontyObject::function(name.clone(), None))
                 } else {
                     debug!(name = %name, "Monty: unresolved name");
                     NameLookupResult::Undefined
                 };
 
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    lookup.resume(result, PrintWriter::CollectString(&mut stdout))
+                    lookup.resume(result, PrintWriter::collect_string(&mut stdout))
                 })) {
                     Ok(Ok(p)) => progress = p,
                     Ok(Err(e)) => {
@@ -1422,22 +1486,24 @@ async fn execute_code_with_skills_inner(
                 // variants rather than opaque syscalls, so we can answer them
                 // directly instead of returning the blanket OSError. Anything
                 // else still gets denied.
-                let clock_reply: Option<ExtFunctionResult> = match os_call.function {
-                    OsFunction::DateTimeNow => {
-                        Some(ExtFunctionResult::Return(build_datetime_now(&os_call.args)))
+                let clock_reply: Option<ExtFunctionResult> = match &os_call.function_call {
+                    OsFunctionCall::DateTimeNow(timezone) => Some(ExtFunctionResult::Return(
+                        build_datetime_now(timezone.as_ref()),
+                    )),
+                    OsFunctionCall::DateToday => {
+                        Some(ExtFunctionResult::Return(build_date_today()))
                     }
-                    OsFunction::DateToday => Some(ExtFunctionResult::Return(build_date_today())),
                     _ => None,
                 };
                 let reply = clock_reply.unwrap_or_else(|| {
-                    debug!(function = ?os_call.function, "Monty: OS call denied");
+                    debug!(function = ?os_call.function_call, "Monty: OS call denied");
                     ExtFunctionResult::Error(MontyException::new(
                         ExcType::OSError,
                         Some("OS operations are not permitted in CodeAct scripts".into()),
                     ))
                 });
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    os_call.resume(reply, PrintWriter::CollectString(&mut stdout))
+                    os_call.resume(reply, PrintWriter::collect_string(&mut stdout))
                 })) {
                     Ok(Ok(p)) => progress = p,
                     Ok(Err(e)) => {
@@ -1501,7 +1567,7 @@ fn classify_runtime_error(error_msg: &str) -> CodeExecutionFailure {
     }
 }
 
-/// Lightweight in-process PythonCode executor — Phase J.2 (§0.23.4).
+/// Contained pure-PythonCode utility executor.
 ///
 /// Runs a single PythonCode body in the Monty VM without any tool dispatch,
 /// LLM calls, leases, policies, or network access.  Used by the per-class
@@ -1510,12 +1576,12 @@ fn classify_runtime_error(error_msg: &str) -> CodeExecutionFailure {
 ///
 /// # What is permitted
 /// - Pure Python logic: arithmetic, string operations, dict/list manipulation.
-/// - `datetime.now()` / `date.today()` (clock reads via `OsCall`).
+/// - `datetime.now()` / `date.today()` (worker-local UTC clock reads).
 ///
 /// # What is rejected
 /// - Tool / function calls (`FunctionCall`) → hard error, execution stops.
-/// - OS operations other than clock reads → denied with `OSError`.
-/// - Resource limits: 5-second wall-clock timeout, 16 MB memory.
+/// - Host and OS operations are unavailable; their real interpreter errors propagate.
+/// - Resource limits: 5-second wall deadline including parsing, 64 MiB worker allocator.
 ///
 /// # Inputs
 /// `inputs` is a flat `Vec<(name, json_value)>` injected as top-level Python
@@ -1532,105 +1598,40 @@ fn classify_runtime_error(error_msg: &str) -> CodeExecutionFailure {
 /// Returns `Ok(None)` when the body completes with a `None` return value.
 /// Returns `Err(String)` on any execution failure (syntax, runtime, tool-call
 /// attempt, resource limit).
-pub fn run_python_code_body(
+pub async fn run_python_code_body(
     code: &str,
     inputs: &[(&str, serde_json::Value)],
 ) -> Result<Option<serde_json::Value>, String> {
-    // Build input name / value vectors for the Monty VM.
-    let input_names: Vec<String> = inputs.iter().map(|(k, _)| (*k).to_string()).collect();
-    let input_values: Vec<MontyObject> = inputs.iter().map(|(_, v)| json_to_monty(v)).collect();
-
-    // Parse (wrap in catch_unwind — Monty parser may panic on pathological input).
-    let runner = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        MontyRun::new(code.to_string(), "formatter.py", input_names)
-    })) {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => return Err(format!("SyntaxError: {e}")),
-        Err(_) => return Err("VmPanic: Monty VM panicked during parsing".into()),
-    };
-
-    // Tight resource limits: formatter bodies are tiny and must not hog CPU.
-    let limits = ResourceLimits::new()
-        .max_duration(Duration::from_secs(5))
-        .max_allocations(SCRIPTING_MAX_ALLOCATIONS / 4)
-        .max_memory(16 * 1024 * 1024); // 16 MB
-    let tracker = LimitedTracker::new(limits);
-
-    let mut stdout = String::new();
-
-    let mut progress = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        runner.start(
-            input_values,
-            tracker,
-            PrintWriter::CollectString(&mut stdout),
-        )
-    })) {
-        Ok(Ok(p)) => p,
-        Ok(Err(e)) => return Err(format!("RuntimeError: {e}")),
-        Err(_) => return Err("VmPanic: Monty VM panicked during execution start".into()),
-    };
-
-    loop {
-        match progress {
-            RunProgress::Complete(obj) => {
-                let json = monty_to_json(&obj);
-                if json.is_null() {
-                    return Ok(None);
-                }
-                return Ok(Some(json));
-            }
-
-            RunProgress::FunctionCall(_call) => {
-                // Tool / host-function calls are not permitted in the light executor.
-                return Err(
-                    "RuntimeError: tool calls are not permitted in formatter bodies".into(),
-                );
-            }
-
-            RunProgress::ResolveFutures(_) => {
-                // Should never be reached (no async calls are possible), but
-                // guard defensively so we do not hang.
-                return Err(
-                    "RuntimeError: async operations are not permitted in formatter bodies".into(),
-                );
-            }
-
-            RunProgress::NameLookup(lookup) => {
-                // Resolve to Undefined — formatter bodies should not reference
-                // unknown names. Let Monty surface a NameError on next step.
-                let result = NameLookupResult::Undefined;
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    lookup.resume(result, PrintWriter::CollectString(&mut stdout))
-                })) {
-                    Ok(Ok(p)) => progress = p,
-                    Ok(Err(e)) => return Err(format!("RuntimeError: {e}")),
-                    Err(_) => return Err("VmPanic: Monty VM panicked during name lookup".into()),
-                }
-            }
-
-            RunProgress::OsCall(os_call) => {
-                // Allow clock reads; deny everything else.
-                let reply = match os_call.function {
-                    OsFunction::DateTimeNow => {
-                        ExtFunctionResult::Return(build_datetime_now(&os_call.args))
-                    }
-                    OsFunction::DateToday => ExtFunctionResult::Return(build_date_today()),
-                    _ => ExtFunctionResult::Error(MontyException::new(
-                        ExcType::OSError,
-                        Some("OS operations are not permitted in formatter bodies".into()),
-                    )),
-                };
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    os_call.resume(reply, PrintWriter::CollectString(&mut stdout))
-                })) {
-                    Ok(Ok(p)) => progress = p,
-                    Ok(Err(e)) => return Err(format!("RuntimeError: {e}")),
-                    Err(_) => {
-                        return Err("VmPanic: Monty VM panicked during OS call".into());
-                    }
-                }
-            }
+    if code.len() > MAX_PYTHON_UTILITY_SOURCE_BYTES {
+        return Err("Python utility source too large".into());
+    }
+    if !brassclaw_monty_host::utility::inputs_within_bounds(
+        inputs.iter().map(|(name, value)| (*name, value)),
+        utility_bounds(),
+        16 * 1024 * 1024,
+    ) {
+        return Err("Python utility inputs exceed technical transport bounds".into());
+    }
+    let mut values = std::collections::BTreeMap::new();
+    for (name, value) in inputs {
+        if values.insert((*name).to_owned(), value.clone()).is_some() {
+            return Err(format!("duplicate Python input: {name}"));
         }
+    }
+    let request = brassclaw_monty_host::utility::UtilityRequest::Evaluate {
+        source: code.to_owned(),
+        inputs: values,
+        bounds: utility_bounds(),
+        max_compute_time: Duration::from_secs(5),
+    };
+    match execute_utility(request)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        brassclaw_monty_host::utility::UtilityOutput::Evaluated { value, .. } => {
+            Ok(if value.is_null() { None } else { Some(value) })
+        }
+        _ => Err("invalid evaluation-worker reply".into()),
     }
 }
 
@@ -1683,7 +1684,7 @@ impl PendingFuture {
     fn ready_none() -> Self {
         let handle = tokio::spawn(async {
             (
-                ExtFunctionResult::Return(MontyObject::None),
+                ExtFunctionResult::Return(MontyObject::none()),
                 TokenUsage::default(),
             )
         });
@@ -1825,7 +1826,7 @@ async fn handle_llm_query(
     let prompt = extract_string_arg(args, kwargs, "prompt", 0);
     let context_arg = extract_string_arg(args, kwargs, "context", 1);
     // `model` must be parsed explicitly — `extract_string_arg` coerces via
-    // `monty_to_string`, which turns `MontyObject::None` into the literal
+    // `monty_to_string`, which turns `MontyObject::none()` into the literal
     // string "None" and stringifies non-string values, both of which would
     // silently route the call to an invalid model ID. Accept only str or None.
     let model_arg = match extract_optional_string_kwarg(args, kwargs, "model", 2) {
@@ -1873,7 +1874,7 @@ async fn handle_llm_query(
                     content.unwrap_or_default()
                 }
             };
-            ExtFunctionResult::Return(MontyObject::String(text))
+            ExtFunctionResult::Return(MontyObject::string(text))
         }
         Err(e) => ExtFunctionResult::Error(MontyException::new(
             ExcType::RuntimeError,
@@ -1895,7 +1896,7 @@ async fn handle_llm_query_batched(
     // Extract prompts list (first arg or kwarg "prompts")
     let prompts_obj = args.first().or_else(|| {
         kwargs.iter().find_map(|(k, v)| {
-            if let MontyObject::String(key) = k
+            if let Some(key) = k.as_ref().as_str()
                 && key == "prompts"
             {
                 return Some(v);
@@ -1905,7 +1906,13 @@ async fn handle_llm_query_batched(
     });
 
     let prompts: Vec<String> = match prompts_obj {
-        Some(MontyObject::List(items)) => items.iter().map(monty_to_string).collect(),
+        Some(value) if value.type_name() == "list" => value
+            .as_ref()
+            .items()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| monty_to_string(&item.to_owned()))
+            .collect(),
         Some(other) => {
             return ExtFunctionResult::Error(MontyException::new(
                 ExcType::TypeError,
@@ -1951,19 +1958,21 @@ async fn handle_llm_query_batched(
     let models_kwarg = kwargs
         .iter()
         .find_map(|(k, v)| match k {
-            MontyObject::String(key) if key == "models" => Some(v),
+            _ if k.as_ref().as_str() == Some("models") => Some(v),
             _ => None,
         })
         .or_else(|| args.get(3));
 
     let models_list: Option<Vec<Option<String>>> = match models_kwarg {
-        None | Some(MontyObject::None) => None,
-        Some(MontyObject::List(items)) => {
+        None => None,
+        Some(value) if value.type_name() == "NoneType" => None,
+        Some(value) if value.type_name() == "list" => {
+            let items = value.as_ref().items().unwrap_or_default();
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 match item {
-                    MontyObject::String(s) => out.push(Some(s.clone())),
-                    MontyObject::None => out.push(None),
+                    _ if item.as_str().is_some() => out.push(item.as_str().map(str::to_owned)),
+                    _ if item.type_name() == "NoneType" => out.push(None),
                     other => {
                         return ExtFunctionResult::Error(MontyException::new(
                             ExcType::TypeError,
@@ -2047,13 +2056,13 @@ async fn handle_llm_query_batched(
                     LlmResponse::ActionCalls { content, .. }
                     | LlmResponse::Code { content, .. } => content.unwrap_or_default(),
                 };
-                results.push(MontyObject::String(text));
+                results.push(MontyObject::string(text));
             }
             Ok(Err(e)) => {
-                results.push(MontyObject::String(format!("Error: {e}")));
+                results.push(MontyObject::string(format!("Error: {e}")));
             }
             Err(e) => {
-                results.push(MontyObject::String(format!("Error: task failed: {e}")));
+                results.push(MontyObject::string(format!("Error: task failed: {e}")));
             }
         }
     }
@@ -2061,7 +2070,7 @@ async fn handle_llm_query_batched(
     recursive_tokens.input_tokens += total_input;
     recursive_tokens.output_tokens += total_output;
 
-    ExtFunctionResult::Return(MontyObject::List(results))
+    ExtFunctionResult::Return(MontyObject::list(results))
 }
 
 // ── Standalone async handlers (for tokio::spawn) ────────────
@@ -2591,7 +2600,7 @@ fn extract_string_arg(
     position: usize,
 ) -> Option<String> {
     for (k, v) in kwargs {
-        if let MontyObject::String(key) = k
+        if let Some(key) = k.as_ref().as_str()
             && key == name
         {
             return Some(monty_to_string(v));
@@ -2615,14 +2624,17 @@ fn extract_optional_string_kwarg(
     let raw = kwargs
         .iter()
         .find_map(|(k, v)| match k {
-            MontyObject::String(key) if key == name => Some(v),
+            _ if k.as_ref().as_str() == Some(name) => Some(v),
             _ => None,
         })
         .or_else(|| args.get(position));
 
     match raw {
-        None | Some(MontyObject::None) => Ok(None),
-        Some(MontyObject::String(s)) => Ok(Some(s.clone())),
+        None => Ok(None),
+        Some(value) if value.type_name() == "NoneType" => Ok(None),
+        Some(value) if value.as_ref().as_str().is_some() => {
+            Ok(value.as_ref().as_str().map(str::to_owned))
+        }
         Some(other) => Err(ExtFunctionResult::Error(MontyException::new(
             ExcType::TypeError,
             Some(format!("`{name}` must be a string or None, got {other:?}")),
@@ -2631,75 +2643,84 @@ fn extract_optional_string_kwarg(
 }
 
 pub(crate) fn monty_to_string(obj: &MontyObject) -> String {
-    match obj {
-        MontyObject::String(s) => s.clone(),
-        MontyObject::None => "None".into(),
-        MontyObject::Bool(b) => b.to_string(),
-        MontyObject::Int(i) => i.to_string(),
-        MontyObject::Float(f) => f.to_string(),
-        other => {
-            serde_json::to_string(&monty_to_json(other)).unwrap_or_else(|_| format!("{other:?}"))
-        }
+    let value = obj.as_ref();
+    if let Some(value) = value.as_str() {
+        value.to_owned()
+    } else if obj.type_name() == "NoneType" {
+        "None".into()
+    } else if let Some(value) = value.as_bool() {
+        value.to_string()
+    } else if let Some(value) = value.as_int() {
+        value.to_string()
+    } else if let Some(value) = value.as_float() {
+        value.to_string()
+    } else {
+        serde_json::to_string(&monty_to_json(obj)).unwrap_or_else(|_| obj.py_repr())
     }
 }
 
-// Dispatch logic moved to orchestrator.rs (first-class `host.<name>(...)`
-// callables; the `__execute_action__` meta-primitive is retired).
-// GatePaused is handled via EngineError → JSON in orchestrator.rs.
-// ── MontyObject ↔ JSON ──────────────────────────────────────
-
+// Compatibility data conversion for the legacy engine consumers. Production
+// task transport uses its separate fallible, bounded typed-value adapter.
+// The pinned 1.0 representation adapter is required only for bytes/BigInt:
+// stable ObjectRef exposes scalar, sequence and mapping accessors.
 pub(crate) fn monty_to_json(obj: &MontyObject) -> serde_json::Value {
-    match obj {
-        MontyObject::None => serde_json::Value::Null,
-        MontyObject::Bool(b) => serde_json::Value::Bool(*b),
-        MontyObject::Int(i) => serde_json::json!(i),
-        MontyObject::BigInt(i) => serde_json::Value::String(i.to_string()),
-        MontyObject::Float(f) => serde_json::json!(f),
-        MontyObject::String(s) => serde_json::Value::String(s.clone()),
-        MontyObject::List(items) | MontyObject::Tuple(items) => {
-            serde_json::Value::Array(items.iter().map(monty_to_json).collect())
+    fn convert(value: monty_types::ObjectRef<'_>) -> serde_json::Value {
+        if value.type_name() == "NoneType" {
+            serde_json::Value::Null
+        } else if let Some(value) = value.as_bool() {
+            serde_json::Value::Bool(value)
+        } else if let Some(value) = value.as_int() {
+            serde_json::json!(value)
+        } else if let Some(value) = value.as_float() {
+            serde_json::json!(value)
+        } else if let Some(value) = value.as_str() {
+            serde_json::Value::String(value.to_owned())
+        } else if let Some(items) = value.items() {
+            serde_json::Value::Array(items.into_iter().map(convert).collect())
+        } else if let Some(pairs) = value.pairs() {
+            serde_json::Value::Object(
+                pairs
+                    .into_iter()
+                    .map(|(key, value)| {
+                        let key = key
+                            .as_str()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| key.py_repr());
+                        (key, convert(value))
+                    })
+                    .collect(),
+            )
+        } else {
+            use monty_types::unstable::{MontyNode, node};
+            let text = match node(value) {
+                MontyNode::BigInt(value) => value.to_string(),
+                MontyNode::Bytes(value) => value.iter().map(|byte| format!("{byte:02x}")).collect(),
+                _ => value.py_repr(),
+            };
+            serde_json::Value::String(text)
         }
-        MontyObject::Dict(pairs) => {
-            let map: serde_json::Map<String, serde_json::Value> = pairs
-                .into_iter()
-                .map(|(k, v)| {
-                    let key = match k {
-                        MontyObject::String(s) => s.clone(),
-                        other => format!("{other:?}"),
-                    };
-                    (key, monty_to_json(v))
-                })
-                .collect();
-            serde_json::Value::Object(map)
-        }
-        MontyObject::Set(items) | MontyObject::FrozenSet(items) => {
-            serde_json::Value::Array(items.iter().map(monty_to_json).collect())
-        }
-        MontyObject::Bytes(b) => {
-            serde_json::Value::String(b.iter().map(|byte| format!("{byte:02x}")).collect())
-        }
-        other => serde_json::Value::String(format!("{other:?}")),
     }
+    convert(obj.as_ref())
 }
 
 pub(crate) fn json_to_monty(val: &serde_json::Value) -> MontyObject {
     match val {
-        serde_json::Value::Null => MontyObject::None,
-        serde_json::Value::Bool(b) => MontyObject::Bool(*b),
+        serde_json::Value::Null => MontyObject::none(),
+        serde_json::Value::Bool(b) => MontyObject::bool(*b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                MontyObject::Int(i)
+                MontyObject::int(i)
             } else if let Some(f) = n.as_f64() {
-                MontyObject::Float(f)
+                MontyObject::float(f)
             } else {
-                MontyObject::String(n.to_string())
+                MontyObject::string(n.to_string())
             }
         }
-        serde_json::Value::String(s) => MontyObject::String(s.clone()),
-        serde_json::Value::Array(arr) => MontyObject::List(arr.iter().map(json_to_monty).collect()),
+        serde_json::Value::String(s) => MontyObject::string(s.clone()),
+        serde_json::Value::Array(arr) => MontyObject::list(arr.iter().map(json_to_monty)),
         serde_json::Value::Object(map) => MontyObject::dict(
             map.iter()
-                .map(|(k, v)| (MontyObject::String(k.clone()), json_to_monty(v)))
+                .map(|(k, v)| (MontyObject::string(k.clone()), json_to_monty(v)))
                 .collect::<Vec<_>>(),
         ),
     }
@@ -2717,10 +2738,11 @@ fn monty_args_to_json(
         );
     }
     for (k, v) in kwargs {
-        let key = match k {
-            MontyObject::String(s) => s.clone(),
-            other => format!("{other:?}"),
-        };
+        let key = k
+            .as_ref()
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| k.py_repr());
         map.insert(key, monty_to_json(v));
     }
     serde_json::Value::Object(map)
@@ -3820,23 +3842,25 @@ except Exception as e:
     }
 
     /// validate_python_syntax rejects broken code and accepts valid code.
-    #[test]
-    fn validate_syntax_rejects_broken_code() {
-        assert!(validate_python_syntax("def f(\n").is_err());
-        assert!(validate_python_syntax("x = 1\ny = 2\n").is_ok());
+    #[tokio::test]
+    async fn validate_syntax_rejects_broken_code() {
+        assert!(validate_python_syntax("def f(\n").await.is_err());
+        assert!(validate_python_syntax("x = 1\ny = 2\n").await.is_ok());
         // Empty input is valid Python (empty module).
-        assert!(validate_python_syntax("").is_ok());
+        assert!(validate_python_syntax("").await.is_ok());
         // Unicode identifiers are valid Python 3.
-        assert!(validate_python_syntax("café = 1\n").is_ok());
+        assert!(validate_python_syntax("café = 1\n").await.is_ok());
         // Oversized input is rejected before parsing.
         let oversized = "x = 1\n".repeat(50_000);
-        let err = validate_python_syntax(&oversized).expect_err("oversized");
+        let err = validate_python_syntax(&oversized)
+            .await
+            .expect_err("oversized");
         assert!(
             err.contains("too large"),
             "expected size-cap error, got: {err}"
         );
         // Error messages contain "syntax error" prefix.
-        let err = validate_python_syntax("def :\n").expect_err("syntax");
+        let err = validate_python_syntax("def :\n").await.expect_err("syntax");
         assert!(
             err.starts_with("syntax error"),
             "expected 'syntax error' prefix, got: {err}"
@@ -3897,13 +3921,10 @@ except Exception as e:
             &[],
             &[
                 (
-                    MontyObject::String("prompt".into()),
-                    MontyObject::String("what is 2+2?".into()),
+                    MontyObject::string("prompt"),
+                    MontyObject::string("what is 2+2?"),
                 ),
-                (
-                    MontyObject::String("model".into()),
-                    MontyObject::String("gpt-4o".into()),
-                ),
+                (MontyObject::string("model"), MontyObject::string("gpt-4o")),
             ],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
@@ -3911,7 +3932,8 @@ except Exception as e:
         .await;
 
         match result {
-            ExtFunctionResult::Return(MontyObject::String(s)) => {
+            ExtFunctionResult::Return(value) => {
+                let s = value.as_ref().as_str().expect("string result");
                 assert!(s.contains("gpt-4o"), "got: {s}");
             }
             other => panic!("expected string return, got {other:?}"),
@@ -3928,7 +3950,7 @@ except Exception as e:
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
         let _ = handle_llm_query(
-            &[MontyObject::String("hello".into())],
+            &[MontyObject::string("hello")],
             &[],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
@@ -3944,26 +3966,27 @@ except Exception as e:
     async fn llm_query_batched_broadcasts_with_models_list() {
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![
-            MontyObject::String("Q".into()),
-            MontyObject::String("Q".into()),
-            MontyObject::String("Q".into()),
+        let prompts = MontyObject::list(vec![
+            MontyObject::string("Q"),
+            MontyObject::string("Q"),
+            MontyObject::string("Q"),
         ]);
-        let models = MontyObject::List(vec![
-            MontyObject::String("gpt-4o".into()),
-            MontyObject::String("claude-sonnet-4-20250514".into()),
-            MontyObject::String("llama-3.1-70b-instruct".into()),
+        let models = MontyObject::list(vec![
+            MontyObject::string("gpt-4o"),
+            MontyObject::string("claude-sonnet-4-20250514"),
+            MontyObject::string("llama-3.1-70b-instruct"),
         ]);
         let result = handle_llm_query_batched(
             &[prompts],
-            &[(MontyObject::String("models".into()), models)],
+            &[(MontyObject::string("models"), models)],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
         )
         .await;
 
         match result {
-            ExtFunctionResult::Return(MontyObject::List(items)) => {
+            ExtFunctionResult::Return(value) => {
+                let items = value.as_ref().items().expect("list result");
                 assert_eq!(items.len(), 3);
             }
             other => panic!("expected list return, got {other:?}"),
@@ -3981,16 +4004,10 @@ except Exception as e:
     async fn llm_query_batched_single_model_applies_to_all() {
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![
-            MontyObject::String("a".into()),
-            MontyObject::String("b".into()),
-        ]);
+        let prompts = MontyObject::list(vec![MontyObject::string("a"), MontyObject::string("b")]);
         let _ = handle_llm_query_batched(
             &[prompts],
-            &[(
-                MontyObject::String("model".into()),
-                MontyObject::String("gpt-4o".into()),
-            )],
+            &[(MontyObject::string("model"), MontyObject::string("gpt-4o"))],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
         )
@@ -4004,18 +4021,15 @@ except Exception as e:
     #[tokio::test]
     async fn llm_query_model_none_kwarg_is_no_override_not_literal_none_string() {
         // Regression: `extract_string_arg` would have coerced
-        // MontyObject::None to the literal string "None", silently routing
+        // MontyObject::none() to the literal string "None", silently routing
         // every model=None call to an invalid model ID. Must stay None.
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
         let _ = handle_llm_query(
             &[],
             &[
-                (
-                    MontyObject::String("prompt".into()),
-                    MontyObject::String("hi".into()),
-                ),
-                (MontyObject::String("model".into()), MontyObject::None),
+                (MontyObject::string("prompt"), MontyObject::string("hi")),
+                (MontyObject::string("model"), MontyObject::none()),
             ],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
@@ -4034,13 +4048,10 @@ except Exception as e:
         let result = handle_llm_query(
             &[],
             &[
+                (MontyObject::string("prompt"), MontyObject::string("hi")),
                 (
-                    MontyObject::String("prompt".into()),
-                    MontyObject::String("hi".into()),
-                ),
-                (
-                    MontyObject::String("model".into()),
-                    MontyObject::Int(INVALID_MODEL_INT),
+                    MontyObject::string("model"),
+                    MontyObject::int(INVALID_MODEL_INT),
                 ),
             ],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
@@ -4056,13 +4067,10 @@ except Exception as e:
     async fn llm_query_batched_single_model_none_kwarg_is_no_override() {
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![
-            MontyObject::String("a".into()),
-            MontyObject::String("b".into()),
-        ]);
+        let prompts = MontyObject::list(vec![MontyObject::string("a"), MontyObject::string("b")]);
         let _ = handle_llm_query_batched(
             &[prompts],
-            &[(MontyObject::String("model".into()), MontyObject::None)],
+            &[(MontyObject::string("model"), MontyObject::none())],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
         )
@@ -4083,12 +4091,9 @@ except Exception as e:
         let mut tokens = crate::types::step::TokenUsage::default();
         let result = handle_llm_query_batched(
             &[
-                MontyObject::List(vec![
-                    MontyObject::String("a".into()),
-                    MontyObject::String("b".into()),
-                ]),
-                MontyObject::String("shared context".into()), // position 1: context
-                MontyObject::String("gpt-4o".into()),         // position 2: model
+                MontyObject::list(vec![MontyObject::string("a"), MontyObject::string("b")]),
+                MontyObject::string("shared context"), // position 1: context
+                MontyObject::string("gpt-4o"),         // position 2: model
             ],
             &[],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
@@ -4097,7 +4102,9 @@ except Exception as e:
         .await;
 
         match result {
-            ExtFunctionResult::Return(MontyObject::List(items)) => assert_eq!(items.len(), 2),
+            ExtFunctionResult::Return(value) => {
+                assert_eq!(value.as_ref().items().expect("list result").len(), 2)
+            }
             other => panic!("expected list return, got {other:?}"),
         }
 
@@ -4112,16 +4119,13 @@ except Exception as e:
         let mut tokens = crate::types::step::TokenUsage::default();
         let result = handle_llm_query_batched(
             &[
-                MontyObject::List(vec![
-                    MontyObject::String("q".into()),
-                    MontyObject::String("q".into()),
-                ]),
-                MontyObject::None, // position 1: context = None
-                MontyObject::None, // position 2: model = None
-                MontyObject::List(vec![
+                MontyObject::list(vec![MontyObject::string("q"), MontyObject::string("q")]),
+                MontyObject::none(), // position 1: context = None
+                MontyObject::none(), // position 2: model = None
+                MontyObject::list(vec![
                     // position 3: models
-                    MontyObject::String("gpt-4o".into()),
-                    MontyObject::String("claude-sonnet-4-6".into()),
+                    MontyObject::string("gpt-4o"),
+                    MontyObject::string("claude-sonnet-4-6"),
                 ]),
             ],
             &[],
@@ -4146,10 +4150,10 @@ except Exception as e:
         let mut tokens = crate::types::step::TokenUsage::default();
         let result = handle_llm_query_batched(
             &[
-                MontyObject::List(vec![MontyObject::String("a".into())]),
-                MontyObject::None,
-                MontyObject::None,
-                MontyObject::None,
+                MontyObject::list(vec![MontyObject::string("a")]),
+                MontyObject::none(),
+                MontyObject::none(),
+                MontyObject::none(),
             ],
             &[],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
@@ -4167,10 +4171,10 @@ except Exception as e:
     async fn llm_query_batched_rejects_non_string_single_model() {
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![MontyObject::String("a".into())]);
+        let prompts = MontyObject::list(vec![MontyObject::string("a")]);
         let result = handle_llm_query_batched(
             &[prompts],
-            &[(MontyObject::String("model".into()), MontyObject::Int(7))],
+            &[(MontyObject::string("model"), MontyObject::int(7))],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
         )
@@ -4184,15 +4188,12 @@ except Exception as e:
     async fn llm_query_batched_rejects_non_string_models_entries() {
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![
-            MontyObject::String("a".into()),
-            MontyObject::String("b".into()),
-        ]);
+        let prompts = MontyObject::list(vec![MontyObject::string("a"), MontyObject::string("b")]);
         // Integers in the models list should fail loudly, not be coerced to "1"/"2".
-        let models = MontyObject::List(vec![MontyObject::Int(1), MontyObject::Int(2)]);
+        let models = MontyObject::list(vec![MontyObject::int(1), MontyObject::int(2)]);
         let result = handle_llm_query_batched(
             &[prompts],
-            &[(MontyObject::String("models".into()), models)],
+            &[(MontyObject::string("models"), models)],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
         )
@@ -4209,21 +4210,15 @@ except Exception as e:
         // singular `model=` kwarg. Each slot is authoritative.
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![
-            MontyObject::String("a".into()),
-            MontyObject::String("b".into()),
-        ]);
-        let models = MontyObject::List(vec![
-            MontyObject::None,
-            MontyObject::String("gpt-4o".into()),
-        ]);
+        let prompts = MontyObject::list(vec![MontyObject::string("a"), MontyObject::string("b")]);
+        let models = MontyObject::list(vec![MontyObject::none(), MontyObject::string("gpt-4o")]);
         let _ = handle_llm_query_batched(
             &[prompts],
             &[
-                (MontyObject::String("models".into()), models),
+                (MontyObject::string("models"), models),
                 (
-                    MontyObject::String("model".into()),
-                    MontyObject::String("claude-sonnet-4-20250514".into()),
+                    MontyObject::string("model"),
+                    MontyObject::string("claude-sonnet-4-20250514"),
                 ),
             ],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
@@ -4244,14 +4239,11 @@ except Exception as e:
     async fn llm_query_batched_models_length_mismatch_errors() {
         let llm = Arc::new(CapturingLlm::new());
         let mut tokens = crate::types::step::TokenUsage::default();
-        let prompts = MontyObject::List(vec![
-            MontyObject::String("a".into()),
-            MontyObject::String("b".into()),
-        ]);
-        let models = MontyObject::List(vec![MontyObject::String("only-one".into())]);
+        let prompts = MontyObject::list(vec![MontyObject::string("a"), MontyObject::string("b")]);
+        let models = MontyObject::list(vec![MontyObject::string("only-one")]);
         let result = handle_llm_query_batched(
             &[prompts],
-            &[(MontyObject::String("models".into()), models)],
+            &[(MontyObject::string("models"), models)],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
         )
@@ -4757,36 +4749,41 @@ print(outcome)
     // ── run_python_code_body (Phase J.2 light executor) ────────────────────
 
     /// Pure arithmetic — bare expression on last line returns the computed value.
-    #[test]
-    fn light_executor_pure_arithmetic_returns_value() {
+    #[tokio::test]
+    async fn light_executor_pure_arithmetic_returns_value() {
         // Assignment alone returns None in Python; bare expression returns the value.
-        let result = run_python_code_body("result = 2 + 3\nresult", &[]).unwrap();
+        let result = run_python_code_body("result = 2 + 3\nresult", &[])
+            .await
+            .unwrap();
         assert_eq!(result, Some(serde_json::json!(5)));
     }
 
     /// Input variable is visible in the body.
-    #[test]
-    fn light_executor_input_variable_is_visible() {
+    #[tokio::test]
+    async fn light_executor_input_variable_is_visible() {
         let result = run_python_code_body(
             "result = name + ' world'\nresult",
             &[("name", serde_json::json!("hello"))],
         )
+        .await
         .unwrap();
         assert_eq!(result, Some(serde_json::json!("hello world")));
     }
 
     /// Body that sets no `result` returns `None` (body completes without assigning).
-    #[test]
-    fn light_executor_no_result_returns_none() {
-        let result = run_python_code_body("x = 1", &[]).unwrap();
+    #[tokio::test]
+    async fn light_executor_no_result_returns_none() {
+        let result = run_python_code_body("x = 1", &[]).await.unwrap();
         // x = 1 produces no return value; the module result is None → mapped to None.
         assert_eq!(result, None);
     }
 
     /// Tool / function calls are rejected immediately.
-    #[test]
-    fn light_executor_tool_call_is_rejected() {
-        let err = run_python_code_body("result = some_tool('arg')", &[]).unwrap_err();
+    #[tokio::test]
+    async fn light_executor_tool_call_is_rejected() {
+        let err = run_python_code_body("result = some_tool('arg')", &[])
+            .await
+            .unwrap_err();
         assert!(
             err.contains("tool calls are not permitted"),
             "unexpected error: {err}"
@@ -4794,9 +4791,9 @@ print(outcome)
     }
 
     /// Syntax errors surface as Err with a "SyntaxError:" prefix.
-    #[test]
-    fn light_executor_syntax_error_is_err() {
-        let err = run_python_code_body("def :\n", &[]).unwrap_err();
+    #[tokio::test]
+    async fn light_executor_syntax_error_is_err() {
+        let err = run_python_code_body("def :\n", &[]).await.unwrap_err();
         assert!(
             err.contains("SyntaxError"),
             "expected SyntaxError prefix, got: {err}"
@@ -4804,8 +4801,8 @@ print(outcome)
     }
 
     /// Dict manipulation — light executor handles structured data.
-    #[test]
-    fn light_executor_dict_manipulation_works() {
+    #[tokio::test]
+    async fn light_executor_dict_manipulation_works() {
         // Bare `result` on last line returns the dict value.
         let result = run_python_code_body(
             r#"d = {"a": 1, "b": 2}
@@ -4814,6 +4811,7 @@ result = d
 result"#,
             &[],
         )
+        .await
         .unwrap();
         assert_eq!(result, Some(serde_json::json!({"a": 1, "b": 2, "c": 3})));
     }

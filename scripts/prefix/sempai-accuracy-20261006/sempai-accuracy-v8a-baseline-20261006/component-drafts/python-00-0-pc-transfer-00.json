@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-00",
+    "description": "Pure-logic guard that accepts an exact integer offset in -4..5 inclusive and returns the accepted boolean plus the original value or null; no Tool call, no I/O, no exceptions.",
+    "content": "def classify_offset(value):\n    if value is None:\n        return {'accepted': False, 'offset': None}\n    if type(value) is bool:\n        return {'accepted': False, 'offset': None}\n    if type(value) is not int:\n        return {'accepted': False, 'offset': None}\n    if not -4 <= value <= 5:\n        return {'accepted': False, 'offset': None}\n    return {'accepted': True, 'offset': value}\nresult = classify_offset(inputs.get('offset'))"
+  }
+}

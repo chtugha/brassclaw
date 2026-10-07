@@ -1,0 +1,51 @@
+{
+  "composition_summary": "Offline-design export only. The host supports class 22 (name/description/content) and class 21 (name/description/trigger/steps/prior_knowledge_content/intent_examples) but drops step_descriptions, variants and dependency_registry, so those three fields are omitted from the class-21 payload. The requested draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a is unapproved and unverified, so it is recorded in prior_knowledge_content as an unapproved draft dependency rather than used as a resolved reference. The single class-21 entry is a constructor draft with name recipe-fixed-ready-result, trigger null, steps [], dependency_registry null, one orchestrator component step including that UUID once, one variant with step_link 0:1-0:E, variable_patterns [], and ten unique intent examples. prior_knowledge_content states the unapproved draft dependency, that Q1 and human Q2 are required, that the subworkflow returns result only (not a posted user reply), and that the current Sempai sink cannot preserve this v3 draft. No submission, activation or approval occurred.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fixed-ready-result",
+        "description": "Deterministic subworkflow that returns a fixed readiness result object. Returns result only; it does not post a user reply, change policy or perform any external effect. Unapproved draft; requires Q1 and human Q2 before activation. The current Sempai sink cannot preserve this v3 draft (it drops step_descriptions, variants and dependency_registry).",
+        "trigger": null,
+        "steps": [
+          {
+            "desc_idx": 0,
+            "label": "Return the fixed readiness result",
+            "knowledge": "orchestrator",
+            "goal": "Return the fixed readiness result",
+            "content": "Run the fixed-ready-result PythonCode",
+            "type": "component",
+            "include": [
+              "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ],
+        "prior_knowledge_content": "Unapproved draft dependency: PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), which is unapproved and unverified. Q1 and human Q2 are required before activation. This subworkflow returns result only; it does not post a user reply, change policy or perform any external effect. The current Sempai sink cannot preserve this v3 draft (it drops step_descriptions, variants and dependency_registry).",
+        "intent_examples": [
+          "return a fixed readiness result",
+          "give me a ready result",
+          "output ready",
+          "return ready status",
+          "produce a readiness result",
+          "return the ready object",
+          "give me a readiness response",
+          "return ready",
+          "output a ready result",
+          "return a ready status object"
+        ]
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable subworkflow that returns a fixed readiness result."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

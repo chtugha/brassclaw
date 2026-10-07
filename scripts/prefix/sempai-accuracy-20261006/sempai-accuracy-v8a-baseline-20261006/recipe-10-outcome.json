@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. Preserved the supplied volatile tail exactly (one user message, no invented assistant acknowledgement, result or approval). The requested class-21 Recipe draft is not emitted as a proposed component: the current Sempai sink drops step_descriptions, variants and dependency_registry, so a full v3 Recipe constructor cannot be preserved as a supported payload. Per the reviewer decision procedure (step 2), the required constructor/schema is unavailable, so the proposed_components array is kept empty and the blocker is stated in the summary rather than faked as a blocked entry. The host did supply an unapproved class-22 PythonCode draft (a059d0bb-4a87-5eba-b029-93581dd81b54, content 'result = {\"state\": \"Prepared\"}'); that is a zero-input pure-logic guard with no dependencies, so it is emitted as one class-22 proposal. The class-21 Recipe is described in the summary as an offline-design draft requiring Q1 and human Q2, with its exact v3 constructor fields (name, description, trigger=null, steps=[], prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry=null) and the supplied UUIDs in order, but is not inserted into the supported sink. No runtime or approval claims are made.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable prepared data-result workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-prepared-data-result",
+        "description": "Pure-logic guard returning a fixed prepared state; zero inputs and no dependencies. Unapproved draft; requires Q1 and human Q2 before activation. Offline full-v3 export.",
+        "content": "result = {'state': 'Prepared'}"
+      }
+    }
+  ]
+}

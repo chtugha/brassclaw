@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-86e377d403319909",
+  "object": "chat.completion",
+  "created": 1791324301,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Drafted one unapproved pure-logic class-22 component. Raw records is a list of 0..2 objects, each with exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list is valid; missing/null/wrong types/extra fields are invalid. No coercion, no I/O/imports/host calls, no upstream validation assumption. Module-level result is assigned on every outcome. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-06\",\n        \"description\": \"Raw records must be a list of 0..2 items. Every object has exactly code and enabled, code string length 2..5 inclusive, enabled exact bool (False valid). Always result={ok:boolean,records:original if valid else []}. Empty is valid; missing/null/wrong types/extra fields invalid without exceptions/coercion. No I/O/imports/host calls, no upstream validation assumption. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 0 <= len(records) <= 2\\nif ok:\\n    for record in records:\\n        if type(record) is not dict or set(record) != {'code', 'enabled'}:\\n            ok = False\\n            break\\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5 and type(record['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"\n      }\n    }\n  ],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97426,
+    "total_tokens": 97900,
+    "completion_tokens": 474,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

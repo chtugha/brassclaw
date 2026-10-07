@@ -1,0 +1,1479 @@
+{
+  "baseline": {
+    "manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20",
+    "accepted": 33,
+    "total": 60,
+    "families": {
+      "contrast": {
+        "accepted": 7,
+        "total": 12,
+        "conversation_passed": 12
+      },
+      "evidence": {
+        "accepted": 11,
+        "total": 12,
+        "conversation_passed": 11
+      },
+      "prompt": {
+        "accepted": 10,
+        "total": 12,
+        "conversation_passed": 10
+      },
+      "python": {
+        "accepted": 5,
+        "total": 12,
+        "conversation_passed": 12
+      },
+      "recipe": {
+        "accepted": 0,
+        "total": 12,
+        "conversation_passed": 12
+      }
+    },
+    "cases": [
+      {
+        "id": "python-00",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-01",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-02",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-03",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-04",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-05",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-06",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-07",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-08",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 11,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-09",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "python-10",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "python-11",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 12
+      },
+      {
+        "id": "contrast-00",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-01",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-02",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-03",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-04",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 1,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-05",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "contrast-06",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 15,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-07",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-08",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "contrast-09",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-10",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-11",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 15,
+        "behavior_cases": 16
+      },
+      {
+        "id": "recipe-00",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-01",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-02",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-03",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-04",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-05",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-06",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-07",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-08",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-09",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-10",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-11",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-00",
+        "family": "prompt",
+        "response_passed": false,
+        "artifact_passed": true,
+        "accepted": false,
+        "conversation_preserved": false,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-01",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-02",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-03",
+        "family": "prompt",
+        "response_passed": false,
+        "artifact_passed": true,
+        "accepted": false,
+        "conversation_preserved": false,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-04",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-05",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-06",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-07",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-08",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-09",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-10",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-11",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-00",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-01",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-02",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-03",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-04",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-05",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-06",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-07",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-08",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-09",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-10",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-11",
+        "family": "evidence",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": false,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      }
+    ],
+    "first_pass_only": true,
+    "production_q1_q2_verified": false,
+    "summary_semantics_fully_verified": false
+  },
+  "candidate": {
+    "manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20",
+    "accepted": 49,
+    "total": 60,
+    "families": {
+      "contrast": {
+        "accepted": 12,
+        "total": 12,
+        "conversation_passed": 12
+      },
+      "evidence": {
+        "accepted": 11,
+        "total": 12,
+        "conversation_passed": 11
+      },
+      "prompt": {
+        "accepted": 12,
+        "total": 12,
+        "conversation_passed": 12
+      },
+      "python": {
+        "accepted": 8,
+        "total": 12,
+        "conversation_passed": 12
+      },
+      "recipe": {
+        "accepted": 6,
+        "total": 12,
+        "conversation_passed": 12
+      }
+    },
+    "cases": [
+      {
+        "id": "python-00",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-01",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-02",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-03",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-04",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-05",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-06",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-07",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 12,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-08",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 9,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-09",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 11,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-10",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 11,
+        "behavior_cases": 12
+      },
+      {
+        "id": "python-11",
+        "family": "python",
+        "response_passed": true,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 11,
+        "behavior_cases": 12
+      },
+      {
+        "id": "contrast-00",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-01",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-02",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-03",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-04",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-05",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 13,
+        "behavior_cases": 13
+      },
+      {
+        "id": "contrast-06",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-07",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-08",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-09",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-10",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "contrast-11",
+        "family": "contrast",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 16,
+        "behavior_cases": 16
+      },
+      {
+        "id": "recipe-00",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-01",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-02",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-03",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-04",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-05",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-06",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": false,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-07",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-08",
+        "family": "recipe",
+        "response_passed": false,
+        "artifact_passed": true,
+        "accepted": false,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-09",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-10",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "recipe-11",
+        "family": "recipe",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-00",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-01",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-02",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-03",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-04",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-05",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-06",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-07",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-08",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-09",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-10",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "prompt-11",
+        "family": "prompt",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-00",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-01",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-02",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-03",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-04",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-05",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-06",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-07",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-08",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-09",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-10",
+        "family": "evidence",
+        "response_passed": true,
+        "artifact_passed": true,
+        "accepted": true,
+        "conversation_preserved": true,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      },
+      {
+        "id": "evidence-11",
+        "family": "evidence",
+        "response_passed": false,
+        "artifact_passed": false,
+        "accepted": false,
+        "conversation_preserved": false,
+        "requested_draft_emitted": true,
+        "behavior_passed": 0,
+        "behavior_cases": 0
+      }
+    ],
+    "first_pass_only": true,
+    "production_q1_q2_verified": false,
+    "summary_semantics_fully_verified": false
+  },
+  "paired_changes": [
+    {
+      "id": "python-02",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "python-03",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "python-04",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "contrast-04",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "contrast-05",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "contrast-06",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "contrast-08",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "contrast-11",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "recipe-04",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "recipe-05",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "recipe-07",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "recipe-09",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "recipe-10",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "recipe-11",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "prompt-00",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "prompt-03",
+      "before": false,
+      "after": true
+    }
+  ],
+  "note": "One temperature-zero trial per case; finite offline checks, not a statistical reliability guarantee."
+}

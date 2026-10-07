@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bd912e2114347a2e",
+  "object": "chat.completion",
+  "created": 1791330692,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\":\"review\",\"branches\":[],\"helper_required\":false,\"workflow\":[],\"authorized_edits\":[],\"prerequisites\":[],\"notes\":\"The instruction requests a pure-logic class22 draft that classifies raw lag with four distinct outcomes: missing -> {kind:\\\"missing\\\",lag:null}; explicit null -> {kind:\\\"null\\\",lag:null}; exact integer 5..14 -> {kind:\\\"integer\\\",lag:original}; other -> {kind:\\\"invalid\\\",lag:null}. No bool/float/coercion/defaults/exceptions. Use a helper, invoke it at module scope and assign its returned object to result. No imports/I/O/host calls. Preserve conversation; unapproved draft, target typed inputs needs runner support, no observed tests/submission/activation.\\n\\nThis is a raw classifier that distinguishes missing from explicit null, so a helper must receive the mapping (not mapping.get(...)) to preserve presence information. The helper returns the complete result object on every path; the module invokes it and assigns its returned object to result. The contract is a pure-logic draft with no Tool calls, inputs or dependencies. The target typed inputs interface requires selected-runner support; this is an unapproved draft, not submitted or activated. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\\n\\nThe complete program is:\\n\\n```python\\ndef classify_lag(mapping):\\n    if 'lag' not in mapping:\\n        return {'kind': 'missing', 'lag': None}\\n    value = mapping['lag']\\n    if value is None:\\n        return {'kind': 'null', 'lag': None}\\n    if type(value) is int and 5 <= value <= 14:\\n        return {'kind': 'integer', 'lag': value}\\n    return {'kind': 'invalid', 'lag': None}\\nresult = classify_lag(inputs)\\n```\\n\\nThe complete scoped reviewer envelope is:\\n\\n```json\\n{\\n  \\\"adjusted_volatile_messages\\\": [\\n    [\\n      \\\"user\\\",\\n      \\\"Prepare the requested reusable draft without executing any operation.\\\"\\n    ]\\n  ],\\n  \\\"bridge_messages\\\": [],\\n  \\\"proposed_recipe_updates\\\": [],\\n  \\\"proposed_intent_examples\\\": [],\\n  \\\"settings_adjustments\\\": [],\\n  \\\"proposed_components\\\": [\\n    {\\n      \\\"class_code\\\": 22,\\n      \\\"payload\\\": {\\n        \\\"name\\\": \\\"pc-transfer-09\\\",\\n        \\\"description\\\": \\\"Classify raw lag: missing -> {kind:\\\"missing\\\",lag:null}; explicit null -> {kind:\\\"null\\\",lag:null}; exact integer 5..14 -> {kind:\\\"integer\\\",lag:original}; other -> {kind:\\\"invalid\\\",lag:null}. No bool/float/coercion/defaults/exceptions. Use a helper, invoke it at module scope and assign its returned object to result. No imports/I/O/host calls. Preserve conversation; unapproved draft, target typed inputs needs runner support, no observed tests/submission/activation.\\\",\\n        \\\"content\\\": \\\"def classify_lag(mapping):\\\\n    if 'lag' not in mapping:\\\\n        return {'kind': 'missing', 'lag': None}\\\\n    value = mapping['lag']\\\\n    if value is None:\\\\n        return {'kind': 'null', 'lag': None}\\\\n    if type(value) is int and 5 <= value <= 14:\\\\n        return {'kind': 'integer', 'lag': value}\\\\n    return {'kind': 'invalid', 'lag': None}\\\\nresult = classify_lag(inputs)\\\"\\n      }\\n    }\\n  ],\\n  \\\"composition_summary\\\": \\\"Unapproved pure-logic draft only. The helper receives the whole mapping to distinguish missing from explicit null; every branch returns the complete result object with the same keys. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\\\"\\n}\\n```\\n\\nRepresentative independent expected outcomes:\\n\\n```json\\n[\\n  {\\n    \\\"inputs\\\": {},\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"missing\\\",\\n      \\\"lag\\\": null\\n    }\\n  },\\n  {\\n    \\\"inputs\\\": {\\n      \\\"lag\\\": null\\n    },\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"null\\\",\\n      \\\"lag\\\": null\\n    }\\n  },\\n  {\\n    \\\"inputs\\\": {\\n      \\\"lag\\\": 5\\n    },\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"integer\\\",\\n      \\\"lag\\\": 5\\n    }\\n  },\\n  {\\n    \\\"inputs\\\": {\\n      \\\"lag\\\": 14\\n    },\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"integer\\\",\\n      \\\"lag\\\": 14\\n    }\\n  },\\n  {\\n    \\\"inputs\\\": {\\n      \\\"lag\\\": 4\\n    },\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"invalid\\\",\\n      \\\"lag\\\": null\\n    }\\n  },\\n  {\\n    \\\"inputs\\\": {\\n      \\\"lag\\\": 15\\n    },\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"invalid\\\",\\n      \\\"lag\\\": null\\n    }\\n  },\\n  {\\n    \\\"inputs\\\": {\\n      \\\"lag\\\": true\\n    },\\n    \\\"expected\\\": {\\n      \\\"kind\\\": \\\"invalid\\\",\\n      \\\"lag\\\": null\\n    }\\n  },\\n  {\\n    \\\"inputs\\\":",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "length",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98402,
+    "total_tokens": 99602,
+    "completion_tokens": 1200,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

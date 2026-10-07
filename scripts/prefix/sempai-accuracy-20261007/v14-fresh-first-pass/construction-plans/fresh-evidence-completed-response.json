@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bd5a4165162f6b55",
+  "object": "chat.completion",
+  "created": 1791358870,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"completed receipt\", \"result\": \"completed\"}, {\"guard\": \"unknown status\", \"result\": \"unknown\"}, {\"guard\": \"no completed receipt\", \"result\": \"unknown\"}, {\"guard\": \"no receipt at all\", \"result\": \"unknown\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata\", \"volatile_messages\", \"current_conversation\"], \"notes\": \"Audit-only. Preserve original messages exactly, including tabs, archive endpoint, receipt and untrusted provenance. Completed effects never replay; unknown does\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98715,
+    "total_tokens": 98858,
+    "completion_tokens": 143,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

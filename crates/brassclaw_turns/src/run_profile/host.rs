@@ -964,11 +964,10 @@ pub struct LoopModelRequest {
     pub model_preference: Option<ModelProfileId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_view: Option<LoopModelCapabilityView>,
-    /// Pre-resolved messages from the Sempai interceptor (rerouting mode).
-    /// When `Some`, the loop-support layer skips `resolve_model_messages` and
-    /// forwards these directly to the gateway.  Each element is
-    /// `(role, content_text)` — plain strings, not content refs.
-    /// Ignored by non-loop-support `LoopModelPort` implementations.
+    /// Legacy interceptor DTO field. The production thread-backed model port
+    /// rejects `Some`: caller-provided text cannot bypass prompt authorization.
+    /// Host-side Sempai adjustment runs after authorized message resolution and
+    /// retains the selected prefix and provider replay metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_messages: Option<Vec<(String, String)>>,
 }

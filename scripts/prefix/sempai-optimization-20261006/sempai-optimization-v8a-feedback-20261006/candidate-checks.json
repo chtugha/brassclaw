@@ -1,0 +1,823 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "06-offline-v3-recipe-design-response.json",
+      "name": "recipe-fixed-ready-result",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "single_description_single_step": true,
+        "single_exact_unapproved_draft_reference": true,
+        "persisted_ibs_layout": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "no_tool_dispatch_or_dependencies": true,
+        "intent_does_not_promise_post_reply": false,
+        "retains_q1_human_q2_and_sink_gap": true,
+        "no_version_number_in_component_ref": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "08-timeout-validator-heldout-response.json",
+      "name": "pc-check-timeout-ms",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "37563f396354bfab299e9fbc72a707f81a789776665c195907e39dc90bb454e7",
+      "pure_python_gate": true,
+      "behavior_cases": 14,
+      "behavior_passed": 14,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": null
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": true
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": false
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": -1
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": 0
+          },
+          "expected": {
+            "valid": true,
+            "timeout_ms": 0
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "timeout_ms": 0
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": 1
+          },
+          "expected": {
+            "valid": true,
+            "timeout_ms": 1
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "timeout_ms": 1
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": 7499
+          },
+          "expected": {
+            "valid": true,
+            "timeout_ms": 7499
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "timeout_ms": 7499
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": 7500
+          },
+          "expected": {
+            "valid": true,
+            "timeout_ms": 7500
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "timeout_ms": 7500
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": 7501
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": 0.0
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": "0"
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": []
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "timeout_ms": {}
+          },
+          "expected": {
+            "valid": false,
+            "timeout_ms": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "timeout_ms": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "15-recursive-validator-confirmation-response.json",
+      "name": "pc-check-weighted-entries",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "7e29d6045e6ba924bf6b3df13309b58e4c5429ae341f686b8b3468de1e1a3142",
+      "pure_python_gate": true,
+      "behavior_cases": 24,
+      "behavior_passed": 24,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": null
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": []
+          },
+          "expected": {
+            "ok": true,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "entries": [
+              {
+                "label": "a",
+                "weight": 0
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "entries": [
+                {
+                  "label": "a",
+                  "weight": 0
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "abcdefgh",
+                "weight": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "entries": [
+              {
+                "label": "abcdefgh",
+                "weight": 1
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "entries": [
+                {
+                  "label": "abcdefgh",
+                  "weight": 1
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "entries": [
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "entries": [
+                {
+                  "label": "a",
+                  "weight": 1
+                },
+                {
+                  "label": "a",
+                  "weight": 1
+                },
+                {
+                  "label": "a",
+                  "weight": 1
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              },
+              {
+                "label": "a",
+                "weight": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "",
+                "weight": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "abcdefghi",
+                "weight": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": 0.0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": 2
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": -1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": 1,
+                "weight": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "weight": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              {
+                "label": "a",
+                "weight": 0,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              []
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": [
+              "a"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": {}
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": "a"
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "entries": true
+          },
+          "expected": {
+            "ok": false,
+            "entries": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "entries": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    }
+  ],
+  "component_activation_performed": false
+}

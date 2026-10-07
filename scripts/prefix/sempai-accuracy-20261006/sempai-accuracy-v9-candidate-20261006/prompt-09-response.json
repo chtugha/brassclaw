@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-97255322091d1064",
+  "object": "chat.completion",
+  "created": 1791324649,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Audit only; no edit authorized. The system text contains a repeated word (evidence evidence) but the instruction explicitly forbids any edit, so it is preserved verbatim. The user message is quoted user-selected content and is also preserved exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no provider-specific rewrite was applied. No proposals, new messages, components or settings changes were made.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Preserve evidence evidence.\"],\n    [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97388,
+    "total_tokens": 97579,
+    "completion_tokens": 191,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

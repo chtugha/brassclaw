@@ -1,0 +1,245 @@
+{
+  "all_60_client_payloads_equal_to_baseline": true,
+  "cases": [
+    {
+      "id": "contrast-00",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-01",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-02",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-03",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-04",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-05",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-06",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-07",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-08",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-09",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-10",
+      "payloads_equal": true
+    },
+    {
+      "id": "contrast-11",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-00",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-01",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-02",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-03",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-04",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-05",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-06",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-07",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-08",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-09",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-10",
+      "payloads_equal": true
+    },
+    {
+      "id": "evidence-11",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-00",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-01",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-02",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-03",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-04",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-05",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-06",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-07",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-08",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-09",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-10",
+      "payloads_equal": true
+    },
+    {
+      "id": "prompt-11",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-00",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-01",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-02",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-03",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-04",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-05",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-06",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-07",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-08",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-09",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-10",
+      "payloads_equal": true
+    },
+    {
+      "id": "python-11",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-00",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-01",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-02",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-03",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-04",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-05",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-06",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-07",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-08",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-09",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-10",
+      "payloads_equal": true
+    },
+    {
+      "id": "recipe-11",
+      "payloads_equal": true
+    }
+  ]
+}

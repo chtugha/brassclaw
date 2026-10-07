@@ -18,7 +18,7 @@ workspace = true
 [features]
 default = []
 # DB-backed skill store backed by brassclaw_pg.
-db-store = ["dep:brassclaw_pg", "dep:uuid"]
+db-store = ["dep:brassclaw_pg"]
 # v1 SKILL.md filesystem types: SkillManifest, LoadedSkill, SkillSource,
 # ActivationCriteria, GatingRequirements, SkillCredentialSpec, SkillOAuthConfig,
 # SkillCredentialLocation, ProviderRefreshStrategy, MAX_PROMPT_FILE_SIZE.
@@ -47,7 +47,7 @@ sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["sync", "process", "fs"] }
 tracing = "0.1"
-uuid = { version = "1", features = ["v4", "serde"], optional = true }
+uuid = { version = "1", features = ["v4", "serde"] }
 
 # Optional (db-store feature)
 brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }

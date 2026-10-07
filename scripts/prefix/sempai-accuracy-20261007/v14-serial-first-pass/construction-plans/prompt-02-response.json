@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bba2756e7a993084",
+  "object": "chat.completion",
+  "created": 1791358588,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"system content contains the exact authorized edit\", \"result\": \"system: Return JSON.\"}, {\"guard\": \"system content does not contain the exact authorized edit\", \"result\": \"system: <original system content unchanged>\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"Replace system content with exactly 'Return JSON.'\"], \"prerequisites\": [\"Preserve user message byte-for-byte\", \"Preserve roles, order, and count exactly\", \"No proposals or other changes\", \"Report only the real edit, no invented provider facts\"], \"notes\": \"The authorized edit is a single exact string replacement of system content. No helper is needed: the decision is a direct membership check on the system message\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98292,
+    "total_tokens": 98464,
+    "completion_tokens": 172,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

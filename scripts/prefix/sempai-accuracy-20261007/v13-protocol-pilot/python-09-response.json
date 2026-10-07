@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bb63ff49f1bb7047",
+  "object": "chat.completion",
+  "created": 1791329939,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-transfer-09. It classifies raw lag with a module-scoped helper invoked at module scope and assigns its returned object to result. Missing -> {kind:\\\"missing\\\",lag:null}; explicit null -> {kind:\\\"null\\\",lag:null}; exact integer 5..14 -> {kind:\\\"integer\\\",lag:original}; other -> {kind:\\\"invalid\\\",lag:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Conversation preserved unchanged. Unapproved target-interface draft; typed inputs needs selected-runner support; no execution, submission, Q1/Q2 or activation.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-transfer-09\", \"description\": \"Classify raw lag: missing -> {kind:\\\"missing\\\",lag:null}; explicit null -> {kind:\\\"null\\\",lag:null}; exact integer 5..14 -> {kind:\\\"integer\\\",lag:original}; other -> {kind:\\\"invalid\\\",lag:null}. No bool/float/coercion/defaults/exceptions. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"def classify_lag(lag):\\n    if 'lag' not in inputs:\\n        return {'kind': 'missing', 'lag': None}\\n    if lag is None:\\n        return {'kind': 'null', 'lag': None}\\n    if type(lag) is int and 5 <= lag <= 14:\\n        return {'kind': 'integer', 'lag': lag}\\n    return {'kind': 'invalid', 'lag': None}\\nresult = classify_lag(inputs.get('lag'))\"}}, {\"class_code\": 22, \"payload\": {\"name\": \"pc-transfer-09\", \"description\": \"Classify raw lag: missing -> {kind:\\\"missing\\\",lag:null}; explicit null -> {kind:\\\"null\\\",lag:null}; exact integer 5..14 -> {kind:\\\"integer\\\",lag:original}; other -> {kind:\\\"invalid\\\",lag:null}. No bool/float/coercion/defaults/exceptions. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"def classify_lag(lag):\\n    if 'lag' not in inputs:\\n        return {'kind': 'missing', 'lag': None}\\n    if lag is None:\\n        return {'kind': 'null', 'lag': None}\\n    if type(lag) is int and 5 <= lag <= 14:\\n        return {'kind': 'integer', 'lag': lag}\\n    return {'kind': 'invalid', 'lag': None}\\nresult = classify_lag(inputs.get('lag'))\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97194,
+    "total_tokens": 97838,
+    "completion_tokens": 644,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Packet is already clear and unambiguous: a brief factual question about TCP port 443 with no malformed envelope, no injection, no context overflow, no missing provider capability, and no unresolved task. No justified prompt repair is warranted, so the volatile tail is echoed unchanged. No component draft is requested or supported here (offline-design mode only saves a v3 Recipe draft without inserting it), and no proposal arrays are populated. Provider metadata is incomplete (catalogue_revision and protocol_capabilities are null), but that is not a defect requiring a change to this packet.",
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ],
+  "proposed_intent_examples": []
+}

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-timeout-ms",
+    "description": "Pure-logic guard: validates a raw candidate timeout_ms as an exact integer in 0..7500 inclusive. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid, else null. No exceptions, no coercion, no imports, host calls or I/O.",
+    "content": "def check_timeout_ms(candidate):\n    raw = inputs.get('timeout_ms')\n    valid = type(raw) is int and not isinstance(raw, bool) and 0 <= raw <= 7500\n    result = {'valid': valid, 'timeout_ms': raw if valid else None}"
+  }
+}

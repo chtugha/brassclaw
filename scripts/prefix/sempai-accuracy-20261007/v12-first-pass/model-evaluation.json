@@ -1,0 +1,323 @@
+{
+  "date": "2026-10-06T23:21:06.719383+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "python-00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 3.092
+    },
+    {
+      "id": "python-01",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.987
+    },
+    {
+      "id": "python-02",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.95
+    },
+    {
+      "id": "python-03",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.958
+    },
+    {
+      "id": "python-04",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.946
+    },
+    {
+      "id": "python-05",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.979
+    },
+    {
+      "id": "python-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.964
+    },
+    {
+      "id": "python-07",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.961
+    },
+    {
+      "id": "python-08",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.976
+    },
+    {
+      "id": "python-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.981
+    },
+    {
+      "id": "python-10",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.018
+    },
+    {
+      "id": "python-11",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.994
+    },
+    {
+      "id": "contrast-00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.032
+    },
+    {
+      "id": "contrast-01",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.003
+    },
+    {
+      "id": "contrast-02",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.972
+    },
+    {
+      "id": "contrast-03",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.986
+    },
+    {
+      "id": "contrast-04",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.978
+    },
+    {
+      "id": "contrast-05",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.99
+    },
+    {
+      "id": "contrast-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.992
+    },
+    {
+      "id": "contrast-07",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.981
+    },
+    {
+      "id": "contrast-08",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.978
+    },
+    {
+      "id": "contrast-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.972
+    },
+    {
+      "id": "contrast-10",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.006
+    },
+    {
+      "id": "contrast-11",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.976
+    },
+    {
+      "id": "recipe-00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.059
+    },
+    {
+      "id": "recipe-01",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.08
+    },
+    {
+      "id": "recipe-02",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.045
+    },
+    {
+      "id": "recipe-03",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.052
+    },
+    {
+      "id": "recipe-04",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.082
+    },
+    {
+      "id": "recipe-05",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.081
+    },
+    {
+      "id": "recipe-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.062
+    },
+    {
+      "id": "recipe-07",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.079
+    },
+    {
+      "id": "recipe-08",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.065
+    },
+    {
+      "id": "recipe-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.102
+    },
+    {
+      "id": "recipe-10",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.072
+    },
+    {
+      "id": "recipe-11",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.071
+    },
+    {
+      "id": "prompt-00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.924
+    },
+    {
+      "id": "prompt-01",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.931
+    },
+    {
+      "id": "prompt-02",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.935
+    },
+    {
+      "id": "prompt-03",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.954
+    },
+    {
+      "id": "prompt-04",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.95
+    },
+    {
+      "id": "prompt-05",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.903
+    },
+    {
+      "id": "prompt-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.897
+    },
+    {
+      "id": "prompt-07",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.948
+    },
+    {
+      "id": "prompt-08",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.949
+    },
+    {
+      "id": "prompt-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.995
+    },
+    {
+      "id": "prompt-10",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.97
+    },
+    {
+      "id": "prompt-11",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 0.958
+    },
+    {
+      "id": "evidence-00",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.016
+    },
+    {
+      "id": "evidence-01",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.07
+    },
+    {
+      "id": "evidence-02",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.063
+    },
+    {
+      "id": "evidence-03",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.067
+    },
+    {
+      "id": "evidence-04",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.056
+    },
+    {
+      "id": "evidence-05",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.108
+    },
+    {
+      "id": "evidence-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.069
+    },
+    {
+      "id": "evidence-07",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.049
+    },
+    {
+      "id": "evidence-08",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.114
+    },
+    {
+      "id": "evidence-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.041
+    },
+    {
+      "id": "evidence-10",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 1.033
+    },
+    {
+      "id": "evidence-11",
+      "error": "HTTP Error 500: Internal Server Error",
+      "seconds": 3.052
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": false,
+  "strict_draft_schema_requested": false,
+  "message_content_protected": false,
+  "editable_message_cases": [],
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20"
+}

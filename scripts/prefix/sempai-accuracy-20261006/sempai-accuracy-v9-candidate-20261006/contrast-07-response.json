@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a46773c53c80fcd2",
+  "object": "chat.completion",
+  "created": 1791324311,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Drafted one unapproved class-22 pure-logic component per the requested contract. Raw records is a list of 1..3 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list, missing/null/wrong types, extra fields, and bool-as-int are all invalid. The body uses inputs.get('records') so absence reaches the validator, validates every field before computing ok, and assigns result on every path. No I/O, imports, host calls, or upstream validation assumption. No execution, submission, Q1/Q2 or activation was performed by this reviewer.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-07\",\n        \"description\": \"Raw records must be a list of 1..3 items. Every object has exactly code and enabled. code is a string of length 2..5 inclusive; enabled is an exact bool (False valid). Always result={ok:boolean, records:original if valid else []}. Empty list, missing/null/wrong types, extra fields, and bool-as-int are invalid. No I/O, imports, host calls, or upstream validation assumption. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"records = inputs.get('records')\\nvalid = type(records) is list and 1 <= len(records) <= 3\\nif valid:\\n    for record in records:\\n        if type(record) is not dict or set(record) != {'code', 'enabled'}:\\n            valid = False\\n            break\\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5 and type(record['enabled']) is bool):\\n            valid = False\\n            break\\nresult = {'ok': valid, 'records': records if valid else []}\"\n      }\n    }\n  ],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97426,
+    "total_tokens": 97932,
+    "completion_tokens": 506,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

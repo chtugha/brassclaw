@@ -17,6 +17,7 @@ mod identifiers;
 mod in_memory;
 pub mod pg_service;
 mod service;
+mod stored_message;
 mod summary_artifacts;
 mod title;
 mod tool_result_reference;

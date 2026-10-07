@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-ad45f00efa6577a4",
+  "object": "chat.completion",
+  "created": 1791320690,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the single user message unchanged. Proposed one class-22 pure-logic component pc-check-retry-eligibility with fields name, description and content. The body reads every required field via inputs.get with explicit presence/type checks, validates enum membership and positive-int bounds before computing eligibility, and returns a boolean result. It returns false (fails closed) on missing/null/wrong-type data and never raises. The guard is evidence-conditioned pure logic: it does not grant dispatch permission, does not replay completed effects, and its description retains live global Tool policy, cancellation, resource limits and the typed-runner inputs gap. The host sink supports class 22 with name/description/content, so the payload is a supported constructor draft. Q1, human Q2 and behavioral validation precede activation.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-retry-eligibility\",\n        \"description\": \"Deterministic pure-logic guard that returns whether a retry is eligible. True only when outcome is retryable, attempt < max_attempts, operation_state is not completed, and read_only or dedup_verified is true. Completed effects never replay even if read_only/dedup_verified is true. Missing, null or wrong-typed data fails closed. This guard is evidence-conditioned pure logic, not dispatch permission; it does not grant dispatch, retry or activation. Live global Tool policy, cancellation, resource limits and actual deduplication evidence remain enforced by the runner and kernel. The typed inputs interface (operation_state, outcome, attempt, max_attempts, read_only, dedup_verified) is a target contract requiring actual runner support.\",\n        \"content\": \"def check_retry_eligibility(inputs):\\n    operation_state = inputs.get('operation_state')\\n    outcome = inputs.get('outcome')\\n    attempt = inputs.get('attempt')\\n    max_attempts = inputs.get('max_attempts')\\n    read_only = inputs.get('read_only')\\n    dedup_verified = inputs.get('dedup_verified')\\n    valid = (\\n        type(operation_state) is str and operation_state in ('completed', 'unknown', 'not_started')\\n        and type(outcome) is str and outcome in ('retryable', 'terminal')\\n        and type(attempt) is int and not isinstance(attempt, bool) and attempt >= 1\\n        and type(max_attempts) is int and not isinstance(max_attempts, bool) and max_attempts >= 1\\n        and type(read_only) is bool\\n        and type(dedup_verified) is bool\\n    )\\n    eligible = False\\n    if valid:\\n        eligible = (outcome == 'retryable' and attempt < max_attempts and operation_state != 'completed' and (read_only or dedup_verified))\\n    result = {'retry': eligible, 'operation_state': operation_state, 'outcome': outcome, 'attempt': attempt, 'max_attempts': max_attempts, 'read_only': read_only, 'dedup_verified': dedup_verified, 'valid': valid}\\n    return result\\nresult = check_retry_eligibility(inputs)\"\n      }\n    }\n  ]\n,\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need a reusable deterministic guard before considering a retry.\"]\n  ]\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76213,
+    "total_tokens": 76969,
+    "completion_tokens": 756,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,4 @@
+python3 -m unittest discover -s scripts/prefix -p test_sempai_compiler.py -v
+Ran 1 test in 2.198s
+OK
+Compiler SHA256: 9f45c3c719b213b35368d39b3c166dfe2efee37f7d6caad892ce87c45e34f03a

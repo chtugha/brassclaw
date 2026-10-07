@@ -1,0 +1,122 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable available reply workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode ca75d647-4f0e-5a35-abe7-cee7353e03c2 with content result = host.post_reply(answer='Available'); unapproved ToolSkill 9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7 binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-05 with exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Original conversation preserved; root compatibility arrays empty under test persona.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-05",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "say available",
+          "reply available",
+          "post available",
+          "send the available reply",
+          "respond with available",
+          "tell me available",
+          "please say available",
+          "please reply available",
+          "post the fixed available message",
+          "send the fixed available message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "ca75d647-4f0e-5a35-abe7-cee7353e03c2"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          },
+          {
+            "desc_idx": 1,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "ca75d647-4f0e-5a35-abe7-cee7353e03c2"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "available-reply",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say available",
+              "reply available",
+              "post available",
+              "send the available reply",
+              "respond with available",
+              "tell me available",
+              "please say available",
+              "please reply available",
+              "post the fixed available message",
+              "send the fixed available message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

@@ -35,9 +35,9 @@ use brassclaw_turns::{
         AgentLoopHostError, AgentLoopHostErrorKind, HostManagedLoopPromptPort,
         InMemoryInstructionMaterializationStore, InMemoryLoopHostMilestoneSink,
         InstructionMaterializationStore, InstructionSafetyContext, LoopModelGateway,
-        LoopModelGatewayError, LoopModelGatewayRequest, LoopModelPort, LoopModelRequest,
-        LoopModelResponse, LoopPromptBundleRequest, LoopPromptPort, LoopRunContext,
-        LoopSafeSummary, ModelProfileId, PromptMode, ProviderToolCall, ProviderToolDefinition,
+        LoopModelGatewayError, LoopModelGatewayRequest, LoopModelRequest, LoopModelResponse,
+        LoopPromptBundleRequest, LoopPromptPort, LoopRunContext, LoopSafeSummary, ModelProfileId,
+        PreparedLoopModelCall, PromptMode, ProviderToolCall, ProviderToolDefinition,
     },
 };
 use tracing::debug;
@@ -163,13 +163,13 @@ where
 #[async_trait]
 impl<S, G> LoopModelGateway for ThreadBackedLoopModelGateway<S, G>
 where
-    S: SessionThreadService + ?Sized + Send + Sync,
-    G: HostManagedModelGateway + ?Sized + Send + Sync,
+    S: SessionThreadService + ?Sized + Send + Sync + 'static,
+    G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
 {
-    async fn stream_model(
+    async fn prepare_model_call(
         &self,
         request: LoopModelGatewayRequest,
-    ) -> Result<LoopModelResponse, LoopModelGatewayError> {
+    ) -> Result<Option<Box<dyn PreparedLoopModelCall>>, LoopModelGatewayError> {
         let instruction_materialization_store: Arc<dyn InstructionMaterializationStore> =
             Arc::new(InMemoryInstructionMaterializationStore::default());
         self.issue_host_prompt_bundle(
@@ -186,9 +186,26 @@ where
             self.max_messages,
         )
         .with_instruction_materialization_store(instruction_materialization_store)
-        .stream_model(request.request)
+        .prepare_model_call(request.request)
         .await
+        .map(Some)
         .map_err(host_error_to_model_gateway_error)
+    }
+
+    async fn stream_model(
+        &self,
+        request: LoopModelGatewayRequest,
+    ) -> Result<LoopModelResponse, LoopModelGatewayError> {
+        self.prepare_model_call(request)
+            .await?
+            .ok_or_else(|| LoopModelGatewayError {
+                kind: AgentLoopHostErrorKind::InvalidInvocation,
+                safe_summary: LoopSafeSummary::model_gateway_failed(),
+                reason_kind: None,
+                diagnostic_ref: None,
+            })?
+            .dispatch()
+            .await
     }
 }
 
@@ -1212,10 +1229,12 @@ fn map_capability_host_error(error: AgentLoopHostError) -> HostManagedModelError
         AgentLoopHostErrorKind::Unauthorized | AgentLoopHostErrorKind::PolicyDenied => {
             HostManagedModelErrorKind::PolicyDenied
         }
-        AgentLoopHostErrorKind::BudgetExceeded
-        | AgentLoopHostErrorKind::BudgetApprovalRequired
-        | AgentLoopHostErrorKind::BudgetAccountingFailed => {
-            HostManagedModelErrorKind::BudgetExceeded
+        AgentLoopHostErrorKind::BudgetExceeded => HostManagedModelErrorKind::BudgetExceeded,
+        AgentLoopHostErrorKind::BudgetApprovalRequired => {
+            HostManagedModelErrorKind::BudgetApprovalRequired
+        }
+        AgentLoopHostErrorKind::BudgetAccountingFailed => {
+            HostManagedModelErrorKind::BudgetAccountingFailed
         }
         AgentLoopHostErrorKind::Cancelled => HostManagedModelErrorKind::Cancelled,
         AgentLoopHostErrorKind::Invalid
@@ -1228,7 +1247,9 @@ fn map_capability_host_error(error: AgentLoopHostError) -> HostManagedModelError
         | AgentLoopHostErrorKind::Internal
         | AgentLoopHostErrorKind::Unimplemented => HostManagedModelErrorKind::Unavailable,
     };
-    HostManagedModelError::safe(kind, error.safe_summary)
+    let mut converted = HostManagedModelError::safe(kind, error.safe_summary);
+    converted.reason_kind = error.reason_kind;
+    converted
 }
 
 fn map_provider_tool_output_error(error: AgentLoopHostError) -> HostManagedModelError {

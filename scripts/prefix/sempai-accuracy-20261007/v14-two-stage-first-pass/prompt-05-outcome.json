@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Keep it concise."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Replaced the duplicated system text with exactly 'Keep it concise.'; preserved the user message byte-for-byte, roles, order and count. No proposals or other changes were made, and no provider facts were invented.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

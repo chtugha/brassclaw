@@ -1,0 +1,79 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Offline full-v3 export only. Drafted one unapproved class-21 Recipe (recipe-transfer-04) that returns the fixed state DATA object {'state': 'Available'} and never posts a user message. The single step references the supplied unapproved PythonCode UUID d4808be6-83e3-5831-b710-c7f2ce88c711 (content: result = {'state': 'Available'}); no Tool calls, inputs or dependencies. Ten distinct data-returning intents are listed in both the payload and the variant. State unapproved dependencies, Q1 and human Q2 required; the current live sink cannot preserve full v3 fields (step_descriptions/variants/dependency_registry), so this is an offline export, not a submission or activation. No runtime or approval claims were made.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-04",
+        "description": "Offline unapproved fixed-state-data subworkflow; no Tool calls and no posted message",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the available state data",
+          "return the available state object",
+          "produce the fixed available object",
+          "obtain the available result data",
+          "calculate the available state result",
+          "yield the available state object",
+          "get the fixed available state data",
+          "build the available state object",
+          "evaluate the available data subworkflow",
+          "derive the fixed available state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-state-data subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "d4808be6-83e3-5831-b710-c7f2ce88c711"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "recipe-transfer-04",
+            "description": "Offline unapproved fixed-state-data subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the available state data",
+              "return the available state object",
+              "produce the fixed available object",
+              "obtain the available result data",
+              "calculate the available state result",
+              "yield the available state object",
+              "get the fixed available state data",
+              "build the available state object",
+              "evaluate the available data subworkflow",
+              "derive the fixed available state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable available data-result workflow."
+    ]
+  ]
+}

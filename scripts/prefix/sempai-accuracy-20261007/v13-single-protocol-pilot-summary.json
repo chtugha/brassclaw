@@ -1,0 +1,32 @@
+{
+  "pilot_only": true,
+  "accepted": 5,
+  "total": 6,
+  "feedback_or_previous_answers_sent": false,
+  "cases": [
+    {
+      "id": "python-08",
+      "accepted": false
+    },
+    {
+      "id": "python-09",
+      "accepted": true
+    },
+    {
+      "id": "python-10",
+      "accepted": true
+    },
+    {
+      "id": "python-11",
+      "accepted": true
+    },
+    {
+      "id": "recipe-06",
+      "accepted": true
+    },
+    {
+      "id": "evidence-11",
+      "accepted": true
+    }
+  ]
+}

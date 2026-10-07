@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Preserved the volatile tail exactly (one user message, no assistant action invented). Drafted one class-22 pure-logic candidate pc-check-channel-list per the request. The body is module-scope Python with an if/else result assignment (no return), accepts an empty list as valid, uses inputs.get for presence, tests exact integer semantics (bool is not int), and returns {ok, channels} with the original list only when valid. No exceptions, imports, host calls, I/O or coercion. Kept the requested field names and bounds (0..255 inclusive) to the task's own contract; did not copy another example's names or requirements. No provider capabilities were observed (target_provider_metadata has null protocol_capabilities and null catalogue_revision), so no prompt repair was justified; the volatile tail is unchanged. The draft is an unapproved target-interface proposal only; Q1, behavioral validation and human Q2 precede activation.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate a channel list; no channels is a valid choice."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-channel-list",
+        "description": "Pure-logic validator that inspects a raw candidate channel list and returns an explicit invalid-result object. Accepts a list, including an empty list, whose items are exact integers 0..255 inclusive; rejects bool, float, null, missing and wrong types. Returns {ok:boolean, channels:original list if valid else []}. No exceptions, imports, host calls, I/O or coercion.",
+        "content": "channels = inputs.get(\"channels\")\nvalid = isinstance(channels, list) and len(channels) > 0\nif valid:\n    for item in channels:\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\n            valid = False\n            break\nresult = {\"ok\": valid, \"channels\": channels if valid else []}"
+      }
+    }
+  ],
+  "proposed_recipe_updates": []
+}

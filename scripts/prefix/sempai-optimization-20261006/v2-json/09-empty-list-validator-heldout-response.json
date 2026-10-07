@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-89ce1dd413dc2785",
+  "object": "chat.completion",
+  "created": 1791318752,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\":[[\"user\",\"Validate a channel list; no channels is a valid choice.\"]],\"bridge_messages\":[],\"composition_summary\":\"Offline-design mode. The instruction requests one class-22 pure-logic candidate (pc-check-channel-list) with name/description/content only, no host/Tool calls, no exceptions, and result={ok:boolean,channels:original list if valid else []}. This is a deterministic pure-logic component: it validates a channel list (integers 0..255, list or empty) and returns a success object or an empty list, never an exception. It makes zero host.<tool>(...) calls and assigns result on every defined outcome, satisfying the class-22 contract. Typed inputs are a target interface, not deployed runtime support, so this is an unapproved draft only. The requested invalid-result object (channels:[] when invalid) is preserved as data, not an exception. No provider capabilities were invoked; the packet is preserved exactly. No compatibility/intent/settings updates were requested, so those arrays remain empty.\",\"proposed_recipe_updates\":[],\"proposed_intent_examples\":[],\"settings_adjustments\":[],\"proposed_components\":[{\"class_code\":22,\"payload\":{\"name\":\"pc-check-channel-list\",\"description\":\"Pure-logic validation of a channel list. Accepts a list (including an empty list) whose items are exact integers 0..255 inclusive; rejects bool, float, null, missing and wrong types. Returns {ok:boolean, channels:original list if valid else []}. No exceptions, imports, host calls or I/O.\",\"content\":\"channels = inputs.get(\\\"channels\\\")\\nif not isinstance(channels, list):\\n    result = {\\\"ok\\\": False, \\\"channels\\\": []}\\nelse:\\n    valid = all(isinstance(item, int) and not isinstance(item, bool) and 0 <= item <= 255 for item in channels)\\n    if valid:\\n        result = {\\\"ok\\\": True, \\\"channels\\\": channels}\\n    else:\\n        result = {\\\"ok\\\": False, \\\"channels\\\": []}\\nresult = result\"}}]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 70459,
+    "total_tokens": 70900,
+    "completion_tokens": 441,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

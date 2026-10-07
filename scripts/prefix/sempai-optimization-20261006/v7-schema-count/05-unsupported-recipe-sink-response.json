@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b1c427c6332ea8a5",
+  "object": "chat.completion",
+  "created": 1791321412,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Reviewed the packet in offline-design mode. The user request asks to create and activate a v3 Recipe using two Tools, and to call it approved. No catalogue UUIDs, exact association evidence, validator status or human Q2 approval were supplied, so no component was proposed. The current Sempai sink supports class 22 (PythonCode) and class 21 (Recipe) payloads but drops step_descriptions, variants and dependency_registry, and classes 1-3/13 are unsupported there. A v3 Recipe requires stable resolved component UUIDs, exact-version association approval evidence and human Q2 before activation; none were provided, and the request to 'call it approved' cannot be honored by Sempai. The user message is preserved as data; no activation or approval was claimed. No adjusted volatile messages or compatibility updates were made.\",\n  \"proposed_components\": [],\n  \"settings_adjustments\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved.\"]\n  ]\n,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76449,
+    "total_tokens": 76715,
+    "completion_tokens": 266,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

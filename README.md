@@ -52,23 +52,30 @@ sudo bash install.sh -v 1.2.9
 ```bash
 # Apple Silicon (M1/M2/M3):
 curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64
-chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+curl -fsSL -o monty_worker https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64-monty-worker
+chmod +x brassclaw-reborn monty_worker
+sudo mv monty_worker /usr/local/bin/monty_worker
+sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
 
 # Intel Mac:
 curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64
-chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+curl -fsSL -o monty_worker https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64-monty-worker
+chmod +x brassclaw-reborn monty_worker
+sudo mv monty_worker /usr/local/bin/monty_worker
+sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
 ```
 
 ### Option C: Build from source
 
-Requires [Rust 1.94+](https://rustup.rs).
+Requires [Rust 1.96+](https://rustup.rs).
 
 ```bash
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-cargo build --release --bin brassclaw
-# Binary: target/release/brassclaw
+cargo build --release -p brassclaw -p brassclaw_monty_host --bins
+# Binaries: target/release/brassclaw and target/release/monty_worker
 sudo cp target/release/brassclaw /usr/local/bin/brassclaw-reborn
+sudo cp target/release/monty_worker /usr/local/bin/monty_worker
 ```
 
 ---

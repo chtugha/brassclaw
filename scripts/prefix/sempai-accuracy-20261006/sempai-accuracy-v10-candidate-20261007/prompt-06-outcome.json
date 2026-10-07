@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Audit only; no edit authorized. Echoed every message exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null; model name alone does not establish them). No rewrite, no inferred capability facts, no proposals or new messages.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

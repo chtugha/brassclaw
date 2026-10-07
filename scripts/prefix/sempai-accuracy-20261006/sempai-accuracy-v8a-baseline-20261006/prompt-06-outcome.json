@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Audit-only request with no edits authorized. Echoed both messages verbatim. No justified prompt repair exists: the system wording is quoted user-selected content, and the user explicitly forbids edits. Target provider metadata is null for protocol_capabilities, so no capability-based repair is possible. No proposals, intents, settings or components.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b64e4b75a14b638c",
+  "object": "chat.completion",
+  "created": 1791331127,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"class_code == 22\", \"result\": \"ok\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [], \"notes\": \"class22 pc-contrast-01 is a supported constructor; emit one class22 payload with name/description/content only. Content is pure-logic Python: raw slots list 1..\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98379,
+    "total_tokens": 98484,
+    "completion_tokens": 105,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

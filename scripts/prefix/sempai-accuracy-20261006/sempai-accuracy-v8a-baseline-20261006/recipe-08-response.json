@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b804564643301a2d",
+  "object": "chat.completion",
+  "created": 1791323371,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Offline full-v3 export mode. The requested class-21 recipe-transfer-08 payload is not supported by the current sink: it accepts name/description/trigger/steps/prior_knowledge_content/intent_examples but drops step_descriptions, variants and dependency_registry, and it cannot preserve the persisted knowledge/stepnumber/type=component/include schema, tool_bindings, dependencies, variant step_link and variable_patterns that a full v3 Recipe requires. The exact v3 constructor (step_descriptions with one component step per UUID, variants with step_link, dependency_registry) cannot be emitted into the supported class-21 payload, so no class-21 entry is proposed. The requested class-22 pure-logic draft d14b7a42-2c12-57e8-9cf1-59d7e576182a (result = {'state': 'Idle'}, zero inputs, no dependencies) is a supported constructor with no referenced Tool or component, so it is proposed as an unapproved draft; insertion allocates its identity and Q1/human Q2 follow. It is not activated and grants no dispatch permission. The subworkflow returns state data only and never posts a user message.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Design a reusable idle data-result workflow.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-idle-state\",\n        \"description\": \"Pure-logic guard returning a fixed idle state; no inputs, no Tool call, no effect. Unapproved draft; Q1 and human Q2 required before activation. Returns state data only and never posts a user message.\",\n        \"content\": \"result = {'state': 'Idle'}\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76995,
+    "total_tokens": 77428,
+    "completion_tokens": 433,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

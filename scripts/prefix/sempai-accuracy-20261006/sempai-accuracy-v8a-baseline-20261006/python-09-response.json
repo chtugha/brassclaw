@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bb7824d09714cddc",
+  "object": "chat.completion",
+  "created": 1791323114,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (no justified prompt repair). Drafted one pure-logic class-22 component pc-transfer-09: it classifies a raw lag value into missing/null/integer/invalid using a helper, invoked at module scope with its returned object assigned to result. The body uses inputs.get for presence, exact type checks (int not bool), the 5..14 inclusive range, and returns the requested result object without raising or coercing. This is an unapproved draft; typed inputs require runner support, and no observed tests/submission/activation occurred. Class 22 is supported in offline-design mode; class 21/1-3/13 are not, so no other component types were proposed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-09\",\n        \"description\": \"Classify a raw lag value into missing, null, integer (5..14) or invalid. Pure logic; no Tool call, no I/O, no host calls. Returns an advisory object only; it grants no dispatch, retry or activation.\",\n        \"content\": \"def classify_lag(lag):\\n    if 'lag' not in inputs:\\n        result = {'kind': 'missing', 'lag': None}\\n    else:\\n        lag = inputs['lag']\\n        if lag is None:\\n            result = {'kind': 'null', 'lag': None}\\n        elif type(lag) is int and not type(lag) is bool and 5 <= lag <= 14:\\n            result = {'kind': 'integer', 'lag': lag}\\n        else:\\n            result = {'kind': 'invalid', 'lag': None}\\n    return result\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76895,
+    "total_tokens": 77358,
+    "completion_tokens": 463,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

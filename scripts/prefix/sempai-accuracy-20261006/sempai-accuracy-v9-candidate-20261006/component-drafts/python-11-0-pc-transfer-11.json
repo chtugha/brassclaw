@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-11",
+    "description": "Classify raw rank: missing -> {kind:\"missing\",rank:null}; explicit null -> {kind:\"null\",rank:null}; exact integer 7..16 -> {kind:\"integer\",rank:original}; other -> {kind:\"invalid\",rank:null}. No bool/float/coercion/defaults/exceptions. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "rank = inputs.get('rank')\nif rank is None:\n    result = {'kind': 'null', 'rank': None}\nelif type(rank) is int and 7 <= rank <= 16:\n    result = {'kind': 'integer', 'rank': rank}\nelse:\n    result = {'kind': 'invalid', 'rank': None}"
+  }
+}

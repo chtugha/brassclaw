@@ -48,9 +48,9 @@ pub use crate::{
     },
     resource::{
         BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, ExecutionControl,
-        ExecutionControlAction, ExecutionControlError, LARGE_RESULT_THRESHOLD, LIVE_MEMORY, OOM_EXIT_CODE,
-        PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
-        memory_limit_with_headroom,
+        ExecutionControlAction, ExecutionControlError, ExecutionObservation, LARGE_RESULT_THRESHOLD, LIVE_MEMORY,
+        OOM_EXIT_CODE, PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope,
+        VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT, allocate_into_baseline, memory_limit_with_headroom,
     },
     results::{ExtFunctionResult, NameLookupResult},
     run_options::{AssertMessageAnnotations, CompileOptions, SOURCE_SCAN_THRESHOLD},

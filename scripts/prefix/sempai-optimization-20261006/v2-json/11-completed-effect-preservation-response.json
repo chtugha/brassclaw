@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9179058993ba0055",
+  "object": "chat.completion",
+  "created": 1791318769,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"system\", \"Inspect evidence without performing actions.\"], [\"user\", \"The email was sent; only explain why the UI timed out.\"], [\"assistant\", \"I sent the message once.\"], [\"tool\", \"{\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"}\"]], \"bridge_messages\": [], \"composition_summary\": \"Reviewed the packet as data. The volatile tail is preserved exactly: system instruction, user request, assistant claim, and the Tool result. No prompt repair was requested, so roles, order and content are kept unchanged. No proposals, intents, settings or components are emitted. The requested work is an offline explanation, not a component draft, so proposed_components stays empty. The Tool receipt {\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"} is evidence of a completed effect. A completed effect must not be replayed: the operation already happened, and re-issuing it would create a duplicate effect. Kernel policy, attempt freshness and cancellation fence execution; they do not grant permission to repeat a completed call. The UI timeout is a separate failure: it is an output/transport problem, not a missing effect. The message was sent once and completed; the timeout does not mean the send failed. No new dispatch, no second message, no replay. This is not a No-Match and does not enter Tier 2. The packet is a test fixture; the completed receipt is the ground truth for this turn.\", \"proposed_recipe_updates\": [], \"proposed_intent_examples\": [], \"settings_adjustments\": [], \"proposed_components\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 70478,
+    "total_tokens": 70812,
+    "completion_tokens": 334,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

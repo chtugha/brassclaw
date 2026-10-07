@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Preserved the single user message unchanged; no justified prompt repair. The task is a component draft, not a submission or activation. Drafted one class-22 pure-logic candidate pc-check-timeout-ms with only name/description/content, per the target typed-inputs interface. The body uses inputs.get(\"timeout_ms\") (not direct access) so a missing key is a valid validation outcome, returns {valid, timeout_ms} with no exceptions or coercion, and assigns result on every path. It makes zero host calls and contains no imports or I/O. This is an unapproved draft; Q1, observed behavior and human Q2 precede activation, and the target inputs interface is not guaranteed deployed runtime support. No compatibility/intent/settings arrays were populated.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need to validate raw timeout values before configuring a service."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-timeout-ms",
+        "description": "Pure-logic validator that inspects a raw candidate timeout_ms and returns whether it is a valid integer in 0..7500 inclusive. Reads the raw value with inputs.get so a missing key is a valid outcome, never raises, and never coerces. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid or null otherwise. No host calls, imports or I/O.",
+        "content": "def check_timeout_ms():\n    raw = inputs.get(\"timeout_ms\")\n    valid = isinstance(raw, int) and not isinstance(raw, bool) and 0 <= raw <= 7500\n    result = {\"valid\": valid, \"timeout_ms\": raw if valid else None}\n"
+      }
+    }
+  ],
+  "proposed_recipe_updates": []
+}

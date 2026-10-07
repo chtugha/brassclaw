@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-flag",
+    "description": "Raw validator returning whether a raw candidate flag is exactly the boolean True or False. Accepts missing, null or any non-boolean value as invalid. Returns {valid, flag} where flag is the original boolean when valid and null otherwise. No imports, I/O, host calls, exceptions or type coercion.",
+    "content": "def check_flag(candidate):\n    return {'valid': type(candidate) is bool, 'flag': candidate if type(candidate) is bool else None}\nresult = check_flag(inputs.get('flag'))"
+  }
+}

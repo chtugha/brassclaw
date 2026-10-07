@@ -1,0 +1,14 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [],
+  "composition_summary": "No change to the volatile tail. The packet carries no provider capabilities and a null catalogue_revision, so supported roles, Tool encoding and reasoning syntax are unknown and must not be inferred from the model name. The instruction is to keep messages unchanged, emit no proposals and explain the missing capability facts. No justified prompt repair is warranted: the request is to preserve the original messages, and no safe change is justified without the actual adapter/provider metadata. No component draft is proposed because the supported sink cannot preserve the required provider-capability fields and no resolved dependency identities were supplied; no submission or activation occurred.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ]
+}

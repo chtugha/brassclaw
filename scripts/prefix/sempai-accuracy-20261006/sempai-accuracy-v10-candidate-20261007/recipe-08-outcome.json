@@ -1,0 +1,79 @@
+{
+  "composition_summary": "Offline-design mode only. The host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a (result = {'state': 'Idle'}), zero inputs/dependencies. This is a data-return subworkflow: it yields state DATA and never posts a user message. Its ten routing intents request the fixed ready/idle state object, not a posted reply. The current live sink drops v3 fields (step_descriptions, variants, dependency_registry), so this is an offline full-v3 export draft only, not a live insertion. No execution, submission, Q1/Q2 or activation occurred. Original conversation preserved; compatibility/intent/settings arrays empty under test persona.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-08",
+        "description": "Offline unapproved idle data-result subworkflow; no Tool calls and no posted message",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the idle state data",
+          "return the idle state object",
+          "produce the fixed idle object",
+          "obtain the idle result data",
+          "calculate the idle state result",
+          "yield the idle state object",
+          "get the fixed idle state data",
+          "build the idle state object",
+          "evaluate the idle data subworkflow",
+          "derive the fixed idle state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved idle data-result subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "d14b7a42-2c12-57e8-9cf1-59d7e576182a"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "recipe-transfer-08",
+            "description": "Offline unapproved idle data-result subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the idle state data",
+              "return the idle state object",
+              "produce the fixed idle object",
+              "obtain the idle result data",
+              "calculate the idle state result",
+              "yield the idle state object",
+              "get the fixed idle state data",
+              "build the idle state object",
+              "evaluate the idle data subworkflow",
+              "derive the fixed idle state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable idle data-result workflow."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

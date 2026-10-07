@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-83f71012fd61618e",
+  "object": "chat.completion",
+  "created": 1791318713,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable subworkflow that returns a fixed readiness result.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline-design export only; no submission, activation, approval or runtime enforcement. The requested class-21 Recipe draft is emitted as a constructor draft with the exact fields the host sink supports (name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry). The single orchestrator component step includes the host-allocated unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a exactly once, with no version numbers and no Rust binding. This draft is not an activated component: it has not passed Q1, human Q2, or behavioral validation, and the current Sempai sink cannot preserve a full v3 Recipe (step_descriptions/variants/dependency_registry are dropped by the sink). The subworkflow returns a fixed readiness result only; it does not post a user reply. No provider capabilities were invented; catalogue_revision and protocol_capabilities are null as supplied. No other proposal arrays are populated, per the offline-design scope.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-fixed-ready-result\",\n        \"description\": \"Deterministic subworkflow that returns a fixed readiness result. Tier 0: zero LLM calls, one orchestrator PythonCode step referencing the unapproved draft PythonCode component 84313e5b-c871-4f9e-9623-3986db9c5b2a. Returns a result object only; it does not post a user reply. Unapproved draft; requires Q1 and human Q2 before activation.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved draft dependency: the single orchestrator component step references the host-allocated unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\\\"status\\\": \\\"Ready\\\"}), which has not passed Q1 or human Q2 and is not an activated component. This draft requires Q1 and human Q2 before activation. The subworkflow returns a result object only; it does not post a user reply. The current Sempai sink cannot preserve this full v3 Recipe draft (it drops step_descriptions, variants and dependency_registry), so this export is an offline-design constructor draft, not a submitted or activated component.\",\n        \"intent_examples\": [\n          \"return ready\",\n          \"give me a readiness result\",\n          \"post ready\",\n          \"tell me you are ready\",\n          \"please say ready\",\n          \"respond with ready\",\n          \"send a readiness reply\",\n          \"give me a readiness response\",\n          \"answer with ready\",\n          \"please post the word ready\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Return a fixed readiness result\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Return the fixed readiness result\",\n                \"content\": \"Run the fixed-readiness-result PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"84313e5b-c871-4f9e-9623-3986db9c5b2a\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-readiness-result\",\n            \"description\": \"Return exactly a fixed readiness result with no input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"return ready\",\n              \"give me a readiness result\",\n              \"post ready\",\n              \"tell me you are ready\",\n              \"please say ready\",\n              \"respond with ready\",\n              \"send a readiness reply\",\n              \"give me a readiness response\",\n              \"answer with ready\",\n              \"please post the word ready\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 70588,
+    "total_tokens": 71627,
+    "completion_tokens": 1039,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

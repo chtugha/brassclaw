@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-803ef7af5092c232",
+  "object": "chat.completion",
+  "created": 1791358478,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"state_data\"}, {\"guard\": \"trigger is a fixed host.post_reply binding and steps is nonempty\", \"result\": \"reply_effect\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"d14b7a42-2c12-57e8-9cf1-59d7e576182a\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural check\", \"human Q2 approval\", \"supported full-v3 sink\"], \"notes\": \"The supplied program returns only state DATA; it never posts a user message. Intents must describe computing/returning data, not posting a reply.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98647,
+    "total_tokens": 98833,
+    "completion_tokens": 186,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

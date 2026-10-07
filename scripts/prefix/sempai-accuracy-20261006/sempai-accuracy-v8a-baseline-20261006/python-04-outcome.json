@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-04 with name/description/content only, per the supported offline-design sink. The body is executable Python at module scope: it reads raw inputs via inputs.get() so missing/empty/any-JSON values are inspected rather than raising, validates that ttl is exactly an integer in 0..9 inclusive (rejecting bool/float/strings), and assigns result on every branch as {accepted:boolean, ttl:original if accepted else null} with no exceptions or coercion. No imports, I/O, host calls, imports, or Markdown. This is an unapproved draft; typed inputs require runner support and no observed tests/submission/activation occurred.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-04",
+        "description": "Pure-logic guard: accepts a raw candidate ttl only when it is exactly an integer in 0..9 inclusive (not bool/float/string); returns {accepted, ttl} with ttl null when rejected. No imports, I/O or host calls.",
+        "content": "def classify_ttl(raw):\n    if 'ttl' not in raw:\n        result = {'accepted': False, 'ttl': None}\n    else:\n        ttl = raw['ttl']\n        if type(ttl) is bool or not type(ttl) is int or not 0 <= ttl <= 9:\n            result = {'accepted': False, 'ttl': None}\n        else:\n            result = {'accepted': True, 'ttl': ttl}\n    return result\nresult = classify_ttl(inputs.get('raw'))"
+      }
+    }
+  ]
+}

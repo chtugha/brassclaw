@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-09",
+    "description": "Classify a raw lag value into missing, null, integer (5..14) or invalid. Pure logic; no Tool call, no I/O, no host calls. Returns an advisory object only; it grants no dispatch, retry or activation.",
+    "content": "def classify_lag(lag):\n    if 'lag' not in inputs:\n        result = {'kind': 'missing', 'lag': None}\n    else:\n        lag = inputs['lag']\n        if lag is None:\n            result = {'kind': 'null', 'lag': None}\n        elif type(lag) is int and not type(lag) is bool and 5 <= lag <= 14:\n            result = {'kind': 'integer', 'lag': lag}\n        else:\n            result = {'kind': 'invalid', 'lag': None}\n    return result"
+  }
+}

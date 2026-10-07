@@ -1,0 +1,14 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "The task is a prompt-review test, not a component-drafting task, and the host explicitly instructs no proposals. I preserved the volatile tail exactly and emitted no proposals, per the instruction and the reviewer decision procedure. The only substantive finding is a missing-capability gap: the packet carries no provider metadata (model revision, protocol_capabilities, max_model_len, catalogue_revision is null), so supported roles, Tool-call/result encoding, thinking/reasoning syntax and structured-output schema are all unknown. I must not infer them from the model name 'cyankiwi/Ornith-1.5-9B-AWQ-INT4'. Per the source reference, provider definitions come only from the installed PostgreSQL catalogue and trusted host adapters; a null catalogue_revision and null protocol_capabilities mean those facts are unavailable, not guessable. The correct action is to keep the messages unchanged, emit no proposals, and explain the missing capability facts. No justified prompt repair is warranted: the request is to review without assuming syntax, and inventing roles/encoding/reasoning would violate that constraint and the 'do not infer from a provider name' rule. No component draft is appropriate because the requested sink supports class 22 (PythonCode) and class 21 (Recipe) only, and the task does not request a component; classes 1-3, 13 and a full v3 Recipe are unsupported in this offline-design mode, and a blocked note or guessed UUID must not be placed in proposed_components. The missing facts (resolved provider revision, protocol/adapter, effective context capacity, tokenizer/template identity, thinking/tool/structured-output capabilities, actual tool envelope) remain unknown and must be supplied through trusted host adapters before any syntax-specific review or proposal.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

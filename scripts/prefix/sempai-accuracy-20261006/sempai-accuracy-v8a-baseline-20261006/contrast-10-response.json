@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-aa6956f7a7074a9d",
+  "object": "chat.completion",
+  "created": 1791323245,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-10: it reads raw records via inputs.get('records') (no direct access, no raise), validates each item is a dict with exactly the keys code and enabled, code a string of length 2..5, and enabled an exact bool, then returns {ok, records: original list if valid else []}. No imports, host calls, I/O, or upstream-validation assumption; result is assigned on every branch. This is an unapproved target-interface draft only; activation requires Q1, human Q2 and runtime typed-runner support, which are not established here.\",\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Prepare the requested reusable draft without executing any operation.\"]\n  ],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-10\",\n        \"description\": \"Pure-logic guard: validates a raw list of records, each an object with exactly the keys code (string length 2..5) and enabled (exact boolean), and returns {ok, records} where records is the original list when valid or [] otherwise. No I/O, imports, host calls or upstream-validation assumption. Unapproved target-interface draft; activation requires Q1, human Q2 and typed-runner support.\",\n        \"content\": \"def classify_records(records):\\n    valid = isinstance(records, list) and len(records) <= 3\\n    if valid:\\n        for item in records:\\n            if not (type(item) is dict and set(item.keys()) == {'code', 'enabled'}\\n                    and type(item['code']) is str and 2 <= len(item['code']) <= 5\\n                    and type(item['enabled']) is bool):\\n                valid = False\\n                break\\n    if valid:\\n        result = {'ok': True, 'records': records}\\n    else:\\n        result = {'ok': False, 'records': []}\\n    return result\\nresult = classify_records(inputs.get('records'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76881,
+    "total_tokens": 77394,
+    "completion_tokens": 513,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

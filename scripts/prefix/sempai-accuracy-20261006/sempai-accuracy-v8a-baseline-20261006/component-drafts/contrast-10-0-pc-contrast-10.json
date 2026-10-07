@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-10",
+    "description": "Pure-logic guard: validates a raw list of records, each an object with exactly the keys code (string length 2..5) and enabled (exact boolean), and returns {ok, records} where records is the original list when valid or [] otherwise. No I/O, imports, host calls or upstream-validation assumption. Unapproved target-interface draft; activation requires Q1, human Q2 and typed-runner support.",
+    "content": "def classify_records(records):\n    valid = isinstance(records, list) and len(records) <= 3\n    if valid:\n        for item in records:\n            if not (type(item) is dict and set(item.keys()) == {'code', 'enabled'}\n                    and type(item['code']) is str and 2 <= len(item['code']) <= 5\n                    and type(item['enabled']) is bool):\n                valid = False\n                break\n    if valid:\n        result = {'ok': True, 'records': records}\n    else:\n        result = {'ok': False, 'records': []}\n    return result\nresult = classify_records(inputs.get('records'))"
+  }
+}

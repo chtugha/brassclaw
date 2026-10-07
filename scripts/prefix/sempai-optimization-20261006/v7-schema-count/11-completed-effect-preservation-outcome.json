@@ -1,0 +1,26 @@
+{
+  "composition_summary": "Reviewed the packet as data. The volatile tail is preserved exactly: system, user, assistant, tool in the given order and content. The tool receipt {\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"} is evidence of one completed effect. The instruction is a prompt-review task, not component drafting, so proposed_components, proposed_recipe_updates, proposed_intent_examples and settings_adjustments remain empty. No proposal sink is available for this review (only class 22/21 are supported, and no component was requested), so nothing is submitted. The explanation is in composition_summary. No assistant acknowledgement, action, result or approval was invented in the conversation. The completed effect is not replayed; a timeout or lost response is unknown completion, not confirmed no effect, and must not trigger a second dispatch. Only an actual No-Match enters Tier 2; a begun Recipe failure is not a second execution. The kernel checks current global Tool policy before every dispatch; a retained approved version grants no permission to reissue. The completed Tool call is not repeated because output validation, reply or a later step failed.",
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Inspect evidence without performing actions."
+    ],
+    [
+      "user",
+      "The email was sent; only explain why the UI timed out."
+    ],
+    [
+      "assistant",
+      "I sent the message once."
+    ],
+    [
+      "tool",
+      "{\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"}"
+    ]
+  ],
+  "proposed_intent_examples": []
+}

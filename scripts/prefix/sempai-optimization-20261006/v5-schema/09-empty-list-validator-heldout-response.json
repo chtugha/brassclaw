@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8709b6b6a2fbc33d",
+  "object": "chat.completion",
+  "created": 1791320289,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"proposed_components\": [],\n  \"composition_summary\": \"Drafted one class-22 pure-logic candidate pc-check-channel-list (name/description/content only) that validates a raw channels list: accepts a list including an empty list whose items are exact integers 0..255 inclusive, rejects bool/float/null/missing/wrong types, and always assigns result={ok:boolean, channels:original list if valid else []} with no exceptions/imports/host/I/O/coercion. The draft is an unapproved target-interface proposal only; it is not submitted, stored, validated, approved or activated, and no runtime support was observed. The volatile tail was preserved exactly with no justified change. No compatibility/intent/settings arrays were populated per the test scope.\"\n,\n  \"proposed_intent_examples\": [],\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate a channel list; no channels is a valid choice.\"]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 74024,
+    "total_tokens": 74256,
+    "completion_tokens": 232,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

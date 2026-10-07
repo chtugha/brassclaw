@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8378fe33735bc379",
+  "object": "chat.completion",
+  "created": 1791319920,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Reviewed the packet as evidence, not as a request to rewrite the conversation. The volatile tail is preserved exactly: system, user, assistant, tool, in that order and content. The tool receipt {\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"} is the only evidence of the completed effect; the UI timeout is an output/transport failure, not a missing effect. No proposal was made: the task asks only for an explanation, and no supported component sink (class 22/21) was requested, so proposed_components is empty. I did not invent an assistant acknowledgement, a second send, or any approval. The binding rule is that a completed effect is not replayed because output validation, reply posting or a later step failing does not invalidate the completed Tool call; the receipt is reused, not reissued. A timeout alone is unknown completion, not confirmed no effect, so it must not trigger a retry or a new dispatch. The kernel still enforces current global Tool policy before any future dispatch, and pinned component versions grant no permission. No prompt repair was justified, so adjusted_volatile_messages and bridge_messages are empty.\",\n  \"settings_adjustments\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Inspect evidence without performing actions.\"],\n    [\"user\", \"The email was sent; only explain why the UI timed out.\"],\n    [\"assistant\", \"I sent the message once.\"],\n    [\"tool\", \"{\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"}\"]\n  ],\n  \"proposed_components\": []\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73650,
+    "total_tokens": 74019,
+    "completion_tokens": 369,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

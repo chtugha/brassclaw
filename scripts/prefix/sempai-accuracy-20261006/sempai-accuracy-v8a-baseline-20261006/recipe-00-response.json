@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bf0e895128b01072",
+  "object": "chat.completion",
+  "created": 1791323267,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Offline full-v3 export mode. The requested class-21 Recipe payload is not supported by the current sink: it accepts only name/description/trigger/steps/prior_knowledge_content/intent_examples and drops step_descriptions, variants and dependency_registry. The requested draft (name=recipe-transfer-00, trigger=null, steps=[], dependency_registry=null, one desc_idx=0 with knowledge/stepnumber/type=component/include, one variant with step_link=0:1-0:E, ten intent examples) cannot be emitted as a class-21 payload. No class-22 draft was requested, so proposed_components is empty. The full v3 constructor is preserved below as an offline-design export; it is not inserted and requires Q1, human Q2 and runtime support before activation. The original conversation is preserved unchanged.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Design a reusable ready data-result workflow.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76992,
+    "total_tokens": 77235,
+    "completion_tokens": 243,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

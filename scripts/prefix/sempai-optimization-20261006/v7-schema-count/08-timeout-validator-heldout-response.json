@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-aa16c3ce3e19e202",
+  "object": "chat.completion",
+  "created": 1791321437,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Reviewed the volatile tail and preserved it unchanged. The task is a single class-22 pure-logic draft (pc-check-timeout-ms) using the target typed-inputs interface, not a submission or activation. The body validates raw candidate data with inputs.get() (never direct access), treats bool as not-integer, enforces exact integer 0..7500 inclusive, and returns {valid, timeout_ms} with null on invalid/missing/null — no exceptions, no coercion, no imports/host/IO, and a module-level result assignment on every path. Proposed one class-22 payload with only name/description/content. No provider capabilities were observed (target_provider_metadata has no protocol_capabilities), so no prompt repair was justified; the draft is provider-agnostic. Q1, observed behavior and human Q2 precede activation.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-timeout-ms\",\n        \"description\": \"Pure-logic guard: validates a raw candidate timeout_ms as an exact integer in 0..7500 inclusive. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid, else null. No exceptions, no coercion, no imports, host calls or I/O.\",\n        \"content\": \"def check_timeout_ms(candidate):\\n    raw = inputs.get('timeout_ms')\\n    valid = type(raw) is int and not isinstance(raw, bool) and 0 <= raw <= 7500\\n    result = {'valid': valid, 'timeout_ms': raw if valid else None}\"\n      }\n    }\n  ],\n  \"settings_adjustments\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need to validate raw timeout values before configuring a service.\"]\n  ]\n  ,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76470,
+    "total_tokens": 76901,
+    "completion_tokens": 431,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

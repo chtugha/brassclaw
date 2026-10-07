@@ -1,0 +1,10 @@
+{
+  "id": "evidence-11",
+  "test_output_allowance_tokens": 3500,
+  "compact_empty_summary_envelope_tokens": 1539,
+  "pretty_empty_summary_envelope_tokens": 1615,
+  "note": "These token counts preserve exact required messages and use an empty summary. Actual nonempty summaries, provider closing tokens and serialization may need more.",
+  "supplied_repeated_phrase_count": 350,
+  "v9_generated_phrase_count": 831,
+  "capacity_conclusion": "An exact compact output fits the test allowance. V9 repeats beyond the supplied archive and fails preservation before exhausting output; increasing the output allowance alone does not repair this."
+}

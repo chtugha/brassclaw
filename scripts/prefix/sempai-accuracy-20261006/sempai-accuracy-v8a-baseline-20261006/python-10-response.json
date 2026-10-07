@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8f094bf6db144cf3",
+  "object": "chat.completion",
+  "created": 1791323123,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). The packet is pre-call with no observed provider capabilities, so no prompt fix is warranted. Drafted one pure-logic class-22 component pc-transfer-10: name/description/content only, no dependencies, no UUID, no prior Q1/Q2 approval. The body is executable Python at module scope: it reads each raw field with inputs.get (distinguishing absent from explicit null), validates exact integer semantics (rejecting bool/float/strings), enforces the 6..15 range, and assigns result on every branch without raise, coercion or defaults. The invalid-result object contains only its declared fields. Typed inputs remain a target interface requiring runner support; this is an unapproved draft, not an activated component. No observed tests, submission or activation occurred.\",\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Prepare the requested reusable draft without executing any operation.\"]\n  ],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-10\",\n        \"description\": \"Pure-logic raw TTL classifier. Reads a raw candidate with inputs.get('ttl') and returns an advisory decision object only: absent key -> {kind:'missing',ttl:null}; explicit null -> {kind:'null',ttl:null}; exact integer in 6..15 -> {kind:'integer',ttl:original}; anything else -> {kind:'invalid',ttl:null}. No bool/float coercion, no defaults, no exceptions, no imports, no I/O, no host calls. Typed inputs are a target interface requiring runner support; this is an unapproved draft.\",\n        \"content\": \"def classify_ttl(raw):\\n    ttl = inputs.get('ttl')\\n    if 'ttl' not in inputs:\\n        result = {'kind': 'missing', 'ttl': None}\\n    elif ttl is None:\\n        result = {'kind': 'null', 'ttl': None}\\n    elif type(ttl) is bool:\\n        result = {'kind': 'invalid', 'ttl': None}\\n    elif type(ttl) is int and 6 <= ttl <= 15:\\n        result = {'kind': 'integer', 'ttl': ttl}\\n    else:\\n        result = {'kind': 'invalid', 'ttl': None}\\n    return result\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76878,
+    "total_tokens": 77444,
+    "completion_tokens": 566,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

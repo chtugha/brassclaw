@@ -1,0 +1,14 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. The requested class-21 Recipe payload cannot be proposed: the current Sempai sink drops step_descriptions, variants and dependency_registry and accepts only name/description/trigger/steps/prior_knowledge_content/intent_examples. A class-21 draft would lose the exact persisted IBS schema (knowledge/stepnumber/type=component/include) required by recipe.md section 7, and the requested trigger=null with empty steps is not a coherent persisted Recipe. Class 22 is supported, but the requested body is a fixed constant ('state': 'Available') with zero inputs and no host.<tool>(...) call, which is not a reusable component contract and would not be a valid class-22 draft. No runtime/approval claims are made; Q1 and human Q2 are required before activation. The original conversation is preserved unchanged and all compatibility arrays remain empty under the test persona.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable available data-result workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

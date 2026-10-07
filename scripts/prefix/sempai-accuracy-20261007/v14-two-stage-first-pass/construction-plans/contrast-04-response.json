@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-aed9c23a4d5a422e",
+  "object": "chat.completion",
+  "created": 1791331164,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"class_code == 22\", \"result\": \"ok: false, slots: []\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"host supports class22 constructor\", \"selected runner supports inputs mapping\", \"Q1 and human Q2 before activation\"], \"notes\": \"Drafted one unapproved pure-logic component using the supplied target inputs contract. It has a module-level result assignment. No execution, submission, Q1/Q2,\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98379,
+    "total_tokens": 98508,
+    "completion_tokens": 129,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

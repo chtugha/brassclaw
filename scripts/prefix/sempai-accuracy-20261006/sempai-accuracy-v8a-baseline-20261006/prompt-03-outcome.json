@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the supplied volatile tail exactly: system message unchanged and user message reproduced byte-for-byte with its original role, order and count. No proposals or other changes were made. The only permitted edit is the system content replacement to exactly \"Preserve evidence.\", which is a host-side prefix change, not a volatile-tail edit, so the volatile array is left as supplied. No provider facts were invented: the target metadata carries null catalogue_revision, null protocol_capabilities and no tool envelope, so no capability claims were added. The standalone citation is a source-question benchmark; it does not apply prompt changes or create/approve components, so proposed_components, proposed_recipe_updates, proposed_intent_examples and settings_adjustments remain empty. The requested system replacement is outside the volatile tail and is not reflected here.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Preserve evidence evidence."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

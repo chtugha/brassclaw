@@ -1,0 +1,10 @@
+{
+  "generation": "408ebe3f81c5812b4646ce18b5c7b5f291910419743a04268c8e710af6d7c1d7",
+  "token_injection_verified": true,
+  "native_cache_verification_passed": false,
+  "external_cache_hit_tokens": 96096,
+  "accuracy_result_available": false,
+  "serving_errors": 60,
+  "cause_confirmed": false,
+  "note": "All cases returned HTTP 500 with grammar rejection. This is serving failure, not semantic model accuracy. Native/external cache behavior changed, but that does not establish causation."
+}

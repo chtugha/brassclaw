@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a8f9292f06a03bf4",
+  "object": "chat.completion",
+  "created": 1791359325,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'frames' not in inputs\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"else: frames = inputs['frames']\", \"result\": \"if frames is None: result = {'ok': False, 'frames': None} elif type(frames) is not list: result = {'ok': False, 'frames': None} else: valid = len(frames) <= 2; if valid: for frame in frames: if type(frame) is not dict or set(frame) != {'toggles'}: valid =;\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision\", \"target_provider_metadata.protocol_capabilities\", \"host.supports_class22\", \"host.supports_class22_target_inputs\", \"host.supports_class22_host_callables\", \"host.supports_class22_exact_result\", \"host.supports_class22_preserve_messages\", \"host.supports_class22_no_coercion\"], \"notes\": \"frames is a raw list; a helper receives the whole inputs mapping to distinguish absent from explicit null. Exact bool False is valid. No imports/host/exceptions\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98369,
+    "total_tokens": 98642,
+    "completion_tokens": 273,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-mode",
+    "description": "Pure-logic guard that validates a raw operating mode string without changing its spelling. Accepts only the exact case-sensitive strings 'eco' or 'boost'. Returns {accepted:boolean, mode:original string if accepted else null}. No exceptions, imports, host calls or type coercion; absent and null inputs are both reported as not accepted with mode=null.",
+    "content": "def check_mode(mode):\n    accepted = type(mode) is str and mode in ('eco', 'boost')\n    return {'accepted': accepted, 'mode': mode if accepted else None}\nresult = check_mode(inputs.get('mode'))"
+  }
+}

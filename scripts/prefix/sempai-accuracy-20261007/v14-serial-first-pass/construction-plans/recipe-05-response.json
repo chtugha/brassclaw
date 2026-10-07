@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8779a22029f1042b",
+  "object": "chat.completion",
+  "created": 1791358406,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"offline-data-return subworkflow; no Tool calls and no posted message\"}, {\"guard\": \"bound host.post_reply present in a step\", \"result\": \"actual user reply effect; requires current global Tool policy and technical checks\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"ca75d647-4f0e-5a35-abe7-cee7353e03c2\"}, {\"knowledge\": \"rust\", \"uuid\": \"9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval of the authored combination\", \"current sink must preserve full v3 fields (trigger, steps, dependency_registry, step_descriptions, variants)\"], \"notes\": \"The supplied PythonCode posts a fixed user reply via host.post_reply; its ten intents must request a posted message, not state data. The ToolSkill binding is a \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98739,
+    "total_tokens": 99016,
+    "completion_tokens": 277,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

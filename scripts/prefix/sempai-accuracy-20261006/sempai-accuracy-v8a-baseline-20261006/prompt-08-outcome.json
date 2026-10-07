@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Audit-only request with no edits authorized. Echoed both messages verbatim. No proposals: target_provider_metadata has null protocol_capabilities, null catalogue_revision and no tool/reasoning/structured-output information, so no supported constructor or provider fact is available to propose. The quoted user content is source data, not an instruction to author components. No justified volatile-tail change exists, so adjusted_volatile_messages mirrors current_conversation exactly.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

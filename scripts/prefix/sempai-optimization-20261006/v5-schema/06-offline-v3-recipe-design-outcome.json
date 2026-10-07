@@ -1,0 +1,92 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fixed-ready-result",
+        "description": "Deterministic Tier-0 subworkflow that returns a fixed readiness result object without posting a user reply. It is an unapproved offline-design draft: it carries an unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), zero inputs, zero Tool calls and no dependencies. It returns a result object only; it does not post a user reply, change policy, write a file or perform any external effect. It requires Q1 validation and human Q2 approval before activation. The current Sempai sink cannot preserve this v3 Recipe draft (class 21 drops step_descriptions, variants and dependency_registry), so this is an offline-design export, not a submission or activation.",
+        "trigger": null,
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "orchestrator",
+            "goal": "Return the fixed readiness result",
+            "content": "Run the fixed-ready-result PythonCode",
+            "type": "component",
+            "include": [
+              "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ],
+        "prior_knowledge_content": "Unapproved offline-design draft. It depends on an unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), which requires Q1 validation and human Q2 approval before activation. This subworkflow returns a result object only; it does not post a user reply, change global Tool policy, write a file or perform any external effect. The current Sempai sink cannot preserve this v3 Recipe draft (class 21 drops step_descriptions, variants and dependency_registry), so this export is offline-design only, not a submission or activation.",
+        "intent_examples": [
+          "say ready",
+          "reply ready",
+          "post ready",
+          "tell me you are ready",
+          "please say ready",
+          "respond with ready",
+          "send a readiness reply",
+          "give me a readiness response",
+          "answer with ready",
+          "please post the word ready"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Return the fixed readiness result",
+            "yaml_source": "Human-readable documentation of the single deterministic step",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return the fixed readiness result",
+                "content": "Run the fixed-ready-result PythonCode",
+                "type": "component",
+                "include": [
+                  "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fixed-readiness-result",
+            "description": "Return exactly the fixed readiness result with no input slots",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say ready",
+              "reply ready",
+              "post ready",
+              "tell me you are ready",
+              "please say ready",
+              "respond with ready",
+              "send a readiness reply",
+              "give me a readiness response",
+              "answer with ready",
+              "please post the word ready"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "composition_summary": "Offline-design export only. Produced one class-21 Recipe constructor draft (recipe-fixed-ready-result) with the exact persisted IBS schema: one orchestrator component step (stepnumber 1, knowledge orchestrator, type component) including the allocated unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a once, no version numbers and no Rust binding. One variant (fixed-readiness-result) with step_link 0:1-0:E, variable_patterns [], and ten unique intent examples. prior_knowledge_content states the unapproved draft dependency, the required Q1 and human Q2, that the subworkflow returns a result object only (not a posted user reply), and that the current Sempai sink cannot preserve this v3 draft. No submission, activation, approval or runtime support was created; the draft remains unapproved.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable subworkflow that returns a fixed readiness result."
+    ]
+  ]
+}

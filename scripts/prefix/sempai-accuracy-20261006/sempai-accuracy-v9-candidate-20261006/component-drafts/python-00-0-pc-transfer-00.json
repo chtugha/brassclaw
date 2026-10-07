@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-00",
+    "description": "Raw offset read via inputs.get('offset'); accept exact integer -4..5 inclusive (not bool/float/missing). Always result={accepted:boolean, offset:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "def inspect_offset(value):\n    accepted = type(value) is int and not isinstance(value, bool) and -4 <= value <= 5\n    return {'accepted': accepted, 'offset': value if accepted else None}\nresult = inspect_offset(inputs.get('offset'))"
+  }
+}

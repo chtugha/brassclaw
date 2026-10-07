@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b277ab9afca0ec64",
+  "object": "chat.completion",
+  "created": 1791322247,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Reviewed the packet as data. The volatile tail is preserved verbatim: system, user, assistant, tool in order and content unchanged. The tool result carries status=completed with receipt=test-fixture-effect-42, which is evidence the email send completed once. The UI timeout is a separate presentation/transport failure, not a failed dispatch. No proposal was made: the task only asks for an explanation, and no component draft is requested. No adjusted_volatile_messages, bridge_messages, proposed_recipe_updates, proposed_intent_examples, settings_adjustments or proposed_components entries were added. No message was invented, no effect was replayed, and no second send is claimed. The completed effect is not reissued; a timeout or lost response is unknown completion, not confirmed no effect, and must not trigger a replay.\",\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Inspect evidence without performing actions.\"],\n    [\"user\", \"The email was sent; only explain why the UI timed out.\"],\n    [\"assistant\", \"I sent the message once.\"],\n    [\"tool\", \"{\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"}\"]\n  ],\n  \"proposed_components\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76906,
+    "total_tokens": 77201,
+    "completion_tokens": 295,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

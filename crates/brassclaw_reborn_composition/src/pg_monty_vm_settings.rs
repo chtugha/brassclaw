@@ -78,7 +78,9 @@ mod inner {
         MontyVmSettings {
             revision: row.get::<_, i64>(9) as u64,
             max_duration_secs: row.get::<_, i32>(0) as u64,
-            max_allocations: Some(row.get::<_, i64>(1) as u64),
+            max_allocations: None,
+            allocation_count_limit_supported: false,
+            retired_max_allocations: row.get::<_, Option<i64>>(1).map(|value| value as u64),
             max_memory_bytes: Some(row.get::<_, i64>(2) as u64),
             failure_rollback_threshold: row.get::<_, i16>(3) as u32,
             active_orchestrator_id: row.get::<_, Option<uuid::Uuid>>(4).map(|id| id.to_string()),
@@ -99,7 +101,7 @@ mod inner {
             let client = self.pool.get().await.map_err(Self::map_pool)?;
             let row = client
                 .query_opt(
-                    "SELECT max_duration_secs, max_allocations, max_memory_bytes,
+                    "SELECT max_duration_secs, retired_max_allocations, max_memory_bytes,
                             failure_rollback_threshold, active_orchestrator_id,
                             prior_knowledge_token_budget, q4_retention_days,
                             forensic_packet_retention_days, token_budgets_enabled, revision
@@ -153,7 +155,12 @@ mod inner {
                     "max_duration_secs must be 30..=3600".into(),
                 ));
             }
-            let allocations = checked_positive_i64(update.max_allocations, "max_allocations")?;
+            if update.max_allocations.is_some() {
+                return Err(MontyVmSettingsError::Invalid(
+                    "max_allocations was removed by Monty 1.0; historical values are read-only"
+                        .into(),
+                ));
+            }
             let memory = checked_positive_i64(update.max_memory_bytes, "max_memory_bytes")?;
             let threshold = update
                 .failure_rollback_threshold
@@ -217,18 +224,17 @@ mod inner {
                 .query_opt(
                     "UPDATE reborn_monty_vm_settings SET
                  max_duration_secs = COALESCE($5, max_duration_secs),
-                 max_allocations = COALESCE($6, max_allocations),
-                 max_memory_bytes = COALESCE($7, max_memory_bytes),
-                 failure_rollback_threshold = COALESCE($8, failure_rollback_threshold),
-                 active_orchestrator_id = COALESCE($9, active_orchestrator_id),
-                 prior_knowledge_token_budget = COALESCE($10, prior_knowledge_token_budget),
-                 q4_retention_days = COALESCE($11, q4_retention_days),
-                 forensic_packet_retention_days = COALESCE($12, forensic_packet_retention_days),
-                 token_budgets_enabled = COALESCE($13, token_budgets_enabled),
+                 max_memory_bytes = COALESCE($6, max_memory_bytes),
+                 failure_rollback_threshold = COALESCE($7, failure_rollback_threshold),
+                 active_orchestrator_id = COALESCE($8, active_orchestrator_id),
+                 prior_knowledge_token_budget = COALESCE($9, prior_knowledge_token_budget),
+                 q4_retention_days = COALESCE($10, q4_retention_days),
+                 forensic_packet_retention_days = COALESCE($11, forensic_packet_retention_days),
+                 token_budgets_enabled = COALESCE($12, token_budgets_enabled),
                  revision = revision + 1
                  WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                   AND revision=$14
-                 RETURNING max_duration_secs, max_allocations, max_memory_bytes,
+                   AND revision=$13
+                 RETURNING max_duration_secs, retired_max_allocations, max_memory_bytes,
                    failure_rollback_threshold, active_orchestrator_id,
                    prior_knowledge_token_budget, q4_retention_days,
                    forensic_packet_retention_days, token_budgets_enabled, revision",
@@ -238,7 +244,6 @@ mod inner {
                         &self.agent_id,
                         &project_id,
                         &duration,
-                        &allocations,
                         &memory,
                         &threshold,
                         &orchestrator,
@@ -275,6 +280,78 @@ mod tests {
     };
 
     use super::PgMontyVmSettingsStore;
+
+    #[tokio::test]
+    async fn native_removed_allocation_limit_preserves_evidence_and_rejects_writes() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        // V034's actual seed went through the complete production bundle.
+        let seed = client.query_one("SELECT retired_max_allocations,revision FROM reborn_monty_vm_settings WHERE tenant_id='__system__'", &[]).await.unwrap();
+        assert_eq!(seed.get::<_, Option<i64>>(0), Some(5_000_000));
+        let seed_revision: i64 = seed.get(1);
+        let store = PgMontyVmSettingsStore::new(rig.pool.clone(), "__system__", "__system__");
+        let settings = store.get("__system__", "__system__").await.unwrap();
+        assert_eq!(settings.max_allocations, None);
+        assert!(!settings.allocation_count_limit_supported);
+        assert_eq!(settings.retired_max_allocations, Some(5_000_000));
+        assert_eq!(settings.revision, seed_revision as u64);
+        let update = serde_json::from_value(
+            serde_json::json!({"expected_revision": settings.revision, "max_allocations": 7}),
+        )
+        .unwrap();
+        assert!(matches!(
+            store.upsert("__system__", "__system__", &update).await,
+            Err(MontyVmSettingsError::Invalid(_))
+        ));
+        assert_eq!(
+            store
+                .get("__system__", "__system__")
+                .await
+                .unwrap()
+                .revision,
+            settings.revision
+        );
+
+        // Reapply the exact migration to a historical full table shape, with
+        // an explicitly edited count and an exhausted settings generation.
+        client.batch_execute("CREATE SCHEMA legacy_monty_test;
+            CREATE TABLE legacy_monty_test.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO legacy_monty_test, public;
+            ALTER TABLE reborn_monty_vm_settings RENAME COLUMN retired_max_allocations TO max_allocations;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN max_allocations SET NOT NULL;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN max_allocations SET DEFAULT 5000000;
+            INSERT INTO reborn_monty_vm_settings (tenant_id,user_id,agent_id,project_id,max_allocations,revision,max_duration_secs)
+                VALUES ('legacy','operator','agent','project',1234567,9223372036854775807,900);").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V100__retire_monty_allocation_count.sql"
+            ))
+            .await
+            .unwrap();
+        let preserved = client.query_one("SELECT retired_max_allocations,revision,max_duration_secs FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(preserved.get::<_, Option<i64>>(0), Some(1_234_567));
+        assert_eq!(preserved.get::<_, i64>(1), i64::MAX);
+        assert_eq!(preserved.get::<_, i32>(2), 900);
+        for sql in [
+            "UPDATE reborn_monty_vm_settings SET retired_max_allocations=42 WHERE tenant_id='legacy'",
+            "INSERT INTO reborn_monty_vm_settings (tenant_id,user_id,agent_id,project_id,retired_max_allocations) VALUES ('new','operator','agent','project',42)",
+        ] {
+            assert_eq!(
+                client.execute(sql, &[]).await.unwrap_err().code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        client.execute("INSERT INTO reborn_monty_vm_settings (tenant_id,user_id,agent_id,project_id) VALUES ('new','operator','agent','project')", &[]).await.unwrap();
+        assert_eq!(client.query_one("SELECT retired_max_allocations FROM reborn_monty_vm_settings WHERE tenant_id='new'", &[]).await.unwrap().get::<_, Option<i64>>(0), None);
+        assert!(
+            client
+                .execute("UPDATE reborn_monty_vm_settings SET max_allocations=7", &[])
+                .await
+                .is_err(),
+            "old writers must fail explicitly"
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
 
     #[tokio::test]
     async fn native_monty_settings_patch_is_revision_checked_and_atomic() {
@@ -326,6 +403,7 @@ mod tests {
             serde_json::json!({"max_duration_secs": 600}),
             serde_json::json!({"expected_revision": 0, "max_duration_secs": u64::MAX}),
             serde_json::json!({"expected_revision": 0, "max_allocations": u64::MAX}),
+            serde_json::json!({"expected_revision": 0, "max_allocations": 1}),
             serde_json::json!({"expected_revision": 0, "max_memory_bytes": 0}),
             serde_json::json!({"expected_revision": 0, "failure_rollback_threshold": 65536}),
             serde_json::json!({"expected_revision": 0, "q4_retention_days": 0}),
@@ -361,6 +439,44 @@ mod tests {
         let preserved = store.get("operator", "project").await.unwrap();
         assert_eq!(preserved.revision, 2);
         assert_eq!(preserved.max_duration_secs, 900);
+        // The graduation cursor is independent of operator configuration,
+        // even when configuration revisions can no longer be incremented.
+        client
+            .execute(
+                "INSERT INTO reborn_monty_vm_settings
+             (tenant_id,user_id,agent_id,project_id,revision)
+             VALUES ('settings-cas','exhausted-operator','agent','project',9223372036854775807)",
+                &[],
+            )
+            .await
+            .unwrap();
+        client
+            .execute(
+                "UPDATE reborn_monty_vm_settings SET last_graduation_at=now()
+             WHERE tenant_id='settings-cas' AND user_id='exhausted-operator'",
+                &[],
+            )
+            .await
+            .unwrap();
+        let exhausted = client
+            .query_one(
+                "SELECT revision,last_graduation_at IS NOT NULL FROM reborn_monty_vm_settings
+             WHERE tenant_id='settings-cas' AND user_id='exhausted-operator'",
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(exhausted.get::<_, i64>(0), i64::MAX);
+        assert!(exhausted.get::<_, bool>(1));
+        let invalid = client.execute(
+            "UPDATE reborn_monty_vm_settings SET last_graduation_at=now(),max_duration_secs=1200
+             WHERE tenant_id='settings-cas' AND user_id='exhausted-operator'",
+            &[],
+        ).await.unwrap_err();
+        assert_eq!(
+            invalid.code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
         // A stale first-write claim must not leave a default row behind.
         let patch = serde_json::from_value(serde_json::json!({"expected_revision": 1})).unwrap();
         assert!(matches!(

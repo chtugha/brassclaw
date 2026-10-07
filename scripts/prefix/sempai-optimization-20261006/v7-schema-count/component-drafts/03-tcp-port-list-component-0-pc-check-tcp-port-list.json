@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-tcp-port-list",
+    "description": "Pure-logic guard that validates a raw candidate TCP-port list before any network action. It inspects the raw candidate ports value and returns an explicit invalid-result object; it does not dispatch any Tool, make an LLM call, or perform I/O. Target input contract: ports is a nonempty list of exact integers, each in 1..65535 inclusive. Booleans are not integers and are rejected. Missing, null, scalar, empty, bool-element and out-of-range values fail closed by returning valid=false and ports=[] (never raising). The consuming Recipe must supply ports as a typed binding; this component does not perform that binding. Missing runtime prerequisite: the typed-runner/inputs mapping that supplies ports and enforces the integer type boundary must be implemented by the selected Monty runner; this component assumes only that ports is present in the inputs mapping. No approval, activation or dispatch permission is claimed.",
+    "content": "ports = inputs.get('ports')\nvalid = isinstance(ports, list) and len(ports) > 0\nif valid:\n    for p in ports:\n        if isinstance(p, bool) or not isinstance(p, int) or not 1 <= p <= 65535:\n            valid = False\n            break\nresult = {'valid': valid, 'ports': ports if valid else []}"
+  }
+}

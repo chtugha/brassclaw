@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bf3a840a917ce02e",
+  "object": "chat.completion",
+  "created": 1791325733,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"composition_summary\": \"Audit only; no edit authorized. The system text contains a repeated word (units units) but no edit was permitted, and the user message must be echoed exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown; no rewrite or inferred capability facts were applied.\", \"proposed_recipe_updates\": [], \"proposed_components\": [], \"settings_adjustments\": []\n  , \"adjusted_volatile_messages\": [\n    [\n      \"system\",\n      \"Use metric units units.\"\n    ],\n    [\n      \"user\",\n      \"Keep my exact request and punctuation: {a:1}.\"\n    ]\n  ],\n  \"proposed_intent_examples\": []\n  , \"bridge_messages\": []\n  }",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98246,
+    "total_tokens": 98405,
+    "completion_tokens": 159,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

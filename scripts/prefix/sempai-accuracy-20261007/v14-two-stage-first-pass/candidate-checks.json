@@ -1,0 +1,6298 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "contrast-00-response.json",
+      "name": "pc-contrast-00",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "9951d3e73078a7c03a3f48e8a5bfdb075418a91874a2065becb7771ce777d5cd",
+      "pure_python_gate": true,
+      "behavior_cases": 13,
+      "behavior_passed": 13,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": null
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": []
+          },
+          "expected": {
+            "ok": true,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              0
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              0
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                0
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              4,
+              4
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              4,
+              4
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                4,
+                4
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              0,
+              0,
+              0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              -1
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              5
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              true
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              0.0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              "0"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": {}
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": "x"
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-01-response.json",
+      "name": "pc-contrast-01",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "071f2e163b94740eaf5446f56a4268fafddc742572254f74891237683b381328",
+      "pure_python_gate": true,
+      "behavior_cases": 13,
+      "behavior_passed": 13,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": null
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": []
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              1
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              1
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                1
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              5,
+              5,
+              5
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              5,
+              5,
+              5
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                5,
+                5,
+                5
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              6
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              true
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              1.0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              "1"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": {}
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": "x"
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-02-response.json",
+      "name": "pc-contrast-02",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "b4d76237032e8aede835907e5c6f64e0171b7978ac243d8447f081789a5dccb7",
+      "pure_python_gate": true,
+      "behavior_cases": 13,
+      "behavior_passed": 13,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": null
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": []
+          },
+          "expected": {
+            "ok": true,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              2
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              2
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                2
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              6,
+              6,
+              6,
+              6
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              6,
+              6,
+              6,
+              6
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                6,
+                6,
+                6,
+                6
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              1
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              7
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              true
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              2.0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              "2"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": {}
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": "x"
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-03-response.json",
+      "name": "pc-contrast-03",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "607230e0f0a50c943b6e19cb1b105a5c05df754143d2fd5914e750f69377855a",
+      "pure_python_gate": true,
+      "behavior_cases": 13,
+      "behavior_passed": 13,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": null
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": []
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              3
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              3
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                3
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              7,
+              7
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              7,
+              7
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                7,
+                7
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              3,
+              3,
+              3
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              2
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              8
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              true
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              3.0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              "3"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": {}
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": "x"
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-04-response.json",
+      "name": "pc-contrast-04",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "650e38ea65224804a755610f620fc39c91e2b8050aac42dc56347cf701dfd673",
+      "pure_python_gate": true,
+      "behavior_cases": 13,
+      "behavior_passed": 13,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": null
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": []
+          },
+          "expected": {
+            "ok": true,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              4
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              4
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                4
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              8,
+              8,
+              8
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              8,
+              8,
+              8
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                8,
+                8,
+                8
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              4,
+              4,
+              4,
+              4
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              3
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              9
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              true
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              4.0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              "4"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": {}
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": "x"
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-05-response.json",
+      "name": "pc-contrast-05",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "d84bd1be57e51f964ec4c990261868bf4d095d8fa2173dddc139cfcdc9bc0298",
+      "pure_python_gate": true,
+      "behavior_cases": 13,
+      "behavior_passed": 13,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": null
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": []
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              5
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              5
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                5
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              9,
+              9,
+              9,
+              9
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "slots": [
+              9,
+              9,
+              9,
+              9
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "slots": [
+                9,
+                9,
+                9,
+                9
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              5,
+              5,
+              5,
+              5,
+              5
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              4
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              10
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              true
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              5.0
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": [
+              "5"
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": {}
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "slots": "x"
+          },
+          "expected": {
+            "ok": false,
+            "slots": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "slots": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-06-response.json",
+      "name": "pc-contrast-06",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "25a347f8fb45bf71644dc40799689b134f8a6f6a4d9a7bc8a304cabb76386289",
+      "pure_python_gate": true,
+      "behavior_cases": 16,
+      "behavior_passed": 16,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": null
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": []
+          },
+          "expected": {
+            "ok": true,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "abcde",
+                  "enabled": true
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "a",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcdef",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": {}
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": "x"
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-07-response.json",
+      "name": "pc-contrast-07",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "0dbc7ebd5b6bf38c3b8668ed21b26278efd02b692dfb8631935387c4750d82e7",
+      "pure_python_gate": true,
+      "behavior_cases": 16,
+      "behavior_passed": 16,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": null
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": []
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "abcde",
+                  "enabled": true
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "a",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcdef",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": {}
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": "x"
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-08-response.json",
+      "name": "pc-contrast-08",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "96686638e88a67b7b726f953cecd250a12bbfc74298a2671b71e3fe3135078a5",
+      "pure_python_gate": true,
+      "behavior_cases": 16,
+      "behavior_passed": 16,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": null
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": []
+          },
+          "expected": {
+            "ok": true,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "abcde",
+                  "enabled": true
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "a",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcdef",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": {}
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": "x"
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-09-response.json",
+      "name": "pc-contrast-09",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "10b35888e3cd5ec435ab4d0ec5288201c24327516324123c6dc7f3f011f8a742",
+      "pure_python_gate": true,
+      "behavior_cases": 16,
+      "behavior_passed": 16,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": null
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": []
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "abcde",
+                  "enabled": true
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "a",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcdef",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": {}
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": "x"
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-10-response.json",
+      "name": "pc-contrast-10",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "ebe031f57576cd83b92f04d5a596d9665fcd755e85960206d160155ef0104db7",
+      "pure_python_gate": true,
+      "behavior_cases": 16,
+      "behavior_passed": 16,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": null
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": []
+          },
+          "expected": {
+            "ok": true,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "abcde",
+                  "enabled": true
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "a",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcdef",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": {}
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": "x"
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "contrast-11-response.json",
+      "name": "pc-contrast-11",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "2a1737dec18dc9c513d1053dbc32a0c3ddfd4ab27cfc772b50dad342c44ddcb1",
+      "pure_python_gate": true,
+      "behavior_cases": 16,
+      "behavior_passed": 16,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": null
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": []
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                },
+                {
+                  "code": "ab",
+                  "enabled": false
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              },
+              {
+                "code": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "records": [
+              {
+                "code": "abcde",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "records": [
+                {
+                  "code": "abcde",
+                  "enabled": true
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "a",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "abcdef",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab"
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              {
+                "code": "ab",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": {}
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "records": "x"
+          },
+          "expected": {
+            "ok": false,
+            "records": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "records": []
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-00-response.json",
+      "name": "pc-transfer-00",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "59abcf594160c7c5b7bb685dcb024f6c8e313ff4e5ab97f550e3f505690d0015",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": null
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": true
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": false
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": -5
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": -4
+          },
+          "expected": {
+            "accepted": true,
+            "offset": -4
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "offset": -4
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 5
+          },
+          "expected": {
+            "accepted": true,
+            "offset": 5
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "offset": 5
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 6
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": -4.0
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": "-4"
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": []
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": {}
+          },
+          "expected": {
+            "accepted": false,
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "offset": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-01-response.json",
+      "name": "pc-transfer-01",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "08df2da99631fdfe161acdb441e1285c9b3abf9eade2a5939ca4a8b23349bf30",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": null
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": true
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": false
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": -4
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": -3
+          },
+          "expected": {
+            "accepted": true,
+            "window": -3
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "window": -3
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 6
+          },
+          "expected": {
+            "accepted": true,
+            "window": 6
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "window": 6
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 7
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": -3.0
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": "-3"
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": []
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": {}
+          },
+          "expected": {
+            "accepted": false,
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "window": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-02-response.json",
+      "name": "pc-transfer-02",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "e4ee96ae09bbc9601c3d9363564c9d334770587abd7a7f632cbab77668f14638",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": null
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": true
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": false
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": -3
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": -2
+          },
+          "expected": {
+            "accepted": true,
+            "quota": -2
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "quota": -2
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 7
+          },
+          "expected": {
+            "accepted": true,
+            "quota": 7
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "quota": 7
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 8
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": -2.0
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": "-2"
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": []
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": {}
+          },
+          "expected": {
+            "accepted": false,
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "quota": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-03-response.json",
+      "name": "pc-transfer-03",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "79129cd7bcd481017ce6ae944b2e6718777e9b5f517e71c2b37f12757aba6ee3",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": null
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": true
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": false
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": -2
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": -1
+          },
+          "expected": {
+            "accepted": true,
+            "lag": -1
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "lag": -1
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": 8
+          },
+          "expected": {
+            "accepted": true,
+            "lag": 8
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "lag": 8
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": 9
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": -1.0
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": "-1"
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": []
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "lag": {}
+          },
+          "expected": {
+            "accepted": false,
+            "lag": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "lag": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-04-response.json",
+      "name": "pc-transfer-04",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "4056b2af36218d97927af0cdaecff179b8c56297e60122b190b0e668e1b47b92",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": null
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": true
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": false
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": -1
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 0
+          },
+          "expected": {
+            "accepted": true,
+            "ttl": 0
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "ttl": 0
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 9
+          },
+          "expected": {
+            "accepted": true,
+            "ttl": 9
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "ttl": 9
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 10
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 0.0
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": "0"
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": []
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": {}
+          },
+          "expected": {
+            "accepted": false,
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "ttl": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-05-response.json",
+      "name": "pc-transfer-05",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "730f9d926f5e0c28910fe3bc97c6af1a45cdab36b38dc0dac87e561338d60d94",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": null
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": true
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": false
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 0
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 1
+          },
+          "expected": {
+            "accepted": true,
+            "rank": 1
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "rank": 1
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 10
+          },
+          "expected": {
+            "accepted": true,
+            "rank": 10
+          },
+          "actual": {
+            "result": {
+              "accepted": true,
+              "rank": 10
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 11
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 1.0
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": "1"
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": []
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": {}
+          },
+          "expected": {
+            "accepted": false,
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "accepted": false,
+              "rank": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-06-response.json",
+      "name": "pc-transfer-06",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "f46971af1ed38400edbd505fba8c915e199cc8d7c15ae26ae1dbb09210860281",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "missing",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": null
+          },
+          "expected": {
+            "kind": "null",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 1
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 2
+          },
+          "expected": {
+            "kind": "integer",
+            "offset": 2
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "offset": 2
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 11
+          },
+          "expected": {
+            "kind": "integer",
+            "offset": 11
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "offset": 11
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 12
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": 2.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": "2"
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "offset": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "offset": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "offset": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-07-response.json",
+      "name": "pc-transfer-07",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "96aa85394fa75fc907fa99c5d3177f8f4097fab4376734ba5c939358a04a2a92",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "missing",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": null
+          },
+          "expected": {
+            "kind": "null",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 2
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 3
+          },
+          "expected": {
+            "kind": "integer",
+            "window": 3
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "window": 3
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 12
+          },
+          "expected": {
+            "kind": "integer",
+            "window": 12
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "window": 12
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 13
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 3.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": "3"
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-10-response.json",
+      "name": "pc-transfer-10",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "c1d5a05b99324c2702acee16c2bcd2e1e5d24441ab10edfbe152a504c78b92e7",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 10,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "ttl": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "ttl": null
+          },
+          "expected": {
+            "kind": "null",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 5
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 6
+          },
+          "expected": {
+            "kind": "integer",
+            "ttl": 6
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "ttl": 6
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 15
+          },
+          "expected": {
+            "kind": "integer",
+            "ttl": 15
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "ttl": 16
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": 6.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": "6"
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ttl": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "ttl": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "ttl": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": false
+    },
+    {
+      "response": "python-11-response.json",
+      "name": "pc-transfer-11",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "48bec9b0eed3c630153b7f1346b7ba5ddc9d5ef96e7b090513a6f00b8f27119e",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 11,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "rank": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "rank": null
+          },
+          "expected": {
+            "kind": "null",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 6
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 7
+          },
+          "expected": {
+            "kind": "integer",
+            "rank": 7
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "rank": 7
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 16
+          },
+          "expected": {
+            "kind": "integer",
+            "rank": 16
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "rank": 16
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 17
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": 7.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": "7"
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "rank": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "rank": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "rank": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": false
+    },
+    {
+      "response": "recipe-00-response.json",
+      "name": "recipe-transfer-00",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": false
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-01-response.json",
+      "name": "recipe-transfer-01",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": true,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-02-response.json",
+      "name": "recipe-transfer-02",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-03-response.json",
+      "name": "recipe-transfer-03",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-04-response.json",
+      "name": "recipe-transfer-04",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-05-response.json",
+      "name": "recipe-transfer-05",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-07-response.json",
+      "name": "recipe-transfer-07",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-08-response.json",
+      "name": "recipe-transfer-08",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": true,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-09-response.json",
+      "name": "recipe-transfer-09",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-10-response.json",
+      "name": "recipe-transfer-10",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    },
+    {
+      "response": "recipe-11-response.json",
+      "name": "recipe-transfer-11",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": false,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    }
+  ],
+  "component_activation_performed": false
+}

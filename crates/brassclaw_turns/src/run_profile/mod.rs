@@ -93,7 +93,7 @@ pub use milestones::{
 pub use model::{
     HostManagedLoopModelPort, LoopModelBudgetAccountant, LoopModelGateway, LoopModelGatewayError,
     LoopModelGatewayRequest, LoopModelPolicyGuard, ModelCallOutcome, NoOpBudgetAccountant,
-    NoOpPolicyGuard,
+    NoOpPolicyGuard, PreparedLoopModelCall,
 };
 pub use model_observation::{
     CapabilityFailureDetail, CapabilityInputIssue, CapabilityInputIssueCode, CapabilityInputRepair,

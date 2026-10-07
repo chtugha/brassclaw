@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-weighted-entries",
+    "description": "Pure-logic validator that inspects a raw candidate list of weighted entries and returns an explicit validity result without exceptions. The outer input contract admits the raw candidate shape (a list, or a missing/null value) while the inner validation enforces the requested rules. Missing and null are distinct invalid outcomes; the result never raises and never coerces a malformed value into validity. This is a target typed-input interface; the runtime supplies step-local values through the inputs mapping and the kernel enforces global Tool policy before any real dispatch.",
+    "content": "def check_weighted_entries(candidate):\n    if not isinstance(candidate, list):\n        return {\"ok\": False, \"entries\": []}\n    if len(candidate) > 3:\n        return {\"ok\": False, \"entries\": []}\n    valid = True\n    entries = []\n    for item in candidate:\n        if not isinstance(item, dict):\n            valid = False\n            break\n        if set(item.keys()) != {\"label\", \"weight\"}:\n            valid = False\n            break\n        label = item.get(\"label\")\n        weight = item.get(\"weight\")\n        if not isinstance(label, str) or not isinstance(label, (int,)) or isinstance(label, bool) or not (1 <= len(label) <= 8):\n            valid = False\n            break\n        if not isinstance(weight, int) or isinstance(weight, bool) or not (0 <= weight <= 1):\n            valid = False\n            break\n        entries.append(item)\n    result = {\"ok\": valid, \"entries\": entries if valid else []}\n    return result"
+  }
+}

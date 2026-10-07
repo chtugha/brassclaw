@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Preserved the volatile user message unchanged; no justified prompt repair was warranted. The task is a component-drafting request for one class-22 PythonCode candidate named pc-check-flag. The host sink supports class 22 with name/description/content, so one constructor draft was emitted. The body is pure logic: it reads the raw flag via inputs.get('flag') (never direct access, since absence is a valid invalid-result), treats only exact booleans True and False as valid, and returns {valid, flag} with flag set to the original boolean when valid or null otherwise. A small helper check_flag is defined and invoked at module scope to assign result on every outcome; no imports, I/O, host calls, exceptions, coercion or eval/exec/open are used. No imports/I/O/host calls/exceptions/coercion. Preserve original conversation; unapproved draft, no actual tests/submission/approval claims.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create a reusable validator for an exact boolean flag."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-flag",
+        "description": "Pure-logic validator that accepts only the exact booleans True and False. Reads the raw flag from inputs.get('flag') so a missing key is a valid invalid-result (not an exception). Returns {valid: boolean, flag: original boolean when valid else null}. Uses a small helper check_flag and invokes it at module scope to assign result on every outcome. No imports, I/O, host calls, exceptions, coercion or eval/exec/open.",
+        "content": "def check_flag(raw):\n    return raw is True or raw is False\nresult = {'valid': False, 'flag': None}\nif check_flag(inputs.get('flag')):\n    result = {'valid': True, 'flag': inputs['flag']}"
+      }
+    }
+  ],
+  "proposed_recipe_updates": []
+}

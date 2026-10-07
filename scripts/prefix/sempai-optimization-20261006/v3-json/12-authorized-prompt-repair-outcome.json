@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer briefly."
+    ],
+    [
+      "user",
+      "List exactly three reasons to validate input."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Applied the one explicitly permitted prompt repair: removed the adjacent repeated word 'briefly' from the system message, yielding exactly 'Answer briefly.' Both messages, their roles and order, and the user content are preserved byte-for-byte. No component proposals, no new messages, no policy change. The target_provider_metadata carries no resolved provider capabilities (model, max_model_len, catalogue_revision, protocol_capabilities all null), so no provider-specific prompt diagnostics were possible; this is a pure textual repair as instructed.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

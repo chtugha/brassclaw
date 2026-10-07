@@ -1,0 +1,10 @@
+{
+  "actual_model_plan_shape_passed": true,
+  "mutations_rejected": [
+    "overlong notes",
+    "wrong helper type",
+    "extra root key",
+    "missing field"
+  ],
+  "plan_semantics_approved": false
+}

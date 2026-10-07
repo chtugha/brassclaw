@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-84ddf89fa73471a4",
+  "object": "chat.completion",
+  "created": 1791322360,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the single user message unchanged. Drafted one class-22 pure-logic component pc-check-weighted-entries with name/description/content only. The body reads every raw field via inputs.get (never direct access), validates the list shape and each item's exact label/weight types and bounds before computing eligibility, and returns {ok, entries} with the original list only when valid and [] otherwise. It makes zero host calls, imports, I/O or coercions; booleans are rejected as integers; missing and null are distinguished; extra item fields fail closed. The list cardinality contract is 0..3 inclusive (empty valid), so a four-item list is rejected before any effect. This is an unapproved draft and a target typed-input interface; typed runner support and Q1/Q2 approval precede activation. No other proposal arrays were populated per the test scope.\",\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate raw weighted entries, including an empty selection.\"]\n  ],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-weighted-entries\",\n        \"description\": \"Pure-logic guard that validates a raw list of weighted entries and returns whether it is well-formed. The list must have 0..3 items inclusive (empty is valid). Each item must be a JSON object with exactly the fields label and weight: label is a string of length 1..8 inclusive, weight is an exact integer 0..1 inclusive, never a boolean or float. Missing, null, extra item fields or invalid shapes fail closed without exceptions. Returns {ok: boolean, entries: original list if valid else []}. No imports, host calls, I/O or type coercion.\",\n        \"content\": \"def classify_entry(item):\\n    if not isinstance(item, dict):\\n        return False\\n    if 'label' not in item or 'weight' not in item:\\n        return False\\n    if len(item) != 2:\\n        return False\\n    label = item.get('label')\\n    weight = item.get('weight')\\n    if not (type(label) is str and 1 <= len(label) <= 8):\\n        return False\\n    if not (type(weight) is int and not isinstance(weight, bool) and 0 <= weight <= 1):\\n        return False\\n    return True\\n\\ndef check_weighted_entries(entries):\\n    if not isinstance(entries, list) or len(entries) > 3:\\n        return {'ok': False, 'entries': []}\\n    valid = True\\n    for item in entries:\\n        if not classify_entry(item):\\n            valid = False\\n            break\\n    result = {'ok': valid, 'entries': entries if valid else []}\\n    return result\\nresult = check_weighted_entries(inputs.get('entries'))\"\n      }\n    }\n  ],\n  \"settings_adjustments\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 77654,
+    "total_tokens": 78324,
+    "completion_tokens": 670,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

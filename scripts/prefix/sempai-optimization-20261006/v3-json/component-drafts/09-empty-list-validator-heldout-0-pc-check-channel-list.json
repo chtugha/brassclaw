@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-channel-list",
+    "description": "Pure-logic validator for a channel list. Accepts an optional channels input that may be absent or any raw JSON. A valid value is a list whose every item is an exact integer in 0..255 inclusive. Booleans, floats, null, missing and wrong types are rejected. Returns {ok:boolean, channels:original list if valid else []}. No exceptions, imports, host calls or coercion.",
+    "content": "channels = inputs.get(\"channels\")\nvalid = isinstance(channels, list) and len(channels) > 0\nif valid:\n    for item in channels:\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\n            valid = False\n            break\nresult = {\"ok\": valid, \"channels\": channels if valid else []}"
+  }
+}

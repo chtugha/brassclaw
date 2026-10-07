@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a425ff3380660bb6",
+  "object": "chat.completion",
+  "created": 1791325447,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Offline-design mode only. The host supplied a full v3 Recipe constructor contract (name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry) and an allocated unapproved PythonCode draft UUID 9a047867-22a3-5bcc-8a6b-1b06c20bbeff. The requested artifact is a single class-21 Recipe that returns state DATA only and never posts a user message. The live sink drops step_descriptions/variants/dependency_registry, so this is preserved as an offline full-v3 export with those fields inside the payload, not as a legacy update. The executable reference is the supplied UUID in step_descriptions step 1; steps is empty. No execution, submission, Q1/Q2 or activation occurred. Original conversation preserved; compatibility/intent/settings arrays empty under the test persona.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-00\",\n        \"description\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.\",\n        \"intent_examples\": [\n          \"compute the ready state data\",\n          \"return the ready state object\",\n          \"produce the fixed ready object\",\n          \"obtain the ready result data\",\n          \"calculate the ready state result\",\n          \"yield the ready state object\",\n          \"get the fixed ready state data\",\n          \"build the ready state object\",\n          \"evaluate the ready data subworkflow\",\n          \"derive the fixed ready state result\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Return state data\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"9a047867-22a3-5bcc-8a6b-1b06c20bbeff\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"ready-data\",\n            \"description\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"compute the ready state data\",\n              \"return the ready state object\",\n              \"produce the fixed ready object\",\n              \"obtain the ready result data\",\n              \"calculate the ready state result\",\n              \"yield the ready state object\",\n              \"get the fixed ready state data\",\n              \"build the ready state object\",\n              \"evaluate the ready data subworkflow\",\n              \"derive the fixed ready state result\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ],\n  \"settings_adjustments\": []\n  ,\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Design a reusable ready data-result workflow.\"\n    ]\n  ],\n  \"proposed_intent_examples\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98395,
+    "total_tokens": 99276,
+    "completion_tokens": 881,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

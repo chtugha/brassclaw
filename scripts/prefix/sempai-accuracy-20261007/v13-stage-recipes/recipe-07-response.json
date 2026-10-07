@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-ab4a599ecf1eb8b4",
+  "object": "chat.completion",
+  "created": 1791329587,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable stable reply workflow.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502 with content result = host.post_reply(answer='Stable'); unapproved ToolSkill 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-07 with the requested keys. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserved original conversation; root compatibility arrays empty under test persona.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-07\",\n        \"description\": \"Offline unapproved stable-reply subworkflow; binding then Python calls existing host.post_reply\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\",\n        \"intent_examples\": [\n          \"say stable\",\n          \"reply stable\",\n          \"post stable\",\n          \"send the stable reply\",\n          \"respond with stable\",\n          \"tell me stable\",\n          \"please say stable\",\n          \"please reply stable\",\n          \"post the fixed stable message\",\n          \"send the fixed stable message\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind reply Tool\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"8002e1ff-f3d9-57f7-8a1c-62b33b0da73a\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post fixed reply\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"249e49eb-fc44-5605-aa6d-6b7299216502\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"stable-reply\",\n            \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say stable\",\n              \"reply stable\",\n              \"post stable\",\n              \"send the stable reply\",\n              \"respond with stable\",\n              \"tell me stable\",\n              \"please say stable\",\n              \"please reply stable\",\n              \"post the fixed stable message\",\n              \"send the fixed stable message\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97166,
+    "total_tokens": 98191,
+    "completion_tokens": 1025,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

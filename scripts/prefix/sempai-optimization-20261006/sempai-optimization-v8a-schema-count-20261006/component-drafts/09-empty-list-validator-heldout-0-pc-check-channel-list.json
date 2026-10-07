@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-channel-list",
+    "description": "Pure-logic guard that validates a raw channel list. Accepts a list, including an empty list, whose items are exact integers 0..255 inclusive. Rejects bool, float, null, missing and wrong types. Returns {ok, channels} with the original list when valid or [] otherwise. No exceptions, imports, host calls, I/O or coercion.",
+    "content": "def check_channel_list(channels):\n    if not isinstance(channels, list):\n        return {'ok': False, 'channels': []}\n    ok = True\n    for item in channels:\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\n            ok = False\n            break\n    return {'ok': ok, 'channels': channels if ok else []}\nresult = check_channel_list(inputs.get('channels'))"
+  }
+}

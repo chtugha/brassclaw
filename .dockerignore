@@ -2,6 +2,11 @@ target/
 .git/
 .env
 .env.*
-*.md
-!CLAUDE.md
 node_modules/
+
+# Operator-only local test/credential material never belongs in build context.
+LOCAL_TEST_ENV.md
+.codex/
+.aws/
+.ssh/
+.brassclaw/

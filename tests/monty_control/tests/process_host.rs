@@ -1,17 +1,15 @@
 //! Actual subprocess/interpreter/allocator acceptance for the hosting candidate.
 //! No Recipe, model response or host effect is simulated as successful.
 use std::{
-    collections::BTreeSet,
-    path::Path,
     process::Stdio,
     time::{Duration, Instant},
 };
 
 use brassclaw_monty_host::{
-    VmBounds, VmFailure,
-    global::{GlobalBounds, Lifecycle},
+    VmFailure,
+    global::Lifecycle,
     process::{
-        GlobalProcess, PortAnswer, ProcessBoundary, ProcessFailure, ProcessLimits, RootBoot,
+        GlobalProcess, PortAnswer, ProcessBoundary, ProcessFailure, ProcessLimits, TaskSettings,
         WorkerCommand,
     },
 };
@@ -19,55 +17,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
-const SOURCE: &str = include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py");
-fn boot(source: &str) -> RootBoot {
-    RootBoot {
-        source: source.to_owned(),
-        checksum: Sha256::digest(source.as_bytes()).into(),
-        aliases: [
-            "await_next_task",
-            "resolve_intent",
-            "resolve_component_by_name",
-            "compose_orchestrator",
-            "run_program",
-            "resolve_reply",
-            "finish_task",
-        ]
-        .into_iter()
-        .map(str::to_owned)
-        .collect::<BTreeSet<_>>(),
-        bounds: GlobalBounds {
-            values: VmBounds {
-                max_source_bytes: 16384,
-                max_compiled_source_bytes: 65536,
-                max_feeds: 32,
-                max_stdout_bytes: 1024,
-                execution_slice: Duration::from_millis(5),
-                max_value_depth: 16,
-                max_value_nodes: 2048,
-                max_value_bytes: 16384,
-            },
-            workers: 2,
-            max_pending_calls: 8,
-        },
-        startup_timeout: Duration::from_secs(10),
-    }
-}
-fn limits() -> ProcessLimits {
-    ProcessLimits {
-        hard_memory_bytes: 64 * 1024 * 1024,
-        max_frame_bytes: 256 * 1024,
-        response_timeout: Duration::from_secs(5),
-    }
-}
-fn worker() -> &'static Path {
-    Path::new(env!("CARGO_BIN_EXE_global_worker"))
-}
-fn task() -> Value {
-    json!({"task_token": "task-a", "conversation_id": "reborn-conv-opaque",
-        "message_id": "message-a", "run_id": "run-a", "turn_id": "turn-a",
-        "user_input": "'quoted' Ü {{vars.query}}", "history": []})
-}
+mod support;
+use support::{SOURCE, boot, limits, task, worker};
 
 #[tokio::test]
 async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admission() {
@@ -154,6 +105,7 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         })
         .await
         .unwrap();
+    let task_handle = admitted.admitted_task.unwrap();
     let Some(ProcessBoundary::HostCall {
         key,
         name,
@@ -166,7 +118,10 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
     assert_eq!(name, "resolve_intent");
     assert_eq!(
         args,
-        vec![json!("task-a"), json!("'quoted' Ü {{vars.query}}")]
+        vec![
+            json!(task_handle.to_string()),
+            json!("'quoted' Ü {{vars.query}}")
+        ]
     );
     assert!(kwargs.is_empty());
     let pending = process
@@ -190,7 +145,7 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         panic!("root must report its task failure through the actual finish boundary");
     };
     assert_eq!(name, "finish_task");
-    assert_eq!(args[0], json!("task-a"));
+    assert_eq!(args[0], json!(task_handle.to_string()));
     assert_eq!(args[1]["status"], json!("failed"));
     assert_eq!(process.process_id(), Some(pid));
     assert!(process.terminate().await.is_some());
@@ -258,9 +213,13 @@ async fn parent_deadline_contains_actual_busy_startup_and_keeps_command_evidence
 
 #[tokio::test]
 async fn real_native_allocation_stops_only_worker_and_preserves_failed_boot() {
+    // Deliberately exercise the independent physical backstop without a soft
+    // preflight. Instance ServiceOwner rejects this probe-only configuration.
+    let mut physical_probe = boot("huge = 'x' * 67108864\nwhile True:\n    pass");
+    physical_probe.heap_settings = None;
     let result = GlobalProcess::start(
         worker(),
-        boot("huge = 'x' * 67108864\nwhile True:\n    pass"),
+        physical_probe,
         ProcessLimits {
             hard_memory_bytes: 8 * 1024 * 1024,
             ..limits()
@@ -353,4 +312,679 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
         assert!(diagnostic.contains("invalid worker request"));
         assert!(!diagnostic.contains("private-claim"));
     }
+}
+
+async fn recipe_command(
+    process: &mut GlobalProcess,
+    command: brassclaw_monty_host::process::RecipeCommand,
+) -> brassclaw_monty_host::process::ProcessSnapshot {
+    process
+        .exchange(WorkerCommand::Recipe { command })
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn task_cancellation_fences_children_and_settles_the_actual_root_future() {
+    use brassclaw_monty_host::process::{RecipeCommand, RecipeEvent, TaskHandle};
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let task = admitted.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall { key, name, .. }) = admitted.boundary else {
+        panic!("admission must reach the actual intent port")
+    };
+    assert_eq!(name, "resolve_intent");
+    process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let context = open_context(&mut process, task, None).await;
+    let unknown: TaskHandle =
+        serde_json::from_value(json!("00000000-0000-0000-0000-000000000000")).unwrap();
+    let denied = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::CancelTask { task: unknown },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        denied.kind,
+        ProcessFailure::Vm(VmFailure::ForeignContinuation)
+    );
+    let cancelled = recipe_command(&mut process, RecipeCommand::CancelTask { task }).await;
+    assert!(matches!(cancelled.recipe,
+        Some(RecipeEvent::CancellationRequested { task: actual }) if actual == task));
+    assert_eq!(cancelled.lifecycle, Lifecycle::Ready);
+    assert_eq!(cancelled.outstanding.len(), 2);
+    assert_eq!(cancelled.task_accounting.len(), 1);
+    let refused = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task,
+                parent: Some(context),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.kind, ProcessFailure::Vm(VmFailure::Terminal));
+    let rejected = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::CloseTask { task },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+    let failed = process
+        .exchange(WorkerCommand::Resolve {
+            key,
+            answer: PortAnswer::DomainError {
+                reason_kind: "actual_intent_host_error".into(),
+            },
+        })
+        .await
+        .unwrap();
+    let Some(ProcessBoundary::HostCall { name, args, .. }) = failed.boundary else {
+        panic!("the cancelled worker must reach its task failure handler")
+    };
+    assert_eq!(name, "finish_task");
+    assert_eq!(args[1]["reason_kind"], json!("task_cancelled"));
+    assert_eq!(failed.lifecycle, Lifecycle::Ready);
+    assert_eq!(failed.work_waits, vec![ready.work_waits[1]]);
+    assert_eq!(failed.withheld_answers.len(), 1);
+    assert_eq!(failed.withheld_answers[0].continuation, key);
+    assert!(matches!(&failed.withheld_answers[0].answer,
+        brassclaw_monty_host::HostAnswer::Raise(error)
+        if error.to_string().contains("actual_intent_host_error")));
+    // Neither the finish port nor external effect completion is acknowledged.
+    assert!(process.terminate().await.is_some());
+}
+async fn open_context(
+    process: &mut GlobalProcess,
+    task: brassclaw_monty_host::process::TaskHandle,
+    parent: Option<brassclaw_monty_host::process::RecipeContextId>,
+) -> brassclaw_monty_host::process::RecipeContextId {
+    use brassclaw_monty_host::process::{RecipeCommand, RecipeEvent};
+    match recipe_command(process, RecipeCommand::Open { task, parent })
+        .await
+        .recipe
+        .unwrap()
+    {
+        RecipeEvent::Opened { context, .. } => context,
+        _ => panic!("actual context opening required"),
+    }
+}
+fn selected(source: &str, aliases: &[&str]) -> brassclaw_monty_host::process::SelectedPython {
+    brassclaw_monty_host::process::SelectedPython {
+        source: source.into(),
+        checksum: Sha256::digest(source.as_bytes()).into(),
+        aliases: aliases.iter().map(|s| (*s).into()).collect(),
+    }
+}
+async fn start_context(
+    process: &mut GlobalProcess,
+    context: brassclaw_monty_host::process::RecipeContextId,
+    source: &str,
+    inputs: Value,
+    aliases: &[&str],
+) -> brassclaw_monty_host::process::RecipeBoundary {
+    use brassclaw_monty_host::process::{RecipeBoundary, RecipeCommand, RecipeEvent};
+    let mut snapshot = recipe_command(
+        process,
+        RecipeCommand::Start {
+            context,
+            selected: selected(source, aliases),
+            inputs,
+        },
+    )
+    .await;
+    loop {
+        match snapshot.recipe.unwrap() {
+            RecipeEvent::Progress {
+                boundary: RecipeBoundary::ControlYield { key },
+                ..
+            } => {
+                snapshot =
+                    recipe_command(process, RecipeCommand::ResumeControl { context, key }).await;
+            }
+            RecipeEvent::Progress { boundary, .. } => return boundary,
+            _ => panic!("actual interpreter progress required"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_context() {
+    use brassclaw_monty_host::heap::HeapSettings;
+    use brassclaw_monty_host::process::{RecipeBoundary, RecipeCommand};
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    assert!(
+        ready.vm_live_bytes > 0,
+        "compiled root must be charged at boot"
+    );
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let task_handle = admitted.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall { key, .. }) = admitted.boundary else {
+        panic!("actual root intent boundary required")
+    };
+    process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let parent = open_context(&mut process, task_handle, None).await;
+    assert!(matches!(start_context(&mut process, parent,
+        "held = 'x' * 524288\nresult = len(held)", json!({}), &[]).await,
+        RecipeBoundary::Complete { value } if value == json!(524288)));
+    let parent_usage = process
+        .exchange(WorkerCommand::Inspect)
+        .await
+        .unwrap()
+        .vm_live_bytes;
+    assert!(parent_usage >= ready.vm_live_bytes + 524288);
+    let child = open_context(&mut process, task_handle, Some(parent)).await;
+    assert!(matches!(start_context(&mut process, child,
+        "held = 'y' * 524288\nresult = len(held)", json!({}), &[]).await,
+        RecipeBoundary::Complete { value } if value == json!(524288)));
+    let both = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert!(both.vm_live_bytes >= parent_usage + 524288);
+    let idle = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert_eq!(
+        idle.vm_live_bytes, both.vm_live_bytes,
+        "transport receipts must not inflate the VM account"
+    );
+    let reduced = HeapSettings {
+        revision: 2,
+        max_vm_bytes: 1024 * 1024,
+    };
+    let unsafe_manual = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 1,
+            settings: reduced,
+            automatic: false,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        unsafe_manual.kind,
+        ProcessFailure::Vm(VmFailure::UnsafeHeapReduction)
+    );
+    assert_eq!(unsafe_manual.snapshot.unwrap().heap, both.heap);
+    let pending = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 1,
+            settings: reduced,
+            automatic: true,
+        })
+        .await
+        .unwrap();
+    assert_eq!(pending.heap.desired, Some(reduced));
+    assert_eq!(pending.heap.effective, both.heap.effective);
+    assert!(pending.heap.pending_reduction);
+    let mut another = task();
+    another["run_id"] = json!("heap-pending-unadmitted-run");
+    let no_capacity = process
+        .exchange(WorkerCommand::Admit {
+            key: pending.work_waits[0].1,
+            task: another,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        no_capacity.kind,
+        ProcessFailure::Vm(VmFailure::HeapBackpressure)
+    );
+    assert_eq!(no_capacity.snapshot.unwrap().task_accounting.len(), 1);
+    let stale = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 1,
+            settings: HeapSettings {
+                revision: 3,
+                max_vm_bytes: 2 * 1024 * 1024,
+            },
+            automatic: false,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        stale.kind,
+        ProcessFailure::Vm(VmFailure::SettingsRevisionConflict)
+    );
+    recipe_command(
+        &mut process,
+        RecipeCommand::CancelContext { context: child },
+    )
+    .await;
+    let remaining = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert!(remaining.vm_live_bytes + 524288 <= both.vm_live_bytes);
+    assert!(
+        remaining.vm_live_bytes >= ready.vm_live_bytes + 524288,
+        "releasing a child must not refund its parent's retained objects"
+    );
+    assert_eq!(remaining.heap.effective, Some(reduced));
+    assert!(!remaining.heap.pending_reduction);
+    let too_large = open_context(&mut process, task_handle, Some(parent)).await;
+    let allocation = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Start {
+                context: too_large,
+                selected: selected("result = 'z' * 2097152", &[]),
+                inputs: json!({}),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(allocation.kind, ProcessFailure::Vm(VmFailure::Python));
+    assert!(
+        allocation
+            .diagnostic
+            .as_deref()
+            .unwrap()
+            .contains("memory limit exceeded")
+    );
+    assert_eq!(
+        allocation.snapshot.unwrap().lifecycle,
+        Lifecycle::Ready,
+        "preflight rejection must not corrupt the unrelated root or retained parent"
+    );
+    recipe_command(
+        &mut process,
+        RecipeCommand::CancelContext { context: too_large },
+    )
+    .await;
+    assert!(matches!(start_context(&mut process, parent,
+        "result = len(held)", json!({}), &[]).await,
+        RecipeBoundary::Complete { value } if value == json!(524288)));
+    // Actual root host call remains unresolved; terminating the worker is only
+    // containment, not a fabricated effect or task-completion acknowledgement.
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn worker_recipe_state_child_handoff_and_task_cancellation_keep_root_alive() {
+    use brassclaw_monty_host::process::{RecipeBoundary, RecipeCommand, RecipeEvent};
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    let first = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let a = first.admitted_task.unwrap();
+    let root_compute = first.task_accounting[0].compute_time.unwrap();
+    assert!(
+        root_compute > Duration::ZERO,
+        "root execution is charged before its first port"
+    );
+    let Some(ProcessBoundary::HostCall { key, .. }) = first.boundary else {
+        panic!("intent boundary required")
+    };
+    let waiting = process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let parked_compute = waiting.task_accounting[0].compute_time.unwrap();
+    assert!(parked_compute >= root_compute);
+    let mut second_input = task();
+    second_input["run_id"] = json!("run-b");
+    second_input["conversation_id"] = json!("another-opaque-conversation");
+    let second = process
+        .exchange(WorkerCommand::Admit {
+            key: waiting.work_waits[0].1,
+            task: second_input,
+        })
+        .await
+        .unwrap();
+    let b = second.admitted_task.unwrap();
+    assert_ne!(a, b);
+    assert_eq!(
+        second
+            .task_accounting
+            .iter()
+            .find(|entry| entry.task == a)
+            .unwrap()
+            .compute_time,
+        Some(parked_compute)
+    );
+    assert!(
+        second
+            .task_accounting
+            .iter()
+            .find(|entry| entry.task == b)
+            .unwrap()
+            .compute_time
+            .unwrap()
+            > Duration::ZERO
+    );
+    let context_a = open_context(&mut process, a, None).await;
+    let context_b = open_context(&mut process, b, None).await;
+    let foreign_parent = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task: b,
+                parent: Some(context_a),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        foreign_parent.kind,
+        ProcessFailure::Vm(VmFailure::ForeignContinuation)
+    );
+    let hostile = "'quoted' Ü {{vars.query}}\nresult = 'source-injection'";
+    let result = start_context(
+        &mut process,
+        context_a,
+        "saved = inputs['value']\nresult = saved",
+        json!({"value": hostile}),
+        &[],
+    )
+    .await;
+    assert!(matches!(result, RecipeBoundary::Complete { value } if value == json!(hostile)));
+    let result = start_context(
+        &mut process,
+        context_b,
+        "saved = 'task-b-value'\nresult = saved",
+        json!({}),
+        &[],
+    )
+    .await;
+    assert!(matches!(result, RecipeBoundary::Complete { value } if value == json!("task-b-value")));
+    let RecipeBoundary::HostCall {
+        key: parent_key, ..
+    } = start_context(
+        &mut process,
+        context_a,
+        "child_value = host.child()\nresult = [saved, child_value]",
+        json!({}),
+        &["child"],
+    )
+    .await
+    else {
+        panic!("real parent handoff required")
+    };
+    let child = open_context(&mut process, a, Some(context_a)).await;
+    let RecipeBoundary::Complete { value } = start_context(
+        &mut process,
+        child,
+        "result = inputs['number'] * 7",
+        json!({"number": 6}),
+        &[],
+    )
+    .await
+    else {
+        panic!("real child computation required")
+    };
+    let foreign = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::ResumeHost {
+                context: context_b,
+                key: parent_key,
+                answer: PortAnswer::Return {
+                    value: value.clone(),
+                },
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        foreign.kind,
+        ProcessFailure::Vm(VmFailure::ForeignContinuation)
+    );
+    let parent = recipe_command(
+        &mut process,
+        RecipeCommand::ResumeHost {
+            context: context_a,
+            key: parent_key,
+            answer: PortAnswer::Return { value },
+        },
+    )
+    .await;
+    assert!(
+        matches!(parent.recipe, Some(RecipeEvent::Progress { boundary: RecipeBoundary::Complete { value }, .. }) if value == json!([hostile, 42]))
+    );
+    let RecipeBoundary::HostCall { key: child_key, .. } = start_context(
+        &mut process,
+        child,
+        "result = host.pending()",
+        json!({}),
+        &["pending"],
+    )
+    .await
+    else {
+        panic!("real pending child required")
+    };
+    let released = recipe_command(
+        &mut process,
+        RecipeCommand::CancelContext { context: context_a },
+    )
+    .await;
+    let Some(RecipeEvent::Released { contexts, .. }) = released.recipe else {
+        panic!("cancellation receipt required")
+    };
+    assert_eq!(contexts.len(), 2);
+    assert!(
+        contexts
+            .iter()
+            .any(|entry| entry.context == child && entry.pending_host == Some(child_key))
+    );
+    assert_eq!(process.process_id(), pid);
+    assert_eq!(released.lifecycle, Lifecycle::Ready);
+    let reopen = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task: a,
+                parent: None,
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(reopen.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+    let late = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::ResumeHost {
+                context: child,
+                key: child_key,
+                answer: PortAnswer::Return {
+                    value: json!("late"),
+                },
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        late.kind,
+        ProcessFailure::Vm(VmFailure::ForeignContinuation)
+    );
+    assert!(late.command.is_some());
+    let result = start_context(&mut process, context_b, "result = 40 + 2", json!({}), &[]).await;
+    assert!(matches!(result, RecipeBoundary::Complete { value } if value == json!(42)));
+    // A real running child yields at the bytecode checkpoint. Releasing it
+    // acknowledges only VM state and leaves the root's real ports unchanged.
+    let busy = recipe_command(
+        &mut process,
+        RecipeCommand::Start {
+            context: context_b,
+            selected: selected("while True:\n    pass", &[]),
+            inputs: json!({}),
+        },
+    )
+    .await;
+    assert!(matches!(
+        busy.recipe,
+        Some(RecipeEvent::Progress {
+            boundary: RecipeBoundary::ControlYield { .. },
+            ..
+        })
+    ));
+    let stopped = recipe_command(
+        &mut process,
+        RecipeCommand::CancelContext { context: context_b },
+    )
+    .await;
+    assert_eq!(stopped.lifecycle, Lifecycle::Ready);
+    assert_eq!(process.process_id(), pid);
+    for task in [a, b] {
+        let premature = process
+            .exchange(WorkerCommand::Recipe {
+                command: RecipeCommand::CloseTask { task },
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(premature.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+        let snapshot = premature.snapshot.unwrap();
+        assert_eq!(snapshot.task_accounting.len(), 2);
+        assert!(
+            snapshot
+                .task_accounting
+                .iter()
+                .find(|entry| entry.task == a)
+                .unwrap()
+                .compute_time
+                .unwrap()
+                > root_compute
+        );
+    }
+    assert!(process.terminate().await.is_some());
+    // The root's real intent ports remain unresolved. Local context release
+    // proves no durable finish or external effect settlement.
+}
+
+#[tokio::test]
+async fn worker_live_settings_and_uncatchable_child_abort_preserve_other_tasks() {
+    use brassclaw_monty_host::process::{RecipeBoundary, RecipeCommand};
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let task = admitted.admitted_task.unwrap();
+    let context = open_context(&mut process, task, None).await;
+    let RecipeBoundary::HostCall { key, .. } = start_context(
+        &mut process,
+        context,
+        "try:\n    result = host.pending()\nexcept Exception:\n    result = 'incorrectly-caught'",
+        json!({}),
+        &["pending"],
+    )
+    .await
+    else {
+        panic!("actual host boundary required")
+    };
+    let updated = recipe_command(
+        &mut process,
+        RecipeCommand::UpdateSettings {
+            expected_revision: 1,
+            settings: TaskSettings {
+                revision: 2,
+                max_compute_time: Duration::from_secs(300),
+                token_budgets_enabled: true,
+            },
+        },
+    )
+    .await;
+    assert_eq!(updated.effective_task_settings.unwrap().revision, 2);
+    let used = updated.task_accounting[0].compute_time.unwrap();
+    assert!(used > Duration::ZERO);
+    assert_eq!(updated.task_accounting[0].effective_revision, 2);
+    let stale = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateSettings {
+                expected_revision: 1,
+                settings: TaskSettings {
+                    revision: 3,
+                    max_compute_time: Duration::from_secs(400),
+                    token_budgets_enabled: false,
+                },
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        stale.kind,
+        ProcessFailure::Vm(VmFailure::SettingsRevisionConflict)
+    );
+    assert_eq!(
+        stale
+            .snapshot
+            .unwrap()
+            .effective_task_settings
+            .unwrap()
+            .revision,
+        2
+    );
+    let denied = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::ResumeHost {
+                context,
+                key,
+                answer: PortAnswer::TerminalError {
+                    reason_kind: "policy_denied".into(),
+                },
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(denied.kind, ProcessFailure::Vm(VmFailure::Python));
+    let snapshot = denied.snapshot.unwrap();
+    assert_eq!(snapshot.lifecycle, Lifecycle::Ready);
+    assert!(snapshot.task_accounting[0].compute_time.unwrap() >= used);
+    let root_wait = snapshot.work_waits[0].1;
+    let root_abort = process
+        .exchange(WorkerCommand::Resolve {
+            key: root_wait,
+            answer: PortAnswer::TerminalError {
+                reason_kind: "policy_denied".into(),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        root_abort.kind,
+        ProcessFailure::Vm(VmFailure::InvalidHostArguments)
+    );
+    process
+        .exchange(WorkerCommand::BeginShutdown)
+        .await
+        .unwrap();
+    let premature = process
+        .exchange(WorkerCommand::CloseWorker { key: root_wait })
+        .await
+        .unwrap_err();
+    assert_eq!(premature.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+    let active_close = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::CloseTask { task },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        active_close.kind,
+        ProcessFailure::Vm(VmFailure::WrongBoundary)
+    );
+    assert_eq!(active_close.snapshot.unwrap().task_accounting.len(), 1);
+    assert!(process.terminate().await.is_some());
 }

@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-11 that classifies raw rank: missing -> {kind:\"missing\",rank:null}; explicit null -> {kind:\"null\",rank:null}; exact integer 7..16 -> {kind:\"integer\",rank:original}; other -> {kind:\"invalid\",rank:null}. The body uses inputs.get('rank') so absence and null are distinct, checks exact int type with bounds 7..16, and assigns a module-level result on every path. No Tool calls, imports, I/O or host calls. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-11",
+        "description": "Classify raw rank: missing -> {kind:\"missing\",rank:null}; explicit null -> {kind:\"null\",rank:null}; exact integer 7..16 -> {kind:\"integer\",rank:original}; other -> {kind:\"invalid\",rank:null}. No bool/float/coercion/defaults/exceptions. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "rank = inputs.get('rank')\nif 'rank' not in inputs:\n    result = {'kind': 'missing', 'rank': None}\nelif rank is None:\n    result = {'kind': 'null', 'rank': None}\nelif type(rank) is int and 7 <= rank <= 16:\n    result = {'kind': 'integer', 'rank': rank}\nelse:\n    result = {'kind': 'invalid', 'rank': None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

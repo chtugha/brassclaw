@@ -10,8 +10,33 @@ CONTROL.patch uses zero-context hunks so blank context markers do not create
 trailing-whitespace warnings when the patch is tracked. Apply it only to the
 verified upstream files, using `git apply --unidiff-zero`.
 
-Extension version: `1.0.0-brassclaw.control.3`. Production still uses the old
-compatible interpreter; this library is used only by `tests/monty_control`.
+Extension version: `1.0.0-brassclaw.control.6`. The application dependency graph now uses
+these sources, including the Engine API migration and contained authoring
+utilities. Global production lifecycle acceptance remains incomplete; this API
+cutover alone does not resolve the seven composition message-flow failures.
+
+`control.4` adds `ExecutionObservation`: actual VM-local coroutine identity,
+cumulative executing time and cumulative preparation time. Resource checks and
+both sides of scheduler switches publish these clocks. Actual task exit closes
+the outgoing interval before discarding its identity; mechanical snapshot
+cleanup preserves it. New REPL feeds restore main context 0. None denotes
+discarded-context service work. The default hook retains the prior combined-clock
+API for task-owned children. Preparation is not assigned to the last loaded
+coroutine: importing a host result can resume a different worker.
+
+`GlobalVm` partitions execution into a bounded coroutine map and retains actual
+pending-call/context correlation. This is telemetry, not an admitted task budget:
+persistent workers are reused. Admission association, preparation ownership,
+task-local interruption and safe finishing still require integration. Control
+errors remain interpreter-terminal; do not use them to enforce one task's limit
+in the global root. Coroutine and host-call identity counters reject exhaustion
+before mutation/dispatch or taking heap references. They never wrap; refused calls
+release their arguments/pending effects.
+
+The changed serialized context and control error contract requires dump ABI
+`0xBC04`. Older continuations must be reconciled before upgrading; do not replay
+completed effects. All 228 upstream hashes and the exact patch round trip were
+verified against the recorded upstream checkout.
 
 The trusted ExecutionControl hook observes cumulative active execution time
 at periodic resource checks and execution-window exits, including completion
@@ -39,24 +64,70 @@ operations can observe cancellation through existing resource checks, but
 unpolled native operations remain a bounded-response gap. Synchronous `run`
 does not service yields; callers must use iterative execution.
 
-Dump ABI `0xBC03` stores the owned preparation account and deliberately rejects
+Dump ABI `0xBC04` stores the owned preparation account and deliberately rejects
 upstream dumps and previous `0xBC01`/`0xBC02` extensions. It does not reset
 preparation on reattachment.
 It does not authenticate snapshots; the existing trusted-producer requirement
 still applies. Deployment must reconcile old continuations before cutover.
 
-This does not prove heap isolation, async coroutine CPU attribution, complete
+The earlier clock-extension proofs did not establish heap isolation, complete
 native-operation preemption, bounded compiler/graph response, snapshot/cleanup
 accounting, one-shot construction accounting, production global
 hosting or WebUI acknowledgement. Phase 3a acceptance remains required.
 
 
-The same unreleased `control.3` extension fixes the worker allocator's finite
+The same unreleased `control.4` extension fixes the worker allocator's finite
 ceiling arithmetic: baseline-plus-budget overflow is rejected before replacing
 an armed limit, and live allocation/refund counters fail closed on overflow or
 underflow. `tests/monty_control` installs the actual allocator only in its
 isolated `allocator_probe` binary. The real native Monty allocation is stopped
 by the previous finite cap even after an invalid replacement was rejected.
 This is physical worker-backstop evidence, not shared logical heap/adaptive
-accounting or production process supervision. The dump ABI remains `0xBC03`;
+accounting or production process supervision. The dump ABI remains `0xBC04`;
 these allocator changes do not change serialized interpreter state.
+
+
+`control.5` adds `ControlYield::raise`, an ordinary catchable exception at the
+retained opcode boundary. A trusted task handler must be active, and its external
+futures must be settled before interruption. This neither supplies a call result
+nor clears a terminal control error. The isolated root host establishes that
+scope through its private `enter_task` handshake and refuses further dispatch
+after task compute exhaustion. Actual returned host answers displaced by a task
+failure are retained with their exact continuation for trusted reconciliation.
+Root worker failure handling remains alive; it does not acknowledge effects.
+Dump ABI `0xBC05` conservatively fences the changed interruption contract, including
+previous `0xBC04` continuations. Private worker protocol 3 carries the retained
+answers; they are never ordinary model-visible task state. Production startup,
+scoped cancellation and durable reconciliation remain acceptance requirements.
+
+
+`control.6` adds allocator ownership headers and an explicitly activated VM
+allocation domain. The worker enters a synchronous, thread-bound scope for
+interpreter construction/execution and controlled root/child adaptation. Each
+allocation retains its tag through scope exit, nested scopes, reallocations and
+destruction on another thread. Requested storage includes the private header
+and alignment padding. Incoming frame decoding and outgoing JSON serialization
+remain outside that domain; exported values allocated during VM adaptation keep
+their tags until released. Root/child interpreter heaps, compiled source and
+retained execution bookkeeping share one counter. This is neither RSS nor
+baseline subtraction, and does not include stacks or direct mappings.
+
+The interpreter's effective soft memory ceiling includes the worker's live
+shared limit. The separately armed physical allocator backstop also accounts
+for transport and remains finite. The instance service requires an initial
+logical limit before its real boot handshake; a standalone physical-backstop
+probe may deliberately omit the soft preflight. Private worker protocol 4
+carries actual domain bytes and desired/effective heap revisions. Manual edits
+below live usage are rejected without mutation. Automatic reductions retain the
+effective revision and block new admissions until actual reclamation permits
+the desired limit. Settings publication neither resets allocation ownership nor
+task compute. Expected control-edit denials preserve the global worker; uncertain
+transport failures still require containment and reconciliation.
+
+The dump structure is unchanged (`0xBC05`); ownership tags are allocator metadata,
+never serialized pointers or checkpoint authority. No old continuation/replay
+compatibility is asserted. Real allocation operations and actual root-plus-child
+execution are tested in `tests/monty_control`. Adaptive OS measurement, physical
+backstop resizing, production settings storage/publication and the complete
+global Recipe/catalogue cutover remain required. The current worker accepts
+logical growth only within its separately configured physical reserve.

@@ -320,7 +320,7 @@ fn preparation_clock_survives_dumps_without_resetting_or_accepting_old_abi() {
         *reattached.elapsed.lock().unwrap(),
         loaded.tracker().elapsed() + loaded.tracker().preparation_elapsed().unwrap()
     );
-    for previous in [0xBC01_u16, 0xBC02_u16] {
+    for previous in [0xBC01_u16, 0xBC02_u16, 0xBC03_u16, 0xBC04_u16] {
         let mut old_abi = bytes.clone();
         assert_eq!(&old_abi[..6], b"MONTY\0");
         old_abi[6..8].copy_from_slice(&previous.to_le_bytes());

@@ -8,7 +8,7 @@ use brassclaw_threads::{SessionThreadService, ThreadScope};
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, InstructionMaterializationStore, LoopCapabilityPort, LoopModelGateway,
     LoopModelGatewayError, LoopModelGatewayRequest, LoopModelPort, LoopModelResponse,
-    LoopPromptBundleAuthority, LoopSafeSummary,
+    LoopPromptBundleAuthority, LoopRunContext, LoopSafeSummary, PreparedLoopModelCall,
 };
 
 pub(super) struct ThreadResolvingLoopModelGateway<S, G>
@@ -24,22 +24,19 @@ where
     pub(super) instruction_materialization_store: Option<Arc<dyn InstructionMaterializationStore>>,
     pub(super) capabilities: Option<Arc<dyn LoopCapabilityPort>>,
     pub(super) prompt_authority: LoopPromptBundleAuthority,
+    pub(super) tool_result_source: Option<Arc<dyn brassclaw_loop_support::ToolResultPayloadSource>>,
 }
 
-#[async_trait]
-impl<S, G> LoopModelGateway for ThreadResolvingLoopModelGateway<S, G>
+impl<S, G> ThreadResolvingLoopModelGateway<S, G>
 where
-    S: SessionThreadService + ?Sized + Send + Sync,
-    G: HostManagedModelGateway + ?Sized + Send + Sync,
+    S: SessionThreadService + ?Sized + Send + Sync + 'static,
+    G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
 {
-    async fn stream_model(
-        &self,
-        request: LoopModelGatewayRequest,
-    ) -> Result<LoopModelResponse, LoopModelGatewayError> {
+    fn port(&self, context: LoopRunContext) -> ThreadBackedLoopModelPort<S, G> {
         let mut model_port = ThreadBackedLoopModelPort::new(
             Arc::clone(&self.thread_service),
             self.thread_scope.clone(),
-            request.context,
+            context,
             Arc::clone(&self.host_gateway),
             self.max_messages,
         )
@@ -53,7 +50,35 @@ where
         if let Some(capabilities) = self.capabilities.as_ref() {
             model_port = model_port.with_capability_port(Arc::clone(capabilities));
         }
+        if let Some(source) = self.tool_result_source.as_ref() {
+            model_port = model_port.with_tool_result_source(Arc::clone(source));
+        }
         model_port
+    }
+}
+
+#[async_trait]
+impl<S, G> LoopModelGateway for ThreadResolvingLoopModelGateway<S, G>
+where
+    S: SessionThreadService + ?Sized + Send + Sync + 'static,
+    G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
+{
+    async fn prepare_model_call(
+        &self,
+        request: LoopModelGatewayRequest,
+    ) -> Result<Option<Box<dyn PreparedLoopModelCall>>, LoopModelGatewayError> {
+        self.port(request.context)
+            .prepare_model_call(request.request)
+            .await
+            .map(Some)
+            .map_err(host_error_to_model_gateway_error)
+    }
+
+    async fn stream_model(
+        &self,
+        request: LoopModelGatewayRequest,
+    ) -> Result<LoopModelResponse, LoopModelGatewayError> {
+        self.port(request.context)
             .stream_model(request.request)
             .await
             .map_err(host_error_to_model_gateway_error)

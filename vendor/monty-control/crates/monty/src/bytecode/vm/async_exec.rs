@@ -241,7 +241,7 @@ impl<'h> VM<'h> {
                     // `New`, or another gather already spawned it (`spawn`
                     // returns `Ok(None)`).
                     if coro.get(self.heap).state != CoroutineState::New
-                        || self.scheduler.spawn(self.heap, item_id, Some(gather_id)).is_none()
+                        || self.scheduler.spawn(self.heap, item_id, Some(gather_id))?.is_none()
                     {
                         return Err(ExcType::cannot_reuse_already_awaited_coroutine());
                     }
@@ -445,6 +445,9 @@ impl<'h> VM<'h> {
         };
 
         self.cleanup_current_task();
+        // Clear only an actual exiting task, never VM::snapshot's mechanical
+        // Drop cleanup: that continuation still owns the loaded coroutine.
+        self.heap.tracker.set_execution_context(None);
 
         if self.resume_after_task_exit(delivery)? {
             Ok(AwaitResult::FramePushed)
@@ -475,6 +478,7 @@ impl<'h> VM<'h> {
         let awaiter = self.scheduler.get_task_mut(task_id).awaiter.take();
         let delivery = awaiter.and_then(|awaiter| self.deliver_awaiter_failure(awaiter, error));
         self.cleanup_current_task();
+        self.heap.tracker.set_execution_context(None);
         self.scheduler.cancel_task(task_id, self.heap);
         self.resume_after_task_exit(delivery)?;
         Ok(())
@@ -550,6 +554,11 @@ impl<'h> VM<'h> {
             if let Some(current) = self.scheduler.current_task_id() {
                 self.save_task_context(current);
             }
+            self.heap.tracker.set_execution_context(Some(task_id.raw()));
+            // A transition callback can latch fatal control failure. Check it
+            // before loading/running the selected task, including short feeds
+            // that cannot reach the periodic bytecode checkpoint.
+            self.heap.tracker.check_memory_time()?;
             self.scheduler.set_current_task(Some(task_id));
             self.load_or_init_task(task_id)?;
         }
@@ -861,14 +870,22 @@ impl<'h> VM<'h> {
     /// dropping it unawaited releases the value like any other awaitable. The
     /// call id is allocated rather than reused so it stays unique if the
     /// future is ever inspected.
-    pub(crate) fn settled_awaitable(&mut self, value: Value) -> Value {
-        let call_id = self.allocate_call_id();
+    pub(crate) fn settled_awaitable(&mut self, value: Value) -> RunResult<Value> {
+        let call_id = match self.allocate_call_id() {
+            Ok(id) => id,
+            Err(error) => {
+                value.drop_with(self);
+                return Err(error);
+            }
+        };
         let future = ExternalFuture {
             call_id,
             state: ExternalFutureState::Resolved(value),
             sleep_result: None,
         };
-        Value::Ref(self.heap.allocate(HeapData::ExternalFuture(Box::new(future))))
+        Ok(Value::Ref(
+            self.heap.allocate(HeapData::ExternalFuture(Box::new(future))),
+        ))
     }
 
     /// Raises `exc` uncatchably at the suspension point, for hosts enforcing
@@ -883,6 +900,8 @@ impl<'h> VM<'h> {
     pub fn abort(&mut self, exc: MontyException) -> RunResult<FrameExit> {
         let main = TaskId::default();
         if self.current_frame.is_parked && self.scheduler.main_task().is_some_and(|task| !task.frames.is_empty()) {
+            self.heap.tracker.set_execution_context(Some(main.raw()));
+            self.heap.tracker.check_memory_time()?;
             self.scheduler.set_current_task(Some(main));
             self.load_or_init_task(main)?;
         }

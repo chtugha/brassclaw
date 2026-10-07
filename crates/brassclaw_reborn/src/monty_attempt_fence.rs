@@ -151,23 +151,31 @@ pub(crate) struct MontyHostCall {
 }
 
 impl MontyHostCall {
-    pub(crate) fn finish<T>(
+    /// Preserve an actual success before withholding it from a fenced task.
+    /// The callback owns the value; recording does not authorize continuation.
+    pub(crate) fn finish_retaining<T>(
         mut self,
         result: Result<T, AgentLoopHostError>,
+        retain: impl FnOnce(MontyHostCallId, T),
     ) -> Result<T, AgentLoopHostError> {
-        let fenced = {
+        let result = {
             let mut calls = self.state.calls.lock();
+            // Recording must finish before removing the active call or waking
+            // acknowledgement waiters. This callback is private synchronous
+            // storage only; it must not reenter the fence or call host ports.
+            let result = match result {
+                Ok(value) if calls.fenced => {
+                    retain(self.id, value);
+                    Err(cancelled())
+                }
+                other => other,
+            };
             calls.active.remove(&self.id);
-            calls.fenced
+            result
         };
         self.finished = true;
         self.state.changed.notify_waiters();
-        // Preserve an actual host error; a late successful value cannot resume
-        // Python or authorize the next operation after the fence was closed.
-        match result {
-            Ok(_) if fenced => Err(cancelled()),
-            other => other,
-        }
+        result
     }
 }
 
@@ -217,13 +225,26 @@ mod tests {
             fence.begin_call().err().unwrap().kind,
             AgentLoopHostErrorKind::Cancelled
         );
+        let first_id = first.id;
+        let mut retained = None;
         assert_eq!(
-            first.finish(Ok("late value")).unwrap_err().kind,
+            first
+                .finish_retaining(Ok("late value"), |id, value| retained = Some((id, value)))
+                .unwrap_err()
+                .kind,
             AgentLoopHostErrorKind::Cancelled
         );
+        assert_eq!(retained, Some((first_id, "late value")));
         let error =
             AgentLoopHostError::new(AgentLoopHostErrorKind::Unavailable, "original host error");
-        assert_eq!(second.finish::<()>(Err(error.clone())).unwrap_err(), error);
+        assert_eq!(
+            second
+                .finish_retaining::<()>(Err(error.clone()), |_, _| panic!(
+                    "errors must remain errors"
+                ))
+                .unwrap_err(),
+            error
+        );
         assert!(
             fence
                 .fence_and_wait(address, Duration::ZERO)
@@ -269,12 +290,14 @@ mod tests {
         let call = fence.begin_call().unwrap();
         // Biased join polls both waits before completing the call. This exercises
         // registered waiters rather than only a completion-before-wait snapshot.
+        let recorded = std::sync::atomic::AtomicBool::new(false);
         let (first, second, ()) = tokio::join!(
             biased;
             fence.fence_and_wait(address, Duration::from_secs(1)),
             fence.fence_and_wait(address, Duration::from_secs(1)),
-            async { assert!(call.finish(Ok(())).is_err()); }
+            async { assert!(call.finish_retaining(Ok(()), |_, _| recorded.store(true, std::sync::atomic::Ordering::Release)).is_err()); }
         );
+        assert!(recorded.load(std::sync::atomic::Ordering::Acquire));
         assert!(first.unwrap().calls_settled());
         assert!(second.unwrap().calls_settled());
     }

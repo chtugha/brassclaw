@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-99a98d2300a72049",
+  "object": "chat.completion",
+  "created": 1791324482,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode c7983481-a51f-5068-ba4a-11220f293cd3 with content result = {'state': 'Stable'}; zero inputs and no dependencies. Drafted exactly one class-21 recipe-transfer-06 returning state DATA only, never posting a user message. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema; each step includes exactly one supplied UUID in order (ToolSkill 59f98ca1-ec29-5573-a2c1-fc47f6ac417f, PythonCode c7983481-a51f-5068-ba4a-11220f293cd3). One variant step_link=0:1-0:E, variable_patterns=[], and ten distinct data-returning intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required; current sink cannot preserve full v3 fields. No runtime/approval claims. Original conversation preserved; root compatibility arrays empty under test persona.\",\n  \"proposed_recipe_updates\": [\n    {\n      \"name\": \"recipe-transfer-06\",\n      \"description\": \"Offline unapproved stable data-result subworkflow; no Tool calls and no posted message\",\n      \"trigger\": null,\n      \"steps\": [],\n      \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.\",\n      \"intent_examples\": [\n        \"compute the stable state data\",\n        \"return the stable state object\",\n        \"produce the fixed stable object\",\n        \"obtain the stable result data\",\n        \"calculate the stable state result\",\n        \"yield the stable state object\",\n        \"get the fixed stable state data\",\n        \"build the stable state object\",\n        \"evaluate the stable data subworkflow\",\n        \"derive the fixed stable state result\"\n      ],\n      \"step_descriptions\": [\n        {\n          \"desc_idx\": 0,\n          \"label\": \"Offline unapproved stable data-result subworkflow; no Tool calls and no posted message\",\n          \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n          \"steps\": [\n            {\n              \"stepnumber\": 1,\n              \"knowledge\": \"rust\",\n              \"goal\": \"Bind stable Tool\",\n              \"content\": \"Use the supplied offline fixture\",\n              \"type\": \"component\",\n              \"include\": [\n                \"59f98ca1-ec29-5573-a2c1-fc47f6ac417f\"\n              ],\n              \"tool_bindings\": [],\n              \"dependencies\": null\n            },\n            {\n              \"stepnumber\": 2,\n              \"knowledge\": \"orchestrator\",\n              \"goal\": \"Return state data\",\n              \"content\": \"Use the supplied offline fixture\",\n              \"type\": \"component\",\n              \"include\": [\n                \"c7983481-a51f-5068-ba4a-11220f293cd3\"\n              ],\n              \"tool_bindings\": [],\n              \"dependencies\": null\n            }\n          ]\n        }\n      ],\n      \"variants\": [\n        {\n          \"variant_key\": \"recipe-transfer-06\",\n          \"description\": \"Offline unapproved stable data-result subworkflow; no Tool calls and no posted message\",\n          \"step_link\": \"0:1-0:E\",\n          \"intent_examples\": [\n            \"compute the stable state data\",\n            \"return the stable state object\",\n            \"produce the fixed stable object\",\n            \"obtain the stable result data\",\n            \"calculate the stable state result\",\n            \"yield the stable state object\",\n            \"get the fixed stable state data\",\n            \"build the stable state object\",\n            \"evaluate the stable data subworkflow\",\n            \"derive the fixed stable state result\"\n          ],\n          \"variable_patterns\": []\n        }\n      ],\n      \"dependency_registry\": null\n    }\n  ],\n  \"proposed_components\": [],\n  \"bridge_messages\": []\n  ,\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Design a reusable stable data-result workflow.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97539,
+    "total_tokens": 98610,
+    "completion_tokens": 1071,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

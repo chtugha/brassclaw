@@ -17,13 +17,9 @@ use brassclaw_hooks::middleware::{
     HookedLoopTranscriptPort,
 };
 use brassclaw_host_api::ExtensionId;
-use brassclaw_interceptor::{
-    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore, PacketId,
-    TokenAccountingSnapshot,
-};
+use brassclaw_interceptor::{InterceptorStore, NoopInterceptorStore};
 #[cfg(feature = "root-llm-provider")]
 use brassclaw_interceptor::{NoopProposalSink, SempaiProposalSink};
-#[cfg(feature = "root-llm-provider")]
 use brassclaw_loop_support::SystemBundleSource;
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
@@ -45,10 +41,12 @@ use crate::text_loop_driver::{TEXT_ONLY_DRIVER_ID, TEXT_ONLY_DRIVER_VERSION};
 
 mod config;
 mod model_gateway;
+mod model_interceptor;
 mod port_adapters;
 
 pub use config::{RebornLoopDriverHostError, RebornLoopDriverHostRequest, TextOnlyLoopHostConfig};
 use model_gateway::ThreadResolvingLoopModelGateway;
+use model_interceptor::InterceptingModelGateway;
 use port_adapters::{
     HostManagedLoopCheckpointPort, HostManagedLoopProgressPort, NoExtraLoopInputPort,
 };
@@ -1015,20 +1013,21 @@ where
     #[cfg(feature = "root-llm-provider")]
     proposal_sink: Arc<dyn SempaiProposalSink>,
     /// Optional Sempai model gateway for rerouting mode (Phase 5.5).
-    /// When `Some` and the mode is `Rerouting`, `on_prompt_assembled` calls
-    /// the Sempai to review and potentially adjust the Kohai prompt.
+    /// When `Some` and the mode is `Rerouting`, the authorized resolved-model boundary calls
+    /// Sempai to review the actual Kohai prompt under policy and budget checks.
     #[cfg(feature = "root-llm-provider")]
     sempai_gateway: Option<Arc<dyn HostManagedModelGateway>>,
     /// Shared interceptor mode flag (Phase 5.5).  When `Some` and set to
-    /// `Rerouting`, `on_prompt_assembled` calls the Sempai gateway.
+    /// `Rerouting`, the resolved-model boundary calls the Sempai gateway.
     /// When `None`, the interceptor is always in routing mode.
     #[cfg(feature = "root-llm-provider")]
     interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
     /// Optional prefix-cache bundle source (§K.1.5).
     /// When set, injected as instruction snippet #0 in every Kohai context
     /// load and as Part A of every Sempai review call.
-    #[cfg(feature = "root-llm-provider")]
     system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
+    token_budget_mode: Arc<dyn Fn() -> bool + Send + Sync>,
+    tool_result_source: Option<Arc<dyn brassclaw_loop_support::ToolResultPayloadSource>>,
 }
 
 /// Per-host-build callback that produces a fresh hook-gate factory bound
@@ -1103,8 +1102,9 @@ where
             sempai_gateway: None,
             #[cfg(feature = "root-llm-provider")]
             interceptor_mode: None,
-            #[cfg(feature = "root-llm-provider")]
             system_bundle_source: None,
+            token_budget_mode: Arc::new(|| false),
+            tool_result_source: None,
         }
     }
 
@@ -1225,6 +1225,14 @@ where
         resolver: Arc<dyn LoopCapabilityInputResolver>,
     ) -> Self {
         self.capability_input_resolver = Some(resolver);
+        self
+    }
+
+    pub fn with_tool_result_source(
+        mut self,
+        source: Arc<dyn brassclaw_loop_support::ToolResultPayloadSource>,
+    ) -> Self {
+        self.tool_result_source = Some(source);
         self
     }
 
@@ -1461,7 +1469,8 @@ where
 
     /// Install a live [`InterceptorStore`] for Sempai–Kohai forensic packet
     /// persistence. Each turn through the agent loop will create and persist
-    /// a [`ForensicPacket`] capturing the assembled prompt and Kohai response.
+    /// a [`brassclaw_interceptor::ForensicPacket`] capturing the resolved prompt
+    /// and the structured Kohai response immediately around provider dispatch.
     /// Without this, a [`NoopInterceptorStore`] is used and no packets are saved.
     pub fn with_interceptor_store(mut self, store: Arc<dyn InterceptorStore>) -> Self {
         self.interceptor_store = store;
@@ -1479,9 +1488,10 @@ where
     }
 
     /// Install the Sempai model gateway for rerouting mode (Phase 5.5).
-    /// When set and the interceptor mode is `Rerouting`, each turn's
-    /// `on_prompt_assembled` calls the Sempai to review and adjust the
-    /// Kohai prompt before it is forwarded.
+    /// When set and the interceptor mode is `Rerouting`, each authorized model
+    /// dispatch reviews its resolved prompt before forwarding it to Kohai.
+    /// Review failures stop dispatch; the accountant must support isolated
+    /// reservations sharing the task's governor and policy.
     #[cfg(feature = "root-llm-provider")]
     pub fn with_sempai_gateway(mut self, gateway: Arc<dyn HostManagedModelGateway>) -> Self {
         self.sempai_gateway = Some(gateway);
@@ -1503,9 +1513,18 @@ where
     /// Install the prefix-cache bundle source (§K.1.5).
     /// When set, the bundle is injected as instruction snippet #0 on every
     /// Kohai context load and as Part A of every Sempai review call.
-    #[cfg(feature = "root-llm-provider")]
     pub fn with_system_bundle_source(mut self, source: Arc<dyn SystemBundleSource>) -> Self {
         self.system_bundle_source = Some(source);
+        self
+    }
+
+    /// Attach the effective instance-wide setting, shared with Monty. Read it
+    /// at each prompt assembly; a factory build does not freeze token mode.
+    pub fn with_token_budget_mode<F>(mut self, mode: F) -> Self
+    where
+        F: Fn() -> bool + Send + Sync + 'static,
+    {
+        self.token_budget_mode = Arc::new(mode);
         self
     }
 
@@ -1581,8 +1600,9 @@ where
                 }
             }
         }
-        context_adapter = context_adapter.with_milestone_sink(Arc::clone(&self.milestone_sink));
-        #[cfg(feature = "root-llm-provider")]
+        context_adapter = context_adapter
+            .with_milestone_sink(Arc::clone(&self.milestone_sink))
+            .with_token_budget_mode(Arc::clone(&self.token_budget_mode));
         if let Some(source) = self.system_bundle_source.as_ref() {
             context_adapter = context_adapter.with_system_bundle_source(Arc::clone(source));
         }
@@ -1718,6 +1738,7 @@ where
         )
         .with_prompt_bundle_authority(prompt_authority.clone())
         .with_default_message_limit(max_messages)
+        .with_token_budget_mode(Arc::clone(&self.token_budget_mode))
         .with_current_surface_lookup(move || surface_state_for_prompt.current())
         .with_instruction_materialization_store(Arc::clone(&instruction_materialization_store))
         .with_safety_context(self.safety_context.clone());
@@ -1763,15 +1784,45 @@ where
             )),
             None => Arc::new(NoExtraLoopInputPort::new(run_context.clone())),
         };
+        #[cfg(feature = "root-llm-provider")]
+        let sempai_accountant = if self.sempai_gateway.is_some() {
+            Some(
+                self.model_accountant
+                    .isolated_work_accountant()
+                    .ok_or_else(|| RebornLoopDriverHostError::InvalidRequest {
+                        reason: "Sempai requires isolated accounting for nested provider work"
+                            .into(),
+                    })?,
+            )
+        } else {
+            None
+        };
+        let intercepted_gateway = Arc::new(InterceptingModelGateway {
+            gateway: Arc::clone(&self.model_gateway),
+            run_context: run_context.clone(),
+            store: Arc::clone(&self.interceptor_store),
+            next_iteration: std::sync::atomic::AtomicU32::new(0),
+            #[cfg(feature = "root-llm-provider")]
+            proposal_sink: Arc::clone(&self.proposal_sink),
+            #[cfg(feature = "root-llm-provider")]
+            sempai_gateway: self.sempai_gateway.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            mode: self.interceptor_mode.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            accountant: sempai_accountant,
+            #[cfg(feature = "root-llm-provider")]
+            policy_guard: Arc::clone(&self.model_policy_guard),
+        });
         let model_gateway = Arc::new(ThreadResolvingLoopModelGateway {
             thread_service: Arc::clone(&self.thread_service),
             thread_scope: effective_scope.clone(),
-            host_gateway: Arc::clone(&self.model_gateway),
+            host_gateway: intercepted_gateway,
             max_messages,
             identity_context_source: self.identity_context_source.clone(),
             instruction_materialization_store: Some(Arc::clone(&instruction_materialization_store)),
             capabilities: Some(Arc::clone(&capabilities)),
             prompt_authority,
+            tool_result_source: self.tool_result_source.clone(),
         });
         let mut model: Arc<dyn LoopModelPort> = Arc::new(HostManagedLoopModelPort::with_guards(
             run_context.clone(),
@@ -1842,15 +1893,6 @@ where
             retrieval_lookup: self.retrieval_lookup.clone(),
             orchestrator_lookup: self.orchestrator_lookup.clone(),
             message_text_resolver: self.message_text_resolver.clone(),
-            interceptor_store: Arc::clone(&self.interceptor_store),
-            #[cfg(feature = "root-llm-provider")]
-            proposal_sink: Arc::clone(&self.proposal_sink),
-            #[cfg(feature = "root-llm-provider")]
-            sempai_gateway: self.sempai_gateway.clone(),
-            #[cfg(feature = "root-llm-provider")]
-            interceptor_mode: self.interceptor_mode.clone(),
-            #[cfg(feature = "root-llm-provider")]
-            system_bundle_source: self.system_bundle_source.clone(),
             _event_subscription: event_subscription,
         })
     }
@@ -1922,22 +1964,6 @@ pub struct RebornLoopDriverHost {
     retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
     orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>>,
     message_text_resolver: Option<Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>>,
-    interceptor_store: Arc<dyn InterceptorStore>,
-    /// Proposal sink for Sempai-proposed component updates and intent examples.
-    /// Routes `proposed_recipe_updates` / `proposed_intent_examples` to Q1.
-    #[cfg(feature = "root-llm-provider")]
-    proposal_sink: Arc<dyn SempaiProposalSink>,
-    /// Sempai gateway for rerouting mode. `None` in non-root-llm-provider builds.
-    #[cfg(feature = "root-llm-provider")]
-    sempai_gateway: Option<Arc<dyn HostManagedModelGateway>>,
-    /// Shared interceptor mode flag. `None` when not wired.
-    #[cfg(feature = "root-llm-provider")]
-    interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
-    /// Prefix-cache bundle source for Sempai Part A injection (§K.1.5).
-    /// Kohai injection is handled by `ThreadBackedLoopContextPort` via
-    /// `context`; this field is used only by `run_sempai_review`.
-    #[cfg(feature = "root-llm-provider")]
-    system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
     _event_subscription: Option<EventTriggeredHookSubscriptionHandle>,
 }
 
@@ -2004,397 +2030,25 @@ impl brassclaw_turns::run_profile::LoopOrchestratorPort for RebornLoopDriverHost
     }
 }
 
+// Capture occurs after prompt authorization/resolution in the host gateway.
+// The legacy executor's reference-only snapshot cannot represent that prompt.
 #[async_trait]
 impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost {
     async fn on_prompt_assembled(
         &self,
-        run_id: &str,
-        iteration: u32,
-        prompt_snapshot: serde_json::Value,
+        _run_id: &str,
+        _iteration: u32,
+        _snapshot: serde_json::Value,
     ) -> Option<InterceptorResult> {
-        // Build a minimal CapturedPrompt from the snapshot JSON so we can
-        // persist a ForensicPacket keyed by a fresh PacketId.
-        let messages: Vec<(String, String)> = prompt_snapshot
-            .get("messages")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| {
-                        let role = m.get("role")?.as_str()?.to_string();
-                        let content = m
-                            .get("content_ref")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        Some((role, content))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let message_count = messages.len() as u32;
-        let capability_surface_version = prompt_snapshot
-            .get("capability_surface_version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let visible_capability_count = prompt_snapshot
-            .get("visible_capability_count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
-        let captured = CapturedPrompt {
-            messages: messages.clone(),
-            segments: Vec::new(),
-            token_accounting: TokenAccountingSnapshot {
-                context_window_limit: 0,
-                max_output_tokens: 0,
-                total_input_estimated: 0,
-                message_count,
-                kv_cache_optimised: false,
-            },
-            capability_surface_version,
-            visible_capability_count,
-        };
-        let packet = ForensicPacket::new(run_id, iteration, captured);
-        let packet_id = packet.id.as_str().to_string();
-        if let Err(error) = self.interceptor_store.save(&packet).await {
-            tracing::debug!(
-                run_id,
-                iteration,
-                packet_id = %packet_id,
-                error = %error,
-                "interceptor: failed to save forensic packet (non-fatal)"
-            );
-        }
-
-        // Check for rerouting mode (cfg-gated).
-        #[cfg(feature = "root-llm-provider")]
-        if let (Some(gateway), Some(mode)) =
-            (self.sempai_gateway.as_ref(), self.interceptor_mode.as_ref())
-            && mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting
-            && let Some(result) = self
-                .run_sempai_review(run_id, iteration, &packet_id, messages, gateway)
-                .await
-        {
-            return Some(result);
-        }
-        // Sempai review failed, not in rerouting mode, or gateway/mode not wired:
-        // fall through to the routing result below.
-
-        // Routing mode: packet saved, no Sempai adjustment.
-        Some(InterceptorResult {
-            packet_id,
-            adjusted_messages: None,
-        })
+        None
     }
 
     async fn on_kohai_response(
         &self,
-        packet_id: &str,
-        response_text: &str,
-        usage_json: Option<serde_json::Value>,
+        _packet_id: &str,
+        _response: &str,
+        _usage: Option<serde_json::Value>,
     ) {
-        let id = PacketId(packet_id.to_string());
-        let usage = usage_json.as_ref().and_then(|u| {
-            Some(KohaiUsage {
-                input_tokens: u.get("input_tokens")?.as_u64()? as u32,
-                output_tokens: u.get("output_tokens")?.as_u64()? as u32,
-                cache_read_input_tokens: u
-                    .get("cache_read_input_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32,
-                cache_creation_input_tokens: u
-                    .get("cache_creation_input_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32,
-            })
-        });
-        let closed = match self.interceptor_store.get(&id).await {
-            Ok(Some(packet)) => {
-                // If Sempai already reviewed this packet (rerouting path),
-                // preserve the SempaiReviewed status — only update the
-                // kohai_response/usage fields that were empty placeholders.
-                if packet.status == brassclaw_interceptor::PacketStatus::SempaiReviewed {
-                    packet.with_kohai_response_sempai_reviewed(response_text, usage)
-                } else {
-                    packet.with_kohai_response(response_text, usage)
-                }
-            }
-            Ok(None) => {
-                tracing::debug!(
-                    packet_id,
-                    "interceptor: packet not found for kohai response; creating tombstone"
-                );
-                return;
-            }
-            Err(error) => {
-                tracing::debug!(
-                    packet_id,
-                    error = %error,
-                    "interceptor: failed to load forensic packet (non-fatal)"
-                );
-                return;
-            }
-        };
-        if let Err(error) = self.interceptor_store.save(&closed).await {
-            tracing::debug!(
-                packet_id,
-                error = %error,
-                "interceptor: failed to save closed forensic packet (non-fatal)"
-            );
-        }
-    }
-}
-
-impl RebornLoopDriverHost {
-    /// Call the Sempai gateway to review and optionally adjust the Kohai prompt.
-    ///
-    /// Builds the 3-part Sempai audit prompt:
-    /// - Part A: static base (assembled component catalog — loaded from config,
-    ///   empty when not yet assembled).
-    /// - Part B: Sempai persona instructions (from `sempai_audit.md`).
-    /// - Part C: per-turn volatile tail (thread history, component manifest).
-    ///
-    /// On success updates the `ForensicPacket` to `SempaiReviewed` status and
-    /// returns an `InterceptorResult` with the recomposed messages.
-    /// On any failure (parse error, gateway error, store error) returns `None`
-    /// so the caller falls back to routing mode.
-    #[cfg(feature = "root-llm-provider")]
-    async fn run_sempai_review(
-        &self,
-        run_id: &str,
-        iteration: u32,
-        packet_id: &str,
-        messages: Vec<(String, String)>,
-        gateway: &Arc<dyn HostManagedModelGateway>,
-    ) -> Option<InterceptorResult> {
-        use brassclaw_interceptor::SempaiReviewOutcome;
-        use brassclaw_loop_support::{
-            HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
-        };
-        use brassclaw_turns::LoopMessageRef;
-
-        // Part A: prefix-cache bundle (§K.1.5). Fetched from the
-        // `SystemBundleSource` when wired; falls through to an empty Vec
-        // when not yet assembled or the source is not installed.
-        let part_a_bundle: Option<String> =
-            if let Some(source) = self.system_bundle_source.as_deref() {
-                let user_id = self
-                    .run_context
-                    .actor
-                    .as_ref()
-                    .map(|a| a.user_id.as_str())
-                    .unwrap_or("_system");
-                let project_id = self
-                    .run_context
-                    .scope
-                    .project_id
-                    .as_ref()
-                    .map(|p| p.as_str())
-                    .unwrap_or("default");
-                Some(source.get_system_bundle(user_id, project_id).await)
-            } else {
-                None
-            };
-
-        // Part B: Sempai persona (DB-loaded at boot; editable in WebUI
-        // via interceptor config service).
-        let persona_text = sempai_persona();
-
-        // Part C: per-turn volatile tail — the actual Kohai messages plus a
-        // JSON manifest of the component refs extracted from the snapshot.
-        let volatile_tail = serde_json::to_string(&messages).unwrap_or_default();
-
-        // Build the Sempai request.
-        // Message layout: [Part A bundle (opt), Part B persona, Part C volatile]
-        let mut sempai_messages: Vec<HostManagedModelMessage> = Vec::new();
-
-        // Part A: bundle System message [0].
-        if let Some(bundle) = part_a_bundle {
-            let bundle_ref = LoopMessageRef::new("interceptor:sempai-bundle".to_string())
-                .map_err(|e| {
-                    tracing::debug!(error = %e, "interceptor: sempai bundle ref invalid");
-                })
-                .ok()?;
-            sempai_messages.push(HostManagedModelMessage {
-                role: HostManagedModelMessageRole::System,
-                content: bundle,
-                content_ref: bundle_ref,
-                tool_result_provider_call: None,
-                tool_result_content: None,
-            });
-        }
-
-        let sentinel_ref = LoopMessageRef::new("interceptor:sempai-audit".to_string())
-            .map_err(|e| {
-                tracing::debug!(error = %e, "interceptor: sempai sentinel ref invalid");
-            })
-            .ok()?;
-
-        // Part B: persona System message.
-        sempai_messages.push(HostManagedModelMessage {
-            role: HostManagedModelMessageRole::System,
-            content: persona_text.to_string(),
-            content_ref: sentinel_ref.clone(),
-            tool_result_provider_call: None,
-            tool_result_content: None,
-        });
-
-        let user_ref = LoopMessageRef::new("interceptor:sempai-volatile".to_string())
-            .map_err(|e| {
-                tracing::debug!(error = %e, "interceptor: sempai volatile ref invalid");
-            })
-            .ok()?;
-
-        // Part C: volatile tail User message.
-        sempai_messages.push(HostManagedModelMessage {
-            role: HostManagedModelMessageRole::User,
-            content: volatile_tail,
-            content_ref: user_ref,
-            tool_result_provider_call: None,
-            tool_result_content: None,
-        });
-
-        let model_profile_id = brassclaw_turns::run_profile::ModelProfileId::new("sempai_model")
-            .map_err(|e| {
-                tracing::debug!(error = %e, "interceptor: sempai model profile id invalid");
-            })
-            .ok()?;
-
-        let request = HostManagedModelRequest {
-            model_profile_id,
-            messages: sempai_messages,
-            surface_version: None,
-            resolved_model_route: None,
-            run_id: self.run_context.run_id,
-            turn_id: self.run_context.turn_id,
-        };
-
-        let response = match gateway.stream_model(request).await {
-            Ok(resp) => resp,
-            Err(error) => {
-                tracing::debug!(
-                    run_id,
-                    iteration,
-                    packet_id,
-                    error = %error,
-                    "interceptor: sempai gateway call failed; falling back to routing"
-                );
-                return None;
-            }
-        };
-
-        // Collect the full response text.
-        let response_text: String = response.safe_text_deltas.join("");
-
-        // Parse the response as a SempaiReviewOutcome JSON object.
-        let outcome: SempaiReviewOutcome = match serde_json::from_str(&response_text) {
-            Ok(o) => o,
-            Err(error) => {
-                tracing::debug!(
-                    run_id,
-                    iteration,
-                    packet_id,
-                    error = %error,
-                    "interceptor: sempai response is not valid JSON SempaiReviewOutcome; \
-                     falling back to routing"
-                );
-                return None;
-            }
-        };
-
-        // Route proposed_recipe_updates and proposed_intent_examples to Q1
-        // validation queue (non-fatal: failures are logged but do not abort
-        // the rerouting pipeline).
-        if !outcome.proposed_recipe_updates.is_empty()
-            || !outcome.proposed_intent_examples.is_empty()
-        {
-            let user_id = self
-                .run_context
-                .actor
-                .as_ref()
-                .map(|a| a.user_id.as_str())
-                .unwrap_or_default();
-            let project_id = self
-                .run_context
-                .scope
-                .project_id
-                .as_ref()
-                .map(|p| p.as_str())
-                .unwrap_or_default();
-            match self
-                .proposal_sink
-                .submit_proposals(
-                    user_id,
-                    project_id,
-                    &outcome.proposed_recipe_updates,
-                    &outcome.proposed_intent_examples,
-                    &outcome.proposed_components,
-                )
-                .await
-            {
-                Ok(result) => {
-                    tracing::debug!(
-                        packet_id,
-                        recipe_updates = result.recipe_updates_queued,
-                        intent_examples = result.intent_examples_queued,
-                        components = result.components_queued,
-                        "interceptor: sempai proposals queued in Q1"
-                    );
-                }
-                Err(error) => {
-                    tracing::debug!(
-                        packet_id,
-                        error = %error,
-                        "interceptor: sempai proposal submission failed (non-fatal)"
-                    );
-                }
-            }
-        }
-
-        // Build the recomposed Kohai prompt:
-        // stable-base messages (empty for now, Part A) +
-        // Sempai bridge messages + adjusted volatile messages.
-        let mut recomposed: Vec<(String, String)> = Vec::new();
-        for (role, content) in &outcome.bridge_messages {
-            recomposed.push((role.clone(), content.clone()));
-        }
-        for (role, content) in &outcome.adjusted_volatile_messages {
-            recomposed.push((role.clone(), content.clone()));
-        }
-
-        // Update the ForensicPacket to SempaiReviewed.
-        let id = brassclaw_interceptor::PacketId(packet_id.to_string());
-        let updated_packet = match self.interceptor_store.get(&id).await {
-            Ok(Some(packet)) => packet.with_sempai_review("", None, outcome.clone()),
-            Ok(None) => {
-                tracing::debug!(
-                    packet_id,
-                    "interceptor: packet not found when saving sempai review"
-                );
-                return None;
-            }
-            Err(error) => {
-                tracing::debug!(
-                    packet_id,
-                    error = %error,
-                    "interceptor: failed to load packet for sempai review update"
-                );
-                return None;
-            }
-        };
-        if let Err(error) = self.interceptor_store.save(&updated_packet).await {
-            tracing::debug!(
-                packet_id,
-                error = %error,
-                "interceptor: failed to save sempai-reviewed packet (non-fatal)"
-            );
-            // Non-fatal: continue with adjusted messages even if save failed.
-        }
-
-        Some(InterceptorResult {
-            packet_id: packet_id.to_string(),
-            adjusted_messages: Some(recomposed),
-        })
     }
 }
 

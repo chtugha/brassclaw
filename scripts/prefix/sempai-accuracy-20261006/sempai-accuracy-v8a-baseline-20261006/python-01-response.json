@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a9aa62b519718df4",
+  "object": "chat.completion",
+  "created": 1791323041,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-01 with name/description/content only, per the supported offline-design sink. The body is executable Python at module scope: it reads raw inputs via inputs.get() so missing/empty window is a valid validation outcome, accepts only exact integers in -3..6 inclusive (rejecting bool/float/strings), and assigns result on every branch without raising or coercing. result is {accepted:boolean, window:original if accepted else null}. No imports, I/O, host calls or LLM step. This is an unapproved draft; typed-input transport and Monty runner support remain prerequisites, and no observed tests, submission or activation occurred. No class-21/1-3/13 proposals were made because the sink does not support those constructors here.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-01\",\n        \"description\": \"Pure-logic guard: accepts an exact integer window in -3..6 inclusive and returns the original value when accepted, otherwise null. Rejects booleans, floats, strings and out-of-range values without raising or coercing. No Tool call, I/O or host boundary.\",\n        \"content\": \"def classify_window(raw):\\n    if 'window' not in inputs:\\n        result = {'accepted': False, 'window': None}\\n    else:\\n        window = inputs['window']\\n        if type(window) is bool or not type(window) is int or not -3 <= window <= 6:\\n            result = {'accepted': False, 'window': None}\\n        else:\\n            result = {'accepted': True, 'window': window}\\n    return result\\nresult = classify_window(inputs.get('window'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76863,
+    "total_tokens": 77344,
+    "completion_tokens": 481,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

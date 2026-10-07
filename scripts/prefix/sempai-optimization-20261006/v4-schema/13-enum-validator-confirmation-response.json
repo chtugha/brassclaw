@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b09ac269041975dc",
+  "object": "chat.completion",
+  "created": 1791319932,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Reviewed the packet as a component-drafting task for one class-22 PythonCode candidate. The host sink supports class 22 with name/description/content, so a single payload was drafted. The requested semantics are a raw validator: it must inspect the candidate mode value and return {accepted:boolean, mode:original-or-null} without raising, without imports/host/I/O, and without coercing the value. Per the reviewer decision procedure (87abfd9f8eb5), the body uses inputs.get to read the raw candidate, treats missing and null as not-accepted, validates exact integer-free string membership case-sensitively, and assigns result on every path. The content is executable Python with a single host.<tool> call absent (pure logic, zero dispatches), which is consistent with the class-22 grain rule. No provider capabilities were claimed; target_provider_metadata is null and no observed behavior was asserted. No conversation edit, submission, approval or activation occurred. Compatibility/intent/settings arrays are empty as required.\",\n  \"settings_adjustments\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate a raw operating mode without changing its spelling.\"]\n  ],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-mode\",\n        \"description\": \"Raw validator that accepts only the exact strings 'eco' or 'boost' (case-sensitive, no normalization) and returns {accepted, mode} where mode is the original string when accepted and null otherwise. Pure logic; no imports, host calls, I/O or coercion. Reads the raw candidate with inputs.get so missing and null are both reported as not accepted rather than raising.\",\n        \"content\": \"mode = inputs.get(\\\"mode\\\")\\naccepted = isinstance(mode, str) and mode in (\\\"eco\\\", \\\"boost\\\")\\nresult = {\\\"accepted\\\": accepted, \\\"mode\\\": mode if accepted else None}\"\n      }\n    }\n  ],\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73588,
+    "total_tokens": 74051,
+    "completion_tokens": 463,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

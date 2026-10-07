@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline-design mode: no submission or activation occurred. Proposed one class-22 PythonCode draft pc-check-weighted-entries with name/description/content only. The body is a pure-logic guard returning {ok, entries} with no imports/host/I/O/coercion. It reads raw candidate fields via inputs.get() so missing and null are distinct, validates list cardinality 0..3, each item is an object with exactly label (string length 1..8) and weight (exact integer 0..1, rejecting bool/float), and fails closed with ok=false and entries=[] on any invalid shape. The target inputs['entries'] mapping and host.<tool> boundary are the specified typed interface, not deployed runtime support. The draft is unapproved and remains unapproved pending Q1, human Q2 and behavioral validation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-weighted-entries",
+        "description": "Pure-logic guard validating a raw list of weighted entries. Returns {ok, entries} where entries is the original list only when every item is a JSON object with exactly label (string length 1..8) and weight (exact integer 0..1); otherwise ok is false and entries is an empty list. No imports, host calls, I/O or type coercion. Missing and null entries are distinct invalid outcomes.",
+        "content": "entries = inputs.get('entries')\nvalid = isinstance(entries, list) and 0 <= len(entries) <= 3\nif valid:\n    for item in entries:\n        if not isinstance(item, dict) or set(item.keys()) != {'label', 'weight'}:\n            valid = False\n            break\n        label = item.get('label')\n        weight = item.get('weight')\n        if not (type(label) is str and 1 <= len(label) <= 8):\n            valid = False\n            break\n        if not (type(weight) is int and not isinstance(weight, bool) and 0 <= weight <= 1):\n            valid = False\n            break\nresult = {'ok': valid, 'entries': entries if valid else []}"
+      }
+    }
+  ],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate raw weighted entries, including an empty selection."
+    ]
+  ],
+  "proposed_recipe_updates": []
+}

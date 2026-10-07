@@ -32,6 +32,14 @@ pub enum ModelCallOutcome<'a> {
 /// provider call entirely.
 #[async_trait]
 pub trait LoopModelBudgetAccountant: Send + Sync {
+    /// An isolated reservation namespace for host-owned work nested within a
+    /// model dispatch. It must share the same resource governor/policy while
+    /// retaining the original run identity. Returning None fails setup closed;
+    /// reusing a run-keyed reservation would corrupt the enclosing call.
+    fn isolated_work_accountant(&self) -> Option<Arc<dyn LoopModelBudgetAccountant>> {
+        None
+    }
+
     /// Called **before** any model-backed work dispatches to a provider.
     async fn pre_model_work(
         &self,
@@ -46,6 +54,18 @@ pub trait LoopModelBudgetAccountant: Send + Sync {
         request: &ModelWorkRequest,
         outcome: ModelWorkOutcome,
     ) -> Result<(), LoopModelGatewayError>;
+
+    /// Reconcile a retained work request with the actual provider response.
+    /// Accountants with provider pricing override this to use reported usage.
+    async fn post_model_work_result(
+        &self,
+        context: &LoopRunContext,
+        request: &ModelWorkRequest,
+        outcome: ModelCallOutcome<'_>,
+    ) -> Result<(), LoopModelGatewayError> {
+        self.post_model_work(context, request, ModelWorkOutcome::from_model_call(outcome))
+            .await
+    }
 
     /// Called **before** dispatching the model request. Return `Err` with
     /// `AgentLoopHostErrorKind::BudgetExceeded` to reject the call.
@@ -148,7 +168,24 @@ impl LoopModelGatewayError {
 }
 
 #[async_trait]
+pub trait PreparedLoopModelCall: Send {
+    /// Exact work accounting for the host-resolved bytes retained by this call.
+    /// The prepared call is Rust-private; it cannot be supplied by Monty/LLM.
+    fn work_request(&self) -> &ModelWorkRequest;
+    async fn dispatch(self: Box<Self>) -> Result<LoopModelResponse, LoopModelGatewayError>;
+}
+
+#[async_trait]
 pub trait LoopModelGateway: Send + Sync {
+    /// Resolve and retain an authorized prompt before policy/accounting. Legacy
+    /// gateways without reference resolution may use the default None path.
+    async fn prepare_model_call(
+        &self,
+        _request: LoopModelGatewayRequest,
+    ) -> Result<Option<Box<dyn PreparedLoopModelCall>>, LoopModelGatewayError> {
+        Ok(None)
+    }
+
     async fn stream_model(
         &self,
         request: LoopModelGatewayRequest,
@@ -203,6 +240,10 @@ pub struct NoOpBudgetAccountant;
 
 #[async_trait]
 impl LoopModelBudgetAccountant for NoOpBudgetAccountant {
+    fn isolated_work_accountant(&self) -> Option<Arc<dyn LoopModelBudgetAccountant>> {
+        Some(Arc::new(NoOpBudgetAccountant))
+    }
+
     async fn pre_model_work(
         &self,
         _context: &LoopRunContext,
@@ -296,7 +337,19 @@ where
         &self,
         request: LoopModelRequest,
     ) -> Result<LoopModelResponse, AgentLoopHostError> {
-        let work_request = ModelWorkRequest::for_assistant(&self.context, &request);
+        let prepared = self
+            .gateway
+            .prepare_model_call(LoopModelGatewayRequest {
+                context: self.context.clone(),
+                request: request.clone(),
+            })
+            .await
+            .map_err(LoopModelGatewayError::into_host_error)?;
+        let work_request = prepared.as_ref().map_or_else(
+            || ModelWorkRequest::for_assistant(&self.context, &request),
+            |prepared| prepared.work_request().clone(),
+        );
+        let is_prepared = prepared.is_some();
 
         // Policy check — rejects before any provider or credential is touched.
         if let Err(policy_error) = self
@@ -335,14 +388,17 @@ where
             );
         }
 
-        let gateway_result = self
-            .gateway
-            .stream_model(LoopModelGatewayRequest {
-                context: self.context.clone(),
-                request: request.clone(),
-            })
-            .await
-            .map(sanitize_model_response);
+        let gateway_result = if let Some(prepared) = prepared {
+            prepared.dispatch().await
+        } else {
+            self.gateway
+                .stream_model(LoopModelGatewayRequest {
+                    context: self.context.clone(),
+                    request: request.clone(),
+                })
+                .await
+        }
+        .map(sanitize_model_response);
 
         // Post-call accounting fires on BOTH success and failure. The
         // RAII guard stays armed across this await — if the future is
@@ -356,10 +412,15 @@ where
             Ok(response) => ModelCallOutcome::Success(response),
             Err(error) => ModelCallOutcome::Failure(error),
         };
-        let post_result = self
-            .accountant
-            .post_model_call(&self.context, &request, outcome)
-            .await;
+        let post_result = if is_prepared {
+            self.accountant
+                .post_model_work_result(&self.context, &work_request, outcome)
+                .await
+        } else {
+            self.accountant
+                .post_model_call(&self.context, &request, outcome)
+                .await
+        };
         // Disarm only AFTER post_model_call returns. If we're past this
         // line the in-flight entry is either reconciled, released, or
         // retained on a storage error — in any of those cases the

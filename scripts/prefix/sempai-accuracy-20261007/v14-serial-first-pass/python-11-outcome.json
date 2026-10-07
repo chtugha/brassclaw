@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-11. It distinguishes missing key, explicit null, exact integer 7..16 and other, with no bool/float/coercion/defaults/exceptions and no imports/I/O/host calls. Module-level result assignment. No execution, submission, Q1/Q2 or activation occurred.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-11",
+        "description": "Classify raw rank: missing -> {kind:\"missing\",rank:null}; explicit null -> {kind:\"null\",rank:null}; exact integer 7..16 -> {kind:\"integer\",rank:original}; other -> {kind:\"invalid\",rank:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.",
+        "content": "if 'rank' not in inputs:\n    result = {'kind': 'missing', 'rank': None}\nelif inputs['rank'] is None:\n    result = {'kind': 'null', 'rank': None}\nelif type(inputs['rank']) is int and 7 <= inputs['rank'] <= 16:\n    result = {'kind': 'integer', 'rank': inputs['rank']}\nelse:\n    result = {'kind': 'invalid', 'rank': None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

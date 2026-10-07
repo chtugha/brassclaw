@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-abfcd8f726ac62da",
+  "object": "chat.completion",
+  "created": 1791320793,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the supplied user message unchanged in adjusted_volatile_messages; no justified prompt repair was warranted. Drafted one class-22 pure-logic component, pc-check-channel-list, as an unapproved target-interface draft. The body reads channels with inputs.get so an absent key is a valid empty-list outcome rather than a KeyError, validates that channels is a list, that each element is an exact integer (not a bool) in 0..255 inclusive, and assigns result={ok,channels} on every path without exceptions, imports, host calls or coercion. The outer input contract admits the raw candidate shape (missing/null/wrong-typed) while the inner validation implements the rule; it returns an invalid-result object rather than raising. No UUID, version, association or approval was supplied, and the host sink supports only class 22 name/description/content, so no other proposal arrays were populated. Typed inputs remain a target interface, not deployed runtime support.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-channel-list\",\n        \"description\": \"Pure-logic validator: accepts a raw channels value that is a list whose items are exact integers 0..255 inclusive (including an empty list); returns {ok, channels} with the original list when valid or an empty list otherwise. No exceptions, imports, host calls or coercion. Target interface; actual input/result contracts and runner support remain unresolved.\",\n        \"content\": \"channels = inputs.get(\\\"channels\\\")\\nvalid = isinstance(channels, list) and all(isinstance(item, int) and not isinstance(item, bool) and 0 <= item <= 255 for item in channels)\\nresult = {\\\"ok\\\": valid, \\\"channels\\\": channels if valid else []}\"\n      }\n    }\n  ],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate a channel list; no channels is a valid choice.\"]\n  ]\n  ,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76177,
+    "total_tokens": 76651,
+    "completion_tokens": 474,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

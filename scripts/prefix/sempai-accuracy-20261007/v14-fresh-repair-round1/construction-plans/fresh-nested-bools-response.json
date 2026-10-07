@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-aaacf7e5778aeeb5",
+  "object": "chat.completion",
+  "created": 1791359848,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'frames' not in mapping:\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"if mapping['frames'] is None:\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"if type(mapping['frames']) is not list:\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"valid = len(frames) <= 2\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"for frame in frames: if type(frame) is not dict or set(frame) != {'toggles'}:\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"toggles = frame['toggles']; if not (type(toggles) is list and 0 <= len(toggles) <= 2):\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"for toggle in toggles: if type(toggle) is not bool:\", \"result\": \"{'ok': False, 'frames': None}\"}, {\"guard\": \"return {'ok': valid, 'frames': frames if valid else []}\", \"result\": \"{'ok': True, 'frames': frames}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected-runner support\", \"Q1\", \"human Q2\"], \"notes\": \"The previous artifact defined inspect_frames but never invoked it at module scope, so no result was assigned. The fix is to call the helper and assign its full-\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 99147,
+    "total_tokens": 99507,
+    "completion_tokens": 360,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

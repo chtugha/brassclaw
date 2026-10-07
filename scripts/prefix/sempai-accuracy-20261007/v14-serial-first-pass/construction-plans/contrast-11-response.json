@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-91da7180cc124a7b",
+  "object": "chat.completion",
+  "created": 1791358279,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"records is a list with 1..4 items\", \"result\": \"ok: true, records: original\"}, {\"guard\": \"any item missing code/enabled, code not string length 2..5, or enabled not exact bool\", \"result\": \"ok: false, records: []\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.protocol_capabilities is null; target_provider_metadata.catalogue_revision is null; no resolved class22 constructor or catalogue UUIDs;\"], \"notes\": \"protocol_capabilities and catalogue_revision are null, so no provider tool/tool schema or resolved component identities are available. The instruction requests \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98415,
+    "total_tokens": 98580,
+    "completion_tokens": 165,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

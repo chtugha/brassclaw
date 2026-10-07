@@ -269,6 +269,8 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
         ${t("montyVm.settingsTitle")}
       </h3>
+      <p className="mb-3 text-xs text-[var(--v2-text-muted)]">${t("montyVm.allocationCountRetired")}</p>
+      ${settings.retired_max_allocations != null && html`<p className="mb-3 text-xs text-[var(--v2-text-muted)]">${t("montyVm.retiredAllocationValue")}: ${settings.retired_max_allocations}</p>`}
       ${field("max_duration_secs", t("montyVm.maxDuration"), t("montyVm.maxDurationDesc"))}
       ${field("failure_rollback_threshold", t("montyVm.rollbackThreshold"), t("montyVm.rollbackThresholdDesc"))}
       <label className="flex items-center gap-3 py-3 border-t border-[var(--v2-panel-border)]">

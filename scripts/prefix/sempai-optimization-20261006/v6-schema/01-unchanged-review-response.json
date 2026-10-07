@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9ddbec7d72fb7824",
+  "object": "chat.completion",
+  "created": 1791320664,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"settings_adjustments\": [], \"bridge_messages\": [], \"proposed_intent_examples\": [], \"composition_summary\": \"Packet is already clear and internally consistent: a system instruction to explain a TCP port briefly, followed by a user question about TCP port 443. No prompt repair is justified, so the volatile tail is echoed unchanged. No proposals were made. The packet carries no provider metadata (model, max_model_len, protocol_capabilities, catalogue_revision are all null), so no provider-specific adjustments are warranted. No component drafting was requested, and no supported sink fields were needed. No Q1, behavioral validation or human Q2 was performed; nothing was submitted, activated or approved.\", \"proposed_components\": [], \"adjusted_volatile_messages\": [[\"system\", \"Explain a TCP port. Keep the answer brief.\"], [\"user\", \"What is TCP port 443 typically used for?\"]], \"proposed_recipe_updates\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76107,
+    "total_tokens": 76300,
+    "completion_tokens": 193,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

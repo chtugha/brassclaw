@@ -92,15 +92,12 @@ pub struct TurnRunnerWorkerConfig {
     /// Optional scope filter to restrict which runs this worker claims.
     pub scope_filter: Option<TurnScope>,
 
-    /// Optional wall-clock ceiling per turn. When `Some`, the worker wraps
-    /// the driver invocation in a `tokio::time::timeout`; turns that exceed
-    /// the budget are recorded as `turn_timeout` terminal failures and
-    /// do not block the worker (the next run is claimed immediately).
-    ///
-    /// Populated at startup from `MontyVmSettings.max_duration_secs` (loaded
-    /// from `reborn_monty_vm_settings`). Falls back to `None` (unconstrained)
-    /// when no DB row exists or when Postgres is not available.
-    pub max_turn_duration: Option<Duration>,
+    /// Optional technical deadline for the entire driver invocation, including
+    /// external waits. Default None. This is independent of active task compute
+    /// and must never be populated from `MontyVmSettings.max_duration_secs`.
+    /// Deadline failure still requires bounded exact-attempt stop acknowledgement
+    /// before the worker may claim another run; dropping its future is not a stop.
+    pub max_driver_wall_time: Option<Duration>,
 }
 
 impl Default for TurnRunnerWorkerConfig {
@@ -109,7 +106,7 @@ impl Default for TurnRunnerWorkerConfig {
             heartbeat_interval: Duration::from_secs(10),
             poll_interval: Duration::from_secs(5),
             scope_filter: None,
-            max_turn_duration: None,
+            max_driver_wall_time: None,
         }
     }
 }
@@ -413,10 +410,10 @@ impl TurnRunnerWorker {
                     Err(err) => Err(DriverInvocationError::HeartbeatFailed(err)),
                 },
                 () = cancel.cancelled() => Err(DriverInvocationError::WorkerCancelled),
-                // Wall-clock turn budget from MontyVmSettings.max_duration_secs.
+                // Explicit host-liveness deadline, independent of VM task compute.
                 // When None, `pending()` never resolves so the branch is inert.
                 () = async {
-                    match self.config.max_turn_duration {
+                    match self.config.max_driver_wall_time {
                         Some(d) => tokio::time::sleep(d).await,
                         None => std::future::pending::<()>().await,
                     }
@@ -804,7 +801,7 @@ enum DriverInvocationError {
     HeartbeatFailed(TurnError),
     HeartbeatStopped,
     WorkerCancelled,
-    /// Turn exceeded the configured `max_turn_duration` wall-clock budget.
+    /// Turn exceeded the configured `max_driver_wall_time` wall-clock budget.
     TurnTimeout,
     /// Service ownership is unclear: stop admission and require reconciliation.
     MontyStopUnacknowledged,

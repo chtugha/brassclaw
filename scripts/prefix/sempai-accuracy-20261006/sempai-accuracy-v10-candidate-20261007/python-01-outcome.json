@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-01: it reads window with inputs.get('window') so missing and null reach the decision, accepts only exact integers in -3..6 (rejecting bool/float/strings), and always returns {accepted:boolean, window:original if accepted else null} with no exceptions or coercion. The body assigns result on every outcome. No execution, submission, Q1/Q2 or activation occurred; the target typed-inputs interface requires selected-runner support.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-01",
+        "description": "Raw window must be an exact integer in -3..6 inclusive. Missing or null window is invalid. Accepts only exact integers (not bool/float/strings). Always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "window = inputs.get('window')\naccepted = type(window) is int and not isinstance(window, bool) and -3 <= window <= 6\nresult = {'accepted': accepted, 'window': window if accepted else None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b4c215ae37df6160",
+  "object": "chat.completion",
+  "created": 1791323050,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-02 with name/description/content only, per the supported offline-design sink. The body is executable Python at module scope: it reads raw inputs via inputs.get() so missing/empty/any-JSON values are inspected rather than raising, validates that quota is an exact integer in -2..7 inclusive (rejecting bool/float/strings), and assigns result to {accepted, quota} on every branch without exceptions or coercion. No imports, I/O, host calls, Markdown, or guessed UUIDs. This is an unapproved draft; typed-input transport and runner support remain prerequisites, and no observed tests/submission/activation are claimed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-02\",\n        \"description\": \"Pure-logic guard: accepts a raw quota value only when it is an exact integer in -2..7 inclusive (booleans and floats are rejected). Returns {accepted, quota} where quota is the original value when accepted, else null. No imports, I/O, host calls or exceptions.\",\n        \"content\": \"def classify_quota(quota):\\n    if type(quota) is bool or not type(quota) is int or not -2 <= quota <= 7:\\n        result = {'accepted': False, 'quota': None}\\n    else:\\n        result = {'accepted': True, 'quota': quota}\\nresult = classify_quota(inputs.get('quota'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76863,
+    "total_tokens": 77285,
+    "completion_tokens": 422,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

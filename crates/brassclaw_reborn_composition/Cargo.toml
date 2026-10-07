@@ -2,7 +2,7 @@
 name = "brassclaw_reborn_composition"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.96"
 description = "Facade-shaped production composition root for BrassClaw Reborn"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
@@ -53,9 +53,10 @@ brassclaw_interceptor = { path = "../brassclaw_interceptor" }
 base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
-# C.6 slice 4c — the persistent Monty driver constructs `MontyObject::String`
-# turn inputs to feed `MontySession::drive_to_yield`. Mirrors the engine decl.
-monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.16" }
+# Verified v1.0.0 plus the versioned control extension; both application
+# consumers share exactly these sources. See vendor/monty-control/BRASSCLAW.md.
+monty = { path = "../../vendor/monty-control/crates/monty" }
+monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
 deadpool-postgres = "0.14"
 tokio-postgres = "0.7"
 futures = "0.3"

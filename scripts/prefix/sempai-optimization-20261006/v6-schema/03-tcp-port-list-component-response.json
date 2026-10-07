@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-ba46ea3836e7ad2d",
+  "object": "chat.completion",
+  "created": 1791320678,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the single user message unchanged. Proposed one class-22 pure-logic component pc-check-tcp-port-list. The body reads ports with inputs.get('ports') so a missing key yields an invalid result rather than raising, returns an explicit invalid-result object instead of raising, validates every element as a non-boolean integer in 1..65535 before deciding, and assigns result on every branch. Description includes the target input/result contract and the missing typed-runner prerequisite; no UUIDs, host calls, imports or approval claims. The host sink supports class 22 with name/description/content. This is an offline-design draft awaiting Q1, observed behavior and human Q2 before activation.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-tcp-port-list\",\n        \"description\": \"Pure-logic guard that validates a raw candidate TCP-port list before any network action. Target input contract: ports is a nonempty list of exact integers, each in 1..65535 inclusive; booleans are invalid, and missing/null/scalar/empty/wrong-type/out-of-range values fail closed. The outer input contract admits the raw candidate shape while the inner validation implements the rule; this does not relax required-input binding for ordinary Tool usages. Result contract: {valid: boolean, ports: original list if valid else []}. Missing and null remain distinct: a missing key yields an invalid result, not a default. No imports, I/O, host calls or UUIDs. Prerequisite: a typed runner that supplies inputs['ports'] as validated data and executes this body; the target inputs mapping is a target interface, not guaranteed deployed runtime support. This is an offline-design draft; Q1, observed behavior and human Q2 precede activation.\",\n        \"content\": \"ports = inputs.get('ports')\\nvalid = isinstance(ports, list) and len(ports) > 0\\nif valid:\\n    for port in ports:\\n        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:\\n            valid = False\\n            break\\nresult = {'valid': valid, 'ports': ports if valid else []}\"\n      }\n    }\n  ],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We repeatedly need to reject invalid TCP-port lists before any network action.\"]\n  ]\n  ,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76190,
+    "total_tokens": 76765,
+    "completion_tokens": 575,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,26 @@
+{
+  "composition_summary": "Reviewed the packet as data. The volatile tail is preserved verbatim: system, user, assistant, tool in order and content unchanged. The tool result carries status=completed with receipt=test-fixture-effect-42, which is evidence the email send completed once. The UI timeout is a separate presentation/transport failure, not a failed dispatch. No proposal was made: the task only asks for an explanation, and no component draft is requested. No adjusted_volatile_messages, bridge_messages, proposed_recipe_updates, proposed_intent_examples, settings_adjustments or proposed_components entries were added. No message was invented, no effect was replayed, and no second send is claimed. The completed effect is not reissued; a timeout or lost response is unknown completion, not confirmed no effect, and must not trigger a replay.",
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Inspect evidence without performing actions."
+    ],
+    [
+      "user",
+      "The email was sent; only explain why the UI timed out."
+    ],
+    [
+      "assistant",
+      "I sent the message once."
+    ],
+    [
+      "tool",
+      "{\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"}"
+    ]
+  ],
+  "proposed_components": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "settings_adjustments": []
+}

@@ -1,0 +1,205 @@
+{
+  "date": "2026-10-07T07:22:21.359239+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "python-08",
+      "construction_plan": {
+        "seconds": 5.939,
+        "usage": {
+          "prompt_tokens": 98409,
+          "total_tokens": 98637,
+          "completion_tokens": 228,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "usage": {
+        "prompt_tokens": 98760,
+        "total_tokens": 99143,
+        "completion_tokens": 383,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "kv_transfer_params": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 97152,
+          "num_lmcache_cached_tokens": 97152,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 15.026
+    },
+    {
+      "id": "python-09",
+      "construction_plan": {
+        "seconds": 5.319,
+        "usage": {
+          "prompt_tokens": 98443,
+          "total_tokens": 98640,
+          "completion_tokens": 197,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "usage": {
+        "prompt_tokens": 98763,
+        "total_tokens": 99145,
+        "completion_tokens": 382,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "kv_transfer_params": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 97152,
+          "num_lmcache_cached_tokens": 97152,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.364
+    },
+    {
+      "id": "recipe-06",
+      "construction_plan": {
+        "seconds": 4.734,
+        "usage": {
+          "prompt_tokens": 98645,
+          "total_tokens": 98803,
+          "completion_tokens": 158,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "usage": {
+        "prompt_tokens": 98921,
+        "total_tokens": 99670,
+        "completion_tokens": 749,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "kv_transfer_params": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 97152,
+          "num_lmcache_cached_tokens": 97152,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 21.029
+    },
+    {
+      "id": "evidence-11",
+      "construction_plan": {
+        "seconds": 6.1,
+        "usage": {
+          "prompt_tokens": 101289,
+          "total_tokens": 101427,
+          "completion_tokens": 138,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 58.906
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "single_layout_requested": true,
+  "cache_salt": "sempai-v14-primed-pilot-20261007-a",
+  "evaluator_sha256": "075a854570b82ab53e506ce1b58821ae34e2f045238c2960c37a304e89c4b310",
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20"
+}

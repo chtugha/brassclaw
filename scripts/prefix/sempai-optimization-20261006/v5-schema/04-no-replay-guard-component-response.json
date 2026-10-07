@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-916a81c11422020c",
+  "object": "chat.completion",
+  "created": 1791320230,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-retry-eligibility\",\n        \"description\": \"Deterministic pure-logic guard that returns whether a logical step invocation is eligible for a bounded retry, before any dispatch is considered. It is evidence-conditioned pure logic, not dispatch permission: it never grants Tool permission, does not replace live instance-wide Tool policy, current global allow/block settings, cancellation, stale-attempt fencing, resource limits or actual deduplication evidence. It only reports eligibility from declared inputs; a true result still requires a fresh valid attempt and current policy admission at the actual dispatch boundary. Missing, null or invalid data fails closed. Typed inputs are a target interface; the typed-runner and Monty execution gap remain an explicit prerequisite. No I/O, imports or host calls.\",\n        \"content\": \"def check_retry_eligibility(operation_state, outcome, attempt, max_attempts, read_only, dedup_verified):\\n    if not isinstance(operation_state, str) or operation_state not in ('completed', 'unknown', 'not_started'):\\n        return {'retry': False}\\n    if outcome not in ('retryable', 'terminal'):\\n        return {'retry': False}\\n    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt <= 0:\\n        return {'retry': False}\\n    if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts <= 0:\\n        return {'retry': False}\\n    if not isinstance(read_only, bool) or not isinstance(dedup_verified, bool):\\n        return {'retry': False}\\n    if outcome != 'retryable':\\n        return {'retry': False}\\n    if attempt >= max_attempts:\\n        return {'retry': False}\\n    if operation_state == 'completed':\\n        return {'retry': False}\\n    if not (read_only or dedup_verified):\\n        return {'retry': False}\\n    return {'retry': True}\"\n      }\n    }\n  ],\n  \"composition_summary\": \"Proposed one class-22 pure-logic component pc-check-retry-eligibility. It reads raw candidate inputs with presence/type checks (operation_state, outcome, attempt, max_attempts, read_only, dedup_verified) and returns {'retry': boolean} at module scope, failing closed on missing/null/invalid data. True only when outcome is retryable, attempt < max_attempts, state is not completed, and read_only OR dedup_verified is true. Completed effects never replay. The body makes zero host calls and no I/O/imports. The description retains the live policy/cancellation/resource checks and typed-runner gap; this guard is evidence-conditioned pure logic, not dispatch permission. No adjusted volatile messages, bridge messages, recipe updates, intent examples or settings changes were made; the volatile tail was preserved unchanged.\",\n  \"proposed_intent_examples\": [],\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 74060,
+    "total_tokens": 74735,
+    "completion_tokens": 675,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

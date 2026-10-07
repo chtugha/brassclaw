@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-mode",
+    "description": "Pure-logic guard: accept only the exact strings 'eco' or 'boost' (case-sensitive) and return an advisory result object. Missing or null mode yields accepted=false with mode=null. No exceptions, imports, host calls or I/O. This is a reusable building block; it performs no dispatch, retry or activation.",
+    "content": "mode = inputs.get('mode')\naccepted = type(mode) is str and mode in ('eco', 'boost')\nresult = {'accepted': accepted, 'mode': mode if accepted else None}"
+  }
+}

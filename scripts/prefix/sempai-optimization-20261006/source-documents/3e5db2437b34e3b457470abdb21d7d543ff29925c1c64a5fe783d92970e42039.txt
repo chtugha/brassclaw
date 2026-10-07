@@ -1,0 +1,691 @@
+# Recipe authoring instructions
+
+This is the authoring checklist for BrassClaw Reborn Recipes. Follow it in order.
+MUST means required. A Recipe with an unresolved input, component reference,
+binding, result handoff or execution dependency is incomplete. Do not label it
+working, validated or Tier 0 without the corresponding evidence.
+
+Read [AGENTS.md](AGENTS.md), [simplified_v3.md](simplified_v3.md) and the
+[development policy](docs/development-policy.md). Their binding contracts take
+precedence over historical examples. This file documents authoring; it does not
+implement missing runtime features. Implementation observations below reflect
+the source inspected on 2026-10-06.
+
+## 1. Understand exactly what you are creating
+
+### Architectural goal: more reusable steps, fewer specialized Rust Tools
+
+The central model is: **Rust Tools, many ToolSkills, many Skills, many small
+PythonCode components, and Recipes that tell the orchestrator how to use those
+components to fulfill a task's goals.** Each has a distinct role. A Recipe is
+the task instruction that selects, orders and connects component usages; IBS
+assembles what those instructions require, and the orchestrator performs the
+task by executing the resulting steps.
+
+V3 does not aim to minimize the number of Recipe steps. It aims to make complex
+behavior explicit as a sequence of small, reusable, editable steps. Prefer
+more well-defined steps over a specialized Rust Tool that hides the whole
+workflow inside one operation. Step count alone is not a quality metric; each
+step must have a useful purpose and a clear input/output contract.
+
+Keep reusable Rust Tools as the primitives. Build many ToolSkills describing
+their Rust-side IBS bindings, and many Skills describing how the orchestrator
+uses a Tool for a particular purpose. Binding descriptors and usage instructions
+are separate responsibilities; neither replaces the other. Each
+Skill includes its associated executable PythonCode. **Build a large library
+of small, reusable PythonCode components as well.** These are executable
+building blocks, similar to objects in the sense that they can be referenced
+and recombined; this analogy does not require Python classes or object-oriented
+inheritance. Components cover individual Tool usages and pure-logic operations.
+Give each a clear purpose, input contract and result contract, independent of
+the particular Recipe that uses it.
+
+Recipes are the way programs are specified from that library. IBS/composition
+assembles the selected small PythonCode components into ordered executable
+steps and prepares their supporting components. Many different programs can
+reuse the same PythonCode building blocks in different sequences and with
+different inputs. Do not write a fresh, task-specific Python program for every
+Recipe when its behavior can be assembled from existing components.
+
+Recipes instruct the orchestrator how to utilize those usages in order, connecting their inputs and
+results. A complex Recipe can therefore achieve what a dedicated Rust workflow
+Tool would have achieved, by executing Python steps over existing primitives.
+
+This keeps behavior in the component library: Recipes can be altered, copied
+and recomposed without adding a Rust Tool for every task. Reuse a Skill and its
+associated PythonCode by reference; create a new usage when its purpose or
+contract differs. Do not duplicate a primitive merely because the new workflow
+has a different user-facing name.
+
+The intended library therefore contains Rust Tools, many ToolSkill binding
+descriptors, many Skill usages, many small executable PythonCode components,
+and Recipes instructing the orchestrator how to use them to achieve task goals.
+IBS/composition assembles the executable steps and supporting components from
+those Recipe instructions; the orchestrator owns task sequencing and execution.
+Adding a reusable PythonCode component expands what future Recipes can express;
+burying that behavior inside a large Recipe-specific body reduces reuse.
+
+### Recipes for creating Tools or ToolSkills
+
+A Recipe may instruct the orchestrator to author a genuinely missing Rust
+Tool. Source generation/composition is Tier 1. Use an existing approved
+build/compiler Tool, or the shell Tool if it provides the required primitive,
+to compile and test the generated artifact. Shell Recipes remain Tier 1.
+Do not add a new Rust Tool merely to invoke an already available compiler.
+
+A ToolSkill is a binding descriptor, not a Rust implementation; creating one
+normally requires schema/reference validation and approval, not compilation.
+If its referenced Tool is genuinely new, the Tool implementation is what must
+be compiled. Reuse an existing ToolSkill if its binding contract fits.
+
+Authoring, build/test, validation, activation and use are explicit workflow
+stages. Compilation alone does not approve, register or grant permission to a
+Tool. Authored components pass Q1 and human Q2 before activation through the
+supported registration/loading path. A generated artifact is not automatically
+available as `host.<tool>(...)`. A running task's pinned component set does not
+silently acquire the newly created component; use a subsequent task or an
+explicitly specified, validated continuation/version-selection contract.
+
+Generated Rust/Python source is an intentional code artifact to be reviewed
+and validated. This is separate from normal parameter binding: input values
+passed to its authoring/build Tools still travel as data, not as substitutions
+that modify an already approved PythonCode body.
+
+**Authoring rule:** decompose the behavior first. Add Rust only for a genuinely
+missing system-level primitive, never merely to collapse a Recipe's steps.
+Current executor limitations are runtime gaps to repair, not reasons to move
+otherwise expressible Recipe behavior into a dedicated Rust workflow Tool.
+
+A Recipe (class 21) is a **step-by-step instruction plus an explicit inventory
+of the components needed to assemble and execute those steps**. Think of the
+Recipe as RNA and the IBS/composition system as an assembly facility, similar
+to the endoplasmic reticulum. The analogy describes their roles; it is not a
+literal biological model.
+
+The Recipe tells IBS **what to assemble, in which order, and what each step
+needs**. IBS/composition builds the executable Python chiefly by assembling
+existing PythonCode components, supplying captured input values, and preparing
+the associated Skills, ToolSkills and existing Rust Tools for the orchestrator.
+The orchestrator then runs each resulting Python step in the specified order.
+It calls a Rust Tool only when that step's Python calls `host.<tool>(...)`.
+
+The component inventory is linked to individual steps by UUID; it is not just
+a loose list of names. Each variant specifies an invocation pattern, intent
+examples, variable patterns and a `step_link` selecting its steps. A complete
+Recipe must say how values extracted from the user's matched message become
+step inputs and how results become inputs to later steps.
+
+| Component | Responsibility | Placement |
+| --- | --- | --- |
+| Tool, class 0 | Existing Rust primitive that performs an operation when called | Registered host capability |
+| ToolSkill, class 13 | Descriptor for binding one Tool usage; grants no authority | Rust-channel component reference |
+| PythonCode, class 22 | Executable implementation of a usage or pure logic | Orchestrator-channel component reference |
+| Skill, classes 1–3 | One reusable usage: prose **and explicitly associated PythonCode** | Prose for explicit Tier-1 context; associated class-22 code for execution |
+| Recipe, class 21 | Orders and connects the components | Recipe store |
+| ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | Extension catalogue store |
+
+A code example in Skill prose is documentation. It is not an executable entry
+point. Tier-0 execution references the associated PythonCode UUID directly.
+Record the Skill/PythonCode UUID association explicitly; do not pretend that
+matching names establish a validated association. Recipes reference stable
+component UUIDs without version numbers. During task-start assembly,
+IBS/composition reads and resolves the exact component versions, including the
+validated Skill/PythonCode association, and pins them in the BuildInstruction.
+The runtime retains that resolved selection for the task. Where the store or
+instruction type cannot enforce this yet, document that limitation.
+
+The flow is:
+
+```text
+matched intent + Recipe variant + user message
+  -> selected step_link and structured step descriptions
+  -> IBS BuildInstruction
+  -> referenced component bodies + captured input values
+  -> composed execution steps
+  -> Monty executes PythonCode
+  -> host tool calls, checked by the kernel
+  -> reply and task completion
+```
+
+In the current code, assembly has two stages: `build_instruction` selects and
+structures component references; the surrounding composition pipeline resolves
+them and builds the concrete Python steps and supporting component data.
+
+`BuildInstruction` is an intermediate Rust data structure, not generated Rust
+code. It contains `rust_steps`, `orchestrator_steps`, `variable_patterns`,
+`llm_call_required` and `basic_prompt_section_refs`. IBS selects steps, checks
+their structure, parses dependencies and partitions channels. It does not prove
+that the workflow achieves the user's intent.
+
+**Target version contract:** IBS/composition must read component versions and
+emit their exact UUID/version/checksum references in the BuildInstruction,
+including all selected Tool, ToolSkill, Skill, PythonCode and dependency
+references. The orchestrator executes those resolved versions, never a fresh
+“latest” lookup. The currently listed BuildInstruction fields do not implement
+this complete version manifest; extending that contract is required runtime
+work. The instruction remains ephemeral; retain its version selection with
+the task through the supported task snapshot/continuation mechanism, without
+introducing a separate persistent BuildInstruction table.
+
+`compose_orchestrator` resolves components and assembles `ComposedProgram`:
+ordered `steplist` entries with concrete `executable_code`, `skills`,
+`rust_directives`, `variables`, `assembled_program` and a tier hint.
+`host.run_program` submits Python to Monty, which parses the step before running
+it. Syntax acceptance is not behavioral correctness.
+
+The required assembly outcome for **every executable step** is:
+
+1. Its executable PythonCode component is resolved and its inputs supplied safely.
+2. Its needed Skill usage and PythonCode association are identified; any prose
+   needed by an explicit Tier-1 reasoning step is supplied as context.
+3. Its ToolSkill descriptors identify the existing Tools to bind, and the
+   actual runtime makes those callables available before the step runs.
+4. Its result contract and handoff to subsequent steps are explicit.
+
+This is the authoring target. Merely returning Skill bodies or Rust directives
+does not establish that all preparation occurred; current wiring limits are
+listed below and must be verified on the selected runtime path.
+
+## 2. Reuse before creating anything
+
+Search [the built-in inventory](docs/archive/builtin_stuff_v3.md), the seeders
+and the available component store. Read the actual Tool signature and returned
+data, not just its name. Record the reused UUIDs, classes and revisions.
+
+Choose the first sufficient option:
+
+1. Add intent examples to an existing variant.
+2. Add a variant reusing existing steps.
+3. Compose existing PythonCode and ToolSkills into a new Recipe.
+4. Author missing component rows using existing Tools.
+5. Add a Rust primitive only if no existing Tool provides the necessary operation.
+
+Before choosing option 5, write the candidate sequence of existing Tool usages
+and identify the exact primitive that sequence cannot provide. “Too many
+steps,” “simpler as one Rust function,” and “this task needs several Tools”
+are not sufficient reasons. Optimize for reusable components and understandable
+data flow, not for the fewest host calls or the shortest Recipe.
+
+Use [the Zencoder plan](docs/plans/zencoder-extension-plan.md) as a worked
+authoring reference, but reconcile it with the binding Skill definition and
+current schemas. Historical “domain Skill” descriptions belong in an Extension.
+Do not copy historical retired intrinsics or treat an example as proof of wiring.
+
+## 3. Write the behavior contract before writing code
+
+Fill out this contract. No field may contain “whatever is needed” or “the agent
+figures it out.”
+
+```text
+Recipe name:
+User-visible operation and completion condition:
+Variant key:
+Accepted requests (at least 10 examples):
+Similar requests that must NOT match:
+Required inputs, types, source and validation:
+Optional inputs and explicit defaults:
+Tool prerequisites and external authentication:
+Ordered steps and exact component references:
+Result fields consumed by later steps:
+Failure, cancellation and retry behavior:
+Final reply and which step posts it:
+Tier and reason:
+Current execution path and unresolved runtime dependencies:
+Acceptance cases and expected effects:
+```
+
+One variant MUST have one predictable input layout and workflow. Split different
+operations or incompatible slot layouts into separate variants. Supply at least
+10 intent examples per Recipe, covering command and natural-language forms;
+exercise every variant with its own positive and negative cases.
+
+Choose Tier 0 for deterministic behavior with known, safely validated inputs.
+Tier 1 is required for content composition, user-supplied strings requiring LLM
+validation, ambiguous choices requiring reasoning and irreversible operations
+requiring confirmation. Recipes using `builtin.shell` or
+`builtin.spawn_subagent` are always Tier 1. Deterministic branching or passing a
+runtime result to another step does not by itself require an LLM.
+
+Do not obtain Tier 0 merely by setting a flag. Current composition callers
+derive eligibility from persisted tier, validation and confidence fields.
+Verify the result returned by the actual caller.
+
+## 4. Specify every input and its extraction
+
+Create an input table before writing PythonCode:
+
+| Input | Source/template position | Captured name | Type | Required/default | Validation | Consuming step |
+| --- | --- | --- | --- | --- | --- | --- |
+| Example: item identifier | First `%` in `show item %` | `item_id` | String | Required | Exact allowed identifier format | Lookup step |
+
+The table is a specification, not evidence that capture is wired.
+
+### Current capture semantics
+
+1. The intent system selects a matched template and variant. A match alone does
+   not produce typed, trusted Tool arguments.
+2. `extract_template_slots(template, user_text)` splits the template on `%`.
+   Gaps between literal segments become `slot0`, `slot1`, etc., left to right.
+3. `capture_variables` pairs `variable_patterns` with those slots **by array
+   position**, not by searching the entire user message.
+4. A successful pattern renames the slot to `name`. A named capture group can
+   refine its value. `pattern: null` only renames it.
+5. A failed or invalid regex retains the raw value and positional name. It does
+   **not** reject the request. Missing substitutions remain in the Python body.
+
+For a matched template `show item %` and input `show item ABC-123`, this design
+pattern refines the first extracted slot:
+
+```json
+{
+  "name": "item_id",
+  "pattern": "^(?P<item_id>[A-Z]{3}-[0-9]{3})$",
+  "description": "Required item identifier, for example ABC-123"
+}
+```
+
+This regex is refinement metadata, not a complete input rejection mechanism.
+The workflow MUST explicitly reject missing or invalid required inputs before
+any effect. Do not fall back to the raw positional slot after refinement fails.
+Do not assume a regex turns a string into an integer or boolean.
+
+Do not use adjacent `%` slots. Define separators and test separator text inside
+values, empty values, leading/trailing whitespace and reordered phrases. Examples
+with different argument positions require their own verified layouts.
+
+### Verify which path receives the template
+
+The retrieval path calls `capture_variables(matched_template, query, patterns)`.
+The currently inspected `PgCompositionPort::compose_with_pool` instead calls
+`capture_variables(user_input, user_input, patterns)`; its public compose call
+does not carry the matched template. Ordinary concrete messages containing no
+`%` therefore yield no positional slots on that path.
+
+An author MUST trace the real caller. Do not claim that a `%` example works
+through `compose_orchestrator` until template/captured-value transport is
+implemented and demonstrated through that path. Do not put literal `%` markers
+into user messages as a workaround.
+
+## 5. Keep captured values as data, never executable source
+
+The current composer uses plain string replacement for `{{vars.NAME}}`. It
+does not escape Python literals or reparse the substituted program before
+returning it. A stored body's validated status does not certify the substituted
+body.
+
+This pattern is unsafe for unrestricted text:
+
+```python
+# UNSAFE EXAMPLE — do not copy for arbitrary user input.
+result = host.some_tool(value="{{vars.text}}")
+```
+
+Quotes, backslashes or newlines can change the source before any Python-level
+validation executes. Adding `.replace(...)` or an `if` inside that body cannot
+protect the earlier substitution.
+
+### Binding convention for the v3 target
+
+The following defines the required authoring/IBS contract. It requires runtime
+and schema support; it is not a claim that today's composer implements it.
+
+1. Input names MUST match `[a-z][a-z0-9_]*`, be unique within the variant, and
+   be declared with type, required/default behavior and validation rules.
+   Accepted data types are strings, integers, finite numbers, booleans, null,
+   lists and objects, as supported by the Tool and Monty value boundary.
+2. `%` belongs only to intent templates. It marks an extraction slot, never
+   Python syntax. Positional capture is mapped to declared semantic names.
+   Missing required values or failed validation reject binding before effects.
+3. `{{vars.NAME}}` in Recipe parameter metadata is a whole-value reference to
+   a declared input. Its exact grammar is
+   `\{\{vars\.([a-z][a-z0-9_]*)\}\}`. No whitespace, embedded expressions,
+   attributes, function calls or nested placeholders are allowed. A metadata
+   value containing additional text is not a valid input-reference expression.
+   Ordinary user data containing these characters is never parsed as a reference.
+4. IBS parses such references into binding metadata. It resolves a reference
+   to a typed value, not a fragment of Python source. A number stays a number;
+   a string containing quotes, newlines or Python-like text stays one string.
+5. Reusable PythonCode declares its own local input names and types. The Recipe
+   maps each local input to a captured task input, a typed constant, or a named
+   earlier step result/field. This separates reusable component inputs from
+   any particular user-message layout. Unmapped inputs, duplicate bindings,
+   incompatible types and forward result references are errors.
+6. The target PythonCode input convention is `inputs["local_name"]`: a
+   runtime-provided mapping for that step. For example,
+   `result = host.some_tool(value=inputs["value"])` consumes data without
+   modifying source. `inputs` is a required target interface specified here,
+   not an existing guaranteed VM symbol. Do not deploy bodies using it until
+   the actual runner implements and verifies this contract.
+7. Pure-logic components perform transformations and formatting explicitly.
+   To construct a message or URL, use component code over typed inputs; do not
+   embed expressions in placeholders or interpolate values into Python source.
+8. A successful step publishes its assigned `result` under its stable step ID
+   in the task execution context. Later bindings select that result or a
+   declared field as data. A failed producer does not supply a success result.
+   Repeated executions require explicit occurrence/checkpoint identities.
+9. Parse/validate the selected PythonCode and binding declarations before the
+   first effect. Child execution receives the same typed inputs and returns
+   typed results. Resume restores the same task's values and component snapshot.
+
+The current plain-substitution mechanism is legacy implementation behavior,
+not an alternative v3 binding convention. Do not invent an implemented typed
+transport API or escaping helper. If this contract is not supported on the
+selected path, record the missing runtime/schema work rather than claiming
+target-compliant execution. Tier 1 does not make source substitution safe.
+
+Test quotes, backslashes, newlines, Unicode, braces, `%`, source-like text and
+oversized values. They MUST remain data or be rejected before effects.
+
+## 6. Specify steps, bindings and result flow
+
+Write a step table with **one row per actual execution step**:
+
+For each Python execution step, also record its required Skill association,
+ToolSkill UUIDs and Tool names. Pure-logic steps explicitly declare that they
+need no Tool binding. This per-step inventory tells IBS what must accompany the
+assembled code; do not leave it to the orchestrator to guess from prose.
+
+| Step | Channel | Component UUID/class/revision | Input origin | Output contract | Failure action |
+| --- | --- | --- | --- | --- | --- |
+| Bind operation | Rust | ToolSkill / 13 | Binding descriptor | Tool availability only | Stop if unavailable |
+| Execute operation | Orchestrator | PythonCode / 22 | Validated inputs or prior result | Named result fields and types | Stop or explicit safe retry |
+
+Rules:
+
+- **One component per component step, without exception.** Every
+  `type: component` step MUST have exactly one UUID in `include`. To use several
+  components, create several ordered steps, each referencing one component.
+  This applies to ToolSkills, PythonCode and Skill context components. Never
+  place several PythonCode UUIDs in one step and expect their bodies to be
+  combined. The current composer silently skips additional PythonCode bodies
+  after selecting the first nonempty one; such a step is an authoring error.
+  Authoring/validation MUST reject empty or multi-component `include` lists
+  for component steps. Verify enforcement; this document does not add it.
+- **Internal PythonCode composition is allowed.** The single referenced
+  PythonCode component may declare smaller PythonCode components as internal
+  includes. The Recipe step still has one `include` UUID. Internal component
+  includes are distinct from the Recipe step's `include` list and from input
+  references such as `{{vars.name}}`.
+  IBS resolves and validates the entire internal graph, rejects missing
+  references, cycles and symbol/input conflicts, and pins every nested version
+  in the same BuildInstruction manifest. Assembly order and local contracts
+  must be explicit; internal composition cannot conceal independent Tool
+  dispatches or bypass the dependent-chain rule. Source assembly combines
+  validated component code; runtime inputs/results remain typed data.
+  The current engine composer does not implement a general recursive include
+  expansion: the existence of an `includes` storage column is not proof of it.
+- Every Rust ToolSkill binding step MUST be immediately followed by matching
+  orchestrator PythonCode that calls the Tool. A binding does not execute it.
+- ToolSkill UUIDs stay on the Rust channel. Skill prose stays off that channel.
+- Tier-0 executable steps MUST reference class 22, never Skill prose.
+- One PythonCode body contains one independent `host.<tool>(...)` call. Pure
+  logic with zero host calls is allowed. Assign `result = <value>` in every body.
+- Author PythonCode at the smallest useful reusable grain. Separate reusable
+  pure-logic operations from Tool usages where their contracts allow it. Search
+  for existing component UUIDs before writing new bodies. Assemble programs by
+  referencing components; do not copy their source into a large custom body.
+  Small means a coherent operation with clear inputs and results, not splitting
+  every expression into an otherwise meaningless component.
+- The existing dependent-chain exception permits calls in one body only when
+  the later call consumes the earlier call's direct runtime output as one
+  logical unit. Document the binding coverage; do not use the exception to
+  group independent effects or evade the binding-pair rule.
+- The dependent-chain exception is not a step-reduction objective. Prefer
+  separately reusable steps with explicit result handoffs when the runtime
+  supports them. Do not grow monolithic Python bodies to make a Recipe shorter.
+- Never use `__execute_action__`, `__execute_code_step__`,
+  `__execute_actions_parallel__`, `__check_budget__` or `__emit_event__`.
+- Do not use forbidden body patterns such as `import os`, `import subprocess`,
+  `exec(`, `eval(` or `open(`. Use registered host capabilities.
+- Read actual signatures. Do not guess keyword names, return fields or whether
+  an error is raised versus returned as data.
+
+For every result edge, name the producing step, exact field and type, consuming
+step and argument, and transport/checkpoint mechanism. Distinguish the local
+Python `result`, the Tool's payload and `host.run_program`'s outer response
+(`ok`, `return_value`, `stdout`, `error`). They are not interchangeable.
+
+The target is one Recipe execution context owned by Monty, preserving needed
+results across steps and waits while isolating unrelated tasks and attempts.
+Currently `host.run_program` and the Tier-0 channel runner create fresh state
+per step. A local variable created in step A is not automatically available in
+step B. Do not write an undefined `previous_result`, interpolate runtime output
+as new Python source, or combine independent calls to conceal this gap. Use a
+verified handoff, the valid dependent-chain exception, or document the missing
+runtime implementation. Do not assume `assembled_program` is the execution
+path merely because its concatenated source would share scope.
+
+## 7. Emit the actual persisted IBS schema
+
+Authoring diagrams may use `channel` and `step_id`. The current persisted schema
+uses `StepDescriptionEntry` containing `steps` with `knowledge` and
+`stepnumber`. IBS reads this structured array, not `yaml_source`, `goal` or
+prose instructions.
+
+The following is a **design template, not insertable data**. Replace symbolic
+UUID tokens with stable component UUIDs. IBS resolves version selection into
+the BuildInstruction during task-start assembly, not into Recipe `include`
+entries. Do not invent a revision field in this Recipe JSON.
+
+```json
+{
+  "step_descriptions": [
+    {
+      "desc_idx": 0,
+      "label": "Post a fixed readiness reply",
+      "yaml_source": "Human-readable documentation of the same two steps",
+      "steps": [
+        {
+          "stepnumber": 1,
+          "knowledge": "rust",
+          "goal": "Bind the reply Tool",
+          "content": "Bind host.post_reply",
+          "type": "component",
+          "include": ["<RESOLVED_TS_HOST_POST_REPLY_UUID>"],
+          "tool_bindings": [],
+          "dependencies": null
+        },
+        {
+          "stepnumber": 2,
+          "knowledge": "orchestrator",
+          "goal": "Post the fixed reply",
+          "content": "Run the fixed-reply PythonCode",
+          "type": "component",
+          "include": ["<RESOLVED_FIXED_REPLY_PYTHONCODE_UUID>"],
+          "tool_bindings": [],
+          "dependencies": null
+        }
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "variant_key": "fixed-readiness-reply",
+      "description": "Post exactly Ready. without input slots",
+      "step_link": "0:1-0:E",
+      "intent_examples": [
+        "say ready", "reply ready", "post ready", "tell me you are ready",
+        "please say ready", "respond with ready", "send a readiness reply",
+        "give me a readiness response", "answer with ready",
+        "please post the word ready"
+      ],
+      "variable_patterns": []
+    }
+  ]
+}
+```
+
+The associated class-22 body is:
+
+```python
+result = host.post_reply(answer="Ready.")
+```
+
+Reuse `ts-host-post-reply`. Reuse an existing PythonCode body only if its
+signature, result assignment and fixed-input behavior actually match; the
+generic placeholder-based reply body is not this fixed-input body. Provide a
+Skill describing this one usage and its explicit PythonCode association.
+The full stored Recipe also needs the metadata required by its store constructor;
+the JSON above shows only IBS/variant fields, not a complete insert request.
+
+Schema rules:
+
+- `desc_idx` is zero-based; step ordinals are one-based and strictly increasing.
+- `0:1-0:E` selects description 0, step 1 through its end. IBS creates IDs such
+  as `0:1`. Verify every range and fallback target against actual selected steps.
+- `knowledge` supports `rust`, `orchestrator`, `both`. Prefer separate binding
+  and execution steps; do not use `both` to mix classes or bypass pairing.
+- `type: component` loads references. `type: text` is annotation only.
+  `type: snippet` is rejected. The current enum has no `llm` step type.
+- Every component step has exactly one `include` UUID. Multiple components
+  require multiple steps, never a longer `include` list. Annotation steps
+  are not executable component steps.
+- A prose “LLM step” mapped to `text` does not execute an LLM call. Tier-1
+  reasoning MUST be wired through the supported execution path and verified.
+- IBS partitions channels; it does not itself execute one interleaved list.
+  Verify how the runtime installs bindings before the Python uses them.
+- Current seed helpers use ToolSkill `include` references with empty
+  `tool_bindings`. Explicit `tool_bindings` can produce Rust directives, but
+  the inspected compose handler carries them without applying dynamic loading.
+  Neither metadata nor a ToolSkill reference proves the callable is available.
+- Dependency expressions specify component retrieval, not runtime result flow.
+
+## 8. Make failures and completion explicit
+
+Specify missing inputs, invalid inputs, unmatched/ambiguous requests, missing or
+unvalidated components, blocked Tools, authentication failure, malformed Tool
+responses, external failures, timeout, cancellation and reply failure.
+
+Validate all required inputs before the first side effect. Stop on failure
+unless an explicit safe recovery is implemented. Do not report success when a
+Tool returns an error payload. Retry only with a stated bound and demonstrated
+idempotency. Never replay completed effects or turn a begun Recipe failure into
+Tier 2. Only an actual No-Match may enter Tier 2.
+
+Error-policy metadata is not proof that retries or fallback are implemented by
+the selected runner. Trace and test the runner. Define who posts the final reply
+exactly once, using `host.post_reply`; `builtin.echo` is diagnostic-only.
+History and completion must use the supported orchestration path without
+duplicating a reply or terminating the global orchestrator.
+
+Binding grants no permission. The kernel checks current instance-wide Tool
+policy before dispatch. Keep external authentication, sandboxing, secrets,
+network rules and resource limits. Do not add legacy scoped authorization or
+operation-approval leases as simplified-v3 requirements. Do not expose secrets
+or claim tokens in model-visible or ordinary Recipe state.
+
+## 9. Store and approve through supported paths
+
+Use the supported component stores, RecipeVariant/intent registration and
+seed/integrity workflow. First-party component seeders include
+`builtin_bootstrap.rs`, `seed_builtin_host.rs` and extension seeders.
+Author in this order: Recipe design, PythonCode, ToolSkill, Skill with associated
+PythonCode, then ExtensionCatalogue updates. Resolve final references before
+activation.
+
+Authored proposals retain automated Q1 and human Q2. First-party `source: system`
+bootstrap is a distinct integrity-checked path; do not relabel authored proposals
+as system components to bypass approval. Register intent examples through the
+actual store/seeder workflow; a list in Markdown alone changes no routing.
+
+Q1 checks authoring constraints; Monty checks syntax when executing. Neither
+proves program logic correct. Do not infer that every binding rule has an
+implemented validator merely because AGENTS.md requires it. Inspect the actual
+validator and report any enforcement gaps.
+
+### Immutable versions and task-start selection
+
+This is the required versioning contract; document any missing store/runtime
+implementation rather than claiming that mutable current rows satisfy it.
+
+- A component has a stable UUID and monotonically increasing version numbers.
+  Its approved versions are immutable. Editing creates a new draft version;
+  it never overwrites the body or metadata of an approved version.
+- A new authored version passes Q1 and human Q2 before atomic activation.
+  Activation changes which approved version is current; it does not invalidate
+  or delete the previous approved version. Existing system-seed integrity rules
+  remain applicable to the separate bootstrap path.
+- At task start, IBS/composition reads and resolves the newest activated,
+  validated version of the matched Recipe and every component it needs from
+  one consistent catalogue snapshot. Include Tools, ToolSkills, Skills,
+  PythonCode and transitive/context dependencies.
+  Check their contracts and associations together; incompatible newest versions
+  fail composition rather than silently selecting older versions.
+- IBS emits the selected UUID/version/checksum manifest in the BuildInstruction.
+  The runtime retains that manifest with the task before execution and uses it
+  to assemble/execute the exact selected bodies and bindings. The Recipe stores
+  stable UUID references, not version numbers. No component may be resolved
+  again as “latest” halfway through a task.
+- Activation concurrent with task startup gives the task a consistent snapshot
+  from before or after activation, never a mixture caused by racing reads.
+- Running and suspended tasks, child steps and continuations keep their selected
+  versions. A retry/resume of the same task does not upgrade components. A new
+  task selects the then-current newest activated versions.
+- A selected Rust Tool version must resolve to its retained implementation
+  handle/artifact, not a mutable file replaced under the same name. Tool
+  settings/policy are independent live state, not pinned implementation versions.
+- Retain selected versions and validated associations while tasks or resumable
+  checkpoints require them. Replacement alone requires no new Q1/Q2 approval
+  check on an already selected original. Integrity and stale-attempt checks still
+  apply; explicit revocation is a separate operation, not an effect of replacement.
+- Current global Tool policy remains independent of component versions and is
+  checked before every actual Tool dispatch. Component version retention grants
+  no old permission and does not freeze global settings.
+
+## 10. Acceptance checklist — complete before claiming success
+
+- [ ] Existing components were searched and reused wherever their contracts fit.
+- [ ] Complex behavior is decomposed into purposeful reusable steps; any new
+  Rust Tool is justified by a missing primitive, not by reducing step count.
+- [ ] Python steps are assembled from small reusable PythonCode components;
+  new components have contracts suitable for reuse in other Recipes.
+- [ ] Every referenced UUID resolves to the intended class and approved revision.
+- [ ] Recipes contain stable UUID references without version numbers; task start
+  IBS assembly resolves the newest activated approved versions as one consistent
+  snapshot and pins the exact versions in the BuildInstruction.
+- [ ] Approved versions are immutable and retained for running/suspended tasks;
+  activating replacements neither changes those tasks nor invalidates originals.
+- [ ] Resume/child execution uses the recorded versions, while each dispatch
+  independently checks current global Tool policy.
+- [ ] Skill prose and PythonCode have an explicit documented association.
+- [ ] Structured JSON deserializes into the actual IBS types; no symbolic UUIDs remain.
+- [ ] Every component step references exactly one component UUID; empty and
+  multi-component `include` lists are rejected by the applicable validation path.
+- [ ] Internal PythonCode includes are validated, assembled in explicit order
+  and version-pinned transitively; they preserve the Tool-call grain rules.
+- [ ] `step_link` selects exactly the intended steps in the intended order.
+- [ ] Every ToolSkill binding is paired with the correct executable PythonCode.
+- [ ] The selected execution path exposes every required host callable.
+- [ ] At least 10 intent examples exist; variant routing and negative cases pass.
+- [ ] Captured names, values and types were checked through the real match/compose path.
+- [ ] Missing, empty and invalid inputs stop before effects; no unresolved placeholders remain.
+- [ ] Hostile text remains data or is rejected before effects.
+- [ ] Selected PythonCode and typed binding declarations validate before effects;
+  runtime values do not modify source. Legacy substitution is tested separately
+  and is not reported as the target input-binding implementation.
+- [ ] Every inter-step result handoff works through the actual runner.
+- [ ] Representative inputs produce the expected Tool arguments, effects and reply.
+- [ ] Failure, retry, cancellation and blocked-policy cases behave as specified.
+- [ ] Tier-0 execution makes zero LLM calls; Tier-1 calls occur only as designed.
+- [ ] Q1 passes and applicable human Q2 approval is recorded.
+- [ ] Component seed/integrity checks pass where seeder data changed.
+- [ ] Evidence identifies the tested revisions/path and distinguishes unverified requirements.
+
+Use focused real execution evidence under the development policy. Read
+`LOCAL_TEST_ENV.md` if present before remote tests or provider setup. Do not run
+Cargo solely to validate prose. A Recipe blocked by missing transport, binding
+or context preservation remains incomplete, even if its JSON and Python parse.
+
+## Source references
+
+- [IBS schema, selection and variable capture](crates/brassclaw_engine/src/memory/instruction_builder.rs)
+- [VariablePattern and ToolBinding types](crates/brassclaw_engine/src/types/ibs.rs)
+- [RecipeVariant type](crates/brassclaw_engine/src/types/recipe.rs)
+- [PostgreSQL compose path](crates/brassclaw_reborn_composition/src/pg_composition_port.rs)
+- [Retrieval capture and component fetching](crates/brassclaw_engine/src/memory/retrieval_source.rs)
+- [ComposedProgram assembly and text substitution](crates/brassclaw_engine/src/memory/composition.rs)
+- [Host dispatch, run_program and Tier-0 execution](crates/brassclaw_engine/src/executor/orchestrator.rs)
+- [Monty parsing and execution](crates/brassclaw_engine/src/executor/scripting.rs)
+- [Recipe validator](crates/brassclaw_engine/src/memory/recipe_validator.rs)
+- [Q1 orchestration](crates/brassclaw_reborn_composition/src/q1_orchestrator.rs)
+- [Recipe store metadata](crates/brassclaw_reborn_composition/src/pg_recipe_store.rs)

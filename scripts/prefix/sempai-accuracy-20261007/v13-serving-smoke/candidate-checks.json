@@ -1,0 +1,452 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "python-07-response.json",
+      "name": "pc-transfer-07",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "741417dea9e891b8334155fb03cb841761ab691b27c2359800bca531a530bf1e",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "missing",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": null
+          },
+          "expected": {
+            "kind": "null",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 2
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 3
+          },
+          "expected": {
+            "kind": "integer",
+            "window": 3
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "window": 3
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 12
+          },
+          "expected": {
+            "kind": "integer",
+            "window": 12
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "window": 12
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 13
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": 3.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": "3"
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "window": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "window": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "window": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "python-08-response.json",
+      "name": "pc-transfer-08",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "134d1bc2035a42997ff0d0e092371c9155d3d6150381e5829ca3fb02a261f248",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 10,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "quota": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "quota": null
+          },
+          "expected": {
+            "kind": "null",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 3
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 4
+          },
+          "expected": {
+            "kind": "integer",
+            "quota": 4
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "quota": 4
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 13
+          },
+          "expected": {
+            "kind": "integer",
+            "quota": 13
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "quota": 14
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 4.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": "4"
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": false
+    },
+    {
+      "response": "recipe-02-response.json",
+      "name": "recipe-transfer-02",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": true,
+      "current_sink_preserves_v3": false
+    }
+  ],
+  "component_activation_performed": false
+}

@@ -1,0 +1,105 @@
+{
+  "format": "sempai-compact-grammar/1",
+  "any_whitespace": false,
+  "xgrammar_version": "0.2.7",
+  "schemas": [
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_kind",
+          "branches",
+          "helper_required",
+          "workflow",
+          "authorized_edits",
+          "prerequisites",
+          "notes"
+        ],
+        "properties": {
+          "task_kind": {
+            "type": "string",
+            "enum": [
+              "python",
+              "recipe",
+              "review"
+            ]
+          },
+          "branches": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "guard",
+                "result"
+              ],
+              "properties": {
+                "guard": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "result": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              }
+            }
+          },
+          "helper_required": {
+            "type": "boolean"
+          },
+          "workflow": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "knowledge",
+                "uuid"
+              ],
+              "properties": {
+                "knowledge": {
+                  "type": "string",
+                  "enum": [
+                    "rust",
+                    "orchestrator"
+                  ]
+                },
+                "uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              }
+            }
+          },
+          "authorized_edits": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 160
+            }
+          },
+          "prerequisites": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 160
+            }
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 160
+          }
+        }
+      },
+      "schema_sha256": "f20f202037a83ac39de4ec5aab9166bd9211ff0f8adf3e7bfe7bcaf5c5e8c4d5",
+      "grammar_sha256": "d90abcc2e15cc93f6ad3cb8b49898225864717d601e40f8fd7a9089abe420a7e"
+    }
+  ],
+  "answers_or_behavioral_oracles_used": false
+}

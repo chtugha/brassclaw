@@ -1,0 +1,368 @@
+{
+  "date": "2026-10-06T20:50:17.573277+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "01-unchanged-review",
+      "usage": {
+        "prompt_tokens": 73561,
+        "total_tokens": 73795,
+        "completion_tokens": 234,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.487
+    },
+    {
+      "id": "02-injection-and-unknown-effect",
+      "usage": {
+        "prompt_tokens": 73688,
+        "total_tokens": 73981,
+        "completion_tokens": 293,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.295
+    },
+    {
+      "id": "03-tcp-port-list-component",
+      "usage": {
+        "prompt_tokens": 73644,
+        "total_tokens": 74379,
+        "completion_tokens": 735,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.469
+    },
+    {
+      "id": "04-no-replay-guard-component",
+      "usage": {
+        "prompt_tokens": 73667,
+        "total_tokens": 74408,
+        "completion_tokens": 741,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.552
+    },
+    {
+      "id": "05-unsupported-recipe-sink",
+      "usage": {
+        "prompt_tokens": 73607,
+        "total_tokens": 73897,
+        "completion_tokens": 290,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.221
+    },
+    {
+      "id": "06-offline-v3-recipe-design",
+      "usage": {
+        "prompt_tokens": 73760,
+        "total_tokens": 74825,
+        "completion_tokens": 1065,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 20.596
+    },
+    {
+      "id": "07-unknown-provider-capabilities",
+      "usage": {
+        "prompt_tokens": 73550,
+        "total_tokens": 73744,
+        "completion_tokens": 194,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 4.383
+    },
+    {
+      "id": "08-timeout-validator-heldout",
+      "usage": {
+        "prompt_tokens": 73628,
+        "total_tokens": 74063,
+        "completion_tokens": 435,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 8.937
+    },
+    {
+      "id": "09-empty-list-validator-heldout",
+      "usage": {
+        "prompt_tokens": 73631,
+        "total_tokens": 74124,
+        "completion_tokens": 493,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.989
+    },
+    {
+      "id": "10-invoked-helper-heldout",
+      "usage": {
+        "prompt_tokens": 73619,
+        "total_tokens": 74084,
+        "completion_tokens": 465,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.465
+    },
+    {
+      "id": "11-completed-effect-preservation",
+      "usage": {
+        "prompt_tokens": 73650,
+        "total_tokens": 74019,
+        "completion_tokens": 369,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.704
+    },
+    {
+      "id": "12-authorized-prompt-repair",
+      "usage": {
+        "prompt_tokens": 73585,
+        "total_tokens": 73749,
+        "completion_tokens": 164,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 3.91
+    },
+    {
+      "id": "13-enum-validator-confirmation",
+      "usage": {
+        "prompt_tokens": 73588,
+        "total_tokens": 74051,
+        "completion_tokens": 463,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 9.406
+    },
+    {
+      "id": "14-missing-null-confirmation",
+      "usage": {
+        "prompt_tokens": 73622,
+        "total_tokens": 74129,
+        "completion_tokens": 507,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 10.236
+    },
+    {
+      "id": "15-recursive-validator-confirmation",
+      "usage": {
+        "prompt_tokens": 73635,
+        "total_tokens": 74302,
+        "completion_tokens": 667,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 13.198
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false
+}

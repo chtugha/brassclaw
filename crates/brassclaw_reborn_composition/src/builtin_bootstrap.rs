@@ -240,11 +240,18 @@ impl BootstrapStores {
                 return;
             }
         }
-        // Q1 — graceful defer until validator Recipes are seeded (Phase L).
-        // Advances state to 2 only when a validator Recipe exists; otherwise
-        // the queue row stays at state 1. Bypass that by calling gate1_pass
-        // directly so approve can proceed regardless of Recipe availability.
-        if let Err(e) = self.queue.gate1_pass(&scope, component_id, &[]).await {
+        // Legacy trusted-seed audit: retain the exact checked-in candidate and
+        // submission before recording its trusted-root result. This is not an
+        // ordinary authored-component Q1 review or exact-combination approval.
+        let review = match self.queue.capture_q1_candidate(&scope, component_id).await {
+            Ok(review) => review,
+            Err(error) => {
+                tracing::error!(component_id=%component_id, class_code, name, error=%error,
+                    "trusted seed audit could not capture its actual candidate");
+                return;
+            }
+        };
+        if let Err(e) = self.queue.gate1_pass_reviewed(&scope, &review, &[]).await {
             tracing::debug!(
                 component_id = %component_id,
                 class_code,

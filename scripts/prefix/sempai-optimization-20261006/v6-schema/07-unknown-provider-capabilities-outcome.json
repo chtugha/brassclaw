@@ -1,0 +1,14 @@
+{
+  "settings_adjustments": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Reviewed the packet in offline-design mode. The user request is a prompt-review task, but the target provider metadata is incomplete: model is known (cyankiwi/Ornith-1.5-9B-AWQ-INT4) while protocol_capabilities and catalogue_revision are null. Per the authoring procedure, provider roles, Tool encoding and reasoning syntax must come from the resolved target provider catalogue, not from the model name. Those facts are missing, so no justified prompt repair is possible and no component can be proposed. The volatile tail is preserved unchanged; no assistant acknowledgement, action, result or approval was added. No proposal arrays were populated because the required constructor/reference support (resolved provider capabilities) is unavailable. This is a blocker, not a blocked draft.",
+  "proposed_components": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ],
+  "proposed_recipe_updates": []
+}

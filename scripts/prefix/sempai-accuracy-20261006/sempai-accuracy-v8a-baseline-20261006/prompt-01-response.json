@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-81f7a275300715e8",
+  "object": "chat.completion",
+  "created": 1791323433,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail exactly. The only permitted change is replacing system content with exactly \\\"Antworte sachlich.\\\"; the user message was kept byte-for-byte. The user message \\\"Keep my exact request and punctuation: {a:1}.\\\" is preserved unchanged. No proposals or other changes were made. The target_provider_metadata carries null model, max_model_len, protocol_capabilities and catalogue_revision, so no provider facts were inferred or reported. The standalone citation is a source-question benchmark and does not apply prompt changes or create/approve components, so proposed_components, proposed_recipe_updates, proposed_intent_examples and settings_adjustments remain empty.\",\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Antworte sachlich.\"],\n    [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]\n  ]\n  ,\n  \"settings_adjustments\": []\n  ,\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76843,
+    "total_tokens": 77073,
+    "completion_tokens": 230,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,104 @@
+{
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are Sempai preparing a construction plan, not the final reviewer envelope. Read the current trusted host contract and packet as supplied. Do not execute, approve or propose components here. Return only the requested plan JSON. For Python, enumerate exhaustive guards and COMPLETE result-object Python expressions from THIS contract. Distinguish absent keys from explicit null. Put an absence guard before reading a possibly absent key. Record exact types, BOTH bounds and exact result labels/keys; no coercion. If missing/null are distinct, a helper receives the mapping or explicit presence information. For a Recipe, copy ONLY the supplied component UUIDs into the exact ordered knowledge/uuid workflow, each supplied usage once; distinguish result data from actual host.post_reply effects. For review, list only explicit authorized edits; leave other evidence untouched. Do not invent provider facts, dependencies or runtime support. This plan is unverified model analysis. CURRENT TRUSTED HOST CONTRACT:\nOffline full-v3 export ONLY. host allocated unapproved draft PythonCode c7983481-a51f-5068-ba4a-11220f293cd3 with content result = {'state': 'Stable'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-06. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona."
+    },
+    {
+      "role": "user",
+      "content": "{\"mode\": \"offline-design\", \"volatile_messages\": [[\"user\", \"Design a reusable stable data-result workflow.\"]], \"current_conversation\": [[\"user\", \"Design a reusable stable data-result workflow.\"]], \"target_provider_metadata\": {\"model\": \"cyankiwi/Ornith-1.5-9B-AWQ-INT4\", \"max_model_len\": 131072, \"catalogue_revision\": null, \"protocol_capabilities\": null}, \"instruction\": \"Offline full-v3 export ONLY. host allocated unapproved draft PythonCode c7983481-a51f-5068-ba4a-11220f293cd3 with content result = {'state': 'Stable'}. Zero inputs/dependencies; no version numbers or approval. Create exactly one class21 recipe-transfer-06. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation; root compatibility arrays empty under test persona.\"}"
+    }
+  ],
+  "temperature": 0,
+  "max_tokens": 1200,
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  },
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "construction_plan",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_kind",
+          "branches",
+          "helper_required",
+          "workflow",
+          "authorized_edits",
+          "prerequisites",
+          "notes"
+        ],
+        "properties": {
+          "task_kind": {
+            "type": "string",
+            "enum": [
+              "python",
+              "recipe",
+              "review"
+            ]
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "guard",
+                "result"
+              ],
+              "properties": {
+                "guard": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "helper_required": {
+            "type": "boolean"
+          },
+          "workflow": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "knowledge",
+                "uuid"
+              ],
+              "properties": {
+                "knowledge": {
+                  "type": "string"
+                },
+                "uuid": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "authorized_edits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

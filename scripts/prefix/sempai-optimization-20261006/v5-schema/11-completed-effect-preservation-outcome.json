@@ -1,0 +1,26 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [],
+  "composition_summary": "Reviewed the packet as data without proposing components, intents, settings or recipe updates. The volatile tail is preserved exactly: system, user, assistant and tool messages keep their roles, order and content, including the tool receipt {\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"}. No prompt repair was justified, so adjusted_volatile_messages and bridge_messages are empty and the original messages are echoed unchanged. The task is an offline-design review, not a component draft, so proposed_components is empty. The explanation is in composition_summary: the tool receipt is trusted evidence that the email was sent once and completed, so the UI timeout is a display/transport failure, not a missing effect. Because the effect already completed, the operation must not be replayed; a timeout or lost completion record is unknown completion, not confirmed no effect, and replaying a completed effect is forbidden. The assistant must not claim it sent another message. This is a separate usage/step (reconciliation or a display-only reply), not an implicit extra dispatch. The kernel still enforces current global Tool policy before any future dispatch, and the completed effect is retained without reissue. No provider capabilities were claimed; target_provider_metadata is null and no runtime facts were inferred.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Inspect evidence without performing actions."
+    ],
+    [
+      "user",
+      "The email was sent; only explain why the UI timed out."
+    ],
+    [
+      "assistant",
+      "I sent the message once."
+    ],
+    [
+      "tool",
+      "{\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"}"
+    ]
+  ]
+}

@@ -1,0 +1,3 @@
+{
+  "06-offline-v3-recipe-design": "Independent check confirms the data-return intent semantics and constructor defaults are now correct. However the Recipe needs AT LEAST TEN DISTINCT intent examples in both payload.intent_examples and variant.intent_examples; count unique complete strings before responding. The root proposed_intent_examples compatibility array was again populated despite the persona requiring it EMPTY; it must be [], because examples belong inside the Recipe payload only. Preserve the corrected defaults and data-return semantics, keep both payload intent lists identical, preserve the original conversation. Do not claim approval, activation, or successful repaired tests."
+}

@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-07: it classifies a raw window value into missing/null/integer/invalid using only inputs.get() presence checks and exact type/bound tests, returning an explicit invalid-result object for malformed data rather than raising. The body validates presence of 'window' before any branch, distinguishes absent key from explicit null, accepts only exact integers in 3..12, and rejects booleans, floats, strings and out-of-range values. It assigns result on every path with no imports, I/O or host calls. This is an unapproved draft; typed-input transport and Monty runner support remain prerequisites for execution/activation, and no observed tests, submission or activation occurred.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-07",
+        "description": "Pure-logic window classifier. Reads a raw window value from inputs and returns an explicit classification object: missing when the key is absent, null when the value is explicitly null, integer when it is an exact integer in 3..12, and invalid otherwise. No imports, I/O or host calls; returns an invalid-result object for malformed data instead of raising.",
+        "content": "def classify_window(raw):\n    if 'window' not in inputs:\n        result = {'kind': 'missing', 'window': None}\n    else:\n        window = inputs['window']\n        if window is None:\n            result = {'kind': 'null', 'window': None}\n        elif type(window) is int and not isinstance(window, bool) and 3 <= window <= 12:\n            result = {'kind': 'integer', 'window': window}\n        else:\n            result = {'kind': 'invalid', 'window': None}\n    return result\nresult = classify_window(inputs.get('window'))"
+      }
+    }
+  ]
+}

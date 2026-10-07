@@ -1,0 +1,14 @@
+{
+  "composition_summary": "The user asked me to review their provider prompt without assuming its tool or thinking syntax. I preserved the volatile tail exactly as supplied: one user message, unchanged, with no invented assistant acknowledgement, successful action, result or approval. The target_provider_metadata carries model only; protocol_capabilities and catalogue_revision are null, so supported roles, Tool encoding and reasoning syntax are unknown and must not be inferred from the model name. Per the reviewer decision procedure, a request to author components is not a request to rewrite the conversation, and unknown provider capabilities do not negate a draft constructor explicitly supplied by the trusted review host. Here no such constructor was supplied, and the only requested action is a prompt review that cannot be performed without the provider's actual capabilities. I therefore emit no proposals and explain the blocker in the summary. No submission or activation occurred.",
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ],
+  "proposed_components": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "settings_adjustments": []
+}

@@ -49,24 +49,30 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build
-        run: cargo build --release --bin brassclaw --target ${{ matrix.target }}
+        run: cargo build --release -p brassclaw -p brassclaw_monty_host --bins --target ${{ matrix.target }}
 
       - name: Compute checksum (Linux)
         if: runner.os == 'Linux'
         run: |
           sha256sum target/${{ matrix.target }}/release/brassclaw \
             | awk '{print $1}' > target/${{ matrix.target }}/release/brassclaw.sha256
+          sha256sum target/${{ matrix.target }}/release/monty_worker \
+            | awk '{print $1}' > target/${{ matrix.target }}/release/monty_worker.sha256
 
       - name: Compute checksum (macOS)
         if: runner.os == 'macOS'
         run: |
           shasum -a 256 target/${{ matrix.target }}/release/brassclaw \
             | awk '{print $1}' > target/${{ matrix.target }}/release/brassclaw.sha256
+          shasum -a 256 target/${{ matrix.target }}/release/monty_worker \
+            | awk '{print $1}' > target/${{ matrix.target }}/release/monty_worker.sha256
 
       - name: Prepare artifact
         run: |
           cp target/${{ matrix.target }}/release/brassclaw      ${{ matrix.artifact_name }}
           cp target/${{ matrix.target }}/release/brassclaw.sha256 ${{ matrix.artifact_name }}.sha256
+          cp target/${{ matrix.target }}/release/monty_worker ${{ matrix.artifact_name }}-monty-worker
+          cp target/${{ matrix.target }}/release/monty_worker.sha256 ${{ matrix.artifact_name }}-monty-worker.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -75,6 +81,8 @@ jobs:
           path: |
             ${{ matrix.artifact_name }}
             ${{ matrix.artifact_name }}.sha256
+            ${{ matrix.artifact_name }}-monty-worker
+            ${{ matrix.artifact_name }}-monty-worker.sha256
 
   release:
     name: Create Release

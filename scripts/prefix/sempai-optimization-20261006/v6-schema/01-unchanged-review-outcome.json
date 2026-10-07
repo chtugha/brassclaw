@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Packet is already clear and internally consistent: a system instruction to explain a TCP port briefly, followed by a user question about TCP port 443. No prompt repair is justified, so the volatile tail is echoed unchanged. No proposals were made. The packet carries no provider metadata (model, max_model_len, protocol_capabilities, catalogue_revision are all null), so no provider-specific adjustments are warranted. No component drafting was requested, and no supported sink fields were needed. No Q1, behavioral validation or human Q2 was performed; nothing was submitted, activated or approved.",
+  "proposed_components": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ],
+  "proposed_recipe_updates": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a1e7cb6186e0603c",
+  "object": "chat.completion",
+  "created": 1791320250,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-fixed-ready-result\",\n        \"description\": \"Deterministic Tier-0 subworkflow that returns a fixed readiness result object without posting a user reply. It is an unapproved offline-design draft: it carries an unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\\\"status\\\": \\\"Ready\\\"}), zero inputs, zero Tool calls and no dependencies. It returns a result object only; it does not post a user reply, change policy, write a file or perform any external effect. It requires Q1 validation and human Q2 approval before activation. The current Sempai sink cannot preserve this v3 Recipe draft (class 21 drops step_descriptions, variants and dependency_registry), so this is an offline-design export, not a submission or activation.\",\n        \"trigger\": null,\n        \"steps\": [\n          {\n            \"stepnumber\": 1,\n            \"knowledge\": \"orchestrator\",\n            \"goal\": \"Return the fixed readiness result\",\n            \"content\": \"Run the fixed-ready-result PythonCode\",\n            \"type\": \"component\",\n            \"include\": [\"84313e5b-c871-4f9e-9623-3986db9c5b2a\"],\n            \"tool_bindings\": [],\n            \"dependencies\": null\n          }\n        ],\n        \"prior_knowledge_content\": \"Unapproved offline-design draft. It depends on an unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\\\"status\\\": \\\"Ready\\\"}), which requires Q1 validation and human Q2 approval before activation. This subworkflow returns a result object only; it does not post a user reply, change global Tool policy, write a file or perform any external effect. The current Sempai sink cannot preserve this v3 Recipe draft (class 21 drops step_descriptions, variants and dependency_registry), so this export is offline-design only, not a submission or activation.\",\n        \"intent_examples\": [\n          \"say ready\",\n          \"reply ready\",\n          \"post ready\",\n          \"tell me you are ready\",\n          \"please say ready\",\n          \"respond with ready\",\n          \"send a readiness reply\",\n          \"give me a readiness response\",\n          \"answer with ready\",\n          \"please post the word ready\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Return the fixed readiness result\",\n            \"yaml_source\": \"Human-readable documentation of the single deterministic step\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Return the fixed readiness result\",\n                \"content\": \"Run the fixed-ready-result PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"84313e5b-c871-4f9e-9623-3986db9c5b2a\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-readiness-result\",\n            \"description\": \"Return exactly the fixed readiness result with no input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say ready\",\n              \"reply ready\",\n              \"post ready\",\n              \"tell me you are ready\",\n              \"please say ready\",\n              \"respond with ready\",\n              \"send a readiness reply\",\n              \"give me a readiness response\",\n              \"answer with ready\",\n              \"please post the word ready\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ],\n  \"composition_summary\": \"Offline-design export only. Produced one class-21 Recipe constructor draft (recipe-fixed-ready-result) with the exact persisted IBS schema: one orchestrator component step (stepnumber 1, knowledge orchestrator, type component) including the allocated unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a once, no version numbers and no Rust binding. One variant (fixed-readiness-result) with step_link 0:1-0:E, variable_patterns [], and ten unique intent examples. prior_knowledge_content states the unapproved draft dependency, the required Q1 and human Q2, that the subworkflow returns a result object only (not a posted user reply), and that the current Sempai sink cannot preserve this v3 draft. No submission, activation, approval or runtime support was created; the draft remains unapproved.\",\n  \"proposed_intent_examples\": [],\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable subworkflow that returns a fixed readiness result.\"]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 74153,
+    "total_tokens": 75363,
+    "completion_tokens": 1210,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

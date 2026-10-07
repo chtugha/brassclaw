@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied volatile message unchanged (a request to author a component is not a rewrite of the conversation). Proposed exactly one class-22 pure-logic component pc-check-tcp-port-list. The body is executable Python at module scope: it reads ports via inputs.get('ports') so absence is a valid invalid outcome, validates the full positive condition (nonempty list, every element an exact int that is not a bool, each in 1..65535) before deciding, and assigns result = {'valid': valid, 'ports': ports if valid else []} on every branch without raising. Booleans are rejected because isinstance(True, int) is true; the guard type(p) is int and not isinstance(p, bool) enforces exact integer semantics. No imports, I/O, host calls or UUIDs are used. The description carries the target input/result contract and the missing typed-runner prerequisite, with no approval claims. No other proposal arrays were populated per the test scope.",
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We repeatedly need to reject invalid TCP-port lists before any network action."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-tcp-port-list",
+        "description": "Pure-logic guard that validates a raw TCP-port list before any network action. Target input contract: ports is a nonempty list of exact integers, each in 1..65535 inclusive. Booleans are invalid (a bool is not an integer). Missing, null, scalar, empty, bool-element and out-of-range values fail closed by returning valid=false with ports=[]; no exception is raised. This is a raw validator: it inspects the candidate shape itself and does not assume an earlier binding stage already validated it. The outer input contract admits the raw candidate list while the inner validation implements the rule. Missing and null remain distinct (both yield valid=false, ports=[]). Typed inputs are a target interface, not guaranteed deployed runtime support; the step-local inputs mapping must be implemented by the runner. This component makes zero host.<tool>(...) calls and is deterministic pure logic. It grants no dispatch permission and does not replace live policy, cancellation or actual deduplication evidence. No approval claims.",
+        "content": "ports = inputs.get('ports')\nvalid = isinstance(ports, list) and len(ports) > 0\nif valid:\n    for p in ports:\n        if not (type(p) is int and not isinstance(p, bool) and 1 <= p <= 65535):\n            valid = False\n            break\nresult = {'valid': valid, 'ports': ports if valid else []}"
+      }
+    }
+  ],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "settings_adjustments": []
+}

@@ -1,0 +1,26 @@
+{
+  "pilot_only": true,
+  "accepted": 3,
+  "total": 4,
+  "first_pass_tasks": true,
+  "model_calls_per_task": 2,
+  "validation_feedback_sent": false,
+  "cases": [
+    {
+      "id": "python-08",
+      "accepted": true
+    },
+    {
+      "id": "python-09",
+      "accepted": true
+    },
+    {
+      "id": "recipe-06",
+      "accepted": false
+    },
+    {
+      "id": "evidence-11",
+      "accepted": true
+    }
+  ]
+}

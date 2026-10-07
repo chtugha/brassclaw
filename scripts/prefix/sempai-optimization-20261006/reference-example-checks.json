@@ -1,0 +1,574 @@
+{
+  "engine": "bounded Linux CPython, documentation examples not model output/Q1",
+  "cases": [
+    {
+      "program": "advisory-decision",
+      "inputs": {},
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": null,
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": [],
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": {},
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "bad",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": null,
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": [],
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": {},
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "bad",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": null,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": [],
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": {},
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": "bad",
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": null,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": [],
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": {},
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": "bad",
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": null,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": [],
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": {},
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": "bad",
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": null
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": []
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": {}
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": "bad"
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": true,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 0,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "paused",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 1,
+        "capacity": 1,
+        "inspect_only": false,
+        "receipt_verified": true
+      },
+      "passed": true
+    },
+    {
+      "program": "advisory-decision",
+      "inputs": {
+        "phase": "open",
+        "assessment": "eligible",
+        "used": 0,
+        "capacity": 1,
+        "inspect_only": true,
+        "receipt_verified": false
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {},
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": null
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": true
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": false
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": 9
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": 10
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": 20
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": 21
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": 10.0
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": "10"
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": []
+      },
+      "passed": true
+    },
+    {
+      "program": "presence-classifier",
+      "inputs": {
+        "sample": {}
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {},
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": null
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": ""
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": "x"
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": true
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": 0
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": []
+      },
+      "passed": true
+    },
+    {
+      "program": "called-helper",
+      "inputs": {
+        "label": {}
+      },
+      "passed": true
+    }
+  ],
+  "passed": 57,
+  "total": 57
+}

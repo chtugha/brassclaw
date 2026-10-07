@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Antworte sachlich."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Replaced the system content with exactly \"Antworte sachlich.\" as the only authorized edit; preserved the user message byte-for-byte, roles, order and count. No proposals or other changes were made, and no provider facts were invented.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

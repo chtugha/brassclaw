@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edit authorized. The system text contains repeated wording but no edit was permitted, so it is preserved verbatim. The user request is quoted content and is preserved exactly, including its braces and punctuation. Target provider protocol, roles, tool and reasoning capabilities are unknown and were not inferred from the model name. No components, recipe updates, intents or settings were proposed.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

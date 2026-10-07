@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the packet as a component-drafting request for one class-22 PythonCode candidate. The host sink supports class 22 with name/description/content only, so the payload is a single supported constructor draft. The requested semantics are a raw validator: it must inspect candidate data that may be missing, null, wrong-typed or out-of-range and return an explicit invalid-result object (ok=false, entries=[]) rather than raising or coercing. Per the reviewer decision procedure, direct inputs[...] access is incorrect because it raises before the validation decision; use inputs.get with a presence branch. The body defines a helper and must call it and assign its returned value to result at module scope. A boolean is not an integer, so weight must be tested with exact integer semantics and rejected if bool. Extra item fields fail closed. The empty list is a valid selection (cardinality 0..3), so an empty list is valid, not an error. Typed inputs are a target interface, not deployed runtime support; the draft is unapproved and the target typed-input interface is not guaranteed. No provider capabilities were invented; catalogue_revision and protocol_capabilities are null, so no provider-side change is proposed. Conversation preserved exactly; no observed effects, approvals or activations.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate raw weighted entries, including an empty selection."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-weighted-entries",
+        "description": "Raw validator that inspects a candidate list of weighted entries and returns an explicit invalid-result object (ok=false, entries=[]) for missing, null, wrong-typed or out-of-range data, without raising or coercing. A boolean is not an integer; extra item fields fail closed. An empty list is a valid selection. Typed inputs are a target interface, not deployed runtime support; this is an unapproved draft.",
+        "content": "def check_weighted_entries(candidate):\n    if not isinstance(candidate, list) or len(candidate) > 3:\n        return {'ok': False, 'entries': []}\n    for item in candidate:\n        if not isinstance(item, dict) or set(item.keys()) != {'label', 'weight'}:\n            return {'ok': False, 'entries': []}\n        label = item.get('label')\n        weight = item.get('weight')\n        if not isinstance(label, str) or not 1 <= len(label) <= 8:\n            return {'ok': False, 'entries': []}\n        if isinstance(weight, bool) or not isinstance(weight, int) or not 0 <= weight <= 1:\n            return {'ok': False, 'entries': []}\n    return {'ok': True, 'entries': candidate}\nresult = check_weighted_entries(inputs.get('entries'))"
+      }
+    }
+  ],
+  "proposed_recipe_updates": []
+}

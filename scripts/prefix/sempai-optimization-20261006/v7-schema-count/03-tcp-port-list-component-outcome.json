@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Reviewed the request to author one class-22 pure-logic component pc-check-tcp-port-list. The host sink supports class 22 with name/description/content, so a single pure-logic component is draftable. The component is deterministic validation only: it inspects a raw candidate ports value and returns {valid, ports} without dispatching any Tool, making no LLM call, and containing no imports, I/O, host calls or UUIDs. It follows the raw-validator pattern: read the candidate with inputs.get('ports') so absence is a valid invalid-result, never raise; validate that ports is a nonempty list whose every element is an exact integer (not a bool) in 1..65535 inclusive; assign result = {valid, ports} on every branch with no exception. The description carries the target input/result contract and the missing typed-runner prerequisite, with no approval claims. No constructor/reference/UUID identities were supplied, and no host execution or human Q2 occurred, so this remains an unapproved draft. adjusted_volatile_messages echoes the supplied user message unchanged; compatibility and settings arrays are empty.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-tcp-port-list",
+        "description": "Pure-logic guard that validates a raw candidate TCP-port list before any network action. It inspects the raw candidate ports value and returns an explicit invalid-result object; it does not dispatch any Tool, make an LLM call, or perform I/O. Target input contract: ports is a nonempty list of exact integers, each in 1..65535 inclusive. Booleans are not integers and are rejected. Missing, null, scalar, empty, bool-element and out-of-range values fail closed by returning valid=false and ports=[] (never raising). The consuming Recipe must supply ports as a typed binding; this component does not perform that binding. Missing runtime prerequisite: the typed-runner/inputs mapping that supplies ports and enforces the integer type boundary must be implemented by the selected Monty runner; this component assumes only that ports is present in the inputs mapping. No approval, activation or dispatch permission is claimed.",
+        "content": "ports = inputs.get('ports')\nvalid = isinstance(ports, list) and len(ports) > 0\nif valid:\n    for p in ports:\n        if isinstance(p, bool) or not isinstance(p, int) or not 1 <= p <= 65535:\n            valid = False\n            break\nresult = {'valid': valid, 'ports': ports if valid else []}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We repeatedly need to reject invalid TCP-port lists before any network action."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-flag",
+    "description": "Pure-logic validator that inspects a raw candidate flag value and returns whether it is an exact boolean. Raw inputs may omit the flag or hold any JSON value. Only the exact booleans True and False are valid; any other value, a missing flag or null is invalid. Returns {valid: boolean, flag: original bool if valid else null}. No Tool dispatch, I/O, host calls, exceptions or type coercion. This is an unapproved draft; activation requires Q1 and human Q2.",
+    "content": "def check_flag(candidate):\n    valid = type(candidate) is bool\n    return {'valid': valid, 'flag': candidate if valid else None}\nresult = check_flag(inputs.get('flag'))"
+  }
+}

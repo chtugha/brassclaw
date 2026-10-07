@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-timeout-ms",
+    "description": "Pure-logic validator that inspects a raw candidate timeout_ms and returns whether it is a valid integer in 0..7500 inclusive. Reads the raw value with inputs.get so a missing key is a valid outcome, never raises, and never coerces. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid or null otherwise. No host calls, imports or I/O.",
+    "content": "def check_timeout_ms():\n    raw = inputs.get(\"timeout_ms\")\n    valid = isinstance(raw, int) and not isinstance(raw, bool) and 0 <= raw <= 7500\n    result = {\"valid\": valid, \"timeout_ms\": raw if valid else None}\n"
+  }
+}

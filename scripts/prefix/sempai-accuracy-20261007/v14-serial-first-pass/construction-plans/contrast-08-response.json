@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a4558576f6402e67",
+  "object": "chat.completion",
+  "created": 1791358233,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"in\", \"result\": \"absent\"}, {\"guard\": \"is None\", \"result\": \"null\"}, {\"guard\": \"type is int and 2 <= code <= 5 and type is bool\", \"result\": \"ok\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata\", \"constructor support\"], \"notes\": \"records is a list of 0..4 objects; each object has exactly code and enabled; code is a string of length 2..5 inclusive; enabled is an exact bool (False valid).\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98415,
+    "total_tokens": 98559,
+    "completion_tokens": 144,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

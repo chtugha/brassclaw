@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a1e6770b68518574",
+  "object": "chat.completion",
+  "created": 1791358119,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-contrast-00. Raw slots is a list of length 0..2 with all items exact integers 0..4; empty is valid; no bool/float/coercion. Module-level result assigns {ok:boolean, slots:original if valid else []}. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-00\", \"description\": \"Raw slots is a list with length 0..2 inclusive, all items exact integers 0..4 inclusive. Empty is valid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"slots = inputs.get('slots')\\nvalid = type(slots) is list and 0 <= len(slots) <= 2\\nif valid:\\n    for slot in slots:\\n        if not (type(slot) is int and 0 <= slot <= 4):\\n            valid = False\\n            break\\nresult = {'ok': valid, 'slots': slots if valid else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98741,
+    "total_tokens": 99084,
+    "completion_tokens": 343,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

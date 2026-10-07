@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need a reusable deterministic guard before considering a retry."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the volatile tail and the requested component against the binding contracts. The request is a component-drafting task, not a prompt repair, so the conversation is preserved unchanged and the design is placed in proposed_components. The requested class-22 payload (name/description/content) is a supported constructor draft per the host sink. The component is pure logic: it makes zero host calls, validates all required typed inputs before any effect, and returns a boolean result. It is evidence-conditioned, not dispatch permission, and its description retains the live global Tool policy, cancellation, resource limits, attempt-freshness and typed-runner gaps. It does not replay completed effects and does not grant retry eligibility. No I/O, imports or host calls are used. The guard is deterministic and reusable across Recipes. No provider repair is justified: the packet is pre-call, provider metadata is null, and no observed failure exists to address. No other proposal arrays are applicable in this test.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-retry-eligibility",
+        "description": "Deterministic pure-logic guard that decides whether a retry is eligible before any retry is considered. It is evidence-conditioned, not dispatch permission: it never grants Tool permission, does not replay completed effects, and does not bypass live policy. It returns true only when the outcome is retryable, the attempt count is below max_attempts, the operation state is not completed, and at least one durable idempotency condition holds (read_only or dedup_verified). It stops on missing, null or invalid typed inputs. It does not perform I/O, host calls or dispatch; the kernel still enforces current instance-wide Tool policy, technical constraints, cancellation, attempt freshness and resource limits before every actual dispatch and retry. The typed-runner interface (inputs mapping) is a target contract that still requires runner support. A timeout or lost response is unknown completion, not confirmed no effect, and must not be treated as safe to replay without trusted evidence or an explicit reconciliation path.",
+        "content": "# Check retry eligibility before considering a retry.\n\noperation_state = inputs[\"operation_state\"]\noutcome = inputs[\"outcome\"]\nattempt = inputs[\"attempt\"]\nmax_attempts = inputs[\"max_attempts\"]\nread_only = inputs[\"read_only\"]\ndedup_verified = inputs[\"dedup_verified\"]\n\nif not isinstance(operation_state, str) or not isinstance(outcome, str):\n    raise ValueError(\"operation_state and outcome must be strings\")\nif not isinstance(attempt, int) or isinstance(attempt, bool) or attempt <= 0:\n    raise ValueError(\"attempt must be a positive integer\")\nif not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts <= 0:\n    raise ValueError(\"max_attempts must be a positive integer\")\nif not isinstance(read_only, bool) or not isinstance(dedup_verified, bool):\n    raise ValueError(\"read_only and dedup_verified must be booleans\")\n\nretry = (\n    outcome == \"retryable\"\n    and attempt < max_attempts\n    and operation_state != \"completed\"\n    and (read_only or dedup_verified)\n)\nresult = {\"retry\": retry}"
+      }
+    }
+  ]
+}

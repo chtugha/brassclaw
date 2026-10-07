@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-99018342fd0ff756",
+  "object": "chat.completion",
+  "created": 1791320784,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the single user message unchanged. Proposed one class-22 pure-logic PythonCode draft, pc-check-timeout-ms, using the target typed-inputs interface (inputs mapping, not guaranteed runtime support). The body reads timeout_ms with inputs.get, treats bool as invalid (not an integer), validates exact integer 0..7500 inclusive, and assigns result={valid, timeout_ms} on every outcome without exceptions or coercion. This is an unapproved draft; Q1, behavioral validation and human Q2 precede activation. No provider capabilities were observed; catalogue_revision and protocol_capabilities are null, so no provider-side prompt repair is justified.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-timeout-ms\",\n        \"description\": \"Pure-logic guard: returns whether a raw timeout_ms candidate is a valid exact integer in 0..7500 inclusive. Booleans are rejected (not integers); missing, null and out-of-range values return valid=false with timeout_ms=null. No host calls, imports or I/O.\",\n        \"content\": \"def check_timeout_ms(candidate):\\n    if type(candidate) is bool or not type(candidate) is int or not 0 <= candidate <= 7500:\\n        return {'valid': False, 'timeout_ms': None}\\n    return {'valid': True, 'timeout_ms': candidate}\\nresult = check_timeout_ms(inputs.get('timeout_ms'))\"\n      }\n    }\n  ],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need to validate raw timeout values before configuring a service.\"]\n  ]\n  ,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76174,
+    "total_tokens": 76583,
+    "completion_tokens": 409,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

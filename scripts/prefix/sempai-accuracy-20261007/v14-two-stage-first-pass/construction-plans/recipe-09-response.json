@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8bbb66500cad014d",
+  "object": "chat.completion",
+  "created": 1791331490,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"offline-full-v3-export-only\"}, {\"guard\": \"trigger is not null or steps is not empty\", \"result\": \"blocked\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 validation\", \"human Q2 approval\", \"supported full-v3 sink fields\"], \"notes\": \"Offline full-v3 export only. The bound existing Tool host.post_reply posts a user reply effect; the subworkflow posts exactly the fixed word 'Idle' as that user\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98735,
+    "total_tokens": 98877,
+    "completion_tokens": 142,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

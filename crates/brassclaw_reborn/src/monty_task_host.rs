@@ -9,7 +9,7 @@
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::monty_attempt_fence::{MontyHostCall, MontyTaskFence};
+use crate::monty_attempt_fence::{MontyHostCall, MontyHostCallId, MontyTaskFence};
 
 use brassclaw_turns::{
     LoopMessageRef,
@@ -30,6 +30,24 @@ pub struct MontyTaskHost {
     host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
     fence: MontyTaskFence,
     published_reply: Mutex<Option<PublishedReply>>,
+    withheld: Mutex<Vec<WithheldTaskPortResult>>,
+}
+
+/// Trusted supervisor evidence. Payloads have no Debug/serde surface and never
+/// become ordinary task state. Taking this receipt acknowledges no effect.
+pub struct WithheldTaskPortResult {
+    pub call_id: MontyHostCallId,
+    pub value: WithheldTaskPortValue,
+}
+
+pub enum WithheldTaskPortValue {
+    VisibleCapabilities(VisibleCapabilitySurface),
+    PromptBundle(LoopPromptBundle),
+    ModelResponse(LoopModelResponse),
+    CapabilityOutcome(CapabilityOutcome),
+    CapabilityResultReference(LoopMessageRef),
+    FinalizedReplyReference(LoopMessageRef),
+    PublishedReplyContent(String),
 }
 
 // Keep only the current finalized reply; durable transcript storage remains
@@ -48,6 +66,7 @@ impl MontyTaskHost {
             host,
             fence: MontyTaskFence::new(attempt),
             published_reply: Mutex::new(None),
+            withheld: Mutex::new(Vec::new()),
         }
     }
 
@@ -70,6 +89,13 @@ impl MontyTaskHost {
         self.fence.clone()
     }
 
+    /// Close this admitted attempt's dispatch immediately. The instance service
+    /// keeps started futures/results and still owes bounded VM acknowledgement
+    /// and effect reconciliation. This is never a completed-cancellation receipt.
+    pub fn fence_dispatch(&self) {
+        self.fence.close();
+    }
+
     fn begin_call(&self) -> Result<MontyHostCall, AgentLoopHostError> {
         self.check_cancellation()?;
         self.fence.begin_call()
@@ -79,11 +105,32 @@ impl MontyTaskHost {
         &self,
         call: MontyHostCall,
         result: Result<T, AgentLoopHostError>,
+        retain: impl FnOnce(T) -> WithheldTaskPortValue,
     ) -> Result<T, AgentLoopHostError> {
         if self.host.observe_cancellation().is_some() {
             self.fence.close();
         }
-        call.finish(result)
+        call.finish_retaining(result, |call_id, value| {
+            // A fence cannot reopen, and at most 64 calls were admitted before
+            // it closed. Only late successes enter this bounded receipt list;
+            // successful calls delivered to Python are not accumulated here.
+            self.withheld.lock().push(WithheldTaskPortResult {
+                call_id,
+                value: retain(value),
+            });
+        })
+    }
+
+    /// Transfer actual results withheld after fencing to trusted reconciliation.
+    /// This neither restores the attempt nor acknowledges external quiescence.
+    pub fn take_withheld_results(&self) -> Vec<WithheldTaskPortResult> {
+        std::mem::take(&mut *self.withheld.lock())
+    }
+
+    /// Trusted lifecycle observation. Completion may release a task only when
+    /// late successful port answers have either been retained or reconciled.
+    pub fn has_withheld_results(&self) -> bool {
+        !self.withheld.lock().is_empty()
     }
 
     fn check_cancellation(&self) -> Result<(), AgentLoopHostError> {
@@ -105,7 +152,7 @@ impl MontyTaskHost {
             .host
             .visible_capabilities(VisibleCapabilityRequest)
             .await;
-        self.finish_call(call, result)
+        self.finish_call(call, result, WithheldTaskPortValue::VisibleCapabilities)
     }
 
     pub async fn build_prompt_bundle(
@@ -124,7 +171,7 @@ impl MontyTaskHost {
         }
         let call = self.begin_call()?;
         let result = self.host.build_prompt_bundle(request).await;
-        self.finish_call(call, result)
+        self.finish_call(call, result, WithheldTaskPortValue::PromptBundle)
     }
 
     /// Return the structured response unchanged: tool requests are never
@@ -144,7 +191,7 @@ impl MontyTaskHost {
         }
         let call = self.begin_call()?;
         let result = self.host.stream_model(request).await;
-        self.finish_call(call, result)
+        self.finish_call(call, result, WithheldTaskPortValue::ModelResponse)
     }
 
     pub async fn invoke_capability(
@@ -153,7 +200,7 @@ impl MontyTaskHost {
     ) -> Result<CapabilityOutcome, AgentLoopHostError> {
         let call = self.begin_call()?;
         let result = self.host.invoke_capability(request).await;
-        self.finish_call(call, result)
+        self.finish_call(call, result, WithheldTaskPortValue::CapabilityOutcome)
     }
 
     pub async fn append_capability_result_ref(
@@ -162,7 +209,11 @@ impl MontyTaskHost {
     ) -> Result<LoopMessageRef, AgentLoopHostError> {
         let call = self.begin_call()?;
         let result = self.host.append_capability_result_ref(request).await;
-        self.finish_call(call, result)
+        self.finish_call(
+            call,
+            result,
+            WithheldTaskPortValue::CapabilityResultReference,
+        )
     }
 
     pub async fn finalize_assistant_message(
@@ -181,7 +232,7 @@ impl MontyTaskHost {
                 content,
             });
         }
-        self.finish_call(call, result)
+        self.finish_call(call, result, WithheldTaskPortValue::FinalizedReplyReference)
     }
 
     /// Task-local reply lookup for Monty's history/completion handoff. Only a
@@ -204,7 +255,7 @@ impl MontyTaskHost {
                     "reply reference was not finalized by this Monty task",
                 )
             });
-        self.finish_call(call, result)
+        self.finish_call(call, result, WithheldTaskPortValue::PublishedReplyContent)
     }
 
     /// Trusted supervisor evidence, including success received after fencing.

@@ -1,0 +1,672 @@
+# ToolSkill definition and authoring instructions — final v3
+
+This guide explains what a ToolSkill is, when to reuse one and how to author a
+new one. MUST means required. A binding with unresolved identity, parameter,
+implementation or approval requirements is incomplete.
+
+Read [recipe.md](recipe.md), [skills.md](skills.md) and [tools.md](tools.md)
+before creating components. Recipe and Skill authoring follow those ground-truth
+guides. [simplified_v3.md](simplified_v3.md) defines the binding runtime and
+authorization target; [the development policy](docs/development-policy.md)
+defines relevant verification. Historical examples and source comments do not
+override these contracts.
+
+**Status:** this document specifies final-v3 requirements and describes source
+inspected on 2026-10-06. It does not implement a new schema, binding engine,
+immutable version store, association editor or production dispatch path. Keep
+design records separate from requests accepted by today's component stores.
+
+## 1. The definition
+
+A **ToolSkill is a reusable Rust-side binding descriptor for one Tool usage**.
+It tells IBS/composition which existing Rust Tool must be made available and
+what binding contract applies: identity, supported callable, parameters,
+prerequisites, result/error expectations and compatibility requirements.
+It is component **class 13**, stored today in `reborn_tool_skills`.
+
+A ToolSkill prepares availability. **It executes nothing and grants no
+permission.** Actual execution happens when the Orchestrator runs approved
+PythonCode that calls `host.<tool>(...)`. The kernel checks the current global
+Tool policy and technical constraints before that call is dispatched.
+
+**The Orchestrator needs the Skill to know how to use the Tool.** Its prose
+explains the purpose, exact arguments, prerequisites and result/error handling;
+its explicitly associated PythonCode implements that same usage. A ToolSkill
+does not replace either part. IBS/composition must identify the approved Skill,
+its executable component and their compatible ToolSkill/Tool association when
+preparing the usage. In Tier 0, Monty executes that associated PythonCode without
+an LLM interpreting the prose. Explicit Tier-1 LLM work can use the Skill prose
+as instructions/context. Deterministic execution does not make the Skill
+prose-only, optional to the usage association or executable Python itself.
+
+Think of these as separate objects:
+
+- The **Tool** is the Rust machine that performs an operation.
+- The **ToolSkill** is its binding specification for IBS.
+- The **Skill** explains one usage and includes explicitly associated executable
+  PythonCode implementing that usage.
+- The **PythonCode** is what Monty runs to call the machine or perform pure logic.
+- The **Recipe** orders these usages and connects their inputs and results.
+
+Do not write a ToolSkill as a task plan. It must not decide the user's goal,
+run a workflow, interpret a prompt, invoke an LLM or call another Tool. Such
+behavior belongs in Recipe steps and their executable components.
+
+## 2. ToolSkill, Tool, Skill and PythonCode are different
+
+| Component | Class | Consumer and responsibility | Does not do |
+| --- | --- | --- | --- |
+| Tool | 0 | Rust host/kernel boundary; performs a declared primitive operation | Choose the Recipe workflow |
+| ToolSkill | 13 | IBS/Rust-side preparation; describes one Tool binding | Execute Python/Rust or authorize dispatch |
+| Skill | 1–3 | One usage: prose plus explicitly associated PythonCode; prose can inform explicit Tier-1 LLM work | Replace a ToolSkill or hide a multi-Tool task |
+| PythonCode | 22 | Monty; executable usage or pure-logic building block | Register a handler merely by naming it |
+| Recipe | 21 | IBS/composition and Orchestrator; selects, orders and connects components | Implement a new Rust primitive merely by describing it |
+| ExtensionCatalogue | 23 | Domain overview and Recipe inventory | Replace individual binding or usage contracts |
+
+The final-v3 goal is a small reusable primitive surface, many ToolSkills, many
+Skills, very many small PythonCode components and Recipes assembling them into
+useful tasks. Prefer clear reusable steps over specialized Rust workflow Tools.
+
+**Rust-side means responsibility, not source language.** A ToolSkill is metadata;
+it is not a Rust function and normally needs no compilation. Its stored text may
+explain the binding to authors or validators, but is not Orchestrator usage prose
+and is never an executable entry point. A code-looking example in its `content`
+field does not make it PythonCode.
+
+Consumer tags, a row appearing in a prompt, or a composer collecting class 13
+into a field named `skills` do not change the component's definition. A Skill
+still needs both its prose and associated executable class-22 component.
+
+## 3. Reuse or create: decide before writing
+
+Start with the task's Recipe or the reusable Skill usage you want to support.
+Search the library, supported catalogue, seeders and
+[historical inventory](docs/archive/builtin_stuff_v3.md). Read actual contracts;
+a matching name is insufficient.
+
+| Situation | Correct action |
+| --- | --- |
+| Existing binding supports the same Tool, callable and argument contract | Reuse its stable ToolSkill UUID |
+| Only the user's phrasing or capture layout changes | Change the Recipe variant/intents; reuse binding and usage where compatible |
+| Different usage of the same compatible binding | Create/reuse the Skill and PythonCode; a new ToolSkill is not automatic |
+| A different operation selector or binding contract is needed | Create/reuse a distinct ToolSkill for that same primitive |
+| Existing ToolSkill is wrong or its contract changes | Author a new immutable version and approve affected combinations |
+| Several Tools are needed to reach the goal | Create separate Recipe usages/steps; do not bundle them in a ToolSkill |
+| No existing Tool supplies a genuinely necessary primitive | Follow tools.md to implement the Tool, then prepare compatible components |
+
+One Tool can have several ToolSkills. For example, a JSON primitive can expose
+`query`, `stringify` and `validate` operations with different binding contracts.
+These are not three new Rust workflow Tools. Several Skills can also reuse one
+ToolSkill when their single-usage contracts remain compatible.
+
+A new ToolSkill may be authored independently of a permanent Recipe. Validate
+it with its associated usage through a small verification workflow. An unused
+metadata row alone is not evidence of a working binding.
+
+## 4. What happens when a Recipe uses a ToolSkill
+
+The normal single-Tool sequence is:
+
+```text
+Matched Recipe/variant and typed inputs
+  -> IBS/composition selects one consistent approved catalogue snapshot
+  -> selects and pins exact component versions and association approval
+  -> identifies the Skill's usage instructions and associated PythonCode
+     (prose supplies explicit Tier-1 context; code implements the approved usage)
+  -> Rust-channel step references one class-13 ToolSkill UUID
+  -> supported binding preparation makes its selected host callable available
+     (no Tool execution, no permission grant)
+  -> immediately following Orchestrator-channel step references one class-22 UUID
+  -> Monty runs that PythonCode with step-local typed inputs
+  -> PythonCode calls host.<tool>(...)
+  -> kernel checks live policy, technical constraints and execution freshness
+  -> selected Rust implementation executes and returns its actual outcome
+  -> Monty validates/retains results and continues the Recipe
+```
+
+Follow [recipe.md's persisted IBS schema](recipe.md#7-emit-the-actual-persisted-ibs-schema):
+use `knowledge`, `stepnumber`, `type` and `include`, not invented `channel` or
+`step_id` fields in stored Recipe JSON. `channel` is useful explanatory language;
+the current stored step uses `knowledge`.
+
+Each `type: "component"` step references exactly **one stable component UUID**.
+The Rust step references the ToolSkill; the following Orchestrator step references
+the associated PythonCode. Do not add the Tool, Skill prose or a second ToolSkill
+to the same `include` array. The explicit association/dependency contract supplies
+required supporting identities; merely adding labels to `goal` or `content`
+does not supply a machine association.
+
+Pure-logic PythonCode needs no artificial ToolSkill or Rust binding step. A
+Tool-calling component normally makes one call. Internal PythonCode composition
+is permitted, but independent Tool dispatches still require separate execution
+steps. The direct dependent-chain exception in recipe.md remains applicable:
+document and verify coverage of every Tool binding in the chain. A single-Tool
+descriptor cannot cover a second Tool. Do not invent multi-component steps or
+claim chain support without a verified binding path; separate reusable paired
+steps are preferable when the runtime supports the result handoff.
+
+## 5. Complete the binding design before creating a row
+
+Fill out the following **authoring record**. It is a review template, not a new
+JSON format or an insert request. Put structured identities/contracts into the
+supported store/association mechanism when implemented. Do not pretend prose
+fields give IBS deterministic guarantees.
+
+```text
+ToolSkill stable UUID (existing or allocated through supported creation):
+Name and one-sentence binding purpose:
+Tool stable UUID and actual registered capability ID:
+Exact host callable and supported adapter/ABI:
+One operation/selector, if applicable:
+Required arguments and their types:
+Optional arguments and explicit missing/default/null behavior:
+Fixed arguments or restrictions for this binding:
+Recursive schemas and transport/Tool numeric bounds:
+How Skill local inputs or approved computed arguments supply Tool parameters:
+Prerequisites, external authentication and technical constraints:
+Actual success payload and any outer wrapper:
+Actual error/completion signals and their classification:
+Effect type and supported cancellation/wait behavior:
+Compatible Skill/PythonCode UUIDs and explicit associations:
+Allowed failure/retry contract and trusted safety evidence:
+Referenced metadata dependencies, if any:
+Consuming Recipe tier restrictions:
+Required validation and exact-combination approval evidence:
+Verification workflow and concrete expected outcomes:
+Actual registration/binding/runner support and unresolved gaps:
+```
+
+Every line needs an answer or an explicit, justified “not applicable.” Do not
+write “whatever parameters are needed,” “use the appropriate Tool,” “retry on
+failure,” “the agent decides,” or “returns useful data.”
+
+### Identity and binding rules
+
+1. Resolve the Tool UUID to class 0 and the ToolSkill UUID to class 13.
+   Resolve associated PythonCode to class 22 and Skill to classes 1–3.
+   Names are labels, not identity or approval evidence.
+2. Verify the capability ID, callable and adapter against actual registration.
+   Do not derive `host.read_file` just by stripping `builtin.` from an ID.
+3. Confirm the selected immutable implementation is available and compatible.
+   A Tool row, successful build or nonempty artifact path proves neither loading
+   nor callable availability.
+4. Follow tools.md's stable Tool policy identity rule. All retained dispatch
+   IDs/aliases of that Tool must receive its current global decision. Missing,
+   ambiguous or conflicting identity mappings fail closed.
+5. Do not store a permission grant, old policy decision, secret, claim token or
+   per-task credential in reusable ToolSkill metadata. External authentication
+   uses the supported protected host boundary.
+
+### Parameter and result rules
+
+1. Read the actual Rust signature, registered schema and host adapter. List
+   exact keywords, types and omitted-argument behavior. Check all three agree.
+2. Distinguish **Tool parameters** from **Skill local inputs**. A Skill can take
+   `start_line`/`end_line` and compute `offset`/`limit`; those local names are not
+   new parameters accepted by the Rust Tool.
+3. A usage may narrow a Tool contract. It must not widen the primitive's accepted
+   types, bounds, operations or effects. Fixed selector values must agree with
+   approved PythonCode and the actual Tool operation.
+4. Use skills.md's recursive usage contracts for nested values, defaults,
+   computed arguments and producer/consumer compatibility. No untyped list,
+   undefined object fields or unexplained `any` in a supposedly exact contract.
+   The Skill's ValueSchema and a Tool's registered parameter schema are distinct
+   formats; validate their compatibility, not their textual equality.
+5. Missing and null are different. Apply declared consumer defaults only to
+   missing inputs; never replace invalid/null values or invent output fields.
+   An omitted optional Tool parameter is also different from sending null.
+   State whether code omits it, supplies a valid default or intentionally sends
+   an allowed null. Do not assume the adapter performs this conversion.
+6. Declare numeric bounds that survive capture, transport, Monty arithmetic and
+   Tool decoding. Reject booleans as integers and oversized values before the
+   dispatch. Validate computed arguments as well as original inputs.
+7. Describe the actual Tool payload, error signals and completion meaning.
+   Distinguish it from the Python variable `result` and any outer
+   `host.run_program` response. A process handle is not completed success; an
+   error dictionary is not a successful payload just because it is data.
+
+### Template and data rules
+
+Runtime values are **data, never replacement Python source**. The Recipe maps
+captures, typed constants and earlier results to local `inputs["name"]` values.
+PythonCode supplies the actual Tool arguments. ToolSkill metadata does not parse
+the user's whole message or manufacture missing values.
+
+Follow recipe.md's exact reference grammar for Recipe metadata:
+`{{vars.name}}`, with `name` matching `[a-z][a-z0-9_]*`, as a whole-value
+reference. No embedded expressions, surrounding text or Python evaluation.
+The reference identifies data; it is not a string interpolation instruction.
+Ordinary input containing these characters remains ordinary data.
+
+Existing ToolSkill seeds also contain `{{path}}` and other legacy templates.
+Those are not the target Recipe grammar or proof of typed binding. Do not copy
+them into approved Python source. The current ToolSkill `param_template` field
+does not establish a universal runtime parser/defaulting API; verify the selected
+consumer. Keep reusable argument mapping in skills.md's explicit association,
+where `arguments` names local inputs and `code_arguments` describes approved
+fixed/computed arguments. Metadata must not independently override code arguments
+or introduce a second hidden invocation.
+
+## 6. Write metadata, not an execution body
+
+Use this structure when documenting a binding for review. It can guide a
+description/body, but is not an executable format:
+
+```text
+Binding purpose
+Prepare one named Tool operation for an associated executable usage.
+
+Identity
+ToolSkill UUID; Tool UUID; capability ID; exact host callable; adapter contract.
+
+Arguments
+Actual Tool parameter names and recursive contracts; fixed selector/restrictions;
+optional/default/null rules; compatible usage inputs/computed arguments.
+
+Prerequisites and limits
+Required prepared data, external authentication and technical constraints.
+
+Result and errors
+Actual success payload and completion signals; errors to surface to Monty.
+
+Compatibility and evidence
+Associated usage identities; dependencies; supported approval/binding evidence.
+```
+
+Human-readable metadata is allowed. It does not become Skill prose consumed by
+an LLM to decide how a Tier-0 call should work. IBS uses approved structured
+records and associations; it does not infer arbitrary contracts or approve
+meaning by reading free text at task startup.
+
+Put the instructions telling the Orchestrator **how to use the Tool** in the
+Skill, following skills.md's prose template, and implement them in its associated
+PythonCode. Put the specification telling IBS **how to prepare that Tool's
+binding** in the ToolSkill. Both must describe compatible contracts, and both
+must be present in the approved usage relationship. Neither a binding alone
+nor an unassociated code example is a complete Skill usage.
+
+**Never place these in a ToolSkill:** executable Python, a Rust implementation,
+user-message captures, generated answers, a multi-Tool sequence, conditional
+workflow decisions, reply posting, automatic retry code or a permission lease.
+A quoted call signature may document the adapter, but must not be run as code.
+
+Existing `content` examples beginning “Call host…” are historical stored text.
+Their wording is not evidence that a Rust binding step executes that call.
+Executable instructions belong in a separately identified class-22 component.
+
+## 7. Current storage: what exists and what does not
+
+The current [ToolSkill store](crates/brassclaw_reborn_composition/src/pg_tool_skill_store.rs)
+provides the following `NewPgToolSkill` constructor fields. This is the inspected
+internal Rust constructor, not a promised public API or complete v3 schema.
+
+| Field(s) | Current meaning and authoring caution |
+| --- | --- |
+| `tenant_id`, `user_id`, `agent_id`, `project_id` | Existing scoped storage identity; not final-v3 operator role checks or Tool grants |
+| `name` | Human label; current original DDL requires 1–64 lowercase letters/digits/hyphens with alphanumeric ends |
+| `description` | Current original DDL requires 1–1024 characters; do not use it as an executable body |
+| `content` | Stored ToolSkill text; not executable PythonCode |
+| `prior_knowledge_content` | Optional alternate text in retrieval; must not contradict the reviewed binding |
+| `override_prompt_creation` | Existing prompt assembly flag; neither permission nor executable association |
+| `tool_name` | Optional stored name; not a full UUID/version/adapter identity contract |
+| `param_schema` | Optional JSON metadata; current seeds use heterogeneous formats, so a JSON value alone proves no validation |
+| `param_template` | Optional parameter/default template metadata; does not guarantee typed transport or template evaluation |
+| `consumer_tags` | Existing consumer routing; does not move class 13 to the execution channel |
+| `intent_examples` | Optional stored metadata; does not replace Recipe variant routing/layout |
+| `source`, `validation_status` | Existing provenance/status fields; labels do not establish trusted Q1/Q2 evidence |
+| `includes` | Structural metadata references; existence does not prove recursive expansion or binding preparation |
+| `content_checksum` | Optional content digest used by covered system integrity checks; not the complete target contract/artifact manifest |
+
+Class 13, prompt UID, scoring/lifecycle defaults and timestamps are supplied by
+database defaults in this constructor. Inspect applied migrations and current
+validators before inserting; do not copy obsolete columns from the original
+DDL. In particular,
+[V070](crates/brassclaw_pg/migrations/V070__reborn_tool_skills_syntax.sql)
+drops legacy `queue_code` and `validation_errors` from this table and adds
+`includes`. The central validation queue is distinct from this component row.
+
+The constructor has no dedicated `tool_uuid`, callable, result schema,
+`preconditions`, `error_handling`, exact-combination approval or complete version
+manifest fields. The archive prints some of these as conceptual metadata; that
+does not make them accepted constructor arguments. Recording a missing contract
+in prose is useful for review, but machine enforcement still requires supported
+structured storage and consumers. Do not invent insert fields or a live
+`toolskill-binding/1` API to hide that gap.
+
+The insert path uses scope/name uniqueness and `ON CONFLICT DO NOTHING`.
+An existing row is left untouched; this is not immutable revision creation.
+The current system-source branch inserts `validated` status. Authored content
+must not select `source: system` to evade Q1/human Q2. Trusted first-party seed
+integrity is a separate controlled path.
+
+### Structural metadata includes
+
+V070 describes `includes` as the machine references for structural
+`{{component_name}}` description placeholders. This is different from a Recipe
+step's `include` list and from PythonCode's internal executable composition.
+It does not make a ToolSkill executable or authorize several Tools.
+
+Prefer a self-contained leaf descriptor. Where a supported path composes
+binding metadata, require explicit dependency identities, deterministic expansion,
+no cycles/missing references/conflicting contracts, and complete version pinning.
+The resulting descriptor must still concern one Tool binding. Do not assume
+the current engine composer recursively expands these descriptions; verify the
+actual consumer or record missing implementation.
+
+### Current composition is not proof of final binding support
+
+The [IBS types](crates/brassclaw_engine/src/types/ibs.rs) define `ToolBinding`
+separately from a stored ToolSkill. It has `tool_id`, `tool_name`, `params` and
+`error_policy`. These are not the ToolSkill constructor's fields. Old comments
+mention retired `__execute_action__`; final v3 calls `host.<tool>(...)` from
+PythonCode. Do not revive the retired execution path.
+
+The [composer](crates/brassclaw_engine/src/memory/composition.rs) selects class-22
+executable bodies from Orchestrator steps and can collect class-13 rows into
+its `skills` array if they are included there. Final authoring keeps ToolSkill
+UUIDs on the Rust channel; do not use this legacy collection behavior to execute
+binding text or insert multi-component steps.
+
+Current `rust_directives` are derived from explicit Rust-step `tool_bindings`,
+not automatically from every class-13 include. Existing seed helpers can leave
+`tool_bindings` empty. A ToolSkill reference or returned directive therefore
+does not by itself prove registration, dynamic loading or binding occurred.
+Trace the [host compose/run bridge](crates/brassclaw_engine/src/executor/orchestrator.rs)
+and the selected runtime before claiming the callable is ready.
+
+The current composer also performs plain source substitution and does not
+establish full typed binding, recursive assembly, immutable manifests or exact
+association approval. Repair missing runtime support; do not work around it by
+putting executable source into ToolSkill text or grouping independent effects.
+
+## 8. Versions, approval and live policy
+
+Recipes and reusable associations reference stable UUIDs without version numbers.
+At task start **IBS/composition reads the versions**: newest activated, approved
+versions from one consistent catalogue snapshot shared with intent matching.
+It pins Recipe/variant/`step_link`/step order/input layout, ToolSkill, Tool,
+Skill, PythonCode and all dependencies, exact revisions/checksums and exact
+association approval references in the ephemeral BuildInstruction. Retain that
+selection through the supported task snapshot/continuation contract.
+
+If the selected newest activated, approved versions have incompatible contracts
+or lack valid exact-combination approval evidence, assembly fails explicitly
+before effects. Do not silently select an older ToolSkill, Tool, Skill,
+PythonCode or dependency version to make the combination fit. The existence
+of an older approved combination is not permission to downgrade a new task.
+This failure is not No-Match and must not enter Tier 2. Running tasks retaining
+their original pinned selection are not downgrades; they continue that selection.
+
+Execution, child steps, waits, retries and resumption retain the selected
+ToolSkill and actual Tool artifact. Never read “latest” midway or rematch the
+Recipe on resume. Replacement creates a new immutable version; it does not
+overwrite, delete or invalidate the original or require its approval to be
+repeated. Keep old artifacts, metadata and evidence while tasks need them.
+
+Authored new versions pass supported Q1 and human Q2 before activation. Author
+review, relevant automated audits and behavioral validation establish that
+binding metadata, Skill prose and PythonCode agree. IBS startup verifies approved
+structured contracts/associations; it does not interpret prose or call an LLM
+to approve a Tier-0 task.
+
+Use skills.md's exact `skill-association/1` authoring contract and separate
+trusted `skill-association-approval/1` evidence. The former links stable Skill,
+PythonCode, ToolSkill and Tool UUIDs; the latter approves the exact reviewed
+revisions/checksums and transitive dependency combination. Individually approved
+rows or a task manifest do not establish combination approval. A new combination
+needs its required evidence, even if the updated binding seems compatible.
+Unchanged components can retain their revisions; old running combinations
+do not need reapproval merely because newer versions exist.
+
+**Approval provenance must be explicit.** Authored versions use the
+`validation_mode: "authored"` approval contract in skills.md: trusted successful
+Q1 evidence, human Q2 evidence and required observed behavioral evidence for
+the exact combination. The distinct `validation_mode: "system_seed"` contract
+is reserved for trusted first-party bootstrap/integrity validation: its
+`q2_ref` is null, while trusted successful Q1/integrity and required behavioral
+evidence still apply. Neither mode is established by a component's `source`
+label or `validated` status alone. Authors cannot relabel their proposals as
+system seeds to avoid human Q2. These are target approval contracts, not proof
+that today's insert path records or verifies this evidence.
+
+Approval and version pinning are **not Tool permission**. Before every dispatch,
+including retry and dispatch after a wait, the kernel checks the Tool's current
+instance-wide allow/block policy, supported technical settings and fresh execution
+identity. No additional user/tenant/project/feature-role Tool checks or invocation
+approval leases are final-v3 requirements. External authentication, sandbox,
+network/secret enforcement, resource limits and cancellation remain effective.
+
+## 9. Errors, retries and tier restrictions
+
+A ToolSkill identifies errors the binding can surface. It does not independently
+retry, ignore failures, execute fallback steps or post an answer. The associated
+usage's approved failure contract and the Recipe/Orchestrator own recovery.
+Conflicting Tool, binding and usage contracts must be resolved before activation.
+
+Follow skills.md's exact failure contract, rather than inventing another retry
+format here. `max_attempts` counts the initial dispatch and survives waits and
+worker reclaim. Retry requires explicit eligible outcomes and trusted evidence
+for read-only behavior or durable deduplication of the exact usage. Preserve
+required arguments/idempotency keys and recheck current policy/freshness.
+
+Current `ToolBinding.error_policy` has legacy `fail`, `ignore`, `retry` and
+`fallback` variants. These labels alone do not implement the final failure
+contract or prove safe retries. Do not map `ignore` to fabricated success,
+blindly retry unknown completion, or treat a fallback step as Tier-2 execution.
+Only an actual No-Match enters Tier 2; missing bindings, matching errors and
+begun Recipe failures remain explicit failures.
+
+A timeout or missing completion record does not prove no effect happened.
+Never replay a completed Tool call because output validation, a later step or
+reply persistence failed. Follow tools.md for durable dispatch/effect records,
+crash reconciliation, stale-attempt fencing and supervised global-VM recovery.
+Bindings neither reset attempt counts nor create another Orchestrator lifecycle.
+
+The ToolSkill class does not determine a Recipe tier. Deterministic validation,
+computation and result handoff may remain Tier 0. Explicit LLM reasoning or
+content composition is Tier 1. **Every shell and spawn_subagent Recipe is Tier 1**,
+even with fixed inputs, preseeded components or prior approval. A ToolSkill
+named “safe” or marked `validated` cannot change that restriction.
+
+## 10. Worked example: bind file reading, execute an interval usage
+
+This is a design example checked against source, not insertable component data,
+an activated binding or observed execution evidence. Resolve real stable UUIDs,
+adapter signatures and exact approved versions before use.
+
+### A. Check the primitive before reusing the descriptor
+
+The archive and the current `ts-read-file` seed describe a `range` argument and
+`{content, line_count, path}` result. The inspected
+[file-read backend](crates/brassclaw_first_party_extensions/src/coding/file.rs)
+instead takes `path`, optional `offset` and optional `limit`, and returns
+`content`, `total_lines`, `lines_shown`, `truncated_by_default` and `path`.
+An adapter could translate contracts, but its existence must be verified.
+Do not call an unsupported `range` keyword or silently treat these schemas as
+compatible merely because both descriptors say “read file.”
+
+### B. Specify the correct binding
+
+```text
+Binding purpose: prepare one file-read Tool call.
+Tool: resolved class-0 UUID, registered capability and retained implementation.
+Callable: host.read_file, only if the actual adapter supports the following keywords.
+ToolSkill: reuse a compatible class-13 UUID or author an approved corrected version.
+Arguments: path string; optional offset and limit in the supported Tool representation.
+Interval usage: offset and limit are supplied explicitly, each within 1..2147483647.
+Prerequisites: permitted path, supported text file, external/host access constraints.
+Result: actual payload fields above; errors remain errors, not empty successful reads.
+Associated usage: the bounded inclusive-interval Skill and class-22 component.
+Recovery for this example: stop on error; no automatic retry or reply in the binding.
+```
+
+The primitive treats offset as one-based, also accepts zero, clamps to EOF and
+applies its configured default line cap when applicable. The interval usage
+deliberately narrows to positive bounded values. This profile is not a universal
+Monty maximum or a declaration that the primitive accepts no larger integers.
+Verify supported integer transport and actual technical limits in the selected
+implementation; [skills.md](skills.md) specifies the full interval contracts.
+
+### C. Keep the execution in PythonCode
+
+```python
+# Target interface; recursive binding rejects missing/wrong-type inputs first.
+start_line = inputs["start_line"]
+end_line = inputs["end_line"]
+if not (1 <= start_line <= end_line <= 2147483647):
+    raise ValueError("Invalid or unrepresentable line interval")
+limit = end_line - start_line + 1
+if not (1 <= limit <= 2147483647):
+    raise ValueError("Invalid or unrepresentable interval length")
+result = host.read_file(path=inputs["path"], offset=start_line, limit=limit)
+```
+
+This body belongs in the associated class-22 component, **not** the ToolSkill.
+The `inputs` mapping and guards require actual runner/Monty support. The Skill's
+association maps `path` directly and declares approved computed `offset`/`limit`
+contracts. Metadata documents computation; approved PythonCode performs it.
+
+The Recipe then supplies:
+
+1. Its declared path/start/end inputs and verified capture/type-validation layout.
+2. One Rust component step including the compatible ToolSkill UUID.
+3. The immediately following Orchestrator component step including the PythonCode UUID.
+4. An explicit typed result handoff and separate next usage, such as reply posting.
+
+Do not add a reply call to the file-reading Skill or descriptor. Reply posting
+has its own binding/usage and actual adapter contract.
+
+### D. Check concrete expected behavior
+
+For a permitted text fixture `alpha\nbeta\ngamma\ndelta\n`, inputs
+`start_line=2`, `end_line=3` produce one call with `offset=2`, `limit=2`.
+The source-derived expected Tool payload is:
+
+```json
+{
+  "content": "     2│ beta\n     3│ gamma",
+  "total_lines": 4,
+  "lines_shown": 2,
+  "truncated_by_default": false,
+  "path": "/workspace/notes.txt"
+}
+```
+
+Verify this through the real supported host path before calling the combination
+validated. Missing/wrong-type inputs, `end_line=2147483648`, zero, reversed
+intervals and invalid computed limits must fail before Tool dispatch. Quotes or
+Python-looking characters in a path remain data; the Tool may reject the path
+under its actual filesystem rules. A successful empty selection beyond EOF is
+different from denied access or a failed read.
+
+## 11. Author a new ToolSkill: follow this order
+
+1. **Define the usage.** State one existing Tool operation and why the current
+   binding cannot be reused. If only workflow order or input phrasing changes,
+   change the Recipe rather than duplicate the binding.
+2. **Inspect the Tool.** Read registration, actual Rust parameters, adapter,
+   result/errors, effects and technical constraints. Resolve identities and
+   confirm implementation availability. Record every discrepancy.
+3. **Complete section 5's design record.** Declare exact parameter/default/null
+   rules, recursive contracts, numeric bounds and associations. Identify which
+   contracts the actual structured store/consumer can represent.
+4. **Prepare metadata.** Use a valid name and concise descriptor; identify the
+   Tool and operation. Keep Python execution, workflow decisions, dynamic
+   per-task values and grants out. Do not insert invented fields or formats.
+5. **Prepare the usage components.** Reuse compatible Skill/PythonCode or author
+   the missing ones. Establish the explicit stable-UUID association and proposed
+   exact reviewed combination. One ToolSkill alone does not complete a Skill.
+6. **Define a verification workflow.** Pair one Rust binding step and its one
+   executable step; provide typed inputs and expected outcomes. Cover missing
+   references, invalid parameters, denial, Tool failure, bad results and update
+   races as relevant. Use the actual host/kernel/runner, not prose simulation.
+7. **Validate before ordinary exposure.** Author review, supported Q1 audits,
+   behavioral validation and human Q2 establish the authored combination.
+   Trusted draft validation uses its explicit constrained environment and kernel
+   checks; do not expose drafts through ordinary matched tasks to test them.
+8. **Commit evidence and activate coherently.** Use supported component stores,
+   approval records and binding/registration paths. A `validated` string or
+   successful metadata insert is not exact-combination approval or loading.
+9. **Verify task selection.** New tasks select the coherent activated versions;
+   running/suspended tasks retain their old bindings/artifacts. Missing support
+   is implementation work, not permission to mutate an approved original.
+10. **Report the outcome precisely.** Give identities, actual contracts,
+    observed evidence, activation/binding status and unresolved runtime gaps.
+    A Markdown descriptor is not an activated ToolSkill.
+
+A Recipe can author new ToolSkill metadata using existing component-management
+primitives where supported. Generating content is Tier 1. Creating the descriptor
+normally requires validation/approval, not compilation. If the Tool itself is
+genuinely missing, follow tools.md: an existing build/compiler or shell Tool may
+build its Rust artifact, but compilation does not approve, register or activate
+it. A running task does not silently acquire that newly created component.
+
+## 12. Acceptance matrix and final checklist
+
+These are required expected outcomes, not claims of passing runtime tests.
+
+| Case | Required outcome |
+| --- | --- |
+| Binding prepared without a Tool call | No Tool effect; no grant created |
+| Valid approved binding/usage | Correct pinned implementation receives exact typed arguments |
+| Rust binding has no matching execution usage | Required authoring validation rejects the incomplete workflow |
+| Missing Tool/ToolSkill or wrong component class | Assembly fails explicitly before effects |
+| Unsupported callable or unavailable artifact | Fail before dispatch; no guessed alias/latest handler |
+| Schema, fixed selector or computed-argument mismatch | Reject incompatible combination; invalid actual values never reach the Tool |
+| Missing/null/default cases | Exact declared behavior; no silent replacement of invalid values |
+| Nested invalid value or oversized number | Recursive/transport validation rejects before effect |
+| Hostile input string | Python source/checksum unchanged; input remains data |
+| Block after binding/wait or through an old alias | Next dispatch refused under the same Tool's current policy |
+| Metadata include cycle/conflict | Explicit failure; no partial expansion or silent skipping |
+| Individually approved but unreviewed combination | No activation/assembly without required exact-combination evidence |
+| Newest active versions incompatible or lacking exact-combination approval | Assembly fails before effects; no silent downgrade to an older combination or Tier-2 replay |
+| Authored versus trusted system-bootstrap approval | Authored combination requires human Q2; only trusted system_seed provenance permits null q2_ref, with required Q1/integrity and behavioral evidence |
+| Authored proposal merely labelled system/validated | Label does not qualify for trusted bootstrap or bypass human Q2 |
+| Activation while a task waits | Old task retains old selection; new task selects coherent approved replacements |
+| Malformed output or failed later reply | Stop/handle explicitly; do not replay the completed effect |
+| Timeout/crash after possible effect | Preserve counts/effect status; safe reconciliation, no automatic full replay |
+| Stale/cancelled attempt | No new dispatch/reply or shared unrelated state |
+| Shell/spawn_subagent usage | Tier 1 regardless of descriptor name, seed provenance or approval |
+
+- [ ] Exactly one Tool binding is described; no workflow is hidden inside it.
+- [ ] Existing descriptors were searched and reused where compatible.
+- [ ] Tool UUID, capability ID, callable, adapter and implementation identity agree.
+- [ ] Parameter/result contracts match source and the actual supported host boundary.
+- [ ] Usage schemas, defaults, nulls, nested fields and numeric bounds are explicit.
+- [ ] Parameter templates stay metadata; runtime values never become Python source.
+- [ ] ToolSkill metadata and associated executable PythonCode are separate components.
+- [ ] Recipe component steps each contain one UUID and obey binding/execution pairing.
+- [ ] Required internal dependencies are resolved, validated and pinned.
+- [ ] Exact Skill/code/ToolSkill/Tool combination has trusted Q1 and behavioral evidence, plus human Q2 for authored versions or the distinct verified system_seed bootstrap/integrity provenance.
+- [ ] Source/status labels are not used as approval evidence or to bypass authored human Q2.
+- [ ] IBS checks structured approval records, not semantic prose at task startup.
+- [ ] New immutable versions leave old running/suspended selections available.
+- [ ] Incompatible or unapproved newest active combinations fail explicitly; new tasks never silently downgrade or replay as Tier 2.
+- [ ] Live global policy, technical limits and freshness apply to every actual dispatch.
+- [ ] Retry/effect reconciliation follows skills.md and tools.md; no hidden retries/grants.
+- [ ] Tier restrictions and actual No-Match-only Tier-2 entry remain intact.
+- [ ] Actual store, registration and runner support is verified and gaps reported honestly.
+
+Prose-only creation of this guide needs review, link/format checks and
+`git diff --check`, not a Cargo run. Actual component creation or runtime changes
+need the applicable schema, integrity, approval and production-path evidence.
+Read `LOCAL_TEST_ENV.md` if present before remote tests or provider setup.
+
+## References
+
+- [Recipe architecture and actual IBS schema](recipe.md)
+- [Skill definition, recursive schemas and exact association/approval contracts](skills.md)
+- [Tool definition, policy identity, implementation retention and recovery](tools.md)
+- [Final simplified-v3 architecture](simplified_v3.md)
+- [Development validation policy](docs/development-policy.md)
+- [Historical built-in inventory](docs/archive/builtin_stuff_v3.md)
+- [Original ToolSkill table migration](crates/brassclaw_pg/migrations/V037__reborn_tool_skills.sql)
+- [ToolSkill syntax and structural metadata migration](crates/brassclaw_pg/migrations/V070__reborn_tool_skills_syntax.sql)
+- [Current ToolSkill insert/lookup store](crates/brassclaw_reborn_composition/src/pg_tool_skill_store.rs)
+- [Current built-in component seeders](crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs)
+- [Current retrieval projection](crates/brassclaw_engine/src/memory/retrieval_source.rs)
+- [Current IBS persisted data-model types](crates/brassclaw_engine/src/types/ibs.rs)
+- [Current IBS builder](crates/brassclaw_engine/src/memory/instruction_builder.rs)
+- [Current composer](crates/brassclaw_engine/src/memory/composition.rs)
+- [Current compose/run host bridge](crates/brassclaw_engine/src/executor/orchestrator.rs)
+- [Current file-read implementation](crates/brassclaw_first_party_extensions/src/coding/file.rs)

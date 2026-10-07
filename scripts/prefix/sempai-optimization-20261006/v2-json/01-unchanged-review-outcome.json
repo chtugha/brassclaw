@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "This is a prompt-review test, not a component-drafting task. The packet is already clear: a system instruction to explain a TCP port briefly, and a user question about TCP port 443. No prompt repair is justified, so the volatile tail is echoed unchanged with no bridge messages. No proposals are warranted: the question is a deterministic, general-knowledge answer requiring no new Tool, Skill, Recipe, PythonCode, ToolSkill, or settings change, and no provider capability is missing. The target_provider_metadata carries no catalogue_revision, protocol_capabilities, or resolved provider/adapter facts, so no provider-specific repair is possible or needed. No Q1/Q2 or activation occurs; Sempai proposes nothing and does not self-approve. All proposal arrays remain empty per the reviewer decision procedure.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

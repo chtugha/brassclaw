@@ -1,0 +1,26 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the packet as evidence, not as a request to rewrite the conversation. The volatile tail is preserved exactly: system, user, assistant, tool, in that order and content. The tool receipt {\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"} is the only evidence of the completed effect; the UI timeout is an output/transport failure, not a missing effect. No proposal was made: the task asks only for an explanation, and no supported component sink (class 22/21) was requested, so proposed_components is empty. I did not invent an assistant acknowledgement, a second send, or any approval. The binding rule is that a completed effect is not replayed because output validation, reply posting or a later step failing does not invalidate the completed Tool call; the receipt is reused, not reissued. A timeout alone is unknown completion, not confirmed no effect, so it must not trigger a retry or a new dispatch. The kernel still enforces current global Tool policy before any future dispatch, and pinned component versions grant no permission. No prompt repair was justified, so adjusted_volatile_messages and bridge_messages are empty.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Inspect evidence without performing actions."
+    ],
+    [
+      "user",
+      "The email was sent; only explain why the UI timed out."
+    ],
+    [
+      "assistant",
+      "I sent the message once."
+    ],
+    [
+      "tool",
+      "{\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"}"
+    ]
+  ],
+  "proposed_components": [],
+  "proposed_recipe_updates": []
+}

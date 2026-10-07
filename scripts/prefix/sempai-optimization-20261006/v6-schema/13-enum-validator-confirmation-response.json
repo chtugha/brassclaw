@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9c191b379aa1a08b",
+  "object": "chat.completion",
+  "created": 1791320822,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Drafted one class-22 PythonCode candidate pc-check-mode (name/description/content only). The body reads mode with inputs.get('mode') so missing and null are both handled without raising, validates that mode is exactly the string 'eco' or 'boost' (case-sensitive, no normalization), and assigns result = {'accepted': bool, 'mode': mode if accepted else None} at module scope. No imports, host calls, I/O or coercion are used; booleans are not accepted as integers. Conversation preserved exactly; no submission, approval or activation occurred.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-mode\",\n        \"description\": \"Pure-logic guard: accept only the exact strings 'eco' or 'boost' (case-sensitive) and return an advisory result object. Missing or null mode yields accepted=false with mode=null. No exceptions, imports, host calls or I/O. This is a reusable building block; it performs no dispatch, retry or activation.\",\n        \"content\": \"mode = inputs.get('mode')\\naccepted = type(mode) is str and mode in ('eco', 'boost')\\nresult = {'accepted': accepted, 'mode': mode if accepted else None}\"\n      }\n    }\n  ],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate a raw operating mode without changing its spelling.\"]\n  ]\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76134,
+    "total_tokens": 76495,
+    "completion_tokens": 361,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

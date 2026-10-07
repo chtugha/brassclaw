@@ -1,0 +1,68 @@
+{
+  "class_code": 21,
+  "payload": {
+    "name": "recipe-fixed-ready-result",
+    "description": "Deterministic Tier-0 subworkflow that returns a fixed readiness result object. It assembles one orchestrator PythonCode step that assigns result = {\"status\": \"Ready\"} and returns that data. It does not post a user reply, change policy, write a file or dispatch any Tool. It is an unapproved draft: Q1 and human Q2 are required before activation, and the current Sempai sink cannot preserve this v3 Recipe constructor draft.",
+    "trigger": null,
+    "steps": [],
+    "prior_knowledge_content": "Unapproved draft dependency: this Recipe references the unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), which has not passed Q1 or human Q2 and is not activated. Q1 and human Q2 are required before this Recipe can be activated or reused. The subworkflow returns result only (a fixed readiness result object); it does not post a user reply, change policy, write a file or dispatch any Tool. The current Sempai sink cannot preserve this v3 Recipe constructor draft (it drops step_descriptions, variants and dependency_registry), so this export is an offline-design artifact, not a live submission.",
+    "intent_examples": [
+      "compute the fixed readiness result object",
+      "return the readiness data object",
+      "give me the readiness result object",
+      "produce the readiness result object",
+      "output the readiness result object",
+      "return the readiness data object",
+      "give me the readiness data object",
+      "produce the readiness data object",
+      "output the readiness data object",
+      "return the readiness result object",
+      "what is the fixed readiness result",
+      "show me the readiness result object"
+    ],
+    "step_descriptions": [
+      {
+        "desc_idx": 0,
+        "label": "Return the fixed readiness result",
+        "yaml_source": "Human-readable documentation of the same single step",
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "orchestrator",
+            "goal": "Return the fixed readiness result",
+            "content": "Run the fixed-readiness-result PythonCode",
+            "type": "component",
+            "include": [
+              "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "variant_key": "fixed-readiness-result",
+        "description": "Return exactly a fixed readiness result. No input slots",
+        "step_link": "0:1-0:E",
+        "intent_examples": [
+          "compute the fixed readiness result object",
+          "return the readiness data object",
+          "give me the readiness result object",
+          "produce the readiness result object",
+          "output the readiness result object",
+          "return the readiness data object",
+          "give me the readiness data object",
+          "produce the readiness data object",
+          "output the readiness data object",
+          "return the readiness result object",
+          "what is the fixed readiness result",
+          "show me the readiness result object"
+        ],
+        "variable_patterns": []
+      }
+    ],
+    "dependency_registry": null
+  }
+}

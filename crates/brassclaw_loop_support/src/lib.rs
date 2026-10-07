@@ -13,6 +13,7 @@ use std::{
     },
 };
 
+mod admitted_context;
 mod budget_accountant;
 mod budget_cost_table;
 mod budget_seeding;
@@ -27,6 +28,7 @@ pub mod identity_context;
 mod input_port;
 mod input_queue;
 mod model_capability_view;
+mod pg_capability_io;
 pub mod pg_checkpoint_state_store;
 pub(crate) mod skill_context;
 mod subagent_prompt_port;
@@ -70,6 +72,7 @@ pub use identity_context::{
 };
 pub use input_port::HostQueueLoopInputPort;
 pub use input_queue::{HostInputBatch, HostInputEnvelope, HostInputQueue, HostInputQueueError};
+pub use pg_capability_io::PgCapabilityIo;
 pub use pg_checkpoint_state_store::PgCheckpointStateStore;
 /// Source for the pre-assembled Kohai/Sempai prefix-cache bundle (§K.1.5).
 ///
@@ -150,7 +153,7 @@ use brassclaw_threads::{
     ToolResultReferenceEnvelope, ToolResultSafeSummary, UpdateAssistantDraftRequest,
 };
 use brassclaw_turns::{
-    LoopMessageRef, TurnId, TurnRunId,
+    LoopMessageRef, LoopResultRef, TurnId, TurnRunId,
     run_profile::ModelProfileId,
     run_profile::{
         AgentLoopHostError, AgentLoopHostErrorKind, AgentLoopHostErrorReasonKind,
@@ -226,6 +229,8 @@ where
     /// Optional prefix-cache bundle source (§K.1.5).
     /// When `Some`, the bundle text is prepended as instruction snippet #0.
     system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
+    selected_system_bundle: Arc<OnceCell<String>>,
+    token_budget_mode: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 struct IdentityCandidateCache {
@@ -291,6 +296,8 @@ where
             identity_candidates: Arc::new(IdentityCandidateCache::new()),
             milestone_sink: None,
             system_bundle_source: None,
+            selected_system_bundle: Arc::new(OnceCell::new()),
+            token_budget_mode: None,
         }
     }
 
@@ -316,6 +323,13 @@ where
         self.system_bundle_source = Some(source);
         self
     }
+
+    /// Read the shared effective mode at every prompt load, without a task-local
+    /// cached limit. `false` selects complete eligible history.
+    pub fn with_token_budget_mode(mut self, mode: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        self.token_budget_mode = Some(mode);
+        self
+    }
 }
 
 impl<S> LoopRunInfoPort for ThreadBackedLoopContextPort<S>
@@ -338,16 +352,31 @@ where
     ) -> Result<LoopContextBundle, AgentLoopHostError> {
         validate_thread_scope_for_run(&self.thread_scope, &self.run_context)?;
         validate_context_cursor(request.after.as_ref(), &self.run_context)?;
-        let max_messages = bounded_limit(request.limit, self.max_messages);
-        let context = self
-            .thread_service
-            .load_context_window(LoadContextWindowRequest {
-                scope: self.thread_scope.clone(),
-                thread_id: self.run_context.thread_id.clone(),
-                max_messages,
-            })
-            .await
-            .map_err(context_read_error)?;
+        let max_messages = if self.token_budget_mode.as_ref().is_some_and(|mode| !mode()) {
+            usize::MAX
+        } else {
+            bounded_limit(request.limit, self.max_messages)
+        };
+        let context_messages = if self.run_context.accepted_message_ref.is_some() {
+            admitted_context::load_admitted_context(
+                self.thread_service.as_ref(),
+                &self.thread_scope,
+                &self.run_context,
+                (max_messages != usize::MAX).then_some(max_messages),
+            )
+            .await?
+            .messages
+        } else {
+            self.thread_service
+                .load_context_window(LoadContextWindowRequest {
+                    scope: self.thread_scope.clone(),
+                    thread_id: self.run_context.thread_id.clone(),
+                    max_messages,
+                })
+                .await
+                .map_err(context_read_error)?
+                .messages
+        };
 
         // Prefix bundle (§K.1.5): prepend as snippet #0 so KV cache reuse
         // is maximised — stable content sits before per-turn skill snippets.
@@ -365,7 +394,10 @@ where
                 .as_ref()
                 .map(|p| p.as_str())
                 .unwrap_or("default");
-            let bundle = source.get_system_bundle(user_id, project_id).await;
+            let bundle = self
+                .selected_system_bundle
+                .get_or_init(|| source.get_system_bundle(user_id, project_id))
+                .await;
             vec![brassclaw_turns::run_profile::LoopContextSnippet {
                 snippet_ref: "prefix:bundle:v1".to_string(),
                 model_content: bundle.clone(),
@@ -406,8 +438,7 @@ where
 
         Ok(LoopContextBundle {
             identity_messages,
-            messages: context
-                .messages
+            messages: context_messages
                 .into_iter()
                 .filter_map(context_message_to_loop_message)
                 .collect(),
@@ -882,6 +913,17 @@ impl brassclaw_turns::run_profile::LoopCapabilityPort for EmptyLoopCapabilityPor
 
 /// Thread-backed model adapter that resolves loop message references before
 /// delegating completion to a host-managed gateway.
+#[async_trait]
+pub trait ToolResultPayloadSource: Send + Sync {
+    /// Called only for a transcript reference selected by prompt authority.
+    /// Missing retained data is an error, never a replacement safe summary.
+    async fn load_tool_result(
+        &self,
+        context: &LoopRunContext,
+        reference: &LoopResultRef,
+    ) -> Result<serde_json::Value, AgentLoopHostError>;
+}
+
 #[derive(Clone)]
 pub struct ThreadBackedLoopModelPort<S, G>
 where
@@ -898,6 +940,7 @@ where
     milestone_sink: Option<Arc<dyn LoopHostMilestoneSink>>,
     instruction_materialization_store: Option<Arc<dyn InstructionMaterializationStore>>,
     identity_context_source: Option<Arc<dyn HostIdentityContextSource>>,
+    tool_result_source: Option<Arc<dyn ToolResultPayloadSource>>,
 }
 
 impl<S, G> ThreadBackedLoopModelPort<S, G>
@@ -923,6 +966,7 @@ where
             milestone_sink: None,
             instruction_materialization_store: None,
             identity_context_source: None,
+            tool_result_source: None,
         }
     }
 
@@ -945,6 +989,7 @@ where
             milestone_sink: Some(milestone_sink),
             instruction_materialization_store: None,
             identity_context_source: None,
+            tool_result_source: None,
         }
     }
 
@@ -976,6 +1021,11 @@ where
         self.capabilities = Some(capabilities);
         self
     }
+
+    pub fn with_tool_result_source(mut self, source: Arc<dyn ToolResultPayloadSource>) -> Self {
+        self.tool_result_source = Some(source);
+        self
+    }
 }
 
 impl<S, G> LoopRunInfoPort for ThreadBackedLoopModelPort<S, G>
@@ -991,13 +1041,33 @@ where
 #[async_trait]
 impl<S, G> LoopModelPort for ThreadBackedLoopModelPort<S, G>
 where
-    S: SessionThreadService + ?Sized + Send + Sync,
-    G: HostManagedModelGateway + ?Sized + Send + Sync,
+    S: SessionThreadService + ?Sized + Send + Sync + 'static,
+    G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
 {
     async fn stream_model(
         &self,
         request: LoopModelRequest,
     ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        self.prepare_model_call(request)
+            .await?
+            .dispatch()
+            .await
+            .map_err(brassclaw_turns::run_profile::LoopModelGatewayError::into_host_error)
+    }
+}
+
+impl<S, G> ThreadBackedLoopModelPort<S, G>
+where
+    S: SessionThreadService + ?Sized + Send + Sync + 'static,
+    G: HostManagedModelGateway + ?Sized + Send + Sync + 'static,
+{
+    /// Resolve prompt authority once, retaining exact text and provider replay
+    /// metadata through the policy/accounting check and provider dispatch.
+    pub async fn prepare_model_call(
+        &self,
+        request: LoopModelRequest,
+    ) -> Result<Box<dyn brassclaw_turns::run_profile::PreparedLoopModelCall>, AgentLoopHostError>
+    {
         validate_thread_scope_for_run(&self.thread_scope, &self.run_context)?;
         let requested_model_profile_id = request.model_preference.clone();
         let model_profile_id = requested_model_profile_id.clone().unwrap_or_else(|| {
@@ -1007,52 +1077,47 @@ where
                 .clone()
         });
 
-        // When the Sempai interceptor has already resolved messages (rerouting
-        // mode), skip the normal prompt-grant authorization and
-        // `resolve_model_messages` call.  The interceptor owns the prompt content
-        // at that point and the refs are no longer authoritative.
-        let resolved_messages = if let Some(pre_resolved) = request.resolved_messages {
-            pre_resolved
-                .into_iter()
-                .map(|(role, content)| {
-                    let role_enum = HostManagedModelMessageRole::from_loop_role(&role)?;
-                    // Safety: "interceptor:pre-resolved" is a valid non-empty
-                    // sentinel ref that callers can detect. The loop-support
-                    // layer never writes pre-resolved messages to the thread
-                    // store, so this ref is never persisted or resolved.
-                    let sentinel_ref = LoopMessageRef::new("interceptor:pre-resolved".to_string())
-                        .map_err(|_| {
-                            AgentLoopHostError::new(
-                                AgentLoopHostErrorKind::Internal,
-                                "pre-resolved interceptor message ref is invalid",
-                            )
-                        })?;
-                    Ok(HostManagedModelMessage {
-                        role: role_enum,
-                        content,
-                        content_ref: sentinel_ref,
-                        tool_result_provider_call: None,
-                        tool_result_content: None,
-                    })
-                })
-                .collect::<Result<Vec<_>, AgentLoopHostError>>()?
-        } else {
-            let prompt_grant = self.prompt_authority.authorize_latest_model_request(
-                &self.run_context,
-                &request.messages,
-                &request.surface_version,
-            )?;
+        if request.resolved_messages.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "model prompt text must be resolved by the authorized host",
+            ));
+        }
+        let prompt_grant = self.prompt_authority.authorize_latest_model_request(
+            &self.run_context,
+            &request.messages,
+            &request.surface_version,
+        )?;
+        let mut resolved_messages = self.resolve_model_messages(prompt_grant.messages).await?;
+        if let Some(source) = self.tool_result_source.as_ref() {
+            for message in &mut resolved_messages {
+                let Some(HostManagedToolResultContent::Reference { envelope }) =
+                    message.tool_result_content.as_ref()
+                else {
+                    continue;
+                };
+                let reference = LoopResultRef::new(envelope.result_ref.clone()).map_err(|_| {
+                    AgentLoopHostError::new(
+                        AgentLoopHostErrorKind::InvalidInvocation,
+                        "tool result reference is invalid",
+                    )
+                })?;
+                let output = source
+                    .load_tool_result(&self.run_context, &reference)
+                    .await?;
+                let content = serde_json::to_string(&output).map_err(|_| {
+                    AgentLoopHostError::new(
+                        AgentLoopHostErrorKind::Unavailable,
+                        "tool result could not be represented for model replay",
+                    )
+                })?;
+                message.content = sanitize_model_visible_text(content);
+                message.tool_result_content = Some(HostManagedToolResultContent::Resolved {
+                    safe_summary: envelope.safe_summary.clone(),
+                });
+            }
+        }
 
-            // Resolve messages *before* the budget reservation in the outer
-            // `HostManagedLoopModelPort` so a message-resolution failure here
-            // cannot orphan a reservation taken by the outer port. The inner
-            // port itself never holds a reservation — budget accounting lives
-            // exclusively in the outer port (see #3841 follow-up "delete dead
-            // with_budget_accountant").
-            self.resolve_model_messages(prompt_grant.messages).await?
-        };
-
-        self.emit_model_started(requested_model_profile_id).await;
         let host_request = HostManagedModelRequest {
             model_profile_id: model_profile_id.clone(),
             messages: resolved_messages,
@@ -1061,59 +1126,115 @@ where
             run_id: self.run_context.run_id,
             turn_id: self.run_context.turn_id,
         };
-        let gateway_result = if let Some(capabilities) = self.capabilities.as_ref() {
-            let capabilities: Arc<dyn LoopCapabilityPort> =
-                if let Some(ref capability_view) = request.capability_view {
-                    Arc::new(CapabilitySurfaceVisibleFilter::new(
-                        Arc::clone(capabilities),
-                        capability_view.visible_capability_ids.clone(),
-                    ))
-                } else {
-                    Arc::clone(capabilities)
-                };
-            self.gateway
-                .stream_model_with_capabilities(host_request, capabilities)
-                .await
-        } else {
-            self.gateway.stream_model(host_request).await
-        };
 
-        let host_response_result = match gateway_result {
-            Ok(response) => {
-                let HostManagedModelResponse {
-                    safe_text_deltas,
-                    safe_reasoning_deltas,
-                    output,
-                    usage,
-                } = response;
-                let chunks = safe_text_deltas
-                    .into_iter()
-                    .map(|safe_text_delta| ModelStreamChunk {
-                        safe_text_delta: sanitize_model_visible_text(safe_text_delta),
-                    })
-                    .collect::<Vec<_>>();
-                let loop_response = LoopModelResponse {
-                    chunks,
-                    safe_reasoning_deltas,
-                    output,
-                    effective_model_profile_id: model_profile_id.clone(),
-                    usage,
-                };
-                Ok(loop_response)
-            }
-            Err(error) => Err(model_gateway_error(error)),
+        let work = brassclaw_turns::run_profile::ModelWorkRequest {
+            kind: brassclaw_turns::run_profile::ModelWorkKind::Assistant,
+            model_profile_id: model_profile_id.clone(),
+            resolved_model_route: self.run_context.resolved_model_route.clone(),
+            estimated_input_tokens: host_request
+                .messages
+                .iter()
+                .fold(0u64, |total, message| {
+                    total.saturating_add(estimate_tokens_from_chars(&message.content).as_u64())
+                })
+                .max(64),
+            estimated_output_tokens: None,
         };
+        let owned = Self {
+            thread_service: self.thread_service.clone(),
+            thread_scope: self.thread_scope.clone(),
+            run_context: self.run_context.clone(),
+            gateway: self.gateway.clone(),
+            capabilities: self.capabilities.clone(),
+            max_messages: self.max_messages,
+            prompt_authority: self.prompt_authority.clone(),
+            milestone_sink: self.milestone_sink.clone(),
+            instruction_materialization_store: self.instruction_materialization_store.clone(),
+            identity_context_source: self.identity_context_source.clone(),
+            tool_result_source: self.tool_result_source.clone(),
+        };
+        let dispatch = Box::pin(async move {
+            owned.emit_model_started(requested_model_profile_id).await;
+            let gateway_result = if let Some(capabilities) = owned.capabilities.as_ref() {
+                let capabilities: Arc<dyn LoopCapabilityPort> =
+                    if let Some(ref capability_view) = request.capability_view {
+                        Arc::new(CapabilitySurfaceVisibleFilter::new(
+                            Arc::clone(capabilities),
+                            capability_view.visible_capability_ids.clone(),
+                        ))
+                    } else {
+                        Arc::clone(capabilities)
+                    };
+                owned
+                    .gateway
+                    .stream_model_with_capabilities(host_request, capabilities)
+                    .await
+            } else {
+                owned.gateway.stream_model(host_request).await
+            };
 
-        match host_response_result {
-            Ok(response) => {
-                self.emit_model_completed(model_profile_id).await;
-                Ok(response)
+            let host_response_result = match gateway_result {
+                Ok(response) => {
+                    let HostManagedModelResponse {
+                        safe_text_deltas,
+                        safe_reasoning_deltas,
+                        output,
+                        usage,
+                    } = response;
+                    let chunks = safe_text_deltas
+                        .into_iter()
+                        .map(|safe_text_delta| ModelStreamChunk {
+                            safe_text_delta: sanitize_model_visible_text(safe_text_delta),
+                        })
+                        .collect::<Vec<_>>();
+                    let loop_response = LoopModelResponse {
+                        chunks,
+                        safe_reasoning_deltas,
+                        output,
+                        effective_model_profile_id: model_profile_id.clone(),
+                        usage,
+                    };
+                    Ok(loop_response)
+                }
+                Err(error) => Err(model_gateway_error(error)),
+            };
+
+            match host_response_result {
+                Ok(response) => {
+                    owned.emit_model_completed(model_profile_id).await;
+                    Ok(response)
+                }
+                Err(host_error) => {
+                    owned.emit_model_failed(host_error.kind).await;
+                    Err(host_error)
+                }
             }
-            Err(host_error) => {
-                self.emit_model_failed(host_error.kind).await;
-                Err(host_error)
-            }
-        }
+        });
+        Ok(Box::new(PreparedThreadModelCall { work, dispatch }))
+    }
+}
+
+struct PreparedThreadModelCall {
+    work: brassclaw_turns::run_profile::ModelWorkRequest,
+    dispatch: futures::future::BoxFuture<'static, Result<LoopModelResponse, AgentLoopHostError>>,
+}
+#[async_trait]
+impl brassclaw_turns::run_profile::PreparedLoopModelCall for PreparedThreadModelCall {
+    fn work_request(&self) -> &brassclaw_turns::run_profile::ModelWorkRequest {
+        &self.work
+    }
+    async fn dispatch(
+        self: Box<Self>,
+    ) -> Result<LoopModelResponse, brassclaw_turns::run_profile::LoopModelGatewayError> {
+        self.dispatch.await.map_err(
+            |error| brassclaw_turns::run_profile::LoopModelGatewayError {
+                kind: error.kind,
+                safe_summary: LoopSafeSummary::new(error.safe_summary)
+                    .unwrap_or_else(|_| LoopSafeSummary::model_gateway_failed()),
+                reason_kind: error.reason_kind,
+                diagnostic_ref: error.diagnostic_ref,
+            },
+        )
     }
 }
 
@@ -1168,19 +1289,33 @@ where
         &self,
         requested_messages: Vec<LoopModelMessage>,
     ) -> Result<Vec<HostManagedModelMessage>, AgentLoopHostError> {
-        let context = self
-            .thread_service
-            .load_context_window(LoadContextWindowRequest {
-                scope: self.thread_scope.clone(),
-                thread_id: self.run_context.thread_id.clone(),
-                max_messages: self.max_messages,
-            })
-            .await
-            .map_err(context_read_error)?;
+        let admitted = self.run_context.accepted_message_ref.is_some();
+        let context_messages = if admitted {
+            // Prompt authority has already selected eligible refs. Do not
+            // substitute a latest window or silently lose selected history.
+            admitted_context::load_admitted_context(
+                self.thread_service.as_ref(),
+                &self.thread_scope,
+                &self.run_context,
+                None,
+            )
+            .await?
+            .messages
+        } else {
+            self.thread_service
+                .load_context_window(LoadContextWindowRequest {
+                    scope: self.thread_scope.clone(),
+                    thread_id: self.run_context.thread_id.clone(),
+                    max_messages: self.max_messages,
+                })
+                .await
+                .map_err(context_read_error)?
+                .messages
+        };
 
         if requested_messages.is_empty() {
-            let mut messages = Vec::with_capacity(context.messages.len());
-            for message in context.messages {
+            let mut messages = Vec::with_capacity(context_messages.len());
+            for message in context_messages {
                 let Some(content_ref) = message_ref_from_context(&message) else {
                     continue;
                 };
@@ -1196,7 +1331,7 @@ where
             return Ok(messages);
         }
 
-        let mut messages_by_ref = context_messages_by_ref(context.messages);
+        let mut messages_by_ref = context_messages_by_ref(context_messages);
         let mut missing_message_ids = Vec::new();
         let mut needs_summary_history_lookup = false;
         for message in &requested_messages {
@@ -1232,6 +1367,12 @@ where
         } else {
             HashMap::new()
         };
+        if admitted && (!missing_message_ids.is_empty() || needs_summary_history_lookup) {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "model message is outside this admitted task's context",
+            ));
+        }
         if !missing_message_ids.is_empty() {
             let context_messages = self
                 .thread_service
@@ -1532,6 +1673,8 @@ pub enum HostManagedModelErrorKind {
     PolicyDenied,
     ConfigurationError,
     BudgetExceeded,
+    BudgetApprovalRequired,
+    BudgetAccountingFailed,
     /// Provider credentials are missing, expired, or otherwise unavailable.
     CredentialUnavailable,
     Unavailable,
@@ -1863,6 +2006,12 @@ fn model_error_kind(kind: HostManagedModelErrorKind) -> AgentLoopHostErrorKind {
         HostManagedModelErrorKind::PolicyDenied => AgentLoopHostErrorKind::PolicyDenied,
         HostManagedModelErrorKind::ConfigurationError => AgentLoopHostErrorKind::Unavailable,
         HostManagedModelErrorKind::BudgetExceeded => AgentLoopHostErrorKind::BudgetExceeded,
+        HostManagedModelErrorKind::BudgetApprovalRequired => {
+            AgentLoopHostErrorKind::BudgetApprovalRequired
+        }
+        HostManagedModelErrorKind::BudgetAccountingFailed => {
+            AgentLoopHostErrorKind::BudgetAccountingFailed
+        }
         HostManagedModelErrorKind::CredentialUnavailable => {
             AgentLoopHostErrorKind::CredentialUnavailable
         }
@@ -1878,6 +2027,8 @@ fn safe_model_summary(kind: HostManagedModelErrorKind) -> &'static str {
         HostManagedModelErrorKind::PolicyDenied => "model profile is not permitted",
         HostManagedModelErrorKind::ConfigurationError => "model route configuration is invalid",
         HostManagedModelErrorKind::BudgetExceeded => "model request exceeded its budget",
+        HostManagedModelErrorKind::BudgetApprovalRequired => "model budget approval is required",
+        HostManagedModelErrorKind::BudgetAccountingFailed => "model budget accounting failed",
         HostManagedModelErrorKind::CredentialUnavailable => "model credentials are unavailable",
         HostManagedModelErrorKind::Unavailable => "model service is unavailable",
         HostManagedModelErrorKind::Cancelled => "model request was cancelled",

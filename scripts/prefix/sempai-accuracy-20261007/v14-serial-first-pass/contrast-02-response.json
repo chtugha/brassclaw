@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-94d282baed9d4a56",
+  "object": "chat.completion",
+  "created": 1791358147,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class-22 component. Raw slots is a list of length 0..4 with all items exact integers 2..6; empty list is valid. Uses inputs.get('slots') so absence reaches the validator; missing and null both yield {ok:false,slots:null}. No bool/float coercion, no exceptions, no I/O/imports/host calls, no upstream validation assumption. Module-level result assignment on every path. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-02\", \"description\": \"Raw slots must be a list with length 0..4 inclusive, all items exact integers 2..6 inclusive. Empty is valid. Always result={ok:boolean,slots:original if valid else null}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"slots = inputs.get('slots')\\nok = type(slots) is list and 0 <= len(slots) <= 4\\nif ok:\\n    for slot in slots:\\n        if not (type(slot) is int and 2 <= slot <= 6):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'slots': slots if ok else None}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98724,
+    "total_tokens": 99092,
+    "completion_tokens": 368,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

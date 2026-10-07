@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a0382f1df714aa70",
+  "object": "chat.completion",
+  "created": 1791320273,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"proposed_components\": [],\n  \"composition_summary\": \"No change to the volatile tail. The packet carries no provider capabilities and a null catalogue_revision, so supported roles, Tool encoding and reasoning syntax are unknown and must not be inferred from the model name. The instruction is to keep messages unchanged, emit no proposals and explain the missing capability facts. No justified prompt repair is warranted: the request is to preserve the original messages, and no safe change is justified without the actual adapter/provider metadata. No component draft is proposed because the supported sink cannot preserve the required provider-capability fields and no resolved dependency identities were supplied; no submission or activation occurred.\",\n  \"proposed_intent_examples\": [],\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73943,
+    "total_tokens": 74146,
+    "completion_tokens": 203,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

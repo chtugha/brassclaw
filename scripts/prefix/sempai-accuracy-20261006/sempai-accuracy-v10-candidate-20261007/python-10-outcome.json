@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-10 that classifies raw ttl: missing -> {kind:\"missing\",ttl:null}; explicit null -> {kind:\"null\",ttl:null}; exact integer 6..15 -> {kind:\"integer\",ttl:original}; other -> {kind:\"invalid\",ttl:null}. Uses presence check first (distinguishes absent from null), exact int type, and the full positive condition 6<=ttl<=15 for the valid branch. No imports, I/O, host calls, bool/float coercion, defaults or exceptions. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-10",
+        "description": "Classify raw ttl: missing -> {kind:\"missing\",ttl:null}; explicit null -> {kind:\"null\",ttl:null}; exact integer 6..15 -> {kind:\"integer\",ttl:original}; other -> {kind:\"invalid\",ttl:null}. No bool/float/coercion/defaults/exceptions. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "if 'ttl' not in inputs:\n    result = {'kind': 'missing', 'ttl': None}\nelif inputs['ttl'] is None:\n    result = {'kind': 'null', 'ttl': None}\nelif type(inputs['ttl']) is int and 6 <= inputs['ttl'] <= 15:\n    result = {'kind': 'integer', 'ttl': inputs['ttl']}\nelse:\n    result = {'kind': 'invalid', 'ttl': None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

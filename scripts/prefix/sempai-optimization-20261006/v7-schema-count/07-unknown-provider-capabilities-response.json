@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-84d0958f11736c76",
+  "object": "chat.completion",
+  "created": 1791321433,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Offline-design review with no supported provider metadata. The packet carries no protocol_capabilities, no catalogue_revision and no resolved model adapter, so I cannot infer supported roles, Tool-call/result encoding or reasoning syntax. Per the binding guides I preserved the volatile tail exactly, emitted no prompt-repair proposals and no component/recipe updates, and explained the missing capability facts. No submission or activation occurred.\",\n  \"proposed_components\": [],\n  \"settings_adjustments\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]\n  ]\n,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76392,
+    "total_tokens": 76553,
+    "completion_tokens": 161,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

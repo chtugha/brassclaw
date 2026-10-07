@@ -1,0 +1,31 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-10. It classifies raw ttl: missing -> {kind:\"missing\",ttl:null}; explicit null -> {kind:\"null\",ttl:null}; exact integer 6..15 -> {kind:\"integer\",ttl:original}; other -> {kind:\"invalid\",ttl:null}. No bool/float/coercion/defaults/exceptions, no imports/I/O/host calls. Module-level result assignment. Conversation preserved; unapproved draft, target typed inputs needs runner support, no observed tests/submission/activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-10",
+        "description": "Classify raw ttl: missing -> {kind:\"missing\",ttl:null}; explicit null -> {kind:\"null\",ttl:null}; exact integer 6..15 -> {kind:\"integer\",ttl:original}; other -> {kind:\"invalid\",ttl:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "ttl = inputs.get('ttl')\nif ttl is None:\n    result = {'kind': 'null', 'ttl': None}\nelif type(ttl) is int and 6 <= ttl <= 15:\n    result = {'kind': 'integer', 'ttl': ttl}\nelse:\n    result = {'kind': 'invalid', 'ttl': None}\nif 'ttl' not in inputs:\n    result = {'kind': 'missing', 'ttl': None}"
+      }
+    },
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-10b",
+        "description": "Classify raw ttl: missing -> {kind:\"missing\",ttl:null}; explicit null -> {kind:\"null\",ttl:null}; exact integer 6..15 -> {kind:\"integer\",ttl:original}; other -> {kind:\"invalid\",ttl:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "ttl = inputs.get('ttl')\nif 'ttl' not in inputs:\n    result = {'kind': 'missing', 'ttl': None}\nelif ttl is None:\n    result = {'kind': 'null', 'ttl': None}\nelif type(ttl) is int and 6 <= ttl <= 15:\n    result = {'kind': 'integer', 'ttl': ttl}\nelse:\n    result = {'kind': 'invalid', 'ttl': None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

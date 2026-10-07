@@ -13,7 +13,7 @@ use std::{
     fmt,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -34,6 +34,17 @@ use web_time::Instant;
 pub const OOM_EXIT_CODE: i32 = 65;
 /// Allocator-backed live bytes requested through the global allocator
 pub static LIVE_MEMORY: AtomicUsize = AtomicUsize::new(0);
+/// Allocations made in a trusted VM allocation scope, including allocation
+/// headers/padding. Ownership survives scope exit, reallocations and waits.
+/// Unlike LIVE_MEMORY minus a baseline, unrelated transport allocations never
+/// subtract from or inflate this account. Only monty-alloc writes this counter.
+pub static VM_LIVE_MEMORY: AtomicUsize = AtomicUsize::new(0);
+/// Activated only by a worker with the matching installed allocator. Ordinary
+/// embedded callers retain upstream process-baseline measurement semantics.
+pub static VM_MEMORY_ACCOUNTING: AtomicBool = AtomicBool::new(false);
+/// Shared soft ceiling for the worker's VM allocation domain. Only the trusted
+/// serialized worker owner changes it; no task/reset changes this account.
+pub static VM_MEMORY_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
 /// What the worker costs to exist: the leanest the process has ever been at an
 /// arming point, plus structures it keeps for life (see [`allocate_into_baseline`]).
 pub static BASELINE_MEMORY: AtomicUsize = AtomicUsize::new(usize::MAX);
@@ -288,6 +299,9 @@ pub struct ResourceTracker {
     control_required: bool,
     control_error: Cell<Option<ExecutionControlError>>,
     control_yield: Cell<bool>,
+    /// Scheduler identity, not a product task or authority grant. Main is 0;
+    /// None denotes a discarded coroutine context. Retained over snapshots.
+    execution_context: Cell<Option<u32>>,
     limits: ResourceLimits,
     /// Execution time accumulated by completed `on_execution_start`/`stop`
     /// windows. Bounds nothing — it is what [`elapsed`](Self::elapsed) reports
@@ -408,6 +422,30 @@ impl Drop for PreparationWindow {
 /// Implementations must neither reenter the VM nor perform blocking I/O.
 pub trait ExecutionControl: fmt::Debug + Send + Sync {
     fn checkpoint(&self, elapsed: Duration) -> Result<ExecutionControlAction, ExecutionControlError>;
+
+    /// Observe separate cumulative clocks and the actual loaded coroutine.
+    /// Called on both sides of every context transition. Preparation does not
+    /// belong to this coroutine: importing a host result can wake another one.
+    /// Existing task-owned controls retain their combined-clock contract.
+    fn checkpoint_context(
+        &self,
+        observation: ExecutionObservation,
+    ) -> Result<ExecutionControlAction, ExecutionControlError> {
+        let elapsed = observation
+            .execution
+            .checked_add(observation.preparation)
+            .ok_or(ExecutionControlError::AccountingUnavailable)?;
+        self.checkpoint(elapsed)
+    }
+}
+
+/// Trusted telemetry at a resource or scheduler boundary. Neither clock includes
+/// host waits. Context IDs are VM-local and may serve many successive tasks.
+#[derive(Debug, Clone, Copy)]
+pub struct ExecutionObservation {
+    pub context: Option<u32>,
+    pub execution: Duration,
+    pub preparation: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,6 +460,7 @@ pub enum ExecutionControlError {
     Cancelled,
     TaskComputeExceeded,
     AccountingUnavailable,
+    IdentityExhausted,
 }
 
 impl ResourceTracker {
@@ -449,11 +488,11 @@ impl ResourceTracker {
             .as_ref()
             .ok_or(ExecutionControlError::AccountingUnavailable)
             .and_then(|control| {
-                let elapsed = self
-                    .elapsed()
-                    .checked_add(preparation)
-                    .ok_or(ExecutionControlError::AccountingUnavailable)?;
-                control.checkpoint(elapsed)
+                control.checkpoint_context(ExecutionObservation {
+                    context: self.execution_context.get(),
+                    execution: self.elapsed(),
+                    preparation,
+                })
             });
         match outcome {
             Ok(ExecutionControlAction::Continue) => Ok(()),
@@ -472,6 +511,28 @@ impl ResourceTracker {
     /// Native synchronous reentry must leave this request pending.
     pub fn take_control_yield(&self) -> bool {
         self.control_yield.replace(false)
+    }
+
+    /// Report the actual context loaded at this continuation boundary.
+    pub fn execution_context(&self) -> Option<u32> {
+        self.execution_context.get()
+    }
+
+    /// Close the outgoing clock interval before changing scheduler identity.
+    /// Control failures are latched and propagated by the next VM resource
+    /// check, including the execution-window epilogue. Teardown must still drop
+    /// the old frames even when control has already failed.
+    pub fn set_execution_context(&self, context: Option<u32>) {
+        if self.execution_context.get() != context {
+            // poll_execution_control itself retains every failure. There is no
+            // additional operation or bytecode execution between these samples.
+            let before = self.poll_execution_control();
+            self.execution_context.set(context);
+            if before.is_ok() {
+                let after = self.poll_execution_control();
+                debug_assert!(after.is_ok() || self.control_error.get().is_some());
+            }
+        }
     }
 
     /// Begin synchronous interpreter preparation, never execution or a host wait.
@@ -565,6 +626,7 @@ impl ResourceTracker {
             control_required: false,
             control_error: Cell::new(None),
             control_yield: Cell::new(false),
+            execution_context: Cell::new(Some(0)),
             total_execution_time: Cell::new(Duration::ZERO),
             preparation: Arc::new(Mutex::new(PreparationAccount::default())),
             feed_execution_time: Cell::new(Duration::ZERO),
@@ -632,11 +694,12 @@ impl ResourceTracker {
         self.limits.max_turn_duration
     }
 
-    /// Returns the configured memory budget, if any. Hosts that bound a worker
+    /// Returns the current effective memory budget, including an installed
+    /// shared VM-domain ceiling. Hosts that bound a worker
     /// process from outside the interpreter size that bound from this.
     #[must_use]
     pub fn max_memory(&self) -> Option<usize> {
-        self.limits.max_memory
+        self.effective_memory_limit()
     }
 
     /// Returns the host-enforced suspension budget (default
@@ -655,7 +718,7 @@ impl ResourceTracker {
     /// Returns whether the VM has a memory or time limit configured.
     #[must_use]
     pub fn has_memory_time_limit(&self) -> bool {
-        self.limits.max_memory.is_some() || self.has_time_limit()
+        self.effective_memory_limit().is_some() || self.has_time_limit()
     }
 
     /// Returns whether either execution-time budget is configured.
@@ -693,7 +756,7 @@ impl ResourceTracker {
     /// hard allocator limits before execution reaches another checkpoint.
     #[inline]
     pub fn check_allocation(&self, additional: usize) -> Result<(), ResourceError> {
-        if let Some(limit) = self.limits.max_memory {
+        if let Some(limit) = self.effective_memory_limit() {
             let used = probe_memory().saturating_add(additional);
             if used > limit {
                 return Err(ResourceError::Memory { limit, used });
@@ -712,7 +775,7 @@ impl ResourceTracker {
     /// an immutable heap reference, such as `py_repr_fmt`.
     #[inline]
     pub fn check_memory_time(&self) -> Result<(), ResourceError> {
-        if let Some(limit) = self.limits.max_memory {
+        if let Some(limit) = self.effective_memory_limit() {
             let used = probe_memory();
             if used > limit {
                 return Err(ResourceError::Memory { limit, used });
@@ -720,6 +783,17 @@ impl ResourceTracker {
         }
 
         self.check_time()
+    }
+
+    fn effective_memory_limit(&self) -> Option<usize> {
+        let shared = VM_MEMORY_ACCOUNTING
+            .load(Ordering::Acquire)
+            .then(|| VM_MEMORY_LIMIT.load(Ordering::Relaxed))
+            .filter(|limit| *limit != usize::MAX);
+        match (self.limits.max_memory, shared) {
+            (Some(local), Some(shared)) => Some(local.min(shared)),
+            (local, shared) => local.or(shared),
+        }
     }
 
     /// Called periodically to check both execution-time budgets.
@@ -986,9 +1060,13 @@ fn check_budget(scope: TimeLimitScope, limit: Option<Duration>, elapsed: Duratio
 
 /// Returns memory used in bytes
 fn probe_memory() -> usize {
-    LIVE_MEMORY
-        .load(Ordering::Relaxed)
-        .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))
+    if VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) {
+        VM_LIVE_MEMORY.load(Ordering::Relaxed)
+    } else {
+        LIVE_MEMORY
+            .load(Ordering::Relaxed)
+            .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

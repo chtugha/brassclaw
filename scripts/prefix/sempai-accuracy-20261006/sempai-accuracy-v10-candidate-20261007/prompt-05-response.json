@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-80b8845669f136da",
+  "object": "chat.completion",
+  "created": 1791325712,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Removed the authorized duplicate 'concise' from the system message, leaving exactly 'Keep it concise.'. Preserved the user message byte-for-byte and both roles. No provider facts or components were inferred.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [],\n  \"settings_adjustments\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"system\",\n      \"Keep it concise.\"\n    ],\n    [\n      \"user\",\n      \"Keep my exact request and punctuation: {a:1}.\"\n    ]\n  ],\n  \"proposed_intent_examples\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98238,
+    "total_tokens": 98390,
+    "completion_tokens": 152,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

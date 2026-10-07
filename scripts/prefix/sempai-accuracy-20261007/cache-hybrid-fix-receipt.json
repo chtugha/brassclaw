@@ -1,0 +1,11 @@
+{
+  "original_hashes": {
+    "/etc/systemd/system/vllm.service": "0a61271c8e7901796101d2a2ca8abcb97bb06e8ffb18168bbbb89da826101192",
+    "/etc/systemd/system/lmcache.service": "ae95a10d9465dcc9fdd8abc3e2c62627b5bca8945c7161a7318f235ef3dfc128",
+    "/etc/systemd/system/vllm.service.d/90-reference-prefix.conf": "d89db6253226fbe95ecc0f9df4b104a66a575a6522c9ca12ccdb9e39313f2cf4"
+  },
+  "dropin": "/etc/systemd/system/lmcache.service.d/91-hybrid-object-groups.conf",
+  "backup": "/root/lmcache-hybrid-fix-20261007T081452Z",
+  "status": "applied; readiness and external-restore tests still required",
+  "dropin_sha256": "ebc3e349203b8e2430cc036714b190aa72eee1eb795a5c83d7c8c4385e798960"
+}

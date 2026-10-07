@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-timeout-ms",
+    "description": "Pure-logic validation of a raw timeout value. Returns valid=true only for an exact integer in 0..7500 inclusive; returns valid=false with timeout_ms=null for missing, null, bool, float, non-integer or out-of-range values. No exceptions, no coercion, no host calls, no imports, no I/O.",
+    "content": "# Target typed-input interface; binding validates the raw candidate before any effect.\ntimeout_ms = inputs.get(\"timeout_ms\")\nvalid = isinstance(timeout_ms, int) and not isinstance(timeout_ms, bool) and 0 <= timeout_ms <= 7500\nresult = {\"valid\": valid, \"timeout_ms\": timeout_ms if valid else None}"
+  }
+}

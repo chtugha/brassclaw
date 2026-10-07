@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bd886e8e939fe77c",
+  "object": "chat.completion",
+  "created": 1791318742,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need to validate raw timeout values before configuring a service.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Reviewed the packet as an offline-design component draft. The request is to author one class-22 pure-logic PythonCode candidate named pc-check-timeout-ms with only name/description/content. The semantics are internally consistent: valid means exact integer 0..7500 inclusive, rejecting bool and float; every outcome assigns result={valid, timeout_ms} with timeout_ms null on invalid/missing/null and no exceptions or coercion. The code is pure logic with zero host calls, imports or I/O, so it is a valid Tier-0 pure-logic component. I preserved the volatile message unchanged and did not invent an assistant acknowledgement, result or approval. I did not submit, store, validate, approve or activate anything; this remains an unapproved draft. The host's supported proposal sink for class 22 accepts name/description/content, so the payload uses exactly those fields. Typed inputs (inputs[\\\"timeout_ms\\\"]) are a target interface per recipe.md/skills.md, not guaranteed deployed runtime support; the draft documents the contract without claiming execution. The draft is not a submission or activation, and no Q1/Q2 or exact-association approval has occurred. No compatibility updates, intents or settings changes were proposed.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-timeout-ms\",\n        \"description\": \"Pure-logic validation of a raw timeout value. Returns valid=true only for an exact integer in 0..7500 inclusive; returns valid=false with timeout_ms=null for missing, null, bool, float, non-integer or out-of-range values. No exceptions, no coercion, no host calls, no imports, no I/O.\",\n        \"content\": \"# Target typed-input interface; binding validates the raw candidate before any effect.\\ntimeout_ms = inputs.get(\\\"timeout_ms\\\")\\nvalid = isinstance(timeout_ms, int) and not isinstance(timeout_ms, bool) and 0 <= timeout_ms <= 7500\\nresult = {\\\"valid\\\": valid, \\\"timeout_ms\\\": timeout_ms if valid else None}\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 70456,
+    "total_tokens": 70985,
+    "completion_tokens": 529,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

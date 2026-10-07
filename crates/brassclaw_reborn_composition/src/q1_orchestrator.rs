@@ -10,7 +10,7 @@
 //! # Graceful defer
 //!
 //! Before validation Recipes are seeded (`validates_class_code` rows, Phase L §0.23.3),
-//! `find_validator_recipe` returns `None` and `run_q1_validation` returns
+//! `load_validator_program` returns `None` and `run_q1_validation` returns
 //! `Q1Outcome::Deferred`. The component stays at queue state 1 (`Q1_pending`) until
 //! a Recipe is available.
 //!
@@ -20,12 +20,12 @@
 //! `class_code` on `reborn_recipes` is always 21 (enforced by CHECK constraint) —
 //! it means "this row IS a Recipe", not "this Recipe validates class X".
 //! V079 adds `validates_class_code SMALLINT` to carry that meaning.
-//! `find_validator_recipe` now filters on `validates_class_code = $class`.
+//! `load_validator_program` filters on `validates_class_code = $class`.
 //!
 //! # State-2 write invariant (FIND-P9-01 / FIND-P9-08)
 //!
 //! Only this module (`run_q1_validation`) may write state 2 by calling
-//! `gate1_pass`. Both `gate1_pass` and `gate1_fail` are `pub(crate)` on
+//! `gate1_pass_reviewed`. The reviewed pass/failure methods are `pub(crate)` on
 //! [`ValidationQueueStore`], preventing any API layer from calling them directly.
 //!
 //! # Feature gate
@@ -49,7 +49,7 @@ use crate::validation_queue::{ValidationQueueError, ValidationQueueStore};
 /// The outcome of a Gate 1 (Q1) validation attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Q1Outcome {
-    /// Gate 1 ran and the component passed all checks.  `gate1_pass` has been
+    /// Gate 1 ran and the component passed all checks. `gate1_pass_reviewed` has been
     /// called — the queue row is now at state 2 (awaiting Q2).
     Passed,
 
@@ -101,43 +101,39 @@ pub enum Q1Error {
     Db { reason: String },
     #[error("invalid class code {class_code}: out of i16 range")]
     InvalidClassCode { class_code: i32 },
+    #[error("multiple approved validators exist for class {class_code}")]
+    AmbiguousValidator { class_code: i16 },
+    #[error("validator Recipe {recipe_id} is not a supported approved PythonCode program")]
+    InvalidValidator { recipe_id: Uuid },
 }
 
 // ---------------------------------------------------------------------------
 // Recipe lookup
 // ---------------------------------------------------------------------------
 
-/// Look up a validated validation Recipe for `class_code` within the given
-/// scope.
-///
-/// Searches `reborn_recipes` for a row where:
-/// - `validation_status = 'validated'`
-/// - `'05:validator' = ANY(consumer_tags)`
-/// - `validates_class_code = $class_code`  ← V079 column (not `class_code`
-///   which is always 21 by DDL constraint and means "this IS a Recipe row")
-///
-/// Returns the recipe UUID on success, or `None` when no Recipe is available
-/// (graceful-defer path — before Phase L §0.23.3 seeding).
-async fn find_validator_recipe(
+/// Read the approved validator and its single pure-code entry point from one
+/// consistent catalogue view. No unapproved code or silently ignored entries.
+async fn load_validator_program(
     pool: &PgPool,
     scope: &ComponentScope,
     class_code: i16,
-) -> Result<Option<Uuid>, Q1Error> {
-    let client = pool.get().await.map_err(|e| Q1Error::Db {
+) -> Result<Option<(Uuid, String)>, Q1Error> {
+    let mut client = pool.get().await.map_err(|e| Q1Error::Db {
         reason: e.to_string(),
     })?;
-
-    let row = client
-        .query_opt(
-            "SELECT id FROM reborn_recipes
-              WHERE tenant_id           = $1
-                AND user_id             = $2
-                AND agent_id            = $3
-                AND project_id          = $4
-                AND validates_class_code = $5
-                AND validation_status   = 'validated'
-                AND '05:validator'      = ANY(consumer_tags)
-              LIMIT 1",
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .map_err(q1_db)?;
+    let rows = tx
+        .query(
+            "SELECT id, step_descriptions FROM reborn_recipes WHERE tenant_id=$1 AND user_id=$2
+         AND agent_id=$3 AND project_id=$4 AND validates_class_code=$5
+         AND validation_status='validated' AND '05:validator'=ANY(consumer_tags)
+         ORDER BY id LIMIT 2",
             &[
                 &scope.tenant_id,
                 &scope.user_id,
@@ -147,11 +143,76 @@ async fn find_validator_recipe(
             ],
         )
         .await
-        .map_err(|e| Q1Error::Db {
-            reason: e.to_string(),
-        })?;
+        .map_err(q1_db)?;
+    if rows.len() > 1 {
+        return Err(Q1Error::AmbiguousValidator { class_code });
+    }
+    let Some(row) = rows.first() else {
+        return Ok(None);
+    };
+    let recipe_id: Uuid = row.get(0);
+    let invalid = || Q1Error::InvalidValidator { recipe_id };
+    let descriptions: Option<serde_json::Value> = row.get(1);
+    let descriptions = descriptions
+        .as_ref()
+        .and_then(serde_json::Value::as_array)
+        .filter(|values| values.len() == 1)
+        .ok_or_else(invalid)?;
+    let steps = descriptions[0]
+        .get("steps")
+        .and_then(serde_json::Value::as_array)
+        .filter(|values| values.len() == 1)
+        .ok_or_else(invalid)?;
+    let step = &steps[0];
+    if step.get("type").and_then(serde_json::Value::as_str) != Some("component")
+        || step.get("knowledge").and_then(serde_json::Value::as_str) != Some("orchestrator")
+        || !step
+            .get("tool_bindings")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(Vec::is_empty)
+        || step
+            .get("dependencies")
+            .is_none_or(|value| !value.is_null())
+    {
+        return Err(invalid());
+    }
+    let includes = step
+        .get("include")
+        .and_then(serde_json::Value::as_array)
+        .filter(|values| values.len() == 1)
+        .ok_or_else(invalid)?;
+    let pc_id = includes[0]
+        .as_str()
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .filter(|id| !id.is_nil())
+        .ok_or_else(invalid)?;
+    let pc = tx
+        .query_opt(
+            "SELECT content FROM reborn_python_code WHERE id=$1 AND tenant_id=$2 AND user_id=$3
+         AND agent_id=$4 AND project_id=$5 AND class_code=22 AND validation_status='validated'",
+            &[
+                &pc_id,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ],
+        )
+        .await
+        .map_err(q1_db)?
+        .ok_or_else(invalid)?;
+    let body: String = pc.get(0);
+    tx.commit().await.map_err(q1_db)?;
+    Ok(Some((recipe_id, body)))
+}
 
-    Ok(row.map(|r| r.get::<_, Uuid>(0)))
+fn q1_db(error: tokio_postgres::Error) -> Q1Error {
+    Q1Error::Db {
+        reason: error
+            .code()
+            .map(|code| format!("SQLSTATE {}", code.code()))
+            .unwrap_or_else(|| error.to_string()),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -173,201 +234,106 @@ struct ComponentContentFields {
     content: String,
 }
 
-/// Fetch the three content fields for a component by `(scope, id, class_code)`.
-///
-/// Each component class stores its primary text content in a different column.
-/// For classes whose "content" is opaque JSONB (`steps` on Recipes) the
-/// description is used as a proxy — structural validators check that the
-/// description is non-empty, which is sufficient for this tier.
-///
-/// Returns `None` when the row is not found (wrong scope or id).
-async fn fetch_component_content_fields(
-    pool: &PgPool,
-    scope: &ComponentScope,
-    component_id: Uuid,
-    class_code: i16,
-) -> Result<Option<ComponentContentFields>, Q1Error> {
-    let client = pool.get().await.map_err(|e| Q1Error::Db {
-        reason: e.to_string(),
-    })?;
-
-    // SELECT the three fields from the class-appropriate table.
-    // All tables share the same (tenant_id, user_id, agent_id, project_id, id) PK shape.
-    let (table, content_col) = match class_code {
-        0 => ("reborn_tools", "COALESCE(capability_id, '') AS content"),
-        1..=3 => ("reborn_skills", "body AS content"),
-        13 => ("reborn_tool_skills", "COALESCE(content, '') AS content"),
-        21 => ("reborn_recipes", "description AS content"),
-        22 => ("reborn_python_code", "content"),
-        23 => (
-            "reborn_extension_catalogues",
-            "COALESCE(overview_doc, '') AS content",
-        ),
-        _ => {
-            // Unknown class — cannot validate, defer.
-            return Ok(None);
-        }
+/// Extract the actual reviewed candidate, including an upgrade's proposed
+/// values. The queue snapshot is later compared before storing Q1 success.
+fn reviewed_content_fields(
+    review: &crate::validation_queue::Q1Candidate,
+) -> Option<ComponentContentFields> {
+    let value = review.reviewed();
+    let content = match review.class_code() {
+        0 => value
+            .get("capability_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(""),
+        1..=3 => value.get("body")?.as_str()?,
+        13 | 22 => value
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(""),
+        21 => value.get("description")?.as_str()?,
+        23 => value
+            .get("overview_doc")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(""),
+        _ => return None,
     };
-    let sql = format!(
-        "SELECT name, COALESCE(description, '') AS description, {content_col} \
-         FROM {table} \
-         WHERE id = $1 \
-           AND tenant_id = $2 AND user_id = $3 \
-           AND agent_id  = $4 AND project_id = $5 \
-         LIMIT 1"
-    );
-    let row = client
-        .query_opt(
-            &sql,
-            &[
-                &component_id,
-                &scope.tenant_id,
-                &scope.user_id,
-                &scope.agent_id,
-                &scope.project_id,
-            ],
-        )
-        .await
-        .map_err(|e| Q1Error::Db {
-            reason: e.to_string(),
-        })?;
-    Ok(row.map(|r| ComponentContentFields {
-        name: r.get::<_, String>(0),
-        description: r.get::<_, String>(1),
-        content: r.get::<_, String>(2),
-    }))
-}
-
-/// Fetch the PythonCode body for the first orchestrator step of a validator
-/// Recipe.  The seeded validator Recipes (Phase L §0.23.3) store one
-/// `step_descriptions` entry whose `steps[0].include[0]` is the PythonCode UUID.
-/// This function extracts that UUID and fetches the PythonCode `content` column.
-///
-/// Returns `None` when the Recipe has no parseable orchestrator step or the
-/// referenced PythonCode row is missing.
-async fn fetch_validator_pc_body(
-    pool: &PgPool,
-    scope: &ComponentScope,
-    recipe_id: Uuid,
-) -> Result<Option<String>, Q1Error> {
-    let client = pool.get().await.map_err(|e| Q1Error::Db {
-        reason: e.to_string(),
-    })?;
-
-    // 1. Fetch the recipe's step_descriptions JSONB.
-    let recipe_row = client
-        .query_opt(
-            "SELECT step_descriptions \
-             FROM reborn_recipes \
-             WHERE id = $1 \
-               AND tenant_id = $2 AND user_id = $3 \
-               AND agent_id  = $4 AND project_id = $5 \
-             LIMIT 1",
-            &[
-                &recipe_id,
-                &scope.tenant_id,
-                &scope.user_id,
-                &scope.agent_id,
-                &scope.project_id,
-            ],
-        )
-        .await
-        .map_err(|e| Q1Error::Db {
-            reason: e.to_string(),
-        })?;
-
-    let Some(recipe_row) = recipe_row else {
-        return Ok(None);
-    };
-
-    // 2. Extract the PythonCode UUID from step_descriptions[0].steps[0].include[0].
-    let step_desc: Option<serde_json::Value> = recipe_row.get(0);
-    let Some(step_desc) = step_desc else {
-        return Ok(None);
-    };
-    let pc_id_str = step_desc
-        .get(0)
-        .and_then(|d| d.get("steps"))
-        .and_then(|s| s.get(0))
-        .and_then(|s| s.get("include"))
-        .and_then(|inc| inc.get(0))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    if pc_id_str.is_empty() {
-        return Ok(None);
-    }
-    let pc_id: Uuid = match pc_id_str.parse() {
-        Ok(u) => u,
-        Err(_) => return Ok(None),
-    };
-
-    // 3. Fetch the PythonCode body.
-    let pc_row = client
-        .query_opt(
-            "SELECT content \
-             FROM reborn_python_code \
-             WHERE id = $1 \
-               AND tenant_id = $2 AND user_id = $3 \
-               AND agent_id  = $4 AND project_id = $5 \
-             LIMIT 1",
-            &[
-                &pc_id,
-                &scope.tenant_id,
-                &scope.user_id,
-                &scope.agent_id,
-                &scope.project_id,
-            ],
-        )
-        .await
-        .map_err(|e| Q1Error::Db {
-            reason: e.to_string(),
-        })?;
-
-    Ok(pc_row.map(|r| r.get::<_, String>(0)))
+    Some(ComponentContentFields {
+        name: value.get("name")?.as_str()?.to_owned(),
+        description: value
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned(),
+        content: content.to_owned(),
+    })
 }
 
 /// Run the validator PythonCode body in the lightweight Monty sandbox.
 ///
-/// Bakes `{{vars.slot0}}` / `{{vars.slot1}}` / `{{vars.slot2}}` into the body
-/// with the component's name / description / content respectively (the IBS
-/// substitution the full engine loop would normally perform).  Then calls
-/// [`run_python_code_body`] — a pure-logic, no-host-call executor.
+/// Converts the legacy quoted slot markers to fixed typed-input expressions.
+/// Component values are injected separately, never rendered as Python source.
+/// This compatibility preparation does not change or activate the stored body.
+/// Then calls [`run_python_code_body`] — a pure-logic, no-host-call executor.
 ///
 /// Returns `(passed: bool, errors: Vec<String>)` from the body's
 /// `{"pass": bool, "errors": [...]}` return value.  On any execution error
 /// the result is treated as a failure with the error message as the sole error.
-fn run_validator_python(
+async fn run_validator_python(
     pc_body: &str,
     name: &str,
     description: &str,
     content: &str,
 ) -> (bool, Vec<String>) {
-    // Bake IBS slot substitutions into the body (literal text replacement).
-    // The validator bodies use {{vars.slot0/1/2}} as placeholder text inside
-    // string literals: `_name = "{{vars.slot0}}"`.  We replace the whole
-    // placeholder including the surrounding quotes so the body gets a clean
-    // Python string literal with the real value.
+    if pc_body.len() > brassclaw_engine::executor::scripting::MAX_PYTHON_UTILITY_SOURCE_BYTES {
+        return (
+            false,
+            vec!["validator source exceeds the technical utility bound".into()],
+        );
+    }
+    // Only fixed expressions enter source. Rust Debug string formatting is
+    // not Python serialization (for example its control-character escapes).
     let body = pc_body
-        .replace("\"{{vars.slot0}}\"", &format!("{:?}", name))
-        .replace("\"{{vars.slot1}}\"", &format!("{:?}", description))
-        .replace("\"{{vars.slot2}}\"", &format!("{:?}", content));
+        .replace("\"{{vars.slot0}}\"", "inputs[\"name\"]")
+        .replace("\"{{vars.slot1}}\"", "inputs[\"description\"]")
+        .replace("\"{{vars.slot2}}\"", "inputs[\"content\"]");
+    if body.contains("{{vars.") {
+        return (
+            false,
+            vec!["validator has an unsupported input marker".into()],
+        );
+    }
 
     // Append `result` as the final expression so run_python_code_body returns it.
     let body_with_return = format!("{body}\nresult");
 
-    match run_python_code_body(&body_with_return, &[]) {
+    let inputs = serde_json::json!({"name": name, "description": description, "content": content});
+    match run_python_code_body(&body_with_return, &[("inputs", inputs)]).await {
         Ok(Some(val)) => {
-            let passed = val.get("pass").and_then(|v| v.as_bool()).unwrap_or(false);
-            let errors: Vec<String> = val
-                .get("errors")
-                .and_then(|e| e.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let invalid = || {
+                (
+                    false,
+                    vec!["validator returned an invalid {pass, errors} result".into()],
+                )
+            };
+            let Some(object) = val.as_object().filter(|object| object.len() == 2) else {
+                return invalid();
+            };
+            let Some(passed) = object.get("pass").and_then(|v| v.as_bool()) else {
+                return invalid();
+            };
+            let Some(errors) = object.get("errors").and_then(|v| v.as_array()) else {
+                return invalid();
+            };
+            let Some(errors) = errors
+                .iter()
+                .map(|v| v.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+            else {
+                return invalid();
+            };
+            if (passed && !errors.is_empty()) || (!passed && errors.is_empty()) {
+                return invalid();
+            }
             (passed, errors)
         }
         Ok(None) => (
@@ -393,18 +359,20 @@ fn run_validator_python(
 ///    `class_code` in the component's scope.
 /// 3. **No Recipe found** → return `Q1Outcome::Deferred` without touching the
 ///    queue (component stays at state 1).
-/// 4. **Recipe found** → fetch the component's content fields and the validator
-///    PythonCode body; execute the pure-logic structural check via
+/// 4. **Recipe found** → capture the exact queued candidate, overlay any
+///    validated proposed upgrade fields, and select the approved single-entry
+///    validator PythonCode in the same catalogue read transaction; execute via
 ///    [`run_python_code_body`] (no engine deps required for Tier-0 validators).
-///    On pass → `queue_store.gate1_pass(…)` (state 1→2).
-///    On fail → `queue_store.gate1_fail(…)` (state 1, errors recorded).
+///    On pass → `queue_store.gate1_pass_reviewed(…)` (state 1→2).
+///    On fail → `queue_store.gate1_fail_reviewed(…)` (state 1, errors recorded).
+///    Both compare the captured bytes again before persisting the result.
 /// 5. Return the [`Q1Outcome`].
 ///
 /// # Graceful degrade paths
 ///
 /// - No Recipe found → `Deferred` (component stays at state 1).
-/// - Recipe found but PythonCode body unavailable → `Deferred` (runner cannot
-///   execute without a body; component stays at state 1).
+/// - Ambiguous Recipe selection or malformed/unapproved PythonCode → error;
+///   the component stays at state 1 without an invented Q1 pass.
 /// - Component row not found (wrong scope/id) → `Deferred`.
 pub async fn run_q1_validation(
     pool: &PgPool,
@@ -417,39 +385,28 @@ pub async fn run_q1_validation(
         .try_into()
         .map_err(|_| Q1Error::InvalidClassCode { class_code })?;
 
-    // Step 2 — look up validation Recipe for this class.
-    let recipe_id = find_validator_recipe(pool, scope, class_i16).await?;
-
-    let Some(recipe_id) = recipe_id else {
-        // Graceful defer: no validation Recipe seeded for this class yet.
-        // Q1 cannot run; component stays at state 1 until a Recipe arrives.
-        tracing::debug!(
-            component_id = %component_id,
-            class_code   = class_code,
-            "Q1: no validated validation Recipe found for class — deferring"
-        );
+    // Read the validator Recipe and its approved code together. A missing
+    // validator defers; ambiguous/malformed/unapproved combinations fail closed.
+    let Some((recipe_id, pc_body)) = load_validator_program(pool, scope, class_i16).await? else {
         return Ok(Q1Outcome::deferred(format!(
             "no validated validation Recipe found for class {class_code}"
         )));
     };
 
-    // Step 3 — fetch the validator PythonCode body from the Recipe.
-    let Some(pc_body) = fetch_validator_pc_body(pool, scope, recipe_id).await? else {
-        tracing::debug!(
-            component_id = %component_id,
-            class_code   = class_code,
-            recipe_id    = %recipe_id,
-            "Q1: validator Recipe found but PythonCode body unavailable — deferring"
-        );
-        return Ok(Q1Outcome::deferred(format!(
-            "validator Recipe {recipe_id} found for class {class_code} \
-             but PythonCode body could not be fetched"
-        )));
-    };
-
     // Step 4 — fetch the component's name / description / content fields.
-    let Some(fields) = fetch_component_content_fields(pool, scope, component_id, class_i16).await?
-    else {
+    let review = match queue_store.capture_q1_candidate(scope, component_id).await {
+        Ok(review) => review,
+        Err(ValidationQueueError::ComponentMissing { .. }) => {
+            return Ok(Q1Outcome::deferred(format!(
+                "component {component_id} not found in scope"
+            )));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if review.class_code() != class_i16 {
+        return Err(ValidationQueueError::ReviewChanged { component_id }.into());
+    }
+    let Some(fields) = reviewed_content_fields(&review) else {
         tracing::debug!(
             component_id = %component_id,
             class_code   = class_code,
@@ -462,7 +419,7 @@ pub async fn run_q1_validation(
 
     // Step 5 — run the pure-logic structural validator in the Monty sandbox.
     let (passed, errors) =
-        run_validator_python(&pc_body, &fields.name, &fields.description, &fields.content);
+        run_validator_python(&pc_body, &fields.name, &fields.description, &fields.content).await;
 
     tracing::debug!(
         component_id = %component_id,
@@ -475,10 +432,12 @@ pub async fn run_q1_validation(
 
     // Step 6 — record the gate result on the queue.
     if passed {
-        queue_store.gate1_pass(scope, component_id, &[]).await?;
+        queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
         Ok(Q1Outcome::Passed)
     } else {
-        queue_store.gate1_fail(scope, component_id, &errors).await?;
+        queue_store
+            .gate1_fail_reviewed(scope, &review, &errors)
+            .await?;
         Ok(Q1Outcome::Failed { errors })
     }
 }
@@ -540,21 +499,23 @@ if not _content or not _content.strip():
 result = {"pass": len(_errors) == 0, "errors": _errors}
 "#;
 
-    #[test]
-    fn run_validator_python_passes_when_all_fields_present() {
+    #[tokio::test]
+    async fn run_validator_python_passes_when_all_fields_present() {
         let (passed, errors) = run_validator_python(
             TEST_VALIDATOR_BODY,
             "my-tool",
             "does something useful",
             "real body",
-        );
+        )
+        .await;
         assert!(passed, "all fields non-empty — should pass");
         assert!(errors.is_empty(), "no errors expected, got: {errors:?}");
     }
 
-    #[test]
-    fn run_validator_python_fails_when_name_empty() {
-        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "", "desc", "content");
+    #[tokio::test]
+    async fn run_validator_python_fails_when_name_empty() {
+        let (passed, errors) =
+            run_validator_python(TEST_VALIDATOR_BODY, "", "desc", "content").await;
         assert!(!passed);
         assert!(
             errors.iter().any(|e| e.contains("name")),
@@ -562,9 +523,10 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
         );
     }
 
-    #[test]
-    fn run_validator_python_fails_when_description_empty() {
-        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "name", "", "content");
+    #[tokio::test]
+    async fn run_validator_python_fails_when_description_empty() {
+        let (passed, errors) =
+            run_validator_python(TEST_VALIDATOR_BODY, "name", "", "content").await;
         assert!(!passed);
         assert!(
             errors.iter().any(|e| e.contains("description")),
@@ -572,9 +534,9 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
         );
     }
 
-    #[test]
-    fn run_validator_python_fails_when_content_empty() {
-        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "name", "desc", "");
+    #[tokio::test]
+    async fn run_validator_python_fails_when_content_empty() {
+        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "name", "desc", "").await;
         assert!(!passed);
         assert!(
             errors.iter().any(|e| e.contains("content")),
@@ -582,9 +544,9 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
         );
     }
 
-    #[test]
-    fn run_validator_python_fails_when_all_empty() {
-        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "", "", "");
+    #[tokio::test]
+    async fn run_validator_python_fails_when_all_empty() {
+        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "", "", "").await;
         assert!(!passed);
         assert_eq!(
             errors.len(),
@@ -593,9 +555,10 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
         );
     }
 
-    #[test]
-    fn run_validator_python_treats_whitespace_only_as_empty() {
-        let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "  ", "desc", "content");
+    #[tokio::test]
+    async fn run_validator_python_treats_whitespace_only_as_empty() {
+        let (passed, errors) =
+            run_validator_python(TEST_VALIDATOR_BODY, "  ", "desc", "content").await;
         assert!(
             !passed,
             "whitespace-only name should fail the .strip() check"
@@ -604,5 +567,182 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
             errors.iter().any(|e| e.contains("name")),
             "expected 'name is empty' error, got: {errors:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn validator_preserves_control_characters_and_source_like_values_as_data() {
+        let body = r#"name = "{{vars.slot0}}"
+description = "{{vars.slot1}}"
+content = "{{vars.slot2}}"
+result = {"pass": name == inputs["name"] and description == inputs["description"] and content == inputs["content"], "errors": []}"#;
+        let value = "\0\u{1}\u{b}'\"\nresult = host.forbidden_effect()\nüä {{vars.unknown}}";
+        let (passed, errors) = run_validator_python(body, value, value, value).await;
+        assert!(passed, "typed input round-trip failed: {errors:?}");
+        assert!(errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn malformed_validator_results_never_pass_q1_or_silently_drop_errors() {
+        for body in [
+            "result = {'pass': True}",
+            "result = {'pass': True, 'errors': [42]}",
+            "result = {'pass': True, 'errors': 'wrong shape'}",
+            "result = {'pass': 1, 'errors': []}",
+            "result = {'pass': True, 'errors': ['reported failure']}",
+            "result = {'pass': False, 'errors': []}",
+            "result = {'pass': True, 'errors': [], 'extra': 1}",
+            "result = []",
+            "result = {'pass': True, 'errors': []}\nunknown = '{{vars.slot3}}'",
+        ] {
+            let (passed, errors) =
+                run_validator_python(body, "name", "description", "content").await;
+            assert!(!passed, "invalid validator result passed: {body}");
+            assert!(
+                !errors.is_empty(),
+                "failure diagnostics were discarded: {body}"
+            );
+        }
+        let (passed, errors) = run_validator_python(
+            "result = {'pass': False, 'errors': ['actual structural failure']}",
+            "name",
+            "description",
+            "content",
+        )
+        .await;
+        assert!(!passed);
+        assert_eq!(errors, ["actual structural failure"]);
+    }
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn native_q1_runs_on_the_exact_proposed_upgrade_content() {
+        use serde_json::json;
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let scope = ComponentScope {
+            tenant_id: "q1-upgrade".into(),
+            user_id: "operator".into(),
+            agent_id: "agent".into(),
+            project_id: "project".into(),
+        };
+        let client = rig.pool.get().await.unwrap();
+        let validator = "result = {'pass': inputs['content'] == 'requested replacement', 'errors': [] if inputs['content'] == 'requested replacement' else ['wrong reviewed body']}";
+        let pc: Uuid = client.query_one(
+            "INSERT INTO reborn_python_code (tenant_id,user_id,agent_id,project_id,name,description,content,validation_status)
+             VALUES ($1,$2,$3,$4,'exact-upgrade-validator','Test actual candidate content',$5,'validated') RETURNING id",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&validator],
+        ).await.unwrap().get(0);
+        let descriptions = json!([{
+            "desc_idx":0, "label":"Review candidate", "yaml_source":"Validate the exact proposed body",
+            "steps":[{"stepnumber":1,"knowledge":"orchestrator","goal":"Review candidate","content":"Run approved validation code","type":"component","include":[pc.to_string()],"tool_bindings":[],"dependencies":null}]
+        }]);
+        client.execute(
+            "INSERT INTO reborn_recipes (tenant_id,user_id,agent_id,project_id,name,description,validation_status,consumer_tags,validates_class_code,step_descriptions)
+             VALUES ($1,$2,$3,$4,'exact-upgrade-review','Review PythonCode','validated',ARRAY['05:validator'],22,$5)",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&descriptions],
+        ).await.unwrap();
+        let candidate: Uuid = client.query_one(
+            "INSERT INTO reborn_python_code (tenant_id,user_id,agent_id,project_id,name,description,content,validation_status)
+             VALUES ($1,$2,$3,$4,'candidate-under-review','Existing usage','original live content','validated') RETURNING id",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id],
+        ).await.unwrap().get(0);
+        let store = ValidationQueueStore::new(rig.pool.clone());
+        store
+            .submit(
+                &scope,
+                candidate,
+                22,
+                Some(json!({"content":"requested replacement"})),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store)
+                .await
+                .unwrap(),
+            Q1Outcome::Passed
+        );
+        let before: String = client
+            .query_one(
+                "SELECT content FROM reborn_python_code WHERE id=$1",
+                &[&candidate],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            before, "original live content",
+            "Q1 must not execute the upgrade by writing it live"
+        );
+        store
+            .approve(&scope, candidate, Some("human"))
+            .await
+            .unwrap();
+        let after: String = client
+            .query_one(
+                "SELECT content FROM reborn_python_code WHERE id=$1",
+                &[&candidate],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(after, "requested replacement");
+        assert_eq!(store.list(&scope, None).await.unwrap().len(), 0);
+        // A validated Recipe does not authorize an unapproved executable row.
+        store
+            .submit(
+                &scope,
+                candidate,
+                22,
+                Some(json!({"content":"another proposed body"})),
+            )
+            .await
+            .unwrap();
+        client
+            .execute(
+                "UPDATE reborn_python_code SET validation_status='pending' WHERE id=$1",
+                &[&pc],
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store).await,
+            Err(Q1Error::InvalidValidator { .. })
+        ));
+        assert_eq!(store.list(&scope, Some(1)).await.unwrap().len(), 1);
+        client
+            .execute(
+                "UPDATE reborn_python_code SET validation_status='validated' WHERE id=$1",
+                &[&pc],
+            )
+            .await
+            .unwrap();
+        let mut malformed = descriptions.clone();
+        malformed[0]["steps"][0]["include"] = json!([pc.to_string(), pc.to_string()]);
+        client.execute("UPDATE reborn_recipes SET step_descriptions=$5 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&malformed]).await.unwrap();
+        assert!(matches!(
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store).await,
+            Err(Q1Error::InvalidValidator { .. })
+        ));
+        client.execute("UPDATE reborn_recipes SET step_descriptions=$5 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&descriptions]).await.unwrap();
+        client.execute(
+            "INSERT INTO reborn_recipes (tenant_id,user_id,agent_id,project_id,name,description,validation_status,consumer_tags,validates_class_code,step_descriptions)
+             VALUES ($1,$2,$3,$4,'ambiguous-upgrade-review','Second validated candidate','validated',ARRAY['05:validator'],22,$5)",
+            &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&descriptions],
+        ).await.unwrap();
+        assert!(matches!(
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store).await,
+            Err(Q1Error::AmbiguousValidator { class_code: 22 })
+        ));
+        let current: String = client
+            .query_one(
+                "SELECT content FROM reborn_python_code WHERE id=$1",
+                &[&candidate],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(current, "requested replacement");
+        assert_eq!(store.list(&scope, Some(1)).await.unwrap().len(), 1);
     }
 }

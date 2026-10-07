@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-11",
+    "description": "Raw records must be a list of 1..4 items. Every object has exactly code and enabled. code is a string of length 2..5 inclusive; enabled is an exact bool (False valid). Empty list, missing/null/wrong types, extra fields, and non-bool enabled are invalid. Always result={ok:boolean, records:original if valid else []}. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "records = inputs.get('records')\nok = type(records) is list and 1 <= len(records) <= 4\nif ok:\n    for rec in records:\n        if type(rec) is not dict or set(rec) != {'code', 'enabled'}:\n            ok = False\n            break\n        if not (type(rec['code']) is str and 2 <= len(rec['code']) <= 5 and type(rec['enabled']) is bool):\n            ok = False\n            break\nresult = {'ok': ok, 'records': records if ok else []}"
+  }
+}

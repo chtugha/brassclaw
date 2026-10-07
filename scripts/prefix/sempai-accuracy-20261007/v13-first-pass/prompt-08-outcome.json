@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edit authorized. The system text is quoted user-selected content with a repeated word, but no edit was authorized, so it is preserved verbatim. The user request is preserved exactly, including its punctuation. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no provider-specific rewrite or capability inference was applied. No components, intents, settings or recipe updates were proposed.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

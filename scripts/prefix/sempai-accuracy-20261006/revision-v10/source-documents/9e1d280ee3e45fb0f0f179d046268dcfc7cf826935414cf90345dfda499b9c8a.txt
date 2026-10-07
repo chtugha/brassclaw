@@ -1,0 +1,1079 @@
+# Skill definition and authoring instructions
+
+## Review concerns — resolved in the documentation
+
+The 2026-10-06 review identified three specification issues, now resolved in
+this guide. These corrections define the target contract; they do not establish
+implemented runtime/store enforcement or completed behavioral acceptance.
+
+The subsequent audit's approval-provenance, Recipe-snapshot and retry-contract
+gaps are also resolved below. Exact-version approval evidence is distinct from
+task selection; the workflow itself is pinned; retries have explicit counts,
+evidence and outcome classifications. These remain target specifications.
+
+1. **Resolved in this guide: separate semantic approval from IBS checks.**
+   Section 10 assigns prose/code consistency to author review, Q1/Q2 and
+   behavioral validation before activation. Section 11 limits IBS to structured
+   contracts, approved associations and selected revisions; it does not interpret
+   prose or introduce an LLM call into Tier 0.
+2. **Resolved in this guide: recursive schemas and null/default rules.**
+   Section 7 now specifies list elements, nested object fields, typed extra
+   fields, missing versus null values, defaults and producer/consumer
+   compatibility. Recursive validation remains target runtime/store work;
+   documenting the contract does not establish its enforcement.
+3. **Resolved in this guide: numeric bounds and computed Tool arguments.**
+   Section 9 now defines a portable bounded-integer transport profile, checks
+   inputs and computed `limit` before dispatch, and specifies oversized-number
+   rejection cases. This resolves the documentation issue; actual binding,
+   transport and Monty execution support still require implementation evidence.
+
+This guide defines a BrassClaw Reborn v3 **Skill** and the exact procedure for
+creating one. MUST means required. A Skill is incomplete if its prose,
+executable association, inputs, Tool binding or result contract is unresolved.
+
+Read [AGENTS.md](AGENTS.md), [recipe.md](recipe.md) and
+[the development policy](docs/development-policy.md). The binding architecture
+and operator decisions take precedence over historical examples. This guide
+specifies authoring requirements; it does not implement new store fields,
+versioning, typed-input transport or validation APIs.
+
+## 1. What a Skill is
+
+**A Skill is one reusable description of how the orchestrator uses a particular
+Tool for a particular purpose, together with explicitly associated executable
+PythonCode implementing that usage.**
+
+Its prose explains when the usage fits, the exact input and output contracts,
+prerequisites, how the Tool is used, and how results and failures are handled.
+Its associated PythonCode gives the orchestrator the executable implementation.
+Both parts belong to the same usage unit, even when stored in separate rows.
+
+For example, one file-reading Tool can support distinct Skills for reading a
+whole file and reading a specified line range. These usages can reuse the same
+primitive, ToolSkill or parameterized PythonCode when their contracts fit.
+Changing the purpose does not automatically require a new Rust Tool.
+
+“Leaf Skill” means this same one-usage unit. It does not introduce another
+component kind or hierarchy level. Classes 1–3 are existing consumer
+classifications, not leaf/domain/scaffold layers. A domain overview belongs in
+an Extension, documented by an ExtensionCatalogue. Class-10 Orchestrator and
+class-50 Scaffold records are not additional Tool-usage Skill types.
+
+## 2. Place the Skill in the complete architecture
+
+The model is **Rust Tools, many ToolSkills, many Skills, many small PythonCode
+components, and Recipes that instruct the orchestrator how to use these
+components to fulfill task goals**.
+
+| Component | Responsibility | Does it execute a Tool? |
+| --- | --- | --- |
+| Tool, class 0 | Rust primitive providing an operation | Only when invoked by Python through the host boundary |
+| ToolSkill, class 13 | Rust-side IBS descriptor identifying a Tool usage binding, parameters and technical requirements | No; binding executes nothing and grants no permission |
+| Skill, classes 1–3 | One usage unit: explanatory prose plus associated executable PythonCode | Its associated PythonCode implements the usage; prose is never executed |
+| PythonCode, class 22 | Small reusable executable building block, Tool-calling or pure logic | A Tool-calling body invokes `host.<tool>(...)` |
+| Recipe, class 21 | Task instructions: ordered component references, bindings and result flow | The orchestrator executes its assembled Python steps |
+| ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | No |
+
+A ToolSkill describes a binding for IBS. A Skill describes a purpose and usage
+for the orchestrator. They are distinct, even if they refer to the same Tool.
+ToolSkill metadata is not a substitute for Skill prose. Skill prose does not
+install a callable or grant permission.
+
+Pure-logic PythonCode components are useful independent building blocks. They
+do not each need to be called a Skill: this Skill definition concerns one Tool
+usage. Recipes can reference pure-logic components alongside Skill executables.
+
+### What the Skill must leave to a Recipe
+
+A Skill MUST NOT own a whole task's multi-Tool sequence. Discovery, read,
+transform, write, final reply and completion are distinct operations to connect
+in a Recipe. Do not put “first use Tool A, then use Tool B” into one leaf Skill.
+
+A Skill may state a prerequisite such as “a known, validated path is required.”
+It may identify related usages for authors. It must not implicitly dispatch
+another Tool or rely on prose causing the orchestrator to discover missing
+inputs. The Recipe explicitly supplies prerequisites and later actions.
+
+## 3. How IBS and the orchestrator use it
+
+1. Intent matching selects a Recipe variant and its input layout.
+2. IBS/composition selects the Recipe steps and reads their referenced
+   components and internal dependencies.
+3. At task start IBS resolves the newest activated, approved versions from a
+   consistent catalogue snapshot and pins UUID/version/checksum references in
+   BuildInstruction. This includes the matched Recipe revision, selected variant,
+   exact `step_link` and input layout, Skill prose, its associated PythonCode,
+   ToolSkills, Tool implementations and nested PythonCode components.
+4. The composition system prepares executable Python, Tool bindings and any
+   explicit reasoning context needed by the Recipe.
+5. The orchestrator executes the selected PythonCode. The kernel checks current
+   global Tool policy and technical rules before every actual dispatch.
+6. Monty preserves typed inputs/results in the exact task execution context,
+   including child execution and waits. Other tasks and attempts stay isolated.
+
+**Tier 0:** reference the associated class-22 PythonCode for execution. An LLM
+does not read Skill prose to invent a call. A Python example inside the prose
+does not become an executable entry point.
+
+**Tier 1:** the Recipe may explicitly provide Skill prose to its reasoning or
+composition step. Subsequent Tool calls still use validated bindings and the
+supported execution path. Do not infer an LLM call merely from a prose step or
+an annotation. The actual runner must implement it.
+
+Every Recipe component step references **exactly one component UUID**. A
+ToolSkill binding step is followed by its matching PythonCode execution step.
+Skill prose used as explicit Tier-1 context has its own component step. It
+must not be combined with PythonCode in a multi-component `include` list.
+
+PythonCode may internally compose smaller PythonCode components. That internal
+graph is separate from the Recipe step's one reference. IBS validates and pins
+the entire graph, including its order, input contracts and symbol dependencies.
+Internal composition must not hide independent Tool dispatches.
+
+## 4. Decide whether a new Skill is needed
+
+Search [the built-in inventory](docs/archive/builtin_stuff_v3.md), existing
+component rows, `builtin_bootstrap.rs` and relevant extension/host seeders.
+Compare actual contracts, not only names or descriptions.
+
+Use this decision order:
+
+1. The same Tool usage already exists: reuse its Skill and associated code.
+2. Only the user's wording differs: update the appropriate Recipe's intent
+   examples rather than creating a duplicate Skill.
+3. The task order differs: compose another Recipe using the existing usages.
+4. The same Tool has a distinct purpose or parameter/result approach: author a
+   new Skill, reusing compatible PythonCode and ToolSkill references.
+5. The usage needs a missing small Python operation: author a reusable
+   PythonCode component, not a whole task-specific program.
+6. Only if no existing Tool provides the primitive, author a new Rust Tool
+   through the explicit build/validation/registration workflow in recipe.md.
+
+Do not create a Rust Tool because a Recipe needs many steps. Do not merge
+distinct usages into a large Skill to reduce the number of components.
+
+## 5. Define the usage contract before writing the prose
+
+Complete this specification. Blank or guessed fields mean the Skill is not ready.
+
+```text
+Stable Skill UUID (existing or allocated through the supported creation path):
+Name:
+Class/consumer classification and reason:
+One-sentence purpose:
+When this usage applies:
+Related cases requiring a different Skill or Recipe:
+Existing Tool UUID, registered callable name and implementation contract:
+Required ToolSkill UUID and binding contract:
+Associated PythonCode UUID and local input/result contract:
+Required inputs, types, validation and source in the consuming Recipe:
+Optional inputs, defaults and normalization rules:
+Prerequisites, authentication and technical limits:
+Exactly one Tool usage and its arguments:
+Returned data, error signals and completion meaning:
+Effect type, idempotency and bounded retry behavior:
+Tier restrictions for consuming Recipes:
+Internal PythonCode references, if any:
+Association/compatibility evidence:
+Acceptance cases and expected Tool arguments/results:
+Missing runtime/store support:
+```
+
+Names and descriptions MUST match the current store/validator constraints.
+Prefer the existing `skill-<tool>-<purpose>` naming style, but do not invent
+length limits or assume a name is an identity. Names are labels; UUIDs identify
+components. Record selected version numbers in the task manifest, not Recipe
+references.
+
+## 6. Write the prose using this exact structure
+
+The following is the authoring template for a Skill's prose body:
+
+```text
+Purpose
+Describe exactly one Tool usage and its intended result.
+
+Use when
+State the conditions that make this usage appropriate.
+
+Required components
+Identify the Tool, ToolSkill and associated PythonCode by stable UUID and name.
+State required internal code dependencies separately.
+
+Inputs
+List each local input name, type, meaning, required/default behavior and validation.
+Distinguish a local component input from the user-message capture name.
+
+Prerequisites
+List required prepared inputs, external authentication and technical constraints.
+The consuming Recipe is responsible for supplying them.
+
+Execution
+Explain this usage's argument mapping and the associated executable entry point.
+State that PythonCode invokes the Tool through host.<tool>(...).
+
+Result
+Describe the actual returned type/fields and what constitutes success.
+Explain what a consuming Recipe may use next, without invoking another Tool.
+
+Failures
+Describe missing/invalid input, denied policy, auth errors, Tool errors and bad results.
+Define stop/retry behavior and idempotency constraints; do not claim success on error.
+
+Limits and tier
+Document effect type, supported limits and conditions requiring Tier 1.
+
+Examples and acceptance
+Give representative input/result examples and failure cases.
+Any code printed here is documentation, not an implicit executable association.
+```
+
+Write concrete instructions. Do not say “use the appropriate Tool,” “handle
+errors normally,” “get the required data,” or “call other Skills as necessary.”
+Specify what is required. Keep secrets, claim tokens and real private payloads
+out of prose and examples. A usage contract does not waive kernel enforcement.
+
+## 7. Associate the executable PythonCode explicitly
+
+A complete Skill requires a validated relationship to its executable code.
+Store that relationship through the supported association mechanism. At minimum
+the authoring record identifies the Skill UUID, PythonCode UUID, relevant
+ToolSkill/Tool UUIDs and input/result compatibility. Runtime assembly records
+their selected immutable versions and verifies the association at those versions.
+
+### Exact association record: target format `skill-association/1`
+
+Use this format for the authoring contract. It is a new target specification,
+not a request accepted by today's `NewPgSkill` constructor. Store/API/migration
+support and enforcement must exist before claiming a machine association.
+
+| Field | Required value/rule |
+| --- | --- |
+| `format` | Exactly `skill-association/1` |
+| `skill_uuid` | Stable UUID of a class-1/2/3 Skill |
+| `python_code_uuid` | Stable UUID of its class-22 entry point |
+| `tool_skill_uuid` | Stable UUID of the class-13 binding descriptor |
+| `tool_uuid` | Stable UUID of the class-0 primitive |
+| `callable` | Exact registered `host.<name>` identifier; no expression |
+| `inputs` | Object keyed by unique step-local names matching `[a-z][a-z0-9_]*` |
+| `arguments` | Object mapping actual Tool parameter names to declared local input names |
+| `code_arguments` | Object declaring remaining Tool arguments computed or fixed by approved code |
+| `result` | Explicit successful-result contract |
+| `failure` | Explicit stop/retry contract; not a claim that error handling is already wired |
+
+The record has exactly these fields; reject unknown fields or duplicate JSON
+keys. UUIDs must be valid, non-nil and resolve to the indicated classes.
+Identity references omit component versions. The approved Skill version owns
+an immutable association record; IBS resolves and records exact selected
+versions/checksums in the task manifest, including internal code dependencies.
+
+### Exact-version association approval evidence
+
+The stable-UUID association above expresses reusable identity and contracts.
+It does not establish that a particular combination of revisions was reviewed.
+Keep a separate immutable **`skill-association-approval/1` record** for that
+combination, committed by the trusted validation/approval mechanism. This is
+a target evidence format, not an existing store/API or an invocation approval
+lease. A self-authored record or an `approved` label is not human Q2 evidence.
+
+The record has exactly these fields; reject duplicate/unknown keys:
+
+| Field | Exact rule |
+| --- | --- |
+| `format` | Exactly `skill-association-approval/1` |
+| `approval_id` | Valid non-nil UUID identifying this immutable approval record |
+| `association_checksum` | SHA-256 of the exact immutable stored association bytes reviewed, as 64 lowercase hexadecimal characters |
+| `components` | Nonempty list of unique `{uuid, class_code, version, checksum}` references covering Skill, PythonCode, ToolSkill, Tool and the complete transitive dependency graph |
+| `validation_mode` | Exactly `authored` or `system_seed` |
+| `q1_ref` | Nonempty durable reference to the successful required automated validation/integrity evidence for this combination |
+| `q2_ref` | Nonempty durable reference to human Q2 for `authored`; null for the distinct integrity-checked `system_seed` bootstrap path |
+| `behavioral_refs` | Nonempty list of durable references to the required observed behavioral acceptance evidence for this combination |
+
+Each component reference has exactly the four indicated fields. `uuid` is valid
+and non-nil; `class_code` is its actual integer class; `version` is a positive
+integer (never a boolean); `checksum` is 64 lowercase hexadecimal SHA-256
+characters identifying the approved immutable content/implementation artifact.
+There is exactly one selected revision per UUID in a combination. The checksum
+contract must cover execution-relevant metadata and dependencies, not merely
+prose while allowing mutable argument schemas or Tool artifacts. Required
+checksum/storage support remains implementation work.
+
+The Skill reference identifies the owner of the association; the remaining
+references must match its UUID relationships and the approved internal graph.
+Evidence must resolve to trusted successful records for exactly this combination;
+an identifier string alone is insufficient. For `authored`, human Q2 reviews
+the combination and behavioral evidence. `system_seed` is restricted to the
+existing trusted first-party bootstrap/integrity path; authored changes cannot
+claim that mode to evade Q2. Inherited dependencies do not need new individual
+approval merely because they are reused, but the new combination needs its
+required association review and evidence.
+
+At task start, IBS verifies that the selected revisions/checksums exactly match
+a committed valid approval record, then pins its `approval_id` with the selected
+association and component manifest. A manifest records **what was selected**;
+the approval record establishes **what was reviewed**. Neither grants Tool
+permission. Missing/mismatched evidence fails assembly before effects; matching
+types or similar prose cannot substitute for it.
+
+A changed component, dependency graph or association requires a new approval
+record covering the resulting combination before that combination is activated,
+even when its declared contracts remain compatible. Unchanged Skill prose does
+not need an artificial new version solely to record a new dependency approval;
+the separate record identifies the reused Skill revision and new code revision.
+Activate related changes coherently. Old records and exact implementation
+artifacts remain available for tasks retaining the old combination; replacement
+alone does not require their approval to be repeated. Recipes and the reusable
+association continue to reference stable UUIDs without version numbers.
+
+### Recursive value schemas
+
+Every input, result, computed argument, object field and list element uses the
+same finite recursive value schema. Inline child schemas are required; schema
+references, expressions and inferred shapes are unsupported. Reject unknown
+schema fields, duplicate keys at any nesting level and cyclic/non-data values.
+Configured depth/size limits remain technical constraints, never silent
+truncation of schemas or data.
+
+| Schema field | Exact rule |
+| --- | --- |
+| `type` | Required: `string`, `integer`, `number`, `boolean`, `null`, `list` or `object` |
+| `nullable` | Optional boolean, default false; permits null in addition to the declared non-null type |
+| `checks` | Ordered declarative constraints, default `[]`; explicitly required for top-level inputs and computed arguments |
+| `items` | Required only for `list`: one value schema applied to every element, including elements of an empty list's declared type |
+| `fields` | Required only for `object`: object mapping nonempty field names to field schemas; `{}` is permitted |
+| `allow_extra_fields` | Required only for `object`: boolean |
+| `extra_fields` | Required exactly when `allow_extra_fields: true`: one value schema applied to every undeclared field value; forbidden otherwise |
+
+A list has one homogeneous element contract, not a tuple or an untyped bag.
+Nested lists/objects repeat these rules at every level. Object keys are strings.
+With `allow_extra_fields: false`, an undeclared key is an error even if its value
+is null. With true, extra values must validate against `extra_fields`; allowing
+extra keys never grants arbitrary untyped data or permission to access an
+undeclared field without a presence check.
+
+An `integer` is a mathematical integer excluding booleans; `number` accepts
+finite numeric values, including integers, but never booleans, NaN or infinity.
+Validation does not round, parse strings or otherwise coerce types. Transport
+and Tool bounds must also be declared and checked, as in section 9.
+`type: null` accepts only null and MUST omit `nullable` (a redundant flag is
+rejected). Other types accept null only with `nullable: true`. On an allowed
+null, skip that node's non-null checks and children; null is not an empty string,
+empty list or empty object.
+
+`checks` is metadata, not Python source. Supported constraints are
+`{kind: "min_length", value: N}` for strings (Unicode code-point count, N a
+nonnegative integer), and `{kind: "min"|"max", value: N}` for numeric types
+(N finite and an integer for an integer schema). Reject constraints on the
+wrong type, unknown kinds and contradictory bounds. `max_field` has the form
+`{kind: "max_field", input: "other_input"}` and is allowed only on a top-level
+numeric input. Both that input and its target must be declared numeric top-level
+inputs guaranteed present and non-null after binding. Validate all inputs/defaults
+first, then perform these cross-input comparisons; schema iteration order must
+not affect the result. Nested/relative cross-field expressions are unsupported.
+
+### Presence, null and defaults
+
+Top-level input schemas and object field schemas additionally have a required
+boolean `required`. Other nodes (result roots, computed-argument roots, list
+items and `extra_fields`) have no `required` or `default`: a concrete value is
+already present there. Computed-argument roots additionally carry `depends_on`
+and `meaning` as specified below.
+
+- `required: true` demands key presence, and forbids `default`. A present null
+  still has to satisfy the node's nullability; required does not mean non-null.
+- A top-level input with `required: false` MUST declare `default`. An optional
+  nested input field may declare one, or remain absent when omitted. Code may
+  not unconditionally access an optional field that can remain absent.
+- For input binding only, apply defaults to missing keys, recursively within
+  present objects or a default object. Never replace an explicitly supplied
+  null or an invalid value with a default. A missing parent is not manufactured
+  merely because a child has a default.
+- Every default must validate against its entire recursive schema, including
+  child requirements and numeric bounds. Null is a valid default only for
+  `type: null` or a nullable schema. Reject invalid defaults during authoring;
+  they must also participate in cross-input checks at binding time.
+- Result and computed-argument schemas forbid defaults at every depth. Missing required producer
+  fields are errors; missing optional producer fields stay absent. Output
+  validation never invents data. A receiving optional input may subsequently
+  use its own default when the binding explicitly treats an absent optional
+  producer field as missing. A required consumer needs a guaranteed field or
+  an explicit Recipe branch that checks its presence.
+- Materialize default lists/objects independently for each task/binding;
+  never share mutable default data across executions.
+
+For example, this **input schema fragment** requires a list of objects. Each
+object has a required string `name` and an optional nullable string `note`:
+
+```json
+{
+  "type": "list",
+  "required": true,
+  "checks": [],
+  "items": {
+    "type": "object",
+    "fields": {
+      "name": {"type": "string", "required": true},
+      "note": {"type": "string", "required": false, "nullable": true, "default": null}
+    },
+    "allow_extra_fields": false
+  }
+}
+```
+
+`[{"name":"Ada"}]` binds as `[{"name":"Ada","note":null}]`. An explicit
+`note: null` stays null. Missing `name`, numeric `note`, a non-object element or
+an undeclared object field fails binding. For a result schema, remove the
+root `required` and all defaults (`checks` may remain); an omitted optional
+`note` then remains absent rather than being fabricated.
+
+`arguments` maps each parameter to one local input, without embedded templates.
+The supported record describes this one usage, not arbitrary expression
+execution. `code_arguments` declares computed or fixed arguments as
+the recursive value schema plus `depends_on` and `meaning`: `depends_on` is a
+list of local input names (empty for a constant), and `meaning` describes the
+contract in plain text. Actual computation lives in the associated approved
+code, never in metadata evaluated as source. The two argument maps cannot
+overlap; together they must account for every argument supplied by the usage.
+Reject undeclared dependencies and incomplete required Tool arguments.
+`checks` is required (an empty list is permitted); numeric computed arguments
+use the `min`/`max` constraints defined above. Validate the actual computed value
+and its transport/Tool representation before dispatch, not only the input
+dependencies or the explanatory `meaning` text.
+
+The result contract is a recursive value schema without root presence/default
+fields. Object results declare `fields` and `allow_extra_fields`; list results
+declare `items`; scalar results have neither. Declare all consumed fields and
+validate the actual successful payload recursively before downstream use.
+### Exact failure and retry contract
+
+`failure` has exactly `{action, max_attempts, idempotency,
+idempotency_evidence_ref, retryable_outcomes}`. These declarations require a
+supported runner policy; they neither execute recovery nor grant permission.
+
+- `action` is exactly `stop` or `retry`.
+- `max_attempts` is a positive integer excluding booleans, including the initial
+  Tool dispatch. `stop` requires 1; `retry` requires at least 2. Thus 3 allows
+  at most the first dispatch plus two retries, subject to cancellation, current
+  policy and resource limits. Persist the count for the logical step invocation
+  across waits/resumption; worker reclaim or a replacement attempt cannot reset
+  it or authorize replay. Keep invocation identity and execution-attempt fencing
+  distinct; these identifiers are not Tool grants.
+- `idempotency` is exactly `not_assumed`, `read_only` or `deduplicated`.
+  `not_assumed` requires `stop`, a null `idempotency_evidence_ref` and an empty
+  `retryable_outcomes` list. `read_only` requires a nonempty durable evidence
+  reference verifying that repeating this exact usage cannot repeat a mutation.
+  `deduplicated` requires a nonempty durable evidence reference to a tested Tool
+  contract that reuses one durable idempotency key and the same arguments,
+  prevents duplicate effects, and retains deduplication records for the full
+  continuation/retry period. A Tool name or prose claim is not evidence.
+- `retryable_outcomes` is a duplicate-free list containing only
+  `confirmed_no_effect_transient` and/or `unknown_completion`.
+  `stop` requires an empty list; `retry` requires a nonempty list and verified
+  `read_only` or `deduplicated` evidence. No generic `error`/`timeout` category
+  is accepted.
+
+`confirmed_no_effect_transient` means trusted Tool/adapter evidence establishes
+that the failed call caused no effect and the failure is temporary.
+`unknown_completion` means dispatch may have completed but its outcome is not
+known, for example a lost response or timeout. A timeout alone never proves
+that no effect occurred. Unknown completion may be retried only when explicitly
+listed and the read-only/deduplication evidence covers that uncertainty; a
+deduplicated retry must use the original key and arguments. Otherwise stop or
+enter an explicit Recipe reconciliation path, without claiming failure/success
+that has not been established. Reconciliation is a separate usage/step, not
+an implicit extra Tool call inside this Skill.
+
+Never retry a confirmed completed operation because downstream validation,
+reply posting or another step failed. A stored completed result is reused;
+deduplication recovery may retrieve its result but cannot repeat its effect.
+Policy denial, invalid input, authentication requiring user action, cancellation,
+stale attempt, malformed successful output and permanent failure are not
+retryable outcomes in this format. Recheck current Tool policy, attempt freshness
+and cancellation before every permitted retry. Exhaustion stops with the last
+classified outcome; it does not reset the budget, replay earlier steps or fall
+through to Tier 2. If the adapter cannot establish an allowed classification,
+the default is stop, not inferred retry eligibility.
+
+### Recursive producer/consumer compatibility
+
+IBS checks that every value allowed by a producer's declared contract is
+accepted by its consumer, including nested structure, nullability and bounds.
+For direct bindings, require matching declared types (no implicit conversion),
+producer bounds no wider than consumer bounds, string minimum lengths at least
+as strict as the consumer's, and recursively compatible list
+items and object fields. A nullable producer cannot feed a non-null consumer
+without an explicit guard/adaptation step. Empty lists and objects are valid
+only when their declared schemas permit them.
+
+For whole-object bindings, every required consumer field must be guaranteed
+present in the producer. Optional producer fields can feed optional consumer
+fields with the missing/default rules above. If the consumer rejects extras,
+the producer must reject extras too and declare no keys unknown to the consumer.
+If the consumer permits extras, any producer field unknown to it must satisfy
+its `extra_fields` schema, as must the producer's own extra-value schema when
+extras are permitted. Extra keys cannot establish guaranteed field presence.
+If a producer's permitted extra key could match a declared consumer field,
+its extra-value schema must also satisfy that field's schema. Checking only the
+consumer's extra-value schema is insufficient for such a key.
+
+For a selected nested field/list element, validate the declared path and its
+type at every level. Optional/null parents and potentially absent list indices
+require explicit presence/null/bounds handling before access. Defaults do not
+repair an invalid or null producer value. If compatibility cannot be established
+structurally, reject that direct edge and use an explicit validated pure-logic
+adapter or guarded Recipe branch. Runtime validation remains required even when
+declared schemas are compatible; report failures with the exact field/index
+path, stop dependent execution and do not replay the producer Tool call.
+
+Recipe capture names and input-reference syntax belong in Recipe bindings,
+not this reusable association. Associations describe local inputs independently
+of how a user phrases a task.
+
+Do not infer the relationship from equal names, neighboring rows, a prose code
+block or a ToolSkill name mentioned in a sentence. A Markdown association record
+is useful design evidence but does not replace runtime/store enforcement.
+
+One PythonCode component normally performs one independent
+`host.<tool>(...)` call and assigns `result`. Pure-logic components make zero
+Tool calls. The direct dependent-chain exception in recipe.md remains valid,
+but does not justify a multi-Tool leaf Skill. Keep the Skill's purpose one usage;
+do not hide a larger workflow inside its entry point.
+
+The target PythonCode interface reads step-local typed values from
+`inputs["local_name"]`. This interface is specified by recipe.md and still
+requires actual runner support. A component can reuse internal code helpers,
+but their inputs, outputs, assembly order and selected versions must be explicit.
+Validate the resulting assembled code as well as individual components.
+
+Never use `import os`, `import subprocess`, `exec(`, `eval(`, `open(` or retired
+intrinsics. Use the registered host boundary. Do not assume ordinary CPython
+features or imports work in the pinned Monty runtime.
+
+## 8. Define input binding and result flow precisely
+
+The Skill declares **local inputs**. The consuming Recipe determines where
+their values come from: captured user input, a typed constant, or an earlier
+step's result. This lets the same Skill/code be reused in different Recipes.
+
+Use recipe.md's exact binding convention:
+
+- Names match `[a-z][a-z0-9_]*`; declare types and required/default behavior.
+- `%` marks positional slots in intent templates, not in PythonCode.
+- `{{vars.name}}` is a whole-value input reference in Recipe parameter
+  metadata, not Python source and not a general expression language.
+- The runtime supplies validated values through the step-local input mapping.
+  Strings with quotes, backslashes, newlines or Python-looking text remain data.
+- The step publishes its `result` under its stable step identity. Later steps
+  bind that result or declared fields through the task execution context.
+
+No runtime output or user input may be pasted into approved Python source.
+Code assembly combines validated PythonCode components; data binding supplies
+values. They are different operations.
+
+Do not assume `variable_patterns` rejects invalid values: today's capture
+helper can retain raw positional values after refinement fails. Do not assume
+local variables survive today's fresh-state nested step execution. Specify the
+target contract and demonstrate the actual path, or record it as unsupported.
+
+## 9. Complete worked design: read a specified line interval
+
+The archive's whole-file and range Skills illustrate useful separate usages of
+one primitive. Its `range` argument is historical: the current first-party
+[read implementation](crates/brassclaw_first_party_extensions/src/coding/file.rs)
+uses `path`, `offset` and `limit`. Never copy an old binding descriptor without
+checking it against the actual Tool implementation and host adapter.
+
+The following is a complete **target authoring example**, not an activated
+component or proof of typed-input runtime support. UUIDs below are illustrative
+identities for the four roles; replace them with allocated/resolved real UUIDs
+before submission. A compatible offset/limit ToolSkill must be reused or created;
+an archive descriptor accepting only `range` does not satisfy this example.
+
+### Numeric transport and Tool bounds for this usage
+
+This example uses a deliberately portable integer profile: line numbers and
+the computed `limit` are integers in **1..2147483647** (`2^31 - 1`, inclusive).
+This is this Skill's limit, not a claim about Monty's maximum integer or a
+global limit on other Skills. It fits both 32-bit and 64-bit Rust `usize`.
+
+The inspected Tool decodes `offset` and `limit` with JSON `as_u64()` followed
+by `usize::try_from`. Its representation bound is therefore
+`0..min(18446744073709551615, usize::MAX)` on the selected host. This Skill
+deliberately uses the smaller positive range above. IBS must verify that the
+selected VM, transport and host adapter preserve every integer in that profile
+exactly; if unsupported, assembly fails explicitly rather than truncating,
+wrapping, rounding, clamping or silently changing the approved profile.
+
+Transport these values as typed integers, encoded as JSON integer numbers at
+a JSON boundary, never floating-point numbers or Python source. For captured
+line numbers, accept only nonempty ASCII decimal digits (`[0-9]+`), normalize
+leading zeros, and compare the normalized decimal value with `2147483647`
+before numeric conversion. Zero, oversized values, signs, whitespace, decimal
+points and exponent notation fail binding. Direct typed constants/results
+must also pass the same range check; booleans are not integers.
+
+After validating `1 <= start_line <= end_line <= 2147483647`, compute
+`limit = end_line - start_line + 1`, then validate `1 <= limit <= 2147483647`
+before calling the Tool. Subtraction first keeps intermediate arithmetic in
+range. The backend's `start_line` index is at most `offset - 1`, so its
+`start_line + limit` is at most the requested `end_line`; this bounded profile
+also prevents overflow in that inspected backend calculation. Runtime checks
+are required even though the mathematical bound follows from valid inputs.
+
+### 9.1 Skill prose
+
+```text
+Purpose
+Read one inclusive line interval from a known permitted text file.
+
+Use when
+The caller supplies a path and positive integer start_line and end_line.
+No discovery, pagination, editing or final reply is included in this usage.
+
+Required components
+Skill: 11111111-1111-4111-8111-111111111111 (skill-read-file-interval)
+PythonCode: 22222222-2222-4222-8222-222222222222 (pc-read-file-interval)
+ToolSkill: 33333333-3333-4333-8333-333333333333 (ts-read-file-offset-limit)
+Tool: 44444444-4444-4444-8444-444444444444 (existing read_file primitive)
+Internal code dependencies: none for this example.
+
+Inputs
+path: required nonempty string; evaluated under the Tool's mount/path rules.
+start_line: required integer in 1..2147483647; inclusive first line, one-based.
+end_line: required integer in start_line..2147483647; inclusive last line, one-based.
+No defaults. Missing, invalid and wrongly typed inputs stop before dispatch.
+
+Prerequisites
+Typed input binding and the offset/limit host adapter must be implemented.
+The kernel must allow the Tool and technical filesystem access.
+The target must be a permitted nonsensitive readable text file within Tool limits.
+
+Execution
+Invoke the associated PythonCode once. It computes limit = end_line-start_line+1
+and validates limit in 1..2147483647 before calling
+host.read_file(path=path, offset=start_line, limit=limit).
+No dynamic evaluation and no source substitution are used.
+
+Result
+Return the Tool's successful object unchanged:
+content: string, with line-number prefixes produced by the Tool.
+total_lines: integer, count of all lines in the file.
+lines_shown: integer, count of selected lines actually returned.
+truncated_by_default: boolean; false when this usage supplies an explicit limit.
+path: string, resolved scoped path.
+A successful empty selection beyond EOF is not a failed read.
+
+Failures
+Stop on binding error, policy denial, authentication/host error or Tool failure.
+Do not treat an error payload as success. Do not retry automatically.
+Malformed successful results fail the declared output check before downstream use.
+
+Limits and tier
+Read-only usage. Current implementation rejects files larger than its 10 MiB
+read limit and probes for binary content. Technical limits remain authoritative.
+Deterministic prepared inputs can be used by Tier-0 Recipes; no LLM is needed.
+
+Examples and acceptance
+For alpha/beta/gamma/delta on four lines, interval 2..3 returns numbered beta
+and gamma, total_lines=4, lines_shown=2 and truncated_by_default=false.
+Zero/reversed/oversized bounds are rejected before dispatch. An end beyond EOF returns
+only remaining lines. No reply is posted by this Skill.
+```
+
+### 9.2 Associated PythonCode
+
+```python
+# Target typed-input interface; binding validates all required inputs first.
+start_line = inputs["start_line"]
+end_line = inputs["end_line"]
+if not (1 <= start_line <= end_line <= 2147483647):
+    raise ValueError("Invalid or unrepresentable line interval")
+limit = end_line - start_line + 1
+if not (1 <= limit <= 2147483647):
+    raise ValueError("Invalid or unrepresentable interval length")
+result = host.read_file(
+    path=inputs["path"],
+    offset=start_line,
+    limit=limit,
+)
+```
+
+The one Tool call implements the usage; interval arithmetic is deterministic.
+The association below maps the direct arguments and declares the computed
+argument for that transformation. There is no `limit` input: it is computed in
+approved code and must be checked during compatibility review and before
+runtime dispatch. These guards supplement typed binding; they do not replace
+its rejection of booleans, nonintegers or unsupported transport. Verify guard
+and exception support in the selected Monty runtime before activation.
+
+### 9.3 Machine-readable target association
+
+```json
+{
+  "format": "skill-association/1",
+  "skill_uuid": "11111111-1111-4111-8111-111111111111",
+  "python_code_uuid": "22222222-2222-4222-8222-222222222222",
+  "tool_skill_uuid": "33333333-3333-4333-8333-333333333333",
+  "tool_uuid": "44444444-4444-4444-8444-444444444444",
+  "callable": "host.read_file",
+  "inputs": {
+    "path": {"type": "string", "required": true, "checks": [{"kind": "min_length", "value": 1}]},
+    "start_line": {"type": "integer", "required": true, "checks": [{"kind": "min", "value": 1}, {"kind": "max", "value": 2147483647}, {"kind": "max_field", "input": "end_line"}]},
+    "end_line": {"type": "integer", "required": true, "checks": [{"kind": "min", "value": 1}, {"kind": "max", "value": 2147483647}]}
+  },
+  "arguments": {"path": "path", "offset": "start_line"},
+  "code_arguments": {
+    "limit": {
+      "type": "integer",
+      "depends_on": ["start_line", "end_line"],
+      "checks": [{"kind": "min", "value": 1}, {"kind": "max", "value": 2147483647}],
+      "meaning": "Inclusive interval length: end_line minus start_line plus one"
+    }
+  },
+  "result": {
+    "type": "object",
+    "fields": {
+      "content": {"type": "string", "required": true},
+      "total_lines": {"type": "integer", "required": true},
+      "lines_shown": {"type": "integer", "required": true},
+      "truncated_by_default": {"type": "boolean", "required": true},
+      "path": {"type": "string", "required": true}
+    },
+    "allow_extra_fields": false
+  },
+  "failure": {
+    "action": "stop",
+    "max_attempts": 1,
+    "idempotency": "not_assumed",
+    "idempotency_evidence_ref": null,
+    "retryable_outcomes": []
+  }
+}
+```
+
+### 9.4 Recipe input binding and step references
+
+For a design template `read % from line % through line %`, positional values
+map to task inputs `path`, `start_line`, `end_line`. The binding stage converts
+validated decimal line-number strings to integers without `eval`, then applies
+the association's input checks before any effect. Failed refinement is not a
+successful numeric conversion. This typed conversion is required target work,
+not existing behavior established by the current regex capture helper.
+
+The target step-local parameter metadata is:
+
+```json
+{
+  "path": "{{vars.path}}",
+  "start_line": "{{vars.start_line}}",
+  "end_line": "{{vars.end_line}}"
+}
+```
+
+These whole-value references bind typed data; they never replace text in the
+Python body. Use separate component steps with one UUID each:
+
+```text
+Optional explicit Tier-1 context: Skill 11111111-1111-4111-8111-111111111111.
+Rust binding: ToolSkill 33333333-3333-4333-8333-333333333333.
+Immediately following Python execution: 22222222-2222-4222-8222-222222222222.
+Later operations and final reply are separate usages and steps.
+```
+
+A permanent consuming Recipe is not required to create or approve this Skill.
+A verification workflow may use these steps to establish behavior independently.
+
+### 9.5 Exact expected result
+
+Assume an explicitly provisioned readable nonsensitive test file
+`/workspace/notes.txt` with UTF-8 contents `alpha\nbeta\ngamma\ndelta\n`, and
+an authorized mount/host adapter exposing the inspected primitive. Inputs
+`path=/workspace/notes.txt`, `start_line=2`, `end_line=3` produce Tool arguments
+`path=/workspace/notes.txt`, `offset=2`, `limit=2` and this successful payload:
+
+```json
+{
+  "content": "     2│ beta\n     3│ gamma",
+  "total_lines": 4,
+  "lines_shown": 2,
+  "truncated_by_default": false,
+  "path": "/workspace/notes.txt"
+}
+```
+
+This expected payload follows the inspected source, not a recorded test run.
+The current backend's offset uses one-based numbering, clamps to EOF and returns
+line-numbered content. The Skill deliberately rejects zero despite the backend
+accepting it. Path technical enforcement, backend read limits and the host
+adapter's actual parameter contract must still be verified through execution.
+
+## 10. Create, validate and activate
+
+Follow this order:
+
+1. Define a concrete reusable Tool usage and establish why an existing Skill
+   does not fit. A consuming Recipe is optional: a Skill may be created
+   independently to grow the library. Use a small verification workflow to
+   exercise it without making that workflow a permanent dependency.
+2. Define the usage contract and inspect the actual Tool signature/results.
+3. Reuse compatible PythonCode and ToolSkill UUIDs. Author missing small code
+   components/binding descriptors only where needed.
+4. Write the Skill prose and explicit executable association. Keep the prose
+   and code's purpose, inputs, defaults, errors and outputs consistent.
+5. Submit the draft/new versions through supported component stores and the
+   validation/proposal path. Do not invent schema fields or an available host API.
+6. Q1 checks required structural/safety/reference/compatibility rules and
+   available automated semantic/behavioral audits. Establish prose/code
+   consistency through the review and behavioral evidence described below;
+   syntax or a matching schema alone proves no behavior. Verify which checks
+   are actually implemented and record unresolved limitations.
+7. Human Q2 reviews that consistency and evidence and approves the authored
+   new versions and association before activation. An agent does not approve
+   its own proposal or relabel it `source: system` to bypass Q2.
+   Commit the exact-version association approval record through the trusted
+   validation path; a task manifest or successful schema check cannot replace it.
+8. Activate the approved versions consistently, preserving compatible code,
+   Skill, binding and intent relationships. Verify the real Recipe execution.
+9. Report selected UUIDs/versions, evidence and limitations. A saved Markdown
+   design is not an activated component.
+
+### Semantic consistency is an authoring and approval responsibility
+
+Before activation, the author reviews the Skill prose against its exact
+PythonCode, internal code components, ToolSkill and Tool implementation. Check
+purpose, argument computations, defaults, prerequisites, effects, success/error
+meaning and tier restrictions. Behavioral validation through the supported
+execution path must establish representative success, boundary and failure
+cases; distinguish observed evidence from expected results inferred from source.
+
+Q1 contributes the automated audits and checks it actually supports. It must
+not label arbitrary Python semantics as proven merely because parsing or
+contract validation succeeds. Human Q2 reviews the semantic consistency and
+behavioral evidence for the specific proposed versions and association. Record
+their approval/evidence through supported validation mechanisms, not an invented
+store field. Incomplete semantic review or missing required acceptance evidence
+prevents activation; it is not deferred to a matched Tier-0 task's startup.
+
+IBS consumes those approved structured records. It does not reinterpret the
+prose, rerun semantic review, infer a computation from `meaning`, or ask an LLM
+to establish correctness at task startup. Tier-1 reasoning explicitly requested
+by a Recipe remains separate from component approval and deterministic assembly.
+
+Creating Skill prose, PythonCode or ToolSkill metadata does not normally require
+Rust compilation. A genuinely missing Rust Tool has its own Tier-1 author/build/
+test/registration workflow. Compilation neither approves nor activates it.
+
+### Storage today versus the target
+
+Today Skill prose is in `reborn_skills`; executable code is in
+`reborn_python_code`; ToolSkills are in `reborn_tool_skills`. The current
+`NewPgSkill` constructor carries name, description, body, class, consumer tags,
+examples, source, validation status, checksum and existing storage identity
+fields. It has no explicit executable-association field. Do not insert invented
+fields and claim the store persisted them.
+
+Use supported stores/seeders such as `PgSkillStore::insert(NewPgSkill { ... })`
+for their actual contracts. New code must not adopt `v1-types` or `v2-compat` as
+the v3 authoring mechanism. Runtime component storage is database-backed; a
+filesystem `SKILL.md` is not the v3 storage/activation path.
+
+First-party bootstrap is a separate `source: system` integrity-checked path.
+Existing system seeds require their checksum/upgrade workflow. Editing a Rust
+seed constant can require rebuilding and seed/integrity acceptance even though
+it introduces no new Rust primitive. Do not mutate a live approved system row
+or run destructive repair as a substitute for immutable version activation.
+
+## 11. Versioning and updates
+
+A component UUID is its stable identity. An approved version is immutable.
+Updates create new draft versions, pass Q1 and human Q2, then become active.
+Replacing the current version does not invalidate the previous one.
+
+Recipes reference UUIDs without version numbers. At task start IBS selects and
+pins the newest activated approved versions, including the complete
+Skill/PythonCode association, its exact-version approval record and internal
+code graph, in BuildInstruction.
+Incompatible active contracts fail composition; do not silently select an older
+version to hide the incompatibility.
+
+Running/suspended tasks and child steps keep the original pinned selection.
+Retain old bodies, associations and implementation artifacts while those tasks
+or resumable checkpoints need them. Resume does not reselect newest. Approval
+does not need rechecking merely because a newer version was activated;
+integrity, attempt freshness and current global Tool permission still apply.
+
+Immutable version storage, task manifests and association enforcement are
+target requirements, not guarantees of the current mutable-row schema.
+
+### Pin the matched workflow, not only its executable components
+
+The task snapshot MUST include the matched Recipe UUID/revision/checksum,
+selected variant identity and immutable revision/checksum, exact `step_link`,
+selected step range/order and variable/input layout. If a variant or layout is
+embedded in the Recipe rather than independently versioned, identify it within
+that pinned Recipe revision; do not invent an independent version API. Pin all
+execution/context dependencies and association approval identifiers alongside
+this workflow selection.
+
+Matching and IBS assembly must agree on one consistent catalogue generation.
+Do not combine a variant or `step_link` selected from an old Recipe with steps
+from a newly activated Recipe. If concurrent activation prevents a coherent
+selection, restart resolution against one snapshot before effects or fail
+composition explicitly. This is not a No-Match or permission to enter Tier 2.
+
+Retain the snapshot with the task before execution. Running/suspended tasks,
+child steps, retries and checkpoint restoration keep the original Recipe,
+variant, layout, step selection and component revisions. Resume does not rerun
+intent matching or select an updated workflow. New tasks select the newest
+activated approved workflow coherently. BuildInstruction remains ephemeral;
+retain task snapshot/revision references through the existing task continuation
+contract, not a new persistent instruction table.
+
+### Exact compatibility checks during IBS assembly
+
+At task start, using one consistent catalogue snapshot, IBS MUST check:
+
+1. Each UUID resolves to the required class and newest activated approved
+   immutable version; checksums and the exact Skill-owned association are present.
+   Recipe/variant/layout/step_link selection belongs to the same snapshot as
+   its execution components and is pinned with them.
+2. The exact selected Skill/PythonCode/ToolSkill/Tool association has the required
+   approval status, evidenced by the matching committed
+   `skill-association-approval/1` record. Its entry-point UUID, checksums and structured input,
+   argument, default and result contracts match the selected component records.
+   Do not derive compatibility or approval from prose purpose or `meaning` text.
+3. The approved code's declared input contract is complete and compatible with
+   Recipe binding declarations; supported static checks reject undeclared
+   references. Required inputs have declared sources and optional defaults
+   validate recursively. Reject duplicate bindings, undeclared inputs and unsafe
+   implicit conversions. Validate concrete values when their binding becomes
+   available; startup cannot inspect results of steps that have not run yet.
+4. The callable exists on the selected host path. Required Tool parameters are
+   declared; argument names/types match both ToolSkill metadata and the registered
+   Tool contract. Include computed/fixed argument schemas and dependencies;
+   validate their actual values before dispatch. Approval and behavioral
+   evidence establish that the code implements the declared calculation;
+   IBS does not prove it from explanatory text.
+5. Internal includes resolve without cycles, symbol clashes or conflicting
+   input contracts; assembled code obeys Tool-call grain and parses in Monty.
+6. Producer result schemas satisfy consumer bindings recursively, including
+   list elements, object fields, presence, nullability, extra fields and numeric
+   bounds. Reject unsafe field/index accesses and forward dependencies; validate
+   actual results before downstream use. Successful empty data is distinct
+   from failure. Defaults apply only to missing consumer inputs, not bad outputs.
+7. All selected versions, code includes and the association are pinned in
+   BuildInstruction and retained by the task. Failure is explicit: do not
+   silently use older versions, redo Q2 for originals or fall through to Tier 2.
+
+These are deterministic structural/contract checks, not semantic interpretation
+of prose or proof of arbitrary Python behavior. Section 10's author review,
+Q1/Q2 and behavioral validation establish semantic consistency before activation;
+startup verifies the approved records without repeating that approval process.
+A new PythonCode version that
+changes the meaning/types of an existing usage requires compatible new Skill/
+association versions before coherent activation. An already running task's
+old approved combination remains valid and does not need reapproval because
+another combination becomes active. Current global Tool policy is checked
+independently at each dispatch.
+
+## 12. Acceptance matrix and checklist
+
+The matrix states expected behavior, not completed runtime test evidence. Use
+the real binding/IBS/runner/Tool paths once supported. A standalone Skill can be
+exercised through a verification workflow without a permanent consuming Recipe.
+
+| Case | Inputs/setup | Expected behavior |
+| --- | --- | --- |
+| Valid interval | Four-line fixture; start=2, end=3 | One call with offset=2, limit=2; exact payload above; zero Tier-0 LLM calls |
+| Missing input | Omit path, start_line or end_line | Binding fails before Tool dispatch; no fabricated/default required value |
+| Wrong type | A boolean, decimal or unconverted string as a line number | Binding fails before dispatch; booleans are not integers |
+| Invalid interval | start=0 or start=3, end=2 | Binding rejects before dispatch; no negative/zero computed limit |
+| Oversized line number | start=1, end=2147483648, supplied as a capture, typed constant or prior result | Binding rejects before dispatch; no rounding, clamping, wrap or Tool call |
+| Beyond Tool representation | Captured end=18446744073709551616 (`2^64`) | Decimal bound check rejects before conversion, VM handoff and Tool dispatch |
+| Maximum valid interval | start=1, end=2147483647 on four-line fixture | offset=1, limit=2147483647; four lines returned without arithmetic overflow |
+| Maximum valid starting line | start=end=2147483647 on four-line fixture | offset=2147483647, limit=1; successful empty selection |
+| Invalid computed argument | Computed limit is zero, negative, noninteger or above 2147483647 | Computed-argument validation fails before dispatch; no Tool effect |
+| Unsupported integer transport | Selected VM/adapter cannot preserve the declared integer profile | Assembly fails before execution; no silent profile reduction |
+| End beyond EOF | start=3, end=9 in four-line fixture | offset=3, limit=7; two lines returned, total_lines=4; no automatic pagination |
+| Start beyond EOF | start=8, end=9 | Successful empty content, lines_shown=0, total_lines=4; distinct from failed read |
+| Hostile string | Quotes/newlines/Python-looking text in path | Source/checksum unchanged; value remains one string; Tool path rules may reject it |
+| Tool blocked | Globally blocked before dispatch, including after a wait | Kernel refuses dispatch; no new Tool effect; pinned versions grant no permission |
+| Tool failure | Missing file, denied mount, binary/oversized target or host failure | Stop with classified error; no success result and no implicit retry/reply |
+| Malformed result | Missing total_lines or wrong field type | Output validation fails before downstream consumption; no replay of completed call |
+| Semantic mismatch before activation | Prose promises an inclusive interval but code omits the last line | Author review/behavioral validation and Q1/Q2 resolve the mismatch before activation; matching schemas alone are insufficient |
+| Approved Tier-0 assembly | Exact approved association and compatible structured contracts exist | IBS verifies records/checksums/contracts with zero LLM calls; it does not reinterpret prose |
+| Approval association mismatch | Selected code checksum/version does not match the approved association records | Assembly rejects before effects; IBS does not infer fresh approval from similar prose |
+| Individually approved, unreviewed combination | New code and old Skill each approved, but no exact-combination approval record exists | Assembly rejects; individual approvals or the task manifest do not establish association approval |
+| Compatible code update | New code keeps the contract, reuses unchanged Skill prose, and passes required combination review | New immutable approval record names reused Skill and new code revisions; old tasks keep the old record |
+| Retry count | max_attempts=3; transient failures persist | At most three dispatches including the initial one; waits/reclaims do not reset the count |
+| Invalid retry metadata | max_attempts=2.5, action=retry with not_assumed, or unknown outcome label | Authoring rejects the failure contract before activation |
+| Unknown completion without evidence | Timeout after a potentially mutating Tool dispatch; no verified deduplication | Stop/reconcile explicitly; no inferred no-effect failure or automatic redispatch |
+| Safe deduplicated recovery | Approved retry covers unknown_completion with tested durable deduplication | Same key/arguments retained; recover outcome without a duplicate effect, subject to live policy and count |
+| Completed effect, later failure | Tool completed, but result validation or reply failed | Do not replay the completed Tool call or earlier workflow steps |
+| Nested data mismatch | An integer appears where a nested string/list element is declared | Recursive validation fails at the exact field/index path before downstream use |
+| Missing versus null | Optional nullable input/default=null; compare absent key, explicit null and wrong-type value | Absent key receives null default; explicit null stays null; wrong type fails, never defaults |
+| Required nullable field | required=true, nullable=true; compare absent key and explicit null | Absent key fails; present null succeeds |
+| Null-only schema | type=null with omitted nullable; then with an added nullable flag | Null alone succeeds; redundant nullable flag is a schema error |
+| Optional nested field | Input field omitted with and without a default | Apply declared default only when present parent exists; otherwise retain absence and require guarded access |
+| Unknown nested key | Object forbids extras, or permits extras with a string schema | Forbidden key fails; allowed extra string succeeds; allowed extra integer fails |
+| Invalid default | Default violates child requirements or integer bounds | Authoring validation rejects; no activation with an invalid default |
+| Optional producer to required consumer | Producer can omit a field needed unconditionally downstream | Assembly rejects direct edge; explicit presence-handling branch is required |
+| Nullable producer to non-null consumer | Producer may emit null | Assembly rejects direct edge without explicit guarded adaptation |
+| Independent mutable defaults | Two task bindings use one object/list default | Each receives independent data; mutation cannot leak between tasks |
+| Internal code | Entry point includes two approved pure-logic helpers | One Recipe component reference; all nested versions pinned and contracts checked |
+| Bad internal graph | Cycle, missing helper or conflicting symbol | Assembly fails before effects; no silent skipping or fallback |
+| New incompatible code | Newest approved code changes inputs/results without compatible association | New task composition fails explicitly; no silent downgrade; old tasks remain unchanged |
+| Update during pause | Task A pinned version 1; version 2 activated through Q1/Q2 while A waits | A resumes with retained version 1; task B starts with compatible newest version 2 |
+| Activation race | Task start overlaps replacement activation | One consistent old/new catalogue snapshot and manifest; no accidental mixed reads |
+| Recipe activation race | Variant/step_link changes between matching and IBS assembly | Coherent workflow snapshot or explicit pre-effect resolution failure; no mixed Recipe/step revisions |
+| Recipe update during pause | New Recipe changes order/layout while old task waits | Old task resumes original variant, step_link, layout and steps without matching again |
+| New draft/unapproved version | Draft version 3 exists while approved version 2 is active | New task uses version 2; draft neither replaces it nor invalidates older task snapshots |
+| Cancellation/stale attempt | Cancellation during wait or old result arrives | No new dispatch/reply from stale attempt; results/state remain isolated |
+
+
+- [ ] Exactly one reusable Tool usage is defined; creation does not require an existing Recipe.
+- [ ] Existing Skills, ToolSkills and PythonCode were searched and reused.
+- [ ] A complete skill-association/1 target record links Skill/code/ToolSkill/Tool UUIDs;
+  actual store support is verified rather than assumed.
+- [ ] Tool/binding/callable names, parameter names and result types match source.
+- [ ] Inputs, defaults, prerequisites, effects and errors are concrete.
+- [ ] Recursive schemas cover every list element, object field and allowed extra value.
+- [ ] Missing/null/default semantics and producer/consumer compatibility are checked at every depth.
+- [ ] The code assigns `result` and obeys Tool-call grain/body rules.
+- [ ] Internal code dependencies have explicit order/contracts and no cycles.
+- [ ] One component per Recipe step; binding and execution are correctly paired.
+- [ ] Typed data stays separate from assembled source, including hostile strings.
+- [ ] Relevant acceptance-matrix cases produce verified expected arguments/results;
+  expected payloads inferred from source are distinguished from executed evidence.
+- [ ] Failure/denial/cancellation/retry cases do not report false success or replay effects.
+- [ ] Retry count includes the initial dispatch and survives waits/reclaims; eligible outcomes and durable idempotency evidence are explicit.
+- [ ] Tier-0 cases make zero LLM calls; Tier-1 restrictions are observed.
+- [ ] Authored versions pass Q1 and human Q2; no approval bypass is used.
+- [ ] Author review, supported Q1 audits, human Q2 and behavioral evidence establish prose/code semantic consistency before activation.
+- [ ] IBS checks structured contracts and exact approved associations without interpreting prose or calling an LLM for Tier-0 assembly.
+- [ ] IBS pins compatible newest approved versions and all nested dependencies.
+- [ ] A committed exact-version association approval record covers the selected combination; a manifest is not approval evidence.
+- [ ] Recipe revision, variant, step_link, step selection and input layout share the pinned snapshot and survive resumption.
+- [ ] Updating a Skill/code component does not change a running/suspended task.
+- [ ] Relevant seed/integrity and actual execution checks pass where applicable.
+- [ ] Missing association/version/input/runner support is reported explicitly.
+
+Use focused checks under the development policy. Read `LOCAL_TEST_ENV.md` if
+present before remote tests/provider setup. No Cargo run is required solely for
+creating this prose guide. Creating actual components requires the applicable
+schema, Q1/Q2, integrity and execution evidence.
+
+## References
+
+- [Recipe authoring, input bindings and version contract](recipe.md)
+- [Built-in inventory and historical usage examples](docs/archive/builtin_stuff_v3.md)
+- [Skills subsystem guide](docs/agents-v3/05-skills-system.md)
+- [Skill store and current constructor](crates/brassclaw_reborn_composition/src/pg_skill_store.rs)
+- [PythonCode store](crates/brassclaw_reborn_composition/src/pg_python_code_store.rs)
+- [ToolSkill store](crates/brassclaw_reborn_composition/src/pg_tool_skill_store.rs)
+- [IBS builder and current instruction type](crates/brassclaw_engine/src/memory/instruction_builder.rs)
+- [Composer and current component routing](crates/brassclaw_engine/src/memory/composition.rs)
+- [Q1 orchestration](crates/brassclaw_reborn_composition/src/q1_orchestrator.rs)
+- [Current file-read arguments and result payload](crates/brassclaw_first_party_extensions/src/coding/file.rs)
+- [Current numeric input handling](crates/brassclaw_first_party_extensions/src/coding/inputs.rs)
+- [Current file-read technical limits](crates/brassclaw_first_party_extensions/src/coding/config.rs)

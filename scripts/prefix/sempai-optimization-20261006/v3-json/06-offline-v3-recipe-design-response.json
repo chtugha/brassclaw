@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a66e33963b913f64",
+  "object": "chat.completion",
+  "created": 1791319014,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable subworkflow that returns a fixed readiness result.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline-design mode: produced one class-21 Recipe constructor draft (name recipe-fixed-ready-result, trigger null, steps [], dependency_registry null) with the actual persisted IBS schema (knowledge/stepnumber/desc_idx), one orchestrator component step including the host-allocated unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a exactly once, no version numbers and no Rust binding. One variant, step_link 0:1-0:E, variable_patterns [], and ten unique intent examples. prior_knowledge_content states the unapproved draft dependency, that Q1 and human Q2 are required, that the subworkflow returns result only (not a posted user reply), and that the current Sempai sink cannot preserve this v3 draft. No submission, activation, approval or runtime support was created; the draft remains unapproved and the current sink only supports class 22 payloads, not class 21.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-fixed-ready-result\",\n        \"description\": \"Fixed readiness subworkflow that returns a fixed readiness result object. Unapproved draft; requires Q1 and human Q2 before activation. Returns result only, not a posted user reply.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved draft dependency: the host allocated an unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\\\"status\\\": \\\"Ready\\\"}) for this subworkflow. This draft is not approved and must pass Q1 and human Q2 before activation. The subworkflow returns a result object only; it does not post a user reply. The current Sempai sink cannot preserve this v3 Recipe draft; it supports class 22 payloads only, not class 21.\",\n        \"intent_examples\": [\n          \"say ready\",\n          \"reply ready\",\n          \"post ready\",\n          \"tell me you are ready\",\n          \"please say ready\",\n          \"respond with ready\",\n          \"send a readiness reply\",\n          \"give me a readiness response\",\n          \"answer with ready\",\n          \"please post the word ready\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Run the fixed readiness result\",\n            \"yaml_source\": \"Human-readable documentation of the single orchestrator step\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Run the fixed readiness result PythonCode\",\n                \"content\": \"Run the fixed-readiness-result PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"84313e5b-c871-4f9e-9623-3986db9c5b2a\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-readiness-result\",\n            \"description\": \"Run the fixed readiness result with no input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say ready\",\n              \"reply ready\",\n              \"post ready\",\n              \"tell me you are ready\",\n              \"please say ready\",\n              \"respond with ready\",\n              \"send a readiness reply\",\n              \"give me a readiness response\",\n              \"answer with ready\",\n              \"please post the word ready\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72632,
+    "total_tokens": 73581,
+    "completion_tokens": 949,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "The current contract requests exactly one class22 pc-contrast-04 draft: raw slots is a list of length 0..3, each item an exact integer 4..8, empty list valid, result={ok:boolean,slots:original if valid else []}, no coercion or exceptions. I emitted that one class22 component with a module-level result assignment and no I/O, imports or host calls. No edit was authorized to the conversation, so all original messages are preserved unchanged. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-04",
+        "description": "Raw slots must be a list with length 0..3 inclusive, all items exact integers 4..8 inclusive. Empty is valid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "slots = inputs.get('slots')\nok = type(slots) is list and 0 <= len(slots) <= 3\nif ok:\n    for value in slots:\n        if not (type(value) is int and 4 <= value <= 8):\n            ok = False\n            break\nresult = {'ok': ok, 'slots': slots if ok else []}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

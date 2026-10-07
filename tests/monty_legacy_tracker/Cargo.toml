@@ -1,0 +1,13 @@
+[package]
+name = "brassclaw_monty_legacy_tracker_proof"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.16" }
+
+[lib]
+path = "../../crates/brassclaw_engine/src/executor/legacy_resource_tracker.rs"

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-82769485fdcce0b0",
+  "object": "chat.completion",
+  "created": 1791331301,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"offline-data-return\"}, {\"guard\": \"bound host.post_reply present in step_descriptions\", \"result\": \"fixed-reply-post\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"d0a73787-74ae-55cb-b6a0-25131936e06d\"}, {\"knowledge\": \"rust\", \"uuid\": \"a6ed3264-13bc-56ae-9de7-064df4b3d2ce\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\"], \"notes\": \"Unapproved offline draft; current sink cannot preserve full v3 fields. No runtime/approval claims.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98733,
+    "total_tokens": 98942,
+    "completion_tokens": 209,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

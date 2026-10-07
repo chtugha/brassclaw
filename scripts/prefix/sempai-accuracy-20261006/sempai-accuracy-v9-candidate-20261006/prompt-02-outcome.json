@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Preserved the user message byte-for-byte and kept roles, order and count. The only authorized edit was replacing the system content with exactly \"Return JSON.\". No provider facts, capabilities or components were inferred; catalogue_revision and protocol_capabilities are null and were not fabricated. No proposals or other changes were made.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ]
+}

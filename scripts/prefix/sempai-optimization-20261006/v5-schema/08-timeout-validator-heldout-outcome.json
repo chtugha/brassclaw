@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-timeout-ms",
+        "description": "Pure-logic validator that inspects a raw candidate timeout value and returns whether it is a valid integer in 0..7500 inclusive. It reads the raw candidate from inputs.get('timeout_ms') so that missing, null and non-integer values are returned as an invalid result rather than raising. A boolean is not an integer and is rejected. The original raw value is echoed back only when valid, otherwise null. No host calls, imports or I/O. This is an unapproved draft using the target typed inputs interface; it does not submit or activate.",
+        "content": "def check_timeout_ms(candidate):\n    raw = inputs.get('timeout_ms')\n    if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= 7500:\n        result = {'valid': False, 'timeout_ms': None}\n    else:\n        result = {'valid': True, 'timeout_ms': raw}\n    return result"
+      }
+    }
+  ],
+  "composition_summary": "Drafted one class-22 pure-logic component pc-check-timeout-ms with only name/description/content. The body reads the raw candidate via inputs.get('timeout_ms') so missing/null/non-integer values return {valid:false, timeout_ms:null} without raising or coercing; booleans are rejected because isinstance(True, int) is True. Valid means exact integer in 0..7500 inclusive and echoes the original integer; every outcome assigns result. No imports, host calls or I/O. This is an unapproved draft using the target typed inputs interface; it is not a submission or activation. The host sink supports class 22 name/description/content. Target provider metadata (catalogue_revision null, protocol_capabilities null) is not used to infer capabilities; typed-input transport remains a target interface requiring runner support before activation.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need to validate raw timeout values before configuring a service."
+    ]
+  ]
+}

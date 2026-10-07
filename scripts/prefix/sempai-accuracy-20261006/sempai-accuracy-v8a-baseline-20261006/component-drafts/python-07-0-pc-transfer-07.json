@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-07",
+    "description": "Pure-logic window classifier. Reads a raw window value from inputs and returns an explicit classification object: missing when the key is absent, null when the value is explicitly null, integer when it is an exact integer in 3..12, and invalid otherwise. No imports, I/O or host calls; returns an invalid-result object for malformed data instead of raising.",
+    "content": "def classify_window(raw):\n    if 'window' not in inputs:\n        result = {'kind': 'missing', 'window': None}\n    else:\n        window = inputs['window']\n        if window is None:\n            result = {'kind': 'null', 'window': None}\n        elif type(window) is int and not isinstance(window, bool) and 3 <= window <= 12:\n            result = {'kind': 'integer', 'window': window}\n        else:\n            result = {'kind': 'invalid', 'window': None}\n    return result\nresult = classify_window(inputs.get('window'))"
+  }
+}

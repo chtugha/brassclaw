@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Review-test mode with an already-clear packet and an explicit instruction to echo unchanged with no proposals or invented deficiencies. No prompt repair is justified: the packet is coherent, the provider metadata is present (model, max_model_len, catalogue_revision and protocol_capabilities), and no contradiction, redundancy, missing prerequisite or output requirement exists to address. Per decision procedure step 1, the volatile tail is copied verbatim. Per step 2, the task is a prompt-review echo, not component drafting, and no required constructor, reference, schema or approval is unavailable. Per step 7, the summary describes only the actual edit (none) and blocker (none). No proposals, intents, settings or components are proposed. Class 22/21/1-3/13 sinks are unsupported in this offline-design host, but no component was requested, so those arrays remain empty.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

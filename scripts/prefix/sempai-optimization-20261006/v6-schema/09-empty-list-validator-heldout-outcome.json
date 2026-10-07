@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the supplied user message unchanged in adjusted_volatile_messages; no justified prompt repair was warranted. Drafted one class-22 pure-logic component, pc-check-channel-list, as an unapproved target-interface draft. The body reads channels with inputs.get so an absent key is a valid empty-list outcome rather than a KeyError, validates that channels is a list, that each element is an exact integer (not a bool) in 0..255 inclusive, and assigns result={ok,channels} on every path without exceptions, imports, host calls or coercion. The outer input contract admits the raw candidate shape (missing/null/wrong-typed) while the inner validation implements the rule; it returns an invalid-result object rather than raising. No UUID, version, association or approval was supplied, and the host sink supports only class 22 name/description/content, so no other proposal arrays were populated. Typed inputs remain a target interface, not deployed runtime support.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-channel-list",
+        "description": "Pure-logic validator: accepts a raw channels value that is a list whose items are exact integers 0..255 inclusive (including an empty list); returns {ok, channels} with the original list when valid or an empty list otherwise. No exceptions, imports, host calls or coercion. Target interface; actual input/result contracts and runner support remain unresolved.",
+        "content": "channels = inputs.get(\"channels\")\nvalid = isinstance(channels, list) and all(isinstance(item, int) and not isinstance(item, bool) and 0 <= item <= 255 for item in channels)\nresult = {\"ok\": valid, \"channels\": channels if valid else []}"
+      }
+    }
+  ],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate a channel list; no channels is a valid choice."
+    ]
+  ],
+  "proposed_recipe_updates": []
+}

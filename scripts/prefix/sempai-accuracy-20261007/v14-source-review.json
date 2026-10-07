@@ -1,0 +1,11 @@
+{
+  "documents_changed": [
+    "scripts/prefix/sempai-worked-examples.md"
+  ],
+  "all_other_11_documents_identical": true,
+  "required_source_units_retained": true,
+  "examples": 29,
+  "behavior_checks": 132,
+  "defect_mutations_rejected": 6,
+  "case_oracles_added_to_prefix": false
+}

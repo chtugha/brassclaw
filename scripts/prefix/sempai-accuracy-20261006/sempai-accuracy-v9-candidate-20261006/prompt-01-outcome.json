@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Removed the authorized duplicate 'sachlich' from the system message, leaving exactly 'Antworte sachlich.' User message preserved byte-for-byte. No provider facts or components were inferred.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Antworte sachlich."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ]
+}

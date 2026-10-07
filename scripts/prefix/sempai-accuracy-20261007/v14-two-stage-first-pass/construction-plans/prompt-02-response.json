@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a03b1c42fbe73d02",
+  "object": "chat.completion",
+  "created": 1791331590,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"system content is not exactly 'Return JSON.'\", \"result\": \"no_edit\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"Replace system content with exactly 'Return JSON.'\"], \"prerequisites\": [\"system content is not exactly 'Return JSON.'\"], \"notes\": \"The system content is 'Return JSON JSON.', which is not exactly 'Return JSON.'. The authorized edit is to replace it with exactly 'Return JSON.'. The user text,\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98292,
+    "total_tokens": 98411,
+    "completion_tokens": 119,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

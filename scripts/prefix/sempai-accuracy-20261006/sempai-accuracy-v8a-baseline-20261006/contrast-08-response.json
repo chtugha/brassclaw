@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bee226554bd38847",
+  "object": "chat.completion",
+  "created": 1791323225,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-08: it reads raw records via inputs.get('records') (no direct access, no raise), validates each item is a non-empty-string code and an exact boolean enabled, and returns {ok, records: original if valid else []} with no exceptions or coercion. No imports/host/IO, no upstream validation assumption, no I/O. This is an unapproved target-interface draft; activation requires Q1/human Q2 and typed-runner support, which are not claimed here.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-08\",\n        \"description\": \"Pure-logic validator for raw records. Returns {ok, records} where records is the original list when every item is a valid {code, enabled} object (code a 2..5 char string, enabled an exact boolean), otherwise an empty list. No exceptions, no coercion, no I/O, no host calls, no upstream validation assumption.\",\n        \"content\": \"def classify_records(records):\\n    valid = isinstance(records, list) and len(records) <= 4\\n    if valid:\\n        for item in records:\\n            if not isinstance(item, dict) or len(item) != 2:\\n                valid = False\\n                break\\n            code = item.get('code')\\n            enabled = item.get('enabled')\\n            if not (type(code) is str and 2 <= len(code) <= 5):\\n                valid = False\\n                break\\n            if not (type(enabled) is bool):\\n                valid = False\\n                break\\n    result = {'ok': valid, 'records': records if valid else []}\\n\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76881,
+    "total_tokens": 77355,
+    "completion_tokens": 474,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need to validate raw timeout values before configuring a service."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the packet as an offline-design component draft. The request is to author one class-22 pure-logic PythonCode candidate named pc-check-timeout-ms with only name/description/content. The semantics are internally consistent: valid means exact integer 0..7500 inclusive, rejecting bool and float; every outcome assigns result={valid, timeout_ms} with timeout_ms null on invalid/missing/null and no exceptions or coercion. The code is pure logic with zero host calls, imports or I/O, so it is a valid Tier-0 pure-logic component. I preserved the volatile message unchanged and did not invent an assistant acknowledgement, result or approval. I did not submit, store, validate, approve or activate anything; this remains an unapproved draft. The host's supported proposal sink for class 22 accepts name/description/content, so the payload uses exactly those fields. Typed inputs (inputs[\"timeout_ms\"]) are a target interface per recipe.md/skills.md, not guaranteed deployed runtime support; the draft documents the contract without claiming execution. The draft is not a submission or activation, and no Q1/Q2 or exact-association approval has occurred. No compatibility updates, intents or settings changes were proposed.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-timeout-ms",
+        "description": "Pure-logic validation of a raw timeout value. Returns valid=true only for an exact integer in 0..7500 inclusive; returns valid=false with timeout_ms=null for missing, null, bool, float, non-integer or out-of-range values. No exceptions, no coercion, no host calls, no imports, no I/O.",
+        "content": "# Target typed-input interface; binding validates the raw candidate before any effect.\ntimeout_ms = inputs.get(\"timeout_ms\")\nvalid = isinstance(timeout_ms, int) and not isinstance(timeout_ms, bool) and 0 <= timeout_ms <= 7500\nresult = {\"valid\": valid, \"timeout_ms\": timeout_ms if valid else None}"
+      }
+    }
+  ]
+}

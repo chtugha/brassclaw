@@ -31,7 +31,7 @@
 +default-members = ["crates/monty"]
 @@ -27 +8 @@
 -version = "1.0.0"
-+version = "1.0.0-brassclaw.control.3"
++version = "1.0.0-brassclaw.control.5"
 @@ -63,9 +44,4 @@
 -monty = { path = "crates/monty", version = "1.0.0" }
 -monty-types = { path = "crates/monty-types", version = "1.0.0" }
@@ -42,10 +42,10 @@
 -monty-pool = { path = "crates/monty-pool", version = "1.0.0" }
 -monty-type-checking = { path = "crates/monty-type-checking", version = "1.0.0" }
 -monty-typeshed = { path = "crates/monty-typeshed", version = "1.0.0" }
-+monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.3" }
-+monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.3" }
-+monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.3" }
-+monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.3" }
++monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.5" }
++monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.5" }
++monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.5" }
++monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.5" }
 --- a/crates/monty-alloc/Cargo.toml
 +++ b/crates/monty-alloc/Cargo.toml
 @@ -1,0 +2,2 @@
@@ -99,12 +99,14 @@
 +publish = false
 --- a/crates/monty-types/src/lib.rs
 +++ b/crates/monty-types/src/lib.rs
-@@ -50,2 +50,3 @@
+@@ -50,3 +50,4 @@
 -        BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, LARGE_RESULT_THRESHOLD, LIVE_MEMORY,
 -        OOM_EXIT_CODE, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
+-        memory_limit_with_headroom,
 +        BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, ExecutionControl,
-+        ExecutionControlAction, ExecutionControlError, LARGE_RESULT_THRESHOLD, LIVE_MEMORY, OOM_EXIT_CODE,
-+        PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
++        ExecutionControlAction, ExecutionControlError, ExecutionObservation, LARGE_RESULT_THRESHOLD, LIVE_MEMORY,
++        OOM_EXIT_CODE, PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope,
++        allocate_into_baseline, memory_limit_with_headroom,
 --- a/crates/monty-types/src/resource.rs
 +++ b/crates/monty-types/src/resource.rs
 @@ -14 +14,4 @@
@@ -118,7 +120,7 @@
 +    Control(ExecutionControlError),
 @@ -137,0 +143 @@
 +            Self::Control(reason) => write!(f, "execution control: {reason:?}"),
-@@ -277,0 +284,7 @@
+@@ -277,0 +284,10 @@
 +    // Authority is never serialized. A controlled dump requires explicit trusted
 +    // reattachment before execution; it must not silently become uncontrolled.
 +    #[serde(skip)]
@@ -126,11 +128,14 @@
 +    control_required: bool,
 +    control_error: Cell<Option<ExecutionControlError>>,
 +    control_yield: Cell<bool>,
-@@ -283,0 +297,3 @@
++    /// Scheduler identity, not a product task or authority grant. Main is 0;
++    /// None denotes a discarded coroutine context. Retained over snapshots.
++    execution_context: Cell<Option<u32>>,
+@@ -283,0 +300,3 @@
 +    /// Synchronous interpreter preparation, accounted independently of VM
 +    /// feed/turn limits but included in the trusted task-control clock.
 +    preparation: Arc<Mutex<PreparationAccount>>,
-@@ -316,0 +333,94 @@
+@@ -316,0 +336,119 @@
 +#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 +struct PreparationAccount {
 +    total: Duration,
@@ -209,6 +214,30 @@
 +/// Implementations must neither reenter the VM nor perform blocking I/O.
 +pub trait ExecutionControl: fmt::Debug + Send + Sync {
 +    fn checkpoint(&self, elapsed: Duration) -> Result<ExecutionControlAction, ExecutionControlError>;
++
++    /// Observe separate cumulative clocks and the actual loaded coroutine.
++    /// Called on both sides of every context transition. Preparation does not
++    /// belong to this coroutine: importing a host result can wake another one.
++    /// Existing task-owned controls retain their combined-clock contract.
++    fn checkpoint_context(
++        &self,
++        observation: ExecutionObservation,
++    ) -> Result<ExecutionControlAction, ExecutionControlError> {
++        let elapsed = observation
++            .execution
++            .checked_add(observation.preparation)
++            .ok_or(ExecutionControlError::AccountingUnavailable)?;
++        self.checkpoint(elapsed)
++    }
++}
++
++/// Trusted telemetry at a resource or scheduler boundary. Neither clock includes
++/// host waits. Context IDs are VM-local and may serve many successive tasks.
++#[derive(Debug, Clone, Copy)]
++pub struct ExecutionObservation {
++    pub context: Option<u32>,
++    pub execution: Duration,
++    pub preparation: Duration,
 +}
 +
 +#[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,9 +252,10 @@
 +    Cancelled,
 +    TaskComputeExceeded,
 +    AccountingUnavailable,
++    IdentityExhausted,
 +}
 +
-@@ -317,0 +428,124 @@
+@@ -317,0 +456,146 @@
 +    /// Attach trusted control without resetting consumption or terminal failure.
 +    /// Reattachment after loading a controlled dump is mandatory. It does not
 +    /// clear a failure already observed while control was unavailable.
@@ -250,11 +280,11 @@
 +            .as_ref()
 +            .ok_or(ExecutionControlError::AccountingUnavailable)
 +            .and_then(|control| {
-+                let elapsed = self
-+                    .elapsed()
-+                    .checked_add(preparation)
-+                    .ok_or(ExecutionControlError::AccountingUnavailable)?;
-+                control.checkpoint(elapsed)
++                control.checkpoint_context(ExecutionObservation {
++                    context: self.execution_context.get(),
++                    execution: self.elapsed(),
++                    preparation,
++                })
 +            });
 +        match outcome {
 +            Ok(ExecutionControlAction::Continue) => Ok(()),
@@ -273,6 +303,28 @@
 +    /// Native synchronous reentry must leave this request pending.
 +    pub fn take_control_yield(&self) -> bool {
 +        self.control_yield.replace(false)
++    }
++
++    /// Report the actual context loaded at this continuation boundary.
++    pub fn execution_context(&self) -> Option<u32> {
++        self.execution_context.get()
++    }
++
++    /// Close the outgoing clock interval before changing scheduler identity.
++    /// Control failures are latched and propagated by the next VM resource
++    /// check, including the execution-window epilogue. Teardown must still drop
++    /// the old frames even when control has already failed.
++    pub fn set_execution_context(&self, context: Option<u32>) {
++        if self.execution_context.get() != context {
++            // poll_execution_control itself retains every failure. There is no
++            // additional operation or bytecode execution between these samples.
++            let before = self.poll_execution_control();
++            self.execution_context.set(context);
++            if before.is_ok() {
++                let after = self.poll_execution_control();
++                debug_assert!(after.is_ok() || self.control_error.get().is_some());
++            }
++        }
 +    }
 +
 +    /// Begin synchronous interpreter preparation, never execution or a host wait.
@@ -350,28 +402,29 @@
 +        }
 +    }
 +
-@@ -329,0 +564,4 @@
+@@ -329,0 +614,5 @@
 +            execution_control: None,
 +            control_required: false,
 +            control_error: Cell::new(None),
 +            control_yield: Cell::new(false),
-@@ -330,0 +569 @@
++            execution_context: Cell::new(Some(0)),
+@@ -330,0 +620 @@
 +            preparation: Arc::new(Mutex::new(PreparationAccount::default())),
-@@ -429 +668 @@
+@@ -429 +719 @@
 -        self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
 +        self.control_required || self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
-@@ -492,0 +732 @@
+@@ -492,0 +783 @@
 +        self.poll_execution_control()?;
-@@ -660,0 +901 @@
+@@ -660,0 +952 @@
 +        self.pause_preparation();
-@@ -675,0 +917,4 @@
+@@ -675,0 +968,4 @@
 +            self.resume_preparation();
 +            if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
 +                self.control_error.set(Some(error));
 +            }
-@@ -703,0 +949 @@
+@@ -703,0 +1000 @@
 +        self.pause_preparation();
-@@ -706,0 +953,2 @@
+@@ -706,0 +1004,2 @@
 +        } else {
 +            self.resume_preparation();
 --- a/crates/monty/Cargo.toml
@@ -379,6 +432,50 @@
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
+--- a/crates/monty/src/asyncio.rs
++++ b/crates/monty/src/asyncio.rs
+@@ -51,0 +52,5 @@
++    }
++
++    /// VM-local identity for trusted execution accounting, never task authority.
++    pub fn raw(self) -> u32 {
++        self.0
+--- a/crates/monty/src/bytecode/vm/async_exec.rs
++++ b/crates/monty/src/bytecode/vm/async_exec.rs
+@@ -244 +244 @@
+-                        || self.scheduler.spawn(self.heap, item_id, Some(gather_id)).is_none()
++                        || self.scheduler.spawn(self.heap, item_id, Some(gather_id))?.is_none()
+@@ -447,0 +448,3 @@
++        // Clear only an actual exiting task, never VM::snapshot's mechanical
++        // Drop cleanup: that continuation still owns the loaded coroutine.
++        self.heap.tracker.set_execution_context(None);
+@@ -477,0 +481 @@
++        self.heap.tracker.set_execution_context(None);
+@@ -552,0 +557,5 @@
++            self.heap.tracker.set_execution_context(Some(task_id.raw()));
++            // A transition callback can latch fatal control failure. Check it
++            // before loading/running the selected task, including short feeds
++            // that cannot reach the periodic bytecode checkpoint.
++            self.heap.tracker.check_memory_time()?;
+@@ -864,2 +873,8 @@
+-    pub(crate) fn settled_awaitable(&mut self, value: Value) -> Value {
+-        let call_id = self.allocate_call_id();
++    pub(crate) fn settled_awaitable(&mut self, value: Value) -> RunResult<Value> {
++        let call_id = match self.allocate_call_id() {
++            Ok(id) => id,
++            Err(error) => {
++                value.drop_with(self);
++                return Err(error);
++            }
++        };
+@@ -871 +886,3 @@
+-        Value::Ref(self.heap.allocate(HeapData::ExternalFuture(Box::new(future))))
++        Ok(Value::Ref(
++            self.heap.allocate(HeapData::ExternalFuture(Box::new(future))),
++        ))
+@@ -885,0 +903,2 @@
++            self.heap.tracker.set_execution_context(Some(main.raw()));
++            self.heap.tracker.check_memory_time()?;
 --- a/crates/monty/src/bytecode/vm/call.rs
 +++ b/crates/monty/src/bytecode/vm/call.rs
 @@ -504 +504,3 @@
@@ -392,32 +489,149 @@
 +            }
 --- a/crates/monty/src/bytecode/vm/mod.rs
 +++ b/crates/monty/src/bytecode/vm/mod.rs
-@@ -221,0 +222,2 @@
+@@ -160 +160,7 @@
+-                let call_id = $self.allocate_call_id();
++                let call_id = match $self.allocate_call_id() {
++                    Ok(id) => id,
++                    Err(error) => {
++                        args.drop_with($self);
++                        return Err(error);
++                    }
++                };
+@@ -180 +186,7 @@
+-                let call_id = $self.allocate_call_id();
++                let call_id = match $self.allocate_call_id() {
++                    Ok(id) => id,
++                    Err(error) => {
++                        args.drop_with($self);
++                        return Err(error);
++                    }
++                };
+@@ -221,0 +234,2 @@
 +    /// Safe bytecode suspension without an external return value.
 +    ControlYield,
-@@ -345 +347 @@
+@@ -345 +359 @@
 -            Self::ResolveFutures(_) | Self::NameLookup { .. } => {}
 +            Self::ControlYield | Self::ResolveFutures(_) | Self::NameLookup { .. } => {}
-@@ -1161 +1163,4 @@
+@@ -929,0 +944,2 @@
++        // New feeds create a new scheduler; restore keeps the serialized one.
++        heap.tracker.set_execution_context(Some(0));
+@@ -1127,0 +1144,8 @@
++            let call_id = match self.allocate_call_id() {
++                Ok(id) => id,
++                Err(error) => {
++                    call.drop_with(self);
++                    release_pending_effect(effect, self.heap);
++                    return Err(error);
++                }
++            };
+@@ -1130 +1154 @@
+-                call_id: self.allocate_call_id(),
++                call_id,
+@@ -1137 +1161 @@
+-    fn allocate_call_id(&mut self) -> CallId {
++    fn allocate_call_id(&mut self) -> RunResult<CallId> {
+@@ -1161 +1185,4 @@
 -        let result = self.run();
 +        // A restored controlled snapshot must fail closed before an opcode or
 +        // host effect runs, including feeds shorter than the periodic cadence.
 +        let entry = self.heap.tracker.check_memory_time().map_err(RunError::from);
 +        let result = entry.and_then(|()| self.run());
-@@ -1272,0 +1278,6 @@
+@@ -1272,0 +1300,6 @@
 +                // Native Rust call frames cannot be serialized. Preserve the
 +                // request until their callbacks return to top-level execution.
 +                if self.run_reentry_depth == recursion::MAX_RUN_REENTRY_DEPTH && self.heap.tracker.take_control_yield()
 +                {
 +                    return Ok(FrameExit::ControlYield);
 +                }
+@@ -2097 +2130,4 @@
+-                let settled = self.settled_awaitable(result);
++                let settled = match self.settled_awaitable(result) {
++                    Ok(value) => value,
++                    Err(error) => return self.resume_with_exception(error),
++                };
+--- a/crates/monty/src/bytecode/vm/scheduler.rs
++++ b/crates/monty/src/bytecode/vm/scheduler.rs
+@@ -10,0 +11 @@
++use monty_types::{ExecutionControlError, ResourceError};
+@@ -20,0 +22,11 @@
++
++/// Instance-lifetime identities must never wrap, in release builds either.
++/// Refuse the exhausted counter before mutating it or taking heap ownership.
++fn next_identity(counter: &mut u32) -> RunResult<u32> {
++    let next = counter
++        .checked_add(1)
++        .ok_or(ResourceError::Control(ExecutionControlError::IdentityExhausted))?;
++    let identity = *counter;
++    *counter = next;
++    Ok(identity)
++}
+@@ -200,4 +212,2 @@
+-    pub fn allocate_call_id(&mut self) -> CallId {
+-        let id = CallId::new(self.next_call_id);
+-        self.next_call_id += 1;
+-        id
++    pub fn allocate_call_id(&mut self) -> RunResult<CallId> {
++        next_identity(&mut self.next_call_id).map(CallId::new)
+@@ -251 +261 @@
+-    /// Returns `None` if `coroutine_id` is already driving a task —
++    /// Returns `Ok(None)` if `coroutine_id` is already driving a task —
+@@ -254 +264 @@
+-    /// `await_coroutine` doesn't catch it. Callers translate `None`
++    /// `await_coroutine` doesn't catch it. Callers translate `Ok(None)`
+@@ -259,2 +269,3 @@
+-    /// a ready-made `Awaiter` so the `None` return above has nothing to unwind.
+-    pub fn spawn(&mut self, heap: &Heap, coroutine_id: HeapId, gather_id: Option<HeapId>) -> Option<TaskId> {
++    /// a ready-made `Awaiter` so rejection has nothing to unwind. Exhaustion
++    /// returns an uncatchable resource error before taking any references.
++    pub fn spawn(&mut self, heap: &Heap, coroutine_id: HeapId, gather_id: Option<HeapId>) -> RunResult<Option<TaskId>> {
+@@ -262,5 +273,4 @@
+-            return None;
+-        }
+-
+-        let task_id = TaskId::new(self.next_task_id);
+-        self.next_task_id += 1;
++            return Ok(None);
++        }
++
++        let task_id = TaskId::new(next_identity(&mut self.next_task_id)?);
+@@ -286 +296 @@
+-        Some(task_id)
++        Ok(Some(task_id))
+@@ -431,0 +442,26 @@
++
++#[cfg(test)]
++mod identity_tests {
++    use super::*;
++    use crate::exception_private::RunError;
++
++    #[test]
++    fn exhausted_call_ids_never_wrap_or_recover() {
++        let mut scheduler = Scheduler::new();
++        assert_eq!(scheduler.allocate_call_id().unwrap().raw(), 0);
++        scheduler.next_call_id = u32::MAX - 1;
++        assert_eq!(scheduler.allocate_call_id().unwrap().raw(), u32::MAX - 1);
++        for _ in 0..2 {
++            assert!(matches!(scheduler.allocate_call_id(), Err(RunError::UncatchableExc(_))));
++            assert_eq!(scheduler.next_call_id, u32::MAX);
++        }
++    }
++
++    #[test]
++    fn exhausted_task_counter_is_rejected_before_ownership_changes() {
++        let mut counter = u32::MAX - 1;
++        assert_eq!(next_identity(&mut counter).unwrap(), u32::MAX - 1);
++        assert!(matches!(next_identity(&mut counter), Err(RunError::UncatchableExc(_))));
++        assert_eq!(counter, u32::MAX);
++    }
++}
 --- a/crates/monty/src/dump_format.rs
 +++ b/crates/monty/src/dump_format.rs
 @@ -52 +52,3 @@
 -pub const DUMP_VERSION: u16 = 13;
 +// BrassClaw control ABI: never accept upstream dumps or send these dumps to
 +// upstream binaries. Deployment must reconcile old continuations first.
-+pub const DUMP_VERSION: u16 = 0xBC03;
++pub const DUMP_VERSION: u16 = 0xBC05;
 --- a/crates/monty/src/lib.rs
 +++ b/crates/monty/src/lib.rs
 @@ -52,2 +52,2 @@
@@ -428,6 +642,11 @@
 @@ -56 +56 @@
 -    run_progress::{FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
 +    run_progress::{ControlYield, FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
+--- a/crates/monty/src/modules/asyncio.rs
++++ b/crates/monty/src/modules/asyncio.rs
+@@ -96 +96 @@
+-        _ => return Ok(CallResult::Value(vm.settled_awaitable(result))),
++        _ => return Ok(CallResult::Value(vm.settled_awaitable(result)?)),
 --- a/crates/monty/src/object_bridge.rs
 +++ b/crates/monty/src/object_bridge.rs
 @@ -50,0 +51,3 @@
@@ -763,15 +982,19 @@
 @@ -208 +210 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -306 +308 @@
+@@ -209,0 +212 @@
++            None,
+@@ -306 +309 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -556 +558,3 @@
+@@ -307,0 +311 @@
++            None,
+@@ -556 +560,3 @@
 -        (LookupAnswer::Undefined, None) => return vm.resume_with_exception(undefined_lookup_error(scope, name)),
 +        (LookupAnswer::Undefined, None) => {
 +            return vm.resume_with_exception(undefined_lookup_error(scope, name));
 +        }
-@@ -804,0 +809,22 @@
+@@ -804,0 +811,31 @@
 +/// Execution paused before the next opcode, retaining all task state.
 +/// No call result is expected or injected into the operand stack.
 +#[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -787,33 +1010,46 @@
 +        &mut self.snapshot.heap.tracker
 +    }
 +    pub fn resume(self, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
-+        self.snapshot.run_inner(None, None, print)
++        self.snapshot.run_inner(None, None, None, print)
++    }
++    /// Raise an ordinary exception at the retained opcode boundary without
++    /// fabricating an external-call result or changing another coroutine.
++    ///
++    /// The trusted host must establish a protected task scope and settle any
++    /// pending external futures belonging to that scope before using this.
++    /// Resource-control errors remain terminal; this cannot clear their latch.
++    pub fn raise(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
++        self.snapshot.run_inner(None, None, Some(exc), print)
 +    }
 +    pub fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
 +        self.snapshot.abort(exc, print)
 +    }
 +}
 +
-@@ -827 +853 @@
+@@ -827 +864 @@
 -        self.run_inner(result.into(), None, print)
-+        self.run_inner(Some(result.into()), None, print)
-@@ -834 +860 @@
++        self.run_inner(Some(result.into()), None, None, print)
+@@ -834 +871 @@
 -        ext_result: ExtFunctionResult,
 +        ext_result: Option<ExtFunctionResult>,
-@@ -855 +881,4 @@
+@@ -835,0 +873 @@
++        control_exception: Option<MontyException>,
+@@ -855 +893,6 @@
 -                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
-+                let vm_result = match ext_result {
-+                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
-+                    None => vm.run_external(),
++                let vm_result = match (control_exception, ext_result) {
++                    (Some(exc), None) => vm.resume_with_exception(exc.into()),
++                    (None, Some(result)) => resume_with_result(&mut vm, result, eager_call_id),
++                    (None, None) => vm.run_external(),
++                    (Some(_), Some(_)) => unreachable!("control interruption is not a host result"),
 +                };
-@@ -937 +966,3 @@
+@@ -937 +980,3 @@
 -        (ExtFunctionResult::Future(_), None) => unreachable!("a future answer always carries its call id"),
 +        (ExtFunctionResult::Future(_), None) => {
 +            unreachable!("a future answer always carries its call id")
 +        }
-@@ -991,0 +1023 @@
+@@ -991,0 +1037 @@
 +    ControlYield,
-@@ -1040,0 +1073,21 @@
+@@ -1040,0 +1087,21 @@
 +    let window = match vm.heap.heap.tracker.boundary_window() {
 +        Ok(window) => window,
 +        Err(error) => {
@@ -835,14 +1071,14 @@
 +}
 +
 +fn convert_frame_exit_inner(result: RunResult<FrameExit>, vm: &mut VM<'_>) -> ConvertedExit {
-@@ -1052 +1105,5 @@
+@@ -1052 +1119,5 @@
 -        Ok(FrameExit::Return(value)) => ConvertedExit::Complete(MontyObject::export(value, vm)),
 +        Ok(FrameExit::ControlYield) => ConvertedExit::ControlYield,
 +        Ok(FrameExit::Return(value)) => match MontyObject::export_checked(value, vm) {
 +            Ok(object) => ConvertedExit::Complete(object),
 +            Err(error) => ConvertedExit::Error(error),
 +        },
-@@ -1185,0 +1243,3 @@
+@@ -1185,0 +1257,3 @@
 +        ConvertedExit::ControlYield => Ok(RunProgress::ControlYield(ControlYield {
 +            snapshot: new_snapshot!(),
 +        })),

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b0ed9c9509f2ed80",
+  "object": "chat.completion",
+  "created": 1791325669,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Offline full-v3 export only. Drafted one unapproved class-21 Recipe (recipe-transfer-11) that posts exactly the fixed word 'Prepared' as a user reply using a bound existing host.post_reply Tool. The constructor preserves full v3 fields: trigger=null, steps=[] (executable references documented in step_descriptions), dependency_registry=null, one desc_idx=0 with two persisted component steps (rust binding then orchestrator execution), one variant with step_link=0:1-0:E and ten distinct reply intents. The rust step includes ToolSkill 6d31defa-e5d3-5103-bd01-49143f9d47f6; the immediately following orchestrator step includes PythonCode 5e27ba17-04a3-5357-bee2-00a87cac9ae1. No runtime execution, submission, Q1/Q2 or activation was performed; dependencies are unapproved and require exact-combination approval before activation. The current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry fields, so this is an offline export only.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-11\",\n        \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply. Posts exactly the fixed word 'Prepared' as a user reply using the bound existing Tool. Unapproved documentation fixture; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. No runtime/approval claims.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\",\n        \"intent_examples\": [\n          \"say prepared\",\n          \"reply prepared\",\n          \"post prepared\",\n          \"send the prepared reply\",\n          \"respond with prepared\",\n          \"tell me prepared\",\n          \"please say prepared\",\n          \"please reply prepared\",\n          \"post the fixed prepared message\",\n          \"send the fixed prepared message\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind reply Tool\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"6d31defa-e5d3-5103-bd01-49143f9d47f6\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post fixed reply\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"5e27ba17-04a3-5357-bee2-00a87cac9ae1\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"recipe-transfer-11\",\n            \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say prepared\",\n              \"reply prepared\",\n              \"post prepared\",\n              \"send the prepared reply\",\n              \"respond with prepared\",\n              \"tell me prepared\",\n              \"please say prepared\",\n              \"please reply prepared\",\n              \"post the fixed prepared message\",\n              \"send the fixed prepared message\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n  ,\n  \"settings_adjustments\": []\n  ,\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Design a reusable prepared reply workflow.\"\n    ]\n  ]\n  ,\n  \"proposed_intent_examples\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98442,
+    "total_tokens": 99533,
+    "completion_tokens": 1091,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

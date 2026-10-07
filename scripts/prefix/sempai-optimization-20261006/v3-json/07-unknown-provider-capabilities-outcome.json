@@ -1,0 +1,14 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "No change to the volatile tail. The packet carries no provider capabilities and a null catalogue_revision, so supported roles, Tool encoding and reasoning syntax are unknown and must not be inferred from the model name. The instruction is to keep messages unchanged, emit no proposals and explain the missing facts. No justified prompt repair is requested or supported, so the original user message is echoed verbatim. No component was proposed: authoring a provider prompt fix requires resolved provider capabilities and a supported sink, neither of which is present here. The missing facts are: (1) model revision/protocol adapter, (2) supported system/developer roles, (3) Tool call/result schema and argument encoding, (4) thinking/reasoning mode and structured-output schema, (5) effective context capacity and output limits, (6) generation/injection mode. These remain unknown and are not inferred.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bc10d0c451c3e6d4",
+  "object": "chat.completion",
+  "created": 1791319520,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"composition_summary\": \"Provider capabilities and catalogue revision are unknown. target_provider_metadata has protocol_capabilities=null and catalogue_revision=null, so no supported roles, Tool encoding, or reasoning syntax can be inferred. The model name 'cyankiwi/Ornith-1.5-9B-AWQ-INT4' is a quantization/size label and does not establish role, tool, or thinking-mode support. Per the instruction, no proposals are emitted and the volatile messages are kept unchanged. The missing facts (protocol_capabilities, catalogue_revision, supported roles, Tool schema, reasoning syntax) must be supplied through the trusted host adapter before any provider-specific prompt repair can be proposed.\", \"settings_adjustments\": [], \"bridge_messages\": [], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"adjusted_volatile_messages\": [[\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]], \"proposed_components\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": "Let me analyze this task carefully.\n\nThe task is a \"review-test\" mode. I'm Sempai, reviewing a Kohai packet. The instruction is:\n\n\"Provider capabilities and catalogue revision are unknown. Do not infer supported roles, Tool encoding or reasoning syntax from the model name. Keep the messages unchanged, emit no proposals and explain the missing capability facts.\"\n\nThe volatile message is:\n[[\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]]\n\nThe target provider metadata:\n- model: \"cyankiwi/Ornith-1.5-9B-AWQ-INT4\"\n- max_model_len: 131072\n- catalogue_revision: null\n- protocol_capabilities: null\n\nThe instruction explicitly says:\n- Provider capabilities and catalogue revision are unknown\n- Do not infer supported roles, Tool encoding or reasoning syntax from the model name\n- Keep the messages unchanged\n- Emit no proposals\n- Explain the missing capability facts\n\nSo this is a case where I need to:\n1. Keep the volatile messages unchanged (echo them)\n2. Emit no proposals (empty proposed_components, proposed_recipe_updates, proposed_intent_examples, settings_adjustments)\n3. Explain the missing capability facts in composition_summary\n\nLet me follow the reviewer decision procedure (7061b1dba494):\n\n1. Copy the supplied volatile message array. Keep roles, order and content exactly. The instruction says keep messages unchanged. So I echo the user message.\n\n2. Decide whether the task is prompt review, component drafting or offline design. This is a prompt review task. But the instruction explicitly says to emit no proposals and explain the missing capability facts.\n\n3. Draft only the requested number of distinct components. Zero components here.\n\n4. Check the generated code and its contract. N/A here.\n\n5. Check representative valid and invalid outcomes. N/A.\n\n6. Match the host's exact output schema. Emit one JSON object.\n\n7. Keep the summary short and factual.\n\nNow, the key thing here: the instruction is explicit. Provider capabilities and catalogue revision are unknown. I should NOT infer supported roles, Tool encoding, or reasoning syntax from the model name. I should keep messages unchanged, emit no proposals, and explain the missing capability facts.\n\nThe target_provider_metadata has:\n- model: \"cyankiwi/Ornith-1.5-9B-AWQ-INT4\"\n- max_model_len: 131072\n- catalogue_revision: null\n- protocol_capabilities: null\n\nSo the only known facts are the model name and max_model_len. The catalogue_revision is null and protocol_capabilities is null.\n\nI need to explain the missing capability facts. The model name \"cyankiwi/Ornith-1.5-9B-AWQ-INT4\" — I should not infer roles, Tool encoding, or reasoning syntax from this name. The name suggests it's a 9B parameter model with AWQ INT4 quantization, but that tells me nothing about supported roles, tool encoding, or reasoning syntax.\n\nSo my composition_summary should explain:\n- The provider capabilities (protocol_capabilities) are null/unknown\n- The catalogue_revision is null/unknown\n- I cannot infer supported roles, Tool encoding, or reasoning syntax from the model name\n- Therefore no proposals are emitted\n- The messages are kept unchanged\n\nLet me construct the JSON output.\n\nadjusted_volatile_messages: echo the user message exactly\n[[\"user\", \"Review my provider prompt without assuming its tool or thinking syntax.\"]]\n\nbridge_messages: empty array []\n\ncomposition_summary: explain the missing capability facts\n\nproposed_recipe_updates: empty []\nproposed_intent_examples: empty []\nsettings_adjustments: empty []\nproposed_components: empty []\n\nLet me write the composition_summary. It should be short and factual.\n\nSomething like:\n\n\"Provider capabilities and catalogue revision are unknown. target_provider_metadata has protocol_capabilities=null and catalogue_revision=null, so no supported roles, Tool encoding, or reasoning syntax can be inferred. The model name 'cyankiwi/Ornith-1.5-9B-AWQ-INT4' is a quantization/size label and does not establish role, tool, or thinking-mode support. Per the instruction, no proposals are emitted and the volatile messages are kept unchanged. The missing facts (protocol_capabilities, catalogue_revision, supported roles, Tool schema, reasoning syntax) must be supplied through the trusted host adapter before any provider-specific prompt repair can be proposed.\"\n\nThat's good. Let me make sure I don't invent capabilities.\n\nLet me double check the output schema requirements:\n- adjusted_volatile_messages (array of [role,text])\n- bridge_messages (array of [role,text])\n- composition_summary (string)\n- proposed_recipe_updates (array)\n- proposed_intent_examples (array)\n- settings_adjustments (array)\n- proposed_components (array of objects with class_code integer and payload object)\n\nNo Markdown fences. One JSON object.\n\nLet me finalize.\n"
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72420,
+    "total_tokens": 73684,
+    "completion_tokens": 1264,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 1068
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

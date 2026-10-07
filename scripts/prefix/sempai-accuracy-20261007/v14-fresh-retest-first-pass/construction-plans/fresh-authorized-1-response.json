@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-987422f07e8be6f8",
+  "object": "chat.completion",
+  "created": 1791359485,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"system content contains the exact authorized edit\", \"result\": \"Apply the authorized edit: change system content to 'Use SI units.'; keep roles, order and user content exactly.\"}, {\"guard\": \"system content does not contain the exact authorized edit\", \"result\": \"No edit authorized; preserve all messages unchanged.\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"system content -> 'Use SI units.'\"], \"prerequisites\": [\"exact authorized edit present in system content\"], \"notes\": \"Authorized edit is a single exact string replacement; no other message may change. No proposals, new messages or provider assumptions. Preserve user content ver\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98280,
+    "total_tokens": 98440,
+    "completion_tokens": 160,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

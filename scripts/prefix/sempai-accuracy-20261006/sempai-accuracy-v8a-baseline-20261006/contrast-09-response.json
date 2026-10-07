@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-92ab6e7df962ea60",
+  "object": "chat.completion",
+  "created": 1791323235,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one class-22 pure-logic component pc-contrast-09: it reads raw records via inputs.get('records') (never direct access), validates that records is a nonempty list of 1..2 objects each with exactly code (string length 2..5) and enabled (exact bool), and returns {ok, records: original if valid else []} with no exceptions or coercion. The body assigns result on every outcome, makes zero host/IO calls, and does not assume upstream validation. This is an unapproved target-interface draft; activation requires Q1, human Q2 and runtime typed-runner support, which are not claimed here.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-09\",\n        \"description\": \"Pure-logic guard: validates a raw records list of 1..2 objects, each with exactly code (string length 2..5) and enabled (exact bool), and returns {ok, records: original if valid else []}. No I/O, imports, host calls or upstream validation assumption. Unapproved target-interface draft.\",\n        \"content\": \"def classify_records(records):\\n    if not (type(records) is list and 1 <= len(records) <= 2):\\n        return {'ok': False, 'records': []}\\n    for rec in records:\\n        if not (type(rec) is dict and set(rec.keys()) == {'code', 'enabled'}\\n                and type(rec['code']) is str and 2 <= len(rec['code']) <= 5\\n                and type(rec['enabled']) is bool):\\n            return {'ok': False, 'records': []}\\n    return {'ok': True, 'records': records}\\nresult = classify_records(inputs.get('records'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76881,
+    "total_tokens": 77365,
+    "completion_tokens": 484,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

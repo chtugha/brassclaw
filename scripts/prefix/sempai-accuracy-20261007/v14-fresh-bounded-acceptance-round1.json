@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "manifest_sha256": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b",
+  "first_pass_accepted": 10,
+  "total": 12,
+  "accepted_after_bounded_repairs": 11,
+  "repair_rounds": 1,
+  "remaining_rejected": [
+    "fresh-nested-bools"
+  ],
+  "stages": [
+    {
+      "stage": 0,
+      "accepted": 10,
+      "total": 12,
+      "model_evaluation_sha256": "d41ee5c729eb654a8e51409216145155e6071734ce2e11efe6e851747049a726",
+      "candidate_checks_sha256": "a5e3d46f3a8bb62aaf67d8c652bf4efdfe7d7b6412aef12326b69948f73291ff"
+    },
+    {
+      "stage": 1,
+      "attempted": 2,
+      "newly_accepted": [
+        "fresh-missing-default"
+      ],
+      "accepted_after_stage": 11,
+      "model_evaluation_sha256": "a6f148caa46250e07e0ffe13c760a9ed46b881427c36cbfe57c5fa2f420bc057",
+      "candidate_checks_sha256": "2eb8563a9a8db12b6edd98627ed28d28de23593c215094da2f40768955404bad"
+    }
+  ],
+  "accepted_sources": {
+    "fresh-presence-helper": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "c856c1ae7f25d71ad02034b3f94c025cf82e7570fa109b7e59e8b94b7526cf2c"
+    },
+    "fresh-boolean-helper": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "27285fdf4ba670667d74e56bf588ffb3ae392ce087edc676c5000dde054354bd"
+    },
+    "fresh-sent-data": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "2f03a450e2e7633d90a2b236e076e0ca90de3c187c4a3fc64aaa7439e757fe82"
+    },
+    "fresh-sent-reply": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "8de2b9235a6bf2f49b3e2beb278f47ee8e5b7b2d276d44b64432b7d7d7545c90"
+    },
+    "fresh-discarded-data": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "2d21c03ebf20eefd56828cf53eb8ce8432458cc758de3e6a7c0ae7352463ba37"
+    },
+    "fresh-discarded-reply": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "a55da37c56ca6123ddfe8939a01ce04f09bb3f1689d3ca1caa25c88b2e788d4c"
+    },
+    "fresh-evidence-completed": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "84e764c24ceaf929345cfcd825209c0a9fef00ac687caf311d4f98af19d2fc0b"
+    },
+    "fresh-evidence-unknown": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "e81afbc47cb5e338946066fb14eb5b5e5735621adb43ab2c67ff0bb49b8b9630"
+    },
+    "fresh-authorized-0": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "da32140ad0aab7eb8a505747c9d88c4e4fa48f00141ef4979d00b3cb19b7d789"
+    },
+    "fresh-authorized-1": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+      "response_sha256": "925b649d8b979ff5f0b5713f6057e49b45a4dcead35a0f507936749d95157b0e"
+    },
+    "fresh-missing-default": {
+      "stage": 1,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-repair-round1",
+      "response_sha256": "7d96da0cd4023690920159b2b4da1cf5093fff9b9d060e140e94eb63686535f4"
+    }
+  },
+  "first_pass_score_includes_repairs": false,
+  "production_q1_q2_verified": false,
+  "decoder_and_presentation_controls_unchanged": true,
+  "summary_semantics_fully_verified": false
+}

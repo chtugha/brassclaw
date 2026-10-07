@@ -118,26 +118,26 @@ download_binary() {
     # shellcheck disable=SC2064
     trap "rm -rf '$tmp_dir'" EXIT
 
-    log_step "Downloading $artifact v$version..."
-    if ! curl -fsSL --retry 3 --retry-connrefused \
-            -o "$tmp_dir/$artifact" "$base_url/$artifact"; then
-        log_error "Download failed: $base_url/$artifact" >&2
-        log_info  "Check available releases: https://github.com/$GITHUB_REPO/releases/tag/v$version" >&2
-        exit 1
-    fi
-
-    if curl -fsSL --retry 3 -o "$tmp_dir/$artifact.sha256" \
-            "$base_url/$artifact.sha256" 2>/dev/null; then
-        log_step "Verifying checksum..."
-        if sha256_check "$tmp_dir/$artifact" "$tmp_dir/$artifact.sha256"; then
-            log_info "Checksum OK"
-        else
-            log_error "Checksum mismatch — the download may be corrupt. Aborting." >&2
+    # Both verified executables are staged before replacing either installed file.
+    local asset
+    for asset in "$artifact" "$artifact-monty-worker"; do
+        log_step "Downloading $asset v$version..."
+        if ! curl -fsSL --retry 3 --retry-connrefused \
+                -o "$tmp_dir/$asset" "$base_url/$asset"; then
+            log_error "Download failed: $base_url/$asset" >&2
             exit 1
         fi
-    else
-        log_warn "No checksum file found for this release — skipping verification."
-    fi
+        if ! curl -fsSL --retry 3 -o "$tmp_dir/$asset.sha256" \
+                "$base_url/$asset.sha256"; then
+            log_error "Missing required checksum for $asset. Aborting." >&2
+            exit 1
+        fi
+        if ! sha256_check "$tmp_dir/$asset" "$tmp_dir/$asset.sha256"; then
+            log_error "Checksum mismatch for $asset. Aborting." >&2
+            exit 1
+        fi
+        chmod +x "$tmp_dir/$asset"
+    done
 
     mkdir -p "$INSTALL_DIR"
     chmod +x "$tmp_dir/$artifact"
@@ -148,6 +148,7 @@ download_binary() {
         cp "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME.bak"
     fi
 
+    mv "$tmp_dir/$artifact-monty-worker" "$INSTALL_DIR/monty_worker"
     mv "$tmp_dir/$artifact" "$INSTALL_DIR/$BINARY_NAME"
     log_info "Installed: $INSTALL_DIR/$BINARY_NAME"
 

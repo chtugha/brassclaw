@@ -1,0 +1,122 @@
+{
+  "generation": "3c6b8ac31b98e5b0c418befd071efb0fd5ded723613aa6f70aec8cfcae2dea1f",
+  "cache_salt": "sempai-v14-primed-full-20261007-a",
+  "requests": [
+    {
+      "input_tokens": 97845,
+      "prefix_fingerprint_verified": true,
+      "seconds": 51.885,
+      "response": {
+        "id": "chatcmpl-81bc6af620e58545",
+        "object": "chat.completion",
+        "created": 1791357798,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "OK",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97846,
+          "completion_tokens": 1,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 0,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "metric_deltas": {
+        "prefix_cache_hits_total": 0.0,
+        "external_prefix_cache_hits_total": 97152.0
+      }
+    },
+    {
+      "input_tokens": 97845,
+      "prefix_fingerprint_verified": true,
+      "seconds": 5.015,
+      "response": {
+        "id": "chatcmpl-940ea7643e87ed2b",
+        "object": "chat.completion",
+        "created": 1791357851,
+        "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": " Giang",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.31.0-33de8d2c",
+        "usage": {
+          "prompt_tokens": 97845,
+          "total_tokens": 97846,
+          "completion_tokens": 1,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 97152
+          }
+        },
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "metric_deltas": {
+        "prefix_cache_hits_total": 0.0,
+        "external_prefix_cache_hits_total": 97152.0
+      }
+    }
+  ],
+  "native_root_verified": false,
+  "service_settings_changed": false
+}

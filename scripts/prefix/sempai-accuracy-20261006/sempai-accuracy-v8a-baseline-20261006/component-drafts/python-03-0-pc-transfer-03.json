@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-03",
+    "description": "Pure-logic guard accepting an exact integer lag in -1..8 inclusive; returns {accepted, lag} with lag echoed only when accepted, else null. No Tool call, I/O, or host boundary.",
+    "content": "def classify_lag(raw):\n    if 'lag' not in inputs:\n        result = {'accepted': False, 'lag': None}\n    else:\n        lag = inputs['lag']\n        if type(lag) is bool or not type(lag) is int or not -1 <= lag <= 8:\n            result = {'accepted': False, 'lag': None}\n        else:\n            result = {'accepted': True, 'lag': lag}\nresult = classify_lag(inputs.get('lag'))"
+  }
+}

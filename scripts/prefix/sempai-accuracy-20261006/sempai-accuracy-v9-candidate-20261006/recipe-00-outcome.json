@@ -1,0 +1,76 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-00. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserved original conversation; root compatibility arrays empty under test persona.",
+  "proposed_recipe_updates": [
+    {
+      "name": "recipe-transfer-00",
+      "description": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.",
+      "trigger": null,
+      "steps": [],
+      "prior_knowledge_content": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.",
+      "intent_examples": [
+        "compute the ready state data",
+        "return the ready state object",
+        "produce the fixed ready object",
+        "obtain the ready result data",
+        "calculate the ready state result",
+        "yield the ready state object",
+        "get the fixed ready state data",
+        "build the ready state object",
+        "evaluate the ready data subworkflow",
+        "derive the fixed ready state result"
+      ],
+      "step_descriptions": [
+        {
+          "desc_idx": 0,
+          "label": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "orchestrator",
+              "goal": "Return state data",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "9a047867-22a3-5bcc-8a6b-1b06c20bbeff"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "variant_key": "recipe-transfer-00",
+          "description": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.",
+          "step_link": "0:1-0:E",
+          "intent_examples": [
+            "compute the ready state data",
+            "return the ready state object",
+            "produce the fixed ready object",
+            "obtain the ready result data",
+            "calculate the ready state result",
+            "yield the ready state object",
+            "get the fixed ready state data",
+            "build the ready state object",
+            "evaluate the ready data subworkflow",
+            "derive the fixed ready state result"
+          ],
+          "variable_patterns": []
+        }
+      ],
+      "dependency_registry": null
+    }
+  ],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable ready data-result workflow."
+    ]
+  ]
+}

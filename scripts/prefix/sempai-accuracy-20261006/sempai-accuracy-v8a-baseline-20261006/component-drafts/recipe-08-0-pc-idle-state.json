@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-idle-state",
+    "description": "Pure-logic guard returning a fixed idle state; no inputs, no Tool call, no effect. Unapproved draft; Q1 and human Q2 required before activation. Returns state data only and never posts a user message.",
+    "content": "result = {'state': 'Idle'}"
+  }
+}

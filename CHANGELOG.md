@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(components / contracts)* Add recursive value and exact association declaration validators, typed IBS input preparation and regression coverage. Parsing declarations does not establish trusted combination approval or complete immutable catalogue selection.
+- *(validation / persistence)* Add migrations V094–V097 for immutable graduation evidence, cursor revisions, resource snapshots and exact Q1/Q2 review seals. Legacy graduation receipts remain distinct from v3 association approvals.
+- *(runtime / persistence)* Add V098 capability payload storage and V099 durable Monty admission receipts with exact identity/lease checks, immutable conflict rejection and no automatic replay of uncertain work.
+- *(Monty / hosting)* Add instance-owned transport/service, contained child Recipe execution, typed task ports, model/Tool caller adapters, startup quarantine and global driver/ownership candidates. Recorded caller acceptance covers real PostgreSQL and interpreter paths; ordinary production Recipe cutover remains incomplete.
+- *(prefix / evaluation)* Add Sempai teaching examples, grammar/feedback/repair tools, accuracy plans and preserved optimization/accuracy artifacts. Add hybrid-cache diagnosis and a fingerprinted LMCache attention-layout backport with passing live external-restore sentinels; benchmark accuracy and broader cache acceptance remain separate.
 - *(Monty / isolated process host)* Add a long-lived root worker executable and bounded, correlated process transport with a cleared environment, finite allocator, response deadlines, explicit shutdown and containment of interrupted transport. Six real subprocess regressions and affected strict lints pass; production actor/registry and durable effect reconciliation remain pending.
 - *(prefix / Sempai evaluation)* Add reference-selection audit/policy, deployment and cache-verification receipts, supervised model probes, draft checks and negative evaluation evidence. These artifacts do not activate components or establish production Q1/Q2 acceptance.
 - *(IBS / assembly)* Add ordered structural assembly and typed-program composition that preserve cross-channel selection order, pair ToolSkill bindings with PythonCode and reject invalid component cardinality, repeated selections and conflicting host aliases. Legacy production composition remains unchanged; full recursive contracts, association approvals and immutable manifests remain required.
@@ -27,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(Monty / dependencies and packaging)* Move application Monty dependencies to the vendored `1.0.0-brassclaw.control.6` extension and package the contained utility worker through installer, CI, release and Docker paths. Targeted utility/API checks pass; Docker/release builds and complete global lifecycle acceptance remain outstanding.
+- *(Monty / resource controls)* Add scheduler-correlated task accounting, tagged shared VM allocation ownership and revisioned logical heap receipts, with manual unsafe reductions rejected and automatic reductions deferred behind admission backpressure. Full pressure sampling/adaptive publication and pending-reclamation acceptance remain open.
+- *(Monty / settings)* V100 retires the allocation-count setting while retaining historical values; active setters reject it and the WebUI reports its unsupported status. Unwired lifecycle status/restart returns unavailable instead of fabricated success.
+- *(model / context)* Prepare exact admitted input, complete eligible history, retained Tool payloads and provider replay metadata before model dispatch; retain the selected system bundle and share review accounting. Disabled token budgets do not introduce artificial history caps.
 - *(prefix / Sempai reviewer)* Add an exact-source decision checkpoint and explicit rules for preserving conversation history, complete executable drafts, raw-input validation and blocked proposals. Returning a draft is distinct from confirmed host submission or approval.
 - *(prefix / Sempai)* Support explicit reviewed, hash-bound source selection while preserving complete originals and all four authoring guides. The selected standalone reference fits and has recorded deployment/cache verification; the all-originals mode remains capacity-blocked. Extend the prefix upgrade plan with measured results and outstanding proposal-sink/consumer work.
 - *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.3` and dump ABI `0xBC03`; account graph import/export in the cumulative control clock, preserve ownership through nested conversion and exclude native sleeps. Reject incompatible or orphaned active-preparation snapshots. Isolated tests/lints pass; production cutover and remaining resource gates are outstanding.
@@ -42,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(runtime / ownership)* Retain started host futures, late results, admission settlement and quarantine ownership independently of dropped turn/startup waiters; fence stale attempts and preserve uncertain-effect evidence without replaying tasks.
+- *(validation / review)* Bind Q1 results and Q2 graduation to the exact candidate/review seal, reject stale content and execute Python validators through contained utilities rather than prose or unverified candidate substitution.
 - *(prefix / Sempai coverage)* Align the no-self-activation topic check with the clarified prohibition on marking components validated; the current-source preservation regression passes.
 - *(prefix / regression)* Verify historical Sempai policy drift explicitly and exercise selection checks against temporary current-source fixtures, preserving the original reviewed policy and deployment evidence.
 - *(orchestrator / replies)* Accept canonical `host.post_reply(answer=...)`, retained legacy `text` and the existing positional form, each as exactly one nonempty string. Reject malformed or conflicting arguments before transcript/event mutation instead of silently discarding replies; add an actual Monty host-call regression.

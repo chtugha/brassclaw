@@ -1,0 +1,63 @@
+{
+  "engine": "real checker and bounded Linux CPython",
+  "checks": [
+    {
+      "case": "helper-only",
+      "passed": true,
+      "rejection": "Missing result assignment: a helper definition alone is not an executable component"
+    },
+    {
+      "case": "unsafe-io",
+      "passed": true,
+      "rejection": "Non-allowlisted call"
+    },
+    {
+      "case": "module-condition-helper",
+      "inputs": {},
+      "passed": true,
+      "actual": {
+        "result": {
+          "valid": false,
+          "flag": null
+        }
+      }
+    },
+    {
+      "case": "module-condition-helper",
+      "inputs": {
+        "flag": false
+      },
+      "passed": true,
+      "actual": {
+        "result": {
+          "valid": true,
+          "flag": false
+        }
+      }
+    },
+    {
+      "case": "module-condition-helper",
+      "inputs": {
+        "flag": 0
+      },
+      "passed": true,
+      "actual": {
+        "result": {
+          "valid": false,
+          "flag": null
+        }
+      }
+    },
+    {
+      "case": "dictionary-keys",
+      "passed": true,
+      "actual": {
+        "result": {
+          "keys": [
+            "a"
+          ]
+        }
+      }
+    }
+  ]
+}

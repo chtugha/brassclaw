@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-94c1158854d71b37",
+  "object": "chat.completion",
+  "created": 1791325721,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"composition_summary\": \"Audit only; no edit authorized. The system text contains a repeated word (sachlich) but the user explicitly forbids any change, and repeated wording alone does not authorize an edit. Echoed all messages unchanged. Provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no rewrite or inferred capability facts were applied.\", \"proposed_recipe_updates\": [], \"proposed_components\": [], \"settings_adjustments\": []\n, \"adjusted_volatile_messages\": [[\"system\", \"Antworte sachlich sachlich.\"], [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]], \"proposed_intent_examples\": []\n, \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98252,
+    "total_tokens": 98407,
+    "completion_tokens": 155,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

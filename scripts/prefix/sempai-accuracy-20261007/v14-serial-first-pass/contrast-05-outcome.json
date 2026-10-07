@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-contrast-05. Raw slots is a list with length 1..4 inclusive, all items exact integers 5..9 inclusive; empty is invalid. No bool/float/coercion/exceptions. Always result={ok:boolean,slots:original if valid else []}. No I/O, imports, host calls or upstream validation assumption. Module-level result assignment; no execution, submission, Q1/Q2 or activation performed.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-05",
+        "description": "Raw slots must be a list with length 1..4 inclusive, all items exact integers 5..9 inclusive. Empty is invalid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "slots = inputs.get('slots')\nok = type(slots) is list and 1 <= len(slots) <= 4\nif ok:\n    for slot in slots:\n        if not (type(slot) is int and 5 <= slot <= 9):\n            ok = False\n            break\nresult = {'ok': ok, 'slots': slots if ok else []}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

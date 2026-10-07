@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bded40808cdadc8c",
+  "object": "chat.completion",
+  "created": 1791323272,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Offline full-v3 export mode. The requested class-21 Recipe draft is emitted as a complete v3 constructor with the exact supplied UUIDs, persisted knowledge/stepnumber/type=component/include schema, one desc_idx=0, one variant step_link=0:1-0:E, ten distinct intents, and trigger=null/steps=[]/dependency_registry=null. The draft references the unapproved PythonCode d0a73787-74ae-55cb-b6a0-25131936e06d and the unapproved ToolSkill a6ed3264-13bc-56ae-9de7-064df4b3d2ce, both without version numbers or approval. The current offline sink cannot preserve the full v3 fields (step_descriptions, variants, dependency_registry); it accepts name/description/trigger/steps/prior_knowledge_content/intent_examples and drops the rest. This is an unapproved draft; Q1 and human Q2 are required before activation, and no runtime/approval claims are made. The original conversation is preserved unchanged.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Design a reusable ready reply workflow.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-01\",\n        \"description\": \"Posts exactly the fixed word as a user reply using the bound existing Tool. Unapproved draft; Q1 and human Q2 required before activation.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": null,\n        \"intent_examples\": [\n          \"say ready\",\n          \"reply ready\",\n          \"post ready\",\n          \"tell me you are ready\",\n          \"please say ready\",\n          \"respond with ready\",\n          \"send a readiness reply\",\n          \"give me a readiness response\",\n          \"answer with ready\",\n          \"please post the word ready\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Post the fixed readiness reply\",\n            \"yaml_source\": \"Human-readable documentation of the same two steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind the reply Tool\",\n                \"content\": \"Bind host.post_reply\",\n                \"type\": \"component\",\n                \"include\": [\"a6ed3264-13bc-56ae-9de7-064df4b3d2ce\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post the fixed reply\",\n                \"content\": \"Run the fixed-reply PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"d0a73787-74ae-55cb-b6a0-25131936e06d\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-readiness-reply\",\n            \"description\": \"Post exactly Ready. without input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say ready\",\n              \"reply ready\",\n              \"post ready\",\n              \"tell me you are ready\",\n              \"please say ready\",\n              \"respond with ready\",\n              \"send a readiness reply\",\n              \"give me a readiness response\",\n              \"answer with ready\",\n              \"please post the word ready\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 77037,
+    "total_tokens": 77957,
+    "completion_tokens": 920,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

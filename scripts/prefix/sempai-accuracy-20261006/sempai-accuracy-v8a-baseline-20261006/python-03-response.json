@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9952a3e86c241d95",
+  "object": "chat.completion",
+  "created": 1791323059,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the supplied volatile message unchanged (no justified repair). Drafted one pure-logic class-22 component pc-transfer-03 with name/description/content only, per the supported offline sink. The body is a module-scope guard: it reads raw inputs via inputs.get('lag') so missing and null stay distinct, validates exact integer membership in -1..8 inclusive (rejecting bool/float/strings), and assigns result to the helper's returned object on every path. No imports, I/O, host calls, exceptions, or coercion. The draft is unapproved; target typed inputs require runner support, and no observed tests/submission/activation are claimed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-03\",\n        \"description\": \"Pure-logic guard accepting an exact integer lag in -1..8 inclusive; returns {accepted, lag} with lag echoed only when accepted, else null. No Tool call, I/O, or host boundary.\",\n        \"content\": \"def classify_lag(raw):\\n    if 'lag' not in inputs:\\n        result = {'accepted': False, 'lag': None}\\n    else:\\n        lag = inputs['lag']\\n        if type(lag) is bool or not type(lag) is int or not -1 <= lag <= 8:\\n            result = {'accepted': False, 'lag': None}\\n        else:\\n            result = {'accepted': True, 'lag': lag}\\nresult = classify_lag(inputs.get('lag'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76880,
+    "total_tokens": 77301,
+    "completion_tokens": 421,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

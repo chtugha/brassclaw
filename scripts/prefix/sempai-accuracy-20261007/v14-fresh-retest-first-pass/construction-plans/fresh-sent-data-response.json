@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bbb7d66fa49f7fc7",
+  "object": "chat.completion",
+  "created": 1791359356,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"class_code == 21\", \"result\": \"recipe-fresh-sent-data: offline unapproved data-return subworkflow; no Tool calls and no posted message\"}, {\"guard\": \"class_code == 22\", \"result\": \"pc-fresh-sent-data: unapproved target typed-input draft; selected-runner support, Q1 and human Q2 remain prerequisites\"}, {\"guard\": \"class_code == 21 and payload has no required fields\", \"result\": \"BLOCKED DRAFT: missing required constructor fields; no submission or activation occurred\"}, {\"guard\": \"class_code == 22 and payload has no required fields\", \"result\": \"BLOCKED DRAFT: missing required constructor fields; no submission or activation occurred\"}, {\"guard\": \"class_code not in (21, 22)\", \"result\": \"BLOCKED DRAFT: unsupported class_code; no submission or activation occurred\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"offline-design\", \"class21\", \"class22\", \"recipe\", \"pythoncode\", \"data-return\", \"no-effect\", \"no-posted-message\"], \"notes\": \"The word Sent does not select an effect. This program returns phase DATA only; it cannot satisfy say/post/reply intents. Its ten intents request state data. The\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98613,
+    "total_tokens": 98917,
+    "completion_tokens": 304,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

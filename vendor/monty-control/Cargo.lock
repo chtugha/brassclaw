@@ -916,7 +916,7 @@ dependencies = [
 
 [[package]]
 name = "monty"
-version = "1.0.0-brassclaw.control.3"
+version = "1.0.0-brassclaw.control.6"
 dependencies = [
  "ahash",
  "chrono",
@@ -958,14 +958,14 @@ dependencies = [
 
 [[package]]
 name = "monty-alloc"
-version = "1.0.0-brassclaw.control.3"
+version = "1.0.0-brassclaw.control.6"
 dependencies = [
  "monty-types",
 ]
 
 [[package]]
 name = "monty-macros"
-version = "1.0.0-brassclaw.control.3"
+version = "1.0.0-brassclaw.control.6"
 dependencies = [
  "insta",
  "proc-macro2",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "monty-types"
-version = "1.0.0-brassclaw.control.3"
+version = "1.0.0-brassclaw.control.6"
 dependencies = [
  "chrono",
  "jiff",

@@ -14,7 +14,7 @@
 //!
 //! # State-2 write invariant (FIND-P9-08)
 //!
-//! Only [`ValidationQueueStore::gate1_pass`] (`pub(crate)`) writes state 2 —
+//! Only [`ValidationQueueStore::gate1_pass_reviewed`] (`pub(crate)`) writes state 2 —
 //! the sole write path, enforced by Rust visibility. Any other writer of
 //! state 2 is a security bug. The Q2 reviewer approves from state 2 →
 //! [`ValidationQueueStore::approve`] deletes the row (graduation) in ONE
@@ -24,10 +24,9 @@
 //!
 //! [`ValidationQueueStore::submit`] carries `proposed_payload: Option<Value>`
 //! (set for upgrades, `None` for new-component submissions). The graduation
-//! *apply* of `proposed_payload` (overwrite the live validated row) is wired
-//! in Phase N (§0.23.9). Phase A.5 `approve` implements the new-component
-//! graduation path only and **errors** on a non-null `proposed_payload` to
-//! avoid silently dropping an upgrade (Q1 answer — defer per plan).
+//! *apply* of `proposed_payload` still overwrites the live validated row. The
+//! queue is locked through graduation and payload fields fail closed. This
+//! legacy path does not implement immutable v3 revisions/association approval.
 //!
 //! # Feature gate
 //!
@@ -45,6 +44,10 @@ use brassclaw_pg::PgPool;
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
+
+#[path = "validation_review.rs"]
+mod review;
+pub(crate) use review::Q1Candidate;
 
 #[cfg(feature = "postgres")]
 use crate::pg_basic_prompt_store::PgBasicPromptStore;
@@ -79,6 +82,12 @@ pub enum ValidationQueueError {
     AlreadyQueued { component_id: Uuid },
     #[error("unknown component class {class_code} — no target component table")]
     UnknownClass { class_code: i32 },
+    #[error("component {component_id} has an invalid upgrade payload")]
+    InvalidPayload { component_id: Uuid },
+    #[error("component {component_id} cannot pass Q1 with reported errors")]
+    InvalidGate1Result { component_id: Uuid },
+    #[error("component {component_id} or its submission changed since Q1 review")]
+    ReviewChanged { component_id: Uuid },
     #[error(
         "component {component_id} disappeared during approve (rolled back, queue row preserved)"
     )]
@@ -99,7 +108,12 @@ fn map_pool(e: deadpool_postgres::PoolError) -> ValidationQueueError {
 
 fn map_pg(e: tokio_postgres::Error) -> ValidationQueueError {
     ValidationQueueError::Db {
-        reason: e.to_string(),
+        // PostgreSQL's detail/message can contain complete candidate rows.
+        // Retain the stable SQLSTATE for diagnosis without exposing contents.
+        reason: match e.code() {
+            Some(code) => format!("SQLSTATE {}", code.code()),
+            None => e.to_string(),
+        },
     }
 }
 
@@ -191,6 +205,9 @@ impl ValidationQueueStore {
         component_class: i32,
         proposed_payload: Option<Value>,
     ) -> Result<(), ValidationQueueError> {
+        if let Some(payload) = &proposed_payload {
+            validate_upgrade_payload(component_class, component_id, payload)?;
+        }
         let class_i16: i16 =
             component_class
                 .try_into()
@@ -226,51 +243,12 @@ impl ValidationQueueStore {
         Ok(())
     }
 
-    /// Gate 1 clean pass: transition `state 1 → state 2` and clear Q1 errors.
-    ///
-    /// `pub(crate)` — the ONLY write path for state 2 (FIND-P9-08). The Q1
-    /// orchestration ([`crate::q1_orchestrator::run_q1_validation`]) lives in
-    /// this crate and is the sole legitimate caller.
-    pub(crate) async fn gate1_pass(
-        &self,
-        scope: &ComponentScope,
-        component_id: Uuid,
-        errors: &[String],
-    ) -> Result<(), ValidationQueueError> {
-        let cleared: Vec<String> = errors.to_vec();
-        let client = self.pool.get().await.map_err(map_pool)?;
-        let n = client
-            .execute(
-                "UPDATE reborn_validation_queue
-                 SET state = 2,
-                     validation_errors = $6,
-                     updated_at = now()
-                 WHERE tenant_id = $1 AND user_id = $2
-                   AND agent_id = $3 AND project_id = $4
-                   AND component_id = $5
-                   AND state = 1",
-                &[
-                    &scope.tenant_id,
-                    &scope.user_id,
-                    &scope.agent_id,
-                    &scope.project_id,
-                    &component_id,
-                    &cleared,
-                ],
-            )
-            .await
-            .map_err(map_pg)?;
-        if n == 0 {
-            return Err(ValidationQueueError::NotFound { component_id });
-        }
-        Ok(())
-    }
-
     /// Record a Q1 failure: stays in `state 1`, populates `validation_errors`,
     /// increments nothing (the author must fix and resubmit — §0.18).
     ///
-    /// `pub(crate)` — paired with [`Self::gate1_pass`]; only the Q1
+    /// `pub(crate)` — paired with [`Self::gate1_pass_reviewed`]; only the Q1
     /// orchestration in this crate calls it.
+    #[cfg(test)]
     pub(crate) async fn gate1_fail(
         &self,
         scope: &ComponentScope,
@@ -315,18 +293,18 @@ impl ValidationQueueStore {
         feedback: &str,
     ) -> Result<(), ValidationQueueError> {
         let client = self.pool.get().await.map_err(map_pool)?;
-        let row = client
-            .query_opt(
+        let threshold = i32::from(self.reject_threshold);
+        let updated = client
+            .execute(
                 "UPDATE reborn_validation_queue
-                 SET state = 3,
+                 SET state = CASE WHEN counter + 1 >= $7 THEN 4 ELSE 3 END,
                      counter = counter + 1,
                      review_feedback = $6,
                      updated_at = now()
                  WHERE tenant_id = $1 AND user_id = $2
                    AND agent_id = $3 AND project_id = $4
                    AND component_id = $5
-                   AND state = 2
-                 RETURNING counter",
+                   AND state = 2",
                 &[
                     &scope.tenant_id,
                     &scope.user_id,
@@ -334,11 +312,12 @@ impl ValidationQueueStore {
                     &scope.project_id,
                     &component_id,
                     &feedback,
+                    &threshold,
                 ],
             )
             .await
             .map_err(map_pg)?;
-        let Some(row) = row else {
+        if updated == 0 {
             // Not in state 2 — read the current state for a precise error.
             let cur = client
                 .query_opt(
@@ -363,30 +342,9 @@ impl ValidationQueueStore {
                 }),
                 None => Err(ValidationQueueError::NotFound { component_id }),
             };
-        };
-        let counter_after: i32 = row.get(0);
-        if next_reject_state(counter_after, self.reject_threshold) == STATE_DELETION_CANDIDATE {
-            let n = client
-                .execute(
-                    "UPDATE reborn_validation_queue
-                     SET state = 4, updated_at = now()
-                     WHERE tenant_id = $1 AND user_id = $2
-                       AND agent_id = $3 AND project_id = $4
-                       AND component_id = $5",
-                    &[
-                        &scope.tenant_id,
-                        &scope.user_id,
-                        &scope.agent_id,
-                        &scope.project_id,
-                        &component_id,
-                    ],
-                )
-                .await
-                .map_err(map_pg)?;
-            if n == 0 {
-                return Err(ValidationQueueError::NotFound { component_id });
-            }
         }
+        // Promotion and rejection commit in one row update, so an invalidation
+        // cannot be overwritten by a later unguarded state-4 update.
         Ok(())
     }
 
@@ -421,15 +379,22 @@ impl ValidationQueueStore {
     ) -> Result<Uuid, ValidationQueueError> {
         let mut client = self.pool.get().await.map_err(map_pool)?;
 
-        // (0) Read the queue row before any transaction: state + upgrade
-        // payload + class. These are plain reads, not part of the graduation tx.
-        let row = client
+        // Queue-before-component lock order is shared with invalidation and
+        // purge. Read the reviewed state/payload under the graduation lock; a
+        // rejection or concurrent approval cannot invalidate an earlier read.
+        let tx = client.transaction().await.map_err(map_pg)?;
+        let row = tx
             .query_opt(
-                "SELECT state, proposed_payload, component_class
-                 FROM reborn_validation_queue
+                &format!(
+                    "SELECT state, proposed_payload, component_class, id, to_jsonb(q)::text,
+                         q1_component_bytes, q1_queue_bytes, (to_jsonb(q)-{})::text
+                 FROM reborn_validation_queue q
                  WHERE tenant_id = $1 AND user_id = $2
                    AND agent_id = $3 AND project_id = $4
-                   AND component_id = $5",
+                   AND component_id = $5
+                 FOR UPDATE",
+                    review::QUEUE_VOLATILE
+                ),
                 &[
                     &scope.tenant_id,
                     &scope.user_id,
@@ -452,28 +417,41 @@ impl ValidationQueueStore {
         }
         let proposed_payload: Option<Value> = row.get(1);
         let class_code: i16 = row.get(2);
+        let queue_id: Uuid = row.get(3);
+        let queue_bytes: String = row.get(4);
 
-        // (1) Resolve the target table BEFORE BEGIN — no wasted BEGIN on an
-        // unknown class (FIND-P9-05). `resolve_component_table` returns a
-        // static literal, so interpolating it into the UPDATE is safe (no
-        // user-supplied identifier).
+        // Resolve only a trusted table literal; unknown classes roll back
+        // without mutating the queue or component.
         let table = resolve_component_table(class_code as i32).ok_or(
             ValidationQueueError::UnknownClass {
                 class_code: class_code as i32,
             },
         )?;
 
-        // (2) BEGIN — UPDATE the component, then DELETE the queue row.
+        // Recheck all protected authoring fields and the exact queued proposal
+        // under queue-before-component locks. Changes after Q1 require review
+        // again; a hash of today's row is not evidence it was reviewed.
+        if let Some(payload) = &proposed_payload {
+            validate_upgrade_payload(i32::from(class_code), component_id, payload)?;
+        }
+        let current_component =
+            review::component_bytes(&tx, scope, component_id, class_code).await?;
+        let reviewed_component: Option<String> = row.get(5);
+        let reviewed_queue: Option<String> = row.get(6);
+        if reviewed_component.as_deref() != Some(current_component.as_str())
+            || reviewed_queue.as_deref() != Some(row.get::<_, String>(7).as_str())
+        {
+            return Err(ValidationQueueError::ReviewChanged { component_id });
+        }
+
+        // Update the component, then delete the locked queue row.
         // Ordering: UPDATE before DELETE so the graduation trigger (V077)
         // fires only after the component is already updated — no window where
         // the queue row is gone but the component change is not yet committed.
-        let tx = client.transaction().await.map_err(map_pg)?;
-
         let updated = if let Some(payload) = proposed_payload {
             // Upgrade-copy graduation (§0.23.5 / Phase N): apply proposed
-            // payload to the live validated row. Only writable content columns
-            // are updated; `validation_status` stays 'validated'. Unknown
-            // payload keys are silently ignored (forward-compat).
+            // payload to the live validated row. Only validated writable fields
+            // are updated; unknown fields/types fail before mutation.
             apply_upgrade_payload(&tx, table, class_code, component_id, scope, &payload).await?
         } else {
             // New-component graduation: flip pending → validated.
@@ -482,7 +460,7 @@ impl ValidationQueueStore {
                  SET validation_status = 'validated', updated_at = now()
                  WHERE id = $1
                    AND tenant_id = $2 AND user_id = $3
-                   AND agent_id = $4 AND project_id = $5"
+                   AND agent_id = $4 AND project_id = $5 AND class_code = $6"
             );
             tx.execute(
                 update_sql.as_str(),
@@ -492,6 +470,7 @@ impl ValidationQueueStore {
                     &scope.user_id,
                     &scope.agent_id,
                     &scope.project_id,
+                    &class_code,
                 ],
             )
             .await
@@ -504,29 +483,78 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::ComponentMissing { component_id });
         }
 
-        // Record q2_actor before deleting the row so the graduation is
-        // auditable if the row is later inspected via DB-level tooling.
-        // The UPDATE is best-effort (the column may be NULL if V078 has not
-        // run yet in a dev migration catch-up); we do not fail the approval
-        // if the UPDATE matches 0 rows — the DELETE below is authoritative.
-        if let Some(actor) = q2_actor {
-            tx.execute(
-                "UPDATE reborn_validation_queue
-                 SET q2_actor = $6
-                 WHERE tenant_id = $1 AND user_id = $2
-                   AND agent_id = $3 AND project_id = $4
-                   AND component_id = $5",
+        // Capture the actual updated row while its write lock is held. This
+        // immutable legacy receipt is evidence retention, not an exact-version
+        // Skill association approval or permission to invoke a Tool.
+        let component_sql = format!(
+            "SELECT to_jsonb(c)::text FROM {table} c WHERE id=$1
+             AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
+             AND class_code=$6"
+        );
+        let component_bytes: String = tx
+            .query_one(
+                &component_sql,
                 &[
+                    &component_id,
                     &scope.tenant_id,
                     &scope.user_id,
                     &scope.agent_id,
                     &scope.project_id,
-                    &component_id,
-                    &actor,
+                    &class_code,
                 ],
             )
             .await
-            .map_err(map_pg)?;
+            .map_err(map_pg)?
+            .get(0);
+        tx.execute(
+            "INSERT INTO reborn_component_graduation_receipts
+             (id, component_id, component_class, tenant_id, user_id, agent_id, project_id,
+              queue_id, q2_actor, component_bytes, component_checksum, queue_bytes, queue_checksum)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                encode(sha256(convert_to($10::text,'UTF8')),'hex'),$11,
+                encode(sha256(convert_to($11::text,'UTF8')),'hex'))",
+            &[
+                &Uuid::new_v4(),
+                &component_id,
+                &class_code,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &queue_id,
+                &q2_actor,
+                &component_bytes,
+                &queue_bytes,
+            ],
+        )
+        .await
+        .map_err(map_pg)?;
+
+        // The immutable receipt retains the actor after queue deletion. Keep
+        // the queue stamp coherent too; this row is locked and must still exist.
+        if let Some(actor) = q2_actor {
+            let stamped = tx
+                .execute(
+                    "UPDATE reborn_validation_queue
+                 SET q2_actor = $6
+                 WHERE tenant_id = $1 AND user_id = $2
+                   AND agent_id = $3 AND project_id = $4
+                   AND component_id = $5",
+                    &[
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                        &component_id,
+                        &actor,
+                    ],
+                )
+                .await
+                .map_err(map_pg)?;
+            if stamped != 1 {
+                tx.rollback().await.map_err(map_pg)?;
+                return Err(ValidationQueueError::NotFound { component_id });
+            }
         }
 
         let deleted = tx
@@ -636,7 +664,7 @@ impl ValidationQueueStore {
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let rows = client
             .query(
-                "SELECT component_id, component_class, proposed_payload
+                "SELECT component_id
                  FROM reborn_validation_queue
                  WHERE tenant_id = $1 AND user_id = $2
                    AND agent_id = $3 AND project_id = $4
@@ -655,10 +683,33 @@ impl ValidationQueueStore {
         let mut purged: u64 = 0;
         for row in rows {
             let component_id: Uuid = row.get(0);
-            let class_code: i16 = row.get(1);
-            let proposed_payload: Option<Value> = row.get(2);
 
             let tx = client.transaction().await.map_err(map_pg)?;
+
+            // Re-read under the same queue-before-component lock order as
+            // approval. The discovery query is not permission to delete a row
+            // whose state/payload changed while waiting for this transaction.
+            let current = tx
+                .query_opt(
+                    "SELECT component_class, proposed_payload FROM reborn_validation_queue
+                 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
+                   AND component_id=$5 AND state=4 FOR UPDATE",
+                    &[
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                        &component_id,
+                    ],
+                )
+                .await
+                .map_err(map_pg)?;
+            let Some(current) = current else {
+                tx.rollback().await.map_err(map_pg)?;
+                continue;
+            };
+            let class_code: i16 = current.get(0);
+            let proposed_payload: Option<Value> = current.get(1);
 
             // New-component deletion candidate: delete the (pending/rejected)
             // component row too. Upgrade deletion candidate: leave the live
@@ -672,7 +723,7 @@ impl ValidationQueueStore {
                     "DELETE FROM {table}
                      WHERE id = $1
                        AND tenant_id = $2 AND user_id = $3
-                       AND agent_id = $4 AND project_id = $5"
+                       AND agent_id = $4 AND project_id = $5 AND class_code = $6"
                 );
                 tx.execute(
                     del_sql.as_str(),
@@ -682,6 +733,7 @@ impl ValidationQueueStore {
                         &scope.user_id,
                         &scope.agent_id,
                         &scope.project_id,
+                        &class_code,
                     ],
                 )
                 .await
@@ -740,11 +792,28 @@ impl ValidationQueueStore {
              SET validation_status = 'pending', updated_at = now()
              WHERE id = $1
                AND tenant_id = $2 AND user_id = $3
-               AND agent_id = $4 AND project_id = $5"
+               AND agent_id = $4 AND project_id = $5 AND class_code = $6"
         );
 
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let tx = client.transaction().await.map_err(map_pg)?;
+
+        // Approval/purge take the queue lock before the component lock. A
+        // consistent order prevents a queue/component inversion deadlock.
+        tx.query_opt(
+            "SELECT id FROM reborn_validation_queue
+             WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
+               AND component_id=$5 FOR UPDATE",
+            &[
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &component_id,
+            ],
+        )
+        .await
+        .map_err(map_pg)?;
 
         // 1. Flip the component row back to 'pending'.
         tx.execute(
@@ -755,6 +824,7 @@ impl ValidationQueueStore {
                 &scope.user_id,
                 &scope.agent_id,
                 &scope.project_id,
+                &class_i16,
             ],
         )
         .await
@@ -874,11 +944,43 @@ fn resolve_content_column(class_code: i16) -> Option<(&'static str, bool)> {
     }
 }
 
+fn validate_upgrade_payload(
+    class_code: i32,
+    component_id: Uuid,
+    payload: &Value,
+) -> Result<(), ValidationQueueError> {
+    resolve_component_table(class_code).ok_or(ValidationQueueError::UnknownClass { class_code })?;
+    let invalid = || ValidationQueueError::InvalidPayload { component_id };
+    let record = payload
+        .as_object()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(invalid)?;
+    if record
+        .keys()
+        .any(|key| !["name", "description", "content"].contains(&key.as_str()))
+    {
+        return Err(invalid());
+    }
+    for key in ["name", "description"] {
+        if record.get(key).is_some_and(|value| !value.is_string()) {
+            return Err(invalid());
+        }
+    }
+    if let Some(value) = record.get("content") {
+        let (_, json) = resolve_content_column(class_code as i16).ok_or_else(invalid)?;
+        if (json && value.is_null()) || (!json && !value.is_string()) {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
 /// Apply an upgrade `proposed_payload` to the live component row inside a
 /// transaction. Updates `name`, `description`, and the primary content column
 /// (class-specific — see [`resolve_content_column`]) from the JSONB payload.
 /// Leaves `validation_status = 'validated'` and all other columns untouched.
-/// Missing payload keys are ignored (forward-compat).
+/// Missing writable keys leave their columns unchanged. Unknown keys and invalid
+/// types fail; an approval must never silently approve different content.
 ///
 /// Returns the row count (0 = component not found, 1 = updated).
 async fn apply_upgrade_payload(
@@ -889,6 +991,7 @@ async fn apply_upgrade_payload(
     scope: &ComponentScope,
     payload: &Value,
 ) -> Result<u64, ValidationQueueError> {
+    validate_upgrade_payload(i32::from(class_code), component_id, payload)?;
     let name: Option<String> = payload
         .get("name")
         .and_then(|v| v.as_str())
@@ -906,9 +1009,9 @@ async fn apply_upgrade_payload(
         if let Some((col, is_jsonb)) = content_col {
             payload.get("content").map(|v| {
                 let s = if is_jsonb {
-                    serde_json::to_string(v).unwrap_or_default()
+                    v.to_string()
                 } else {
-                    v.as_str().unwrap_or_default().to_owned()
+                    v.as_str().expect("validated text content").to_owned()
                 };
                 ((col, is_jsonb), s)
             })
@@ -923,7 +1026,7 @@ async fn apply_upgrade_payload(
     let has_content = content_info.is_some();
 
     let mut set_parts: Vec<String> = vec!["updated_at = now()".to_string()];
-    let mut next_param: usize = 6;
+    let mut next_param: usize = 7;
 
     if has_name {
         set_parts.push(format!("name = ${next_param}"));
@@ -939,7 +1042,6 @@ async fn apply_upgrade_payload(
         } else {
             set_parts.push(format!("{col} = ${next_param}"));
         }
-        let _ = next_param; // last param; suppress unused warning
     }
 
     let set_clause = set_parts.join(", ");
@@ -948,7 +1050,7 @@ async fn apply_upgrade_payload(
          SET {set_clause}
          WHERE id = $1
            AND tenant_id = $2 AND user_id = $3
-           AND agent_id = $4 AND project_id = $5"
+           AND agent_id = $4 AND project_id = $5 AND class_code = $6"
     );
 
     // Consume Options into owned Strings before building the params slice.
@@ -961,6 +1063,7 @@ async fn apply_upgrade_payload(
         &scope.user_id,
         &scope.agent_id,
         &scope.project_id,
+        &class_code,
     ];
     // Append extras in the same order the SET placeholders were pushed.
     if has_name {
@@ -976,16 +1079,6 @@ async fn apply_upgrade_payload(
     tx.execute(update_sql.as_str(), &params)
         .await
         .map_err(map_pg)
-}
-
-/// The post-reject state after `counter` has been incremented: `4` (deletion
-/// candidate) when `counter >= threshold`, else `3` (rejected) — §0.18.
-pub(crate) fn next_reject_state(counter_after_increment: i32, threshold: u8) -> i16 {
-    if counter_after_increment >= threshold as i32 {
-        STATE_DELETION_CANDIDATE
-    } else {
-        STATE_REJECTED
-    }
 }
 
 #[cfg(test)]
@@ -1033,20 +1126,6 @@ mod tests {
         assert_eq!(resolve_component_table(11), None);
         assert_eq!(resolve_component_table(99), None);
         assert_eq!(resolve_component_table(-1), None);
-    }
-
-    #[test]
-    fn next_reject_state_promotes_at_threshold() {
-        // Below threshold → state 3 (rejected).
-        assert_eq!(next_reject_state(1, 3), STATE_REJECTED);
-        assert_eq!(next_reject_state(2, 3), STATE_REJECTED);
-        // At/above threshold → state 4 (deletion candidate).
-        assert_eq!(next_reject_state(3, 3), STATE_DELETION_CANDIDATE);
-        assert_eq!(next_reject_state(4, 3), STATE_DELETION_CANDIDATE);
-        // Threshold 1 promotes on the first rejection.
-        assert_eq!(next_reject_state(1, 1), STATE_DELETION_CANDIDATE);
-        // Counter 0 (no rejection yet) is below any non-zero threshold.
-        assert_eq!(next_reject_state(0, 3), STATE_REJECTED);
     }
 
     #[test]
@@ -1314,7 +1393,12 @@ mod tests {
             // A second submit for the same (scope, component_id) is rejected —
             // one pending upgrade per component at a time (§0.23.5).
             let err = store
-                .submit(&scope, cid, 20, Some(serde_json::json!({"x": 1})))
+                .submit(
+                    &scope,
+                    cid,
+                    20,
+                    Some(serde_json::json!({"content": "edited"})),
+                )
                 .await
                 .expect_err("duplicate submit must error");
             assert!(matches!(err, ValidationQueueError::AlreadyQueued { .. }));
@@ -1327,8 +1411,18 @@ mod tests {
             let store = ValidationQueueStore::new(rig.pool.clone());
 
             // gate1_pass: 1 → 2, errors cleared.
-            let a = Uuid::new_v4();
+            let a = insert_pending_note(&rig.pool, &scope).await;
             store.submit(&scope, a, 20, None).await.unwrap();
+            assert!(matches!(
+                store
+                    .gate1_pass(&scope, a, &["unresolved validation failure".into()])
+                    .await,
+                Err(ValidationQueueError::InvalidGate1Result { .. })
+            ));
+            assert_eq!(
+                store.list(&scope, Some(1)).await.unwrap()[0].state,
+                STATE_Q1_PENDING
+            );
             store.gate1_pass(&scope, a, &[]).await.expect("pass");
             let passed = store.list(&scope, Some(2)).await.unwrap();
             assert!(passed.iter().any(|r| r.component_id == a));
@@ -1356,7 +1450,7 @@ mod tests {
             let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone()); // threshold 3
-            let cid = Uuid::new_v4();
+            let cid = insert_pending_note(&rig.pool, &scope).await;
             store.submit(&scope, cid, 20, None).await.unwrap();
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
             store
@@ -1381,7 +1475,7 @@ mod tests {
             let scope = test_scope();
             // threshold 1 → first rejection promotes to state 4.
             let store = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), 1);
-            let cid = Uuid::new_v4();
+            let cid = insert_pending_note(&rig.pool, &scope).await;
             store.submit(&scope, cid, 20, None).await.unwrap();
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
             store.reject(&scope, cid, "first").await.expect("reject");
@@ -1394,6 +1488,114 @@ mod tests {
                 .expect("promoted to deletion candidate");
             assert_eq!(row.state, STATE_DELETION_CANDIDATE);
             assert_eq!(row.counter, 1);
+        }
+
+        #[tokio::test]
+        async fn q1_result_cannot_certify_a_changed_candidate_or_submission() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+            for change_submission in [false, true] {
+                let cid = insert_pending_note(&rig.pool, &scope).await;
+                store.submit(&scope, cid, 20, None).await.unwrap();
+                let review = store.capture_q1_candidate(&scope, cid).await.unwrap();
+                let client = rig.pool.get().await.unwrap();
+                if change_submission {
+                    client.execute("UPDATE reborn_validation_queue SET proposed_payload=$2 WHERE component_id=$1",
+                        &[&cid, &serde_json::json!({"content":"changed while Q1 runs"})]).await.unwrap();
+                } else {
+                    client
+                        .execute(
+                            "UPDATE reborn_notes SET content='changed while Q1 runs' WHERE id=$1",
+                            &[&cid],
+                        )
+                        .await
+                        .unwrap();
+                }
+                assert!(matches!(
+                    store.gate1_pass_reviewed(&scope, &review, &[]).await,
+                    Err(ValidationQueueError::ReviewChanged { .. })
+                ));
+                assert!(matches!(
+                    store
+                        .gate1_fail_reviewed(&scope, &review, &["stale failure".into()])
+                        .await,
+                    Err(ValidationQueueError::ReviewChanged { .. })
+                ));
+                let rows = store.list(&scope, Some(1)).await.unwrap();
+                let queued = rows.iter().find(|row| row.component_id == cid).unwrap();
+                assert!(queued.validation_errors.is_empty());
+            }
+        }
+
+        #[tokio::test]
+        async fn q2_never_approves_content_or_proposals_changed_after_q1() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+            for change_submission in [false, true] {
+                let cid = insert_pending_note(&rig.pool, &scope).await;
+                store
+                    .submit(
+                        &scope,
+                        cid,
+                        20,
+                        Some(serde_json::json!({"content":"reviewed replacement"})),
+                    )
+                    .await
+                    .unwrap();
+                store.gate1_pass(&scope, cid, &[]).await.unwrap();
+                let client = rig.pool.get().await.unwrap();
+                if change_submission {
+                    client.execute("UPDATE reborn_validation_queue SET proposed_payload=$2 WHERE component_id=$1",
+                        &[&cid, &serde_json::json!({"content":"unreviewed replacement"})]).await.unwrap();
+                } else {
+                    client
+                        .execute(
+                            "UPDATE reborn_notes SET description='unreviewed metadata' WHERE id=$1",
+                            &[&cid],
+                        )
+                        .await
+                        .unwrap();
+                }
+                assert!(matches!(
+                    store.approve(&scope, cid, Some("human")).await,
+                    Err(ValidationQueueError::ReviewChanged { .. })
+                ));
+                assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "pending");
+                assert!(
+                    store
+                        .list(&scope, Some(2))
+                        .await
+                        .unwrap()
+                        .iter()
+                        .any(|row| row.component_id == cid)
+                );
+                let receipts: i64 = client.query_one("SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1", &[&cid]).await.unwrap().get(0);
+                assert_eq!(receipts, 0);
+            }
+        }
+
+        #[tokio::test]
+        async fn accounting_changes_between_q1_and_q2_do_not_change_authoring_review() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+            let cid = insert_pending_note(&rig.pool, &scope).await;
+            store.submit(&scope, cid, 20, None).await.unwrap();
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .execute(
+                    "UPDATE reborn_notes SET last_audit_at=now(), audit_failure_count=audit_failure_count+1 WHERE id=$1",
+                    &[&cid],
+                )
+                .await
+                .unwrap();
+            store.approve(&scope, cid, Some("human")).await.unwrap();
+            assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "validated");
         }
 
         #[tokio::test]
@@ -1420,23 +1622,142 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn approve_unknown_class_errors_before_transaction() {
+        async fn approval_rechecks_review_state_after_a_concurrent_rejection_commits() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = Arc::new(ValidationQueueStore::new(rig.pool.clone()));
+            let cid = insert_pending_note(&rig.pool, &scope).await;
+            store.submit(&scope, cid, 20, None).await.unwrap();
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+
+            // Keep an actual rejection write uncommitted. Approval's SELECT
+            // must wait for this row and then observe state 3; an unlocked read
+            // of state 2 followed by a later DELETE would graduate stale review.
+            let mut rejecting = rig.pool.get().await.unwrap();
+            let tx = rejecting.transaction().await.unwrap();
+            tx.execute(
+                "UPDATE reborn_validation_queue SET state=3, counter=counter+1,
+                 review_feedback='concurrent rejection' WHERE component_id=$1",
+                &[&cid],
+            )
+            .await
+            .unwrap();
+            let approving = Arc::clone(&store);
+            let approval_scope = scope.clone();
+            let approval = tokio::spawn(async move {
+                approving.approve(&approval_scope, cid, Some("human")).await
+            });
+            let observer = rig.pool.get().await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    let blocked: i64 = observer
+                        .query_one(
+                            "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()
+                         AND pid<>pg_backend_pid() AND state='active' AND wait_event_type='Lock'
+                         AND query LIKE '%reborn_validation_queue%'",
+                            &[],
+                        )
+                        .await
+                        .unwrap()
+                        .get(0);
+                    if blocked > 0 {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("approval reaches the actual database row lock");
+            tx.commit().await.unwrap();
+            let failure = tokio::time::timeout(std::time::Duration::from_secs(5), approval)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap_err();
+            assert!(matches!(
+                failure,
+                ValidationQueueError::NotQ1Passed {
+                    state: STATE_REJECTED,
+                    ..
+                }
+            ));
+            assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "pending");
+            let queued = store.list(&scope, Some(3)).await.unwrap();
+            assert_eq!(queued.len(), 1);
+            assert_eq!(queued[0].component_id, cid);
+            assert_eq!(
+                queued[0].review_feedback.as_deref(),
+                Some("concurrent rejection")
+            );
+        }
+
+        #[tokio::test]
+        async fn malformed_upgrade_payloads_never_change_or_graduate_a_component() {
             let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
-            let cid = Uuid::new_v4();
-            // Class 11 is reserved (no target table) — submit accepts it; approve must not.
-            store.submit(&scope, cid, 11, None).await.expect("submit");
+            let cid = insert_pending_note(&rig.pool, &scope).await;
+            for payload in [
+                serde_json::json!({"unknown":"ignored before"}),
+                serde_json::json!({"content":7}),
+                serde_json::json!({"name":null}),
+                serde_json::json!({}),
+                serde_json::json!([]),
+            ] {
+                assert!(matches!(
+                    store.submit(&scope, cid, 20, Some(payload)).await,
+                    Err(ValidationQueueError::InvalidPayload { .. })
+                ));
+            }
+            assert!(store.list(&scope, None).await.unwrap().is_empty());
+            store.submit(&scope, cid, 20, None).await.unwrap();
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            // A corrupt persisted/older-writer payload must also fail at the
+            // final application boundary, preserving the queue for diagnosis.
+            let client = rig.pool.get().await.unwrap();
+            client
+                .execute(
+                    "UPDATE reborn_validation_queue SET proposed_payload=$2 WHERE component_id=$1",
+                    &[&cid, &serde_json::json!({"content":false})],
+                )
+                .await
+                .unwrap();
+            assert!(matches!(
+                store.approve(&scope, cid, Some("human")).await,
+                Err(ValidationQueueError::InvalidPayload { .. })
+            ));
+            assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "pending");
+            assert_eq!(store.list(&scope, Some(2)).await.unwrap().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn approve_unknown_class_preserves_queue_without_mutation() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+            let cid = insert_pending_note(&rig.pool, &scope).await;
+            // Corrupt a reviewed ticket to an unknown class; graduation must refuse it.
+            store.submit(&scope, cid, 20, None).await.expect("submit");
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .execute(
+                    "UPDATE reborn_validation_queue SET component_class=11 WHERE component_id=$1",
+                    &[&cid],
+                )
+                .await
+                .unwrap();
             let err = store
                 .approve(&scope, cid, None)
                 .await
-                .expect_err("unknown class must error before tx");
+                .expect_err("unknown class must error without mutation");
             assert!(
                 matches!(err, ValidationQueueError::UnknownClass { class_code: 11 }),
                 "wrong error: {err:?}"
             );
-            // Queue row preserved (no transaction touched it).
+            // Queue row preserved after the read-only transaction rolls back.
             let row = store
                 .list(&scope, Some(2))
                 .await
@@ -1452,10 +1773,17 @@ mod tests {
             let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
-            // No component row exists for this id.
-            let cid = Uuid::new_v4();
+            // The reviewed component disappears before Q2.
+            let cid = insert_pending_note(&rig.pool, &scope).await;
             store.submit(&scope, cid, 20, None).await.unwrap();
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .execute("DELETE FROM reborn_notes WHERE id=$1", &[&cid])
+                .await
+                .unwrap();
             let err = store
                 .approve(&scope, cid, None)
                 .await
@@ -1542,6 +1870,194 @@ mod tests {
             assert_eq!(
                 content, "upgraded content text",
                 "content must be updated from payload"
+            );
+        }
+
+        #[tokio::test]
+        async fn immutable_graduation_receipts_retain_exact_rows_across_replacement_and_deletion() {
+            use sha2::{Digest, Sha256};
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+            let cid = insert_pending_note(&rig.pool, &scope).await;
+            let client = rig.pool.get().await.unwrap();
+            client
+                .execute(
+                    "INSERT INTO reborn_monty_vm_settings
+                 (tenant_id,user_id,agent_id,project_id,max_duration_secs,revision)
+                 VALUES ($1,$2,$3,$4,900,1)",
+                    &[
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                    ],
+                )
+                .await
+                .unwrap();
+            store.submit(&scope, cid, 20, None).await.unwrap();
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            store.approve(&scope, cid, Some("human")).await.unwrap();
+            let original = client.query_one(
+                "SELECT id, component_bytes, component_checksum, queue_bytes, queue_checksum, q2_actor
+                 FROM reborn_component_graduation_receipts WHERE component_id=$1", &[&cid],
+            ).await.unwrap();
+            let receipt: Uuid = original.get(0);
+            let component_bytes: String = original.get(1);
+            let queue_bytes: String = original.get(3);
+            assert_eq!(
+                original.get::<_, String>(2),
+                format!("{:x}", Sha256::digest(component_bytes.as_bytes()))
+            );
+            assert_eq!(
+                original.get::<_, String>(4),
+                format!("{:x}", Sha256::digest(queue_bytes.as_bytes()))
+            );
+            assert_eq!(
+                original.get::<_, Option<String>>(5).as_deref(),
+                Some("human")
+            );
+            assert_eq!(
+                serde_json::from_str::<Value>(&queue_bytes).unwrap()["state"],
+                2
+            );
+            assert_eq!(
+                serde_json::from_str::<Value>(&component_bytes).unwrap()["validation_status"],
+                "validated"
+            );
+
+            store
+                .submit(
+                    &scope,
+                    cid,
+                    20,
+                    Some(serde_json::json!({"content":"replacement"})),
+                )
+                .await
+                .unwrap();
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            store.approve(&scope, cid, Some("human")).await.unwrap();
+            let settings = client
+                .query_one(
+                    "SELECT revision,max_duration_secs,last_graduation_at IS NOT NULL
+                 FROM reborn_monty_vm_settings
+                 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4",
+                    &[
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                    ],
+                )
+                .await
+                .unwrap();
+            assert_eq!(settings.get::<_, i64>(0), 1);
+            assert_eq!(settings.get::<_, i32>(1), 900);
+            assert!(settings.get::<_, bool>(2));
+            let newer = client.query_one("SELECT component_bytes FROM reborn_component_graduation_receipts WHERE component_id=$1 AND id<>$2", &[&cid,&receipt]).await.unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(&newer.get::<_, String>(0)).unwrap()["content"],
+                "replacement"
+            );
+            client
+                .execute("DELETE FROM reborn_notes WHERE id=$1", &[&cid])
+                .await
+                .unwrap();
+            let retained = client
+                .query_one(
+                    "SELECT component_bytes FROM reborn_component_graduation_receipts WHERE id=$1",
+                    &[&receipt],
+                )
+                .await
+                .unwrap();
+            assert_eq!(retained.get::<_, String>(0), component_bytes);
+            for sql in [
+                "UPDATE reborn_component_graduation_receipts SET q2_actor='altered' WHERE id=$1",
+                "DELETE FROM reborn_component_graduation_receipts WHERE id=$1",
+            ] {
+                let failure = client.execute(sql, &[&receipt]).await.unwrap_err();
+                assert_eq!(
+                    failure.code(),
+                    Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+                );
+            }
+            assert_eq!(
+                client
+                    .batch_execute("TRUNCATE reborn_component_graduation_receipts")
+                    .await
+                    .unwrap_err()
+                    .code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+            // A forged checksum cannot satisfy the stored exact-byte contract.
+            let invalid_checksum = client.execute(
+                "INSERT INTO reborn_component_graduation_receipts
+                 SELECT $1,component_id,component_class,tenant_id,user_id,agent_id,project_id,$2,
+                 q2_actor,component_bytes,'wrong',
+                 jsonb_set(queue_bytes::jsonb,'{id}',to_jsonb($2::uuid))::text,
+                 encode(sha256(convert_to(jsonb_set(queue_bytes::jsonb,'{id}',to_jsonb($2::uuid))::text,'UTF8')),'hex'),now()
+                 FROM reborn_component_graduation_receipts WHERE id=$3",
+                &[&Uuid::new_v4(),&Uuid::new_v4(),&receipt],
+            ).await.unwrap_err();
+            assert_eq!(
+                invalid_checksum.as_db_error().unwrap().constraint(),
+                Some("component_graduation_exact_component_checksum")
+            );
+        }
+
+        #[tokio::test]
+        async fn approval_cannot_reclassify_an_orchestrator_as_a_usage_skill() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), 1);
+            let client = rig.pool.get().await.unwrap();
+            let cid: Uuid = client.query_one(
+                "INSERT INTO reborn_skills (tenant_id,user_id,agent_id,project_id,name,description,body,class_code,validation_status)
+                 VALUES ($1,$2,$3,$4,'protected-orchestrator','test orchestration component','result = 1',10,'pending') RETURNING id",
+                &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id],
+            ).await.unwrap().get(0);
+            // Corrupt the reviewed class; final dispatch remains class-checked.
+            store.submit(&scope, cid, 10, None).await.unwrap();
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            client
+                .execute(
+                    "UPDATE reborn_validation_queue SET component_class=1 WHERE component_id=$1",
+                    &[&cid],
+                )
+                .await
+                .unwrap();
+            assert!(matches!(
+                store.approve(&scope, cid, Some("human")).await,
+                Err(ValidationQueueError::ComponentMissing { .. })
+            ));
+            let status: String = client
+                .query_one(
+                    "SELECT validation_status FROM reborn_skills WHERE id=$1",
+                    &[&cid],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            assert_eq!(status, "pending");
+            let count: i64 = client.query_one("SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1",&[&cid]).await.unwrap().get(0);
+            assert_eq!(count, 0);
+            assert_eq!(store.list(&scope, Some(2)).await.unwrap().len(), 1);
+            store
+                .reject(&scope, cid, "wrong class ticket")
+                .await
+                .unwrap();
+            assert_eq!(store.purge_deletion_candidates(&scope).await.unwrap(), 1);
+            let retained: i64 = client
+                .query_one(
+                    "SELECT count(*) FROM reborn_skills WHERE id=$1 AND class_code=10",
+                    &[&cid],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            assert_eq!(
+                retained, 1,
+                "purging a usage-Skill ticket cannot delete an Orchestrator row"
             );
         }
 

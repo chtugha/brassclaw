@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. The requested class-21 recipe-transfer-08 payload is not supported by the current sink: it accepts name/description/trigger/steps/prior_knowledge_content/intent_examples but drops step_descriptions, variants and dependency_registry, and it cannot preserve the persisted knowledge/stepnumber/type=component/include schema, tool_bindings, dependencies, variant step_link and variable_patterns that a full v3 Recipe requires. The exact v3 constructor (step_descriptions with one component step per UUID, variants with step_link, dependency_registry) cannot be emitted into the supported class-21 payload, so no class-21 entry is proposed. The requested class-22 pure-logic draft d14b7a42-2c12-57e8-9cf1-59d7e576182a (result = {'state': 'Idle'}, zero inputs, no dependencies) is a supported constructor with no referenced Tool or component, so it is proposed as an unapproved draft; insertion allocates its identity and Q1/human Q2 follow. It is not activated and grants no dispatch permission. The subworkflow returns state data only and never posts a user message.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable idle data-result workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-idle-state",
+        "description": "Pure-logic guard returning a fixed idle state; no inputs, no Tool call, no effect. Unapproved draft; Q1 and human Q2 required before activation. Returns state data only and never posts a user message.",
+        "content": "result = {'state': 'Idle'}"
+      }
+    }
+  ]
+}

@@ -51,6 +51,26 @@ cdylib it would hijack the allocator of the embedding host process.
 
 ## Only crates in this workspace
 
-Published so the `monty` binary can be, not for direct use. On a 32-bit target
-a limit near 4 GiB saturates the arithmetic and leaves the worker
-uncapped.
+Published so the `monty` binary can be, not for direct use. Finite baseline-plus-budget overflow is rejected on every target; an invalid
+replacement preserves the previous hard limit.
+
+
+## BrassClaw VM ownership extension
+
+The versioned `control.6` extension can separately measure allocations owned by
+the VM execution domain. Call `enable_vm_accounting()` before constructing any
+VM, then enter `VmAllocationScope` around synchronous interpreter work. The guard
+is thread-bound and restores nested scopes. Every allocation has a private
+ownership header: resize/free retain the original tag even outside that scope
+or on another thread. Accounted bytes include headers and alignment padding.
+Never hold this guard across a migrating async future.
+
+`vm_live_bytes()` reports the shared root/child domain. `set_vm_limit(bytes)`
+publishes a finite soft ceiling without resetting retained allocation charges;
+the serialized worker owner must exclude simultaneous VM execution. A reduction
+below actual live bytes is rejected. The independent hard allocator backstop
+still contains between-checkpoint and compiler allocations, including transport.
+Neither counter measures RSS, stacks or direct mappings. The hosting adapter
+must adopt received data into VM allocations and keep unrelated frame handling
+outside the scope. See `BRASSCLAW.md` for the verified measurement boundary and
+remaining production/adaptive acceptance requirements.

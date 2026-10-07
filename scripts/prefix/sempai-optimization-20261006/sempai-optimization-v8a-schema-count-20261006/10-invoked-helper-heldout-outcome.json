@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied volatile message unchanged; no justified prompt repair was warranted. The task is a single class-22 pure-logic draft (pc-check-flag) with no referenced Tool, dependency or UUID, so no prior Q1/Q2 approval or existing identity is required — insertion allocates identity and review follows. The requested constructor (name/description/content only) is supported by the current class-22 sink, so the proposal array is filled with one entry. The body is executable Python at module scope: it reads the raw candidate with inputs.get('flag') (so missing and null are distinct, and no KeyError is raised before the decision), validates exact boolean membership, and assigns result via a helper that is actually invoked. No imports, I/O, host calls, exceptions or type coercion are used. The result contract is exactly {valid:boolean, flag:original bool if valid else null}. This draft remains unapproved; activation/reuse requires Q1 and human Q2, and typed-input transport is a target interface, not guaranteed runtime support. No observed provider capabilities were claimed.",
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create a reusable validator for an exact boolean flag."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-flag",
+        "description": "Pure-logic validator that inspects a raw candidate flag value and returns whether it is an exact boolean. Raw inputs may omit the flag or hold any JSON value. Only the exact booleans True and False are valid; any other value, a missing flag or null is invalid. Returns {valid: boolean, flag: original bool if valid else null}. No Tool dispatch, I/O, host calls, exceptions or type coercion. This is an unapproved draft; activation requires Q1 and human Q2.",
+        "content": "def check_flag(candidate):\n    valid = type(candidate) is bool\n    return {'valid': valid, 'flag': candidate if valid else None}\nresult = check_flag(inputs.get('flag'))"
+      }
+    }
+  ],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "settings_adjustments": []
+}

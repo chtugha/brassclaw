@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "case": "recipe-00",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-01",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-02",
+      "manual_intent_effect_review_passed": false,
+      "reason": "Healthy reply intents copied into the data-only workflow; independently rejected"
+    },
+    {
+      "case": "recipe-03",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-04",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-05",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-06",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-07",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-08",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-09",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-10",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    },
+    {
+      "case": "recipe-11",
+      "manual_intent_effect_review_passed": true,
+      "reason": "Requested state word and data/reply effect agree; no production execution verified"
+    }
+  ],
+  "production_execution_verified": false
+}

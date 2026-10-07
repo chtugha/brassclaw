@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-weighted-entries",
+    "description": "Raw validator that inspects a candidate list of weighted entries and returns an explicit invalid-result object (ok=false, entries=[]) for missing, null, wrong-typed or out-of-range data, without raising or coercing. A boolean is not an integer; extra item fields fail closed. An empty list is a valid selection. Typed inputs are a target interface, not deployed runtime support; this is an unapproved draft.",
+    "content": "def check_weighted_entries(candidate):\n    if not isinstance(candidate, list) or len(candidate) > 3:\n        return {'ok': False, 'entries': []}\n    for item in candidate:\n        if not isinstance(item, dict) or set(item.keys()) != {'label', 'weight'}:\n            return {'ok': False, 'entries': []}\n        label = item.get('label')\n        weight = item.get('weight')\n        if not isinstance(label, str) or not 1 <= len(label) <= 8:\n            return {'ok': False, 'entries': []}\n        if isinstance(weight, bool) or not isinstance(weight, int) or not 0 <= weight <= 1:\n            return {'ok': False, 'entries': []}\n    return {'ok': True, 'entries': candidate}\nresult = check_weighted_entries(inputs.get('entries'))"
+  }
+}

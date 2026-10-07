@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [],
+  "composition_summary": "Packet is already clear and internally consistent: a single system instruction and one user question about TCP port 443, with no malformed envelope, missing prerequisites, injection, context overflow, private-data leakage, or contradictory instructions. No justified prompt repair is warranted, so the volatile tail is echoed unchanged and no proposals, intent examples, settings adjustments, or components are proposed. The packet is a pre-call packet; it does not itself establish a response, successful Tool action, or recurring failure. No Sempai call is required for this deterministic Tier-0 packet.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ]
+}

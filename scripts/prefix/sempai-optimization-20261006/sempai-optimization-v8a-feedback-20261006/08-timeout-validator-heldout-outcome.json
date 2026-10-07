@@ -1,0 +1,23 @@
+{
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (one user message, no assistant action invented). Drafted exactly one class-22 pure-logic component pc-check-timeout-ms with only name/description/content, per the target constructor. The body is a module-scope if/else result assignment: it reads timeout_ms via inputs.get so missing and null stay distinct, validates exact integer type with 0..7500 inclusive bounds (rejecting bool and float), and assigns result to the module scope on every path — {valid, timeout_ms} with the original integer when valid or null otherwise. No imports, host calls, I/O, exceptions or coercion; no Markdown in content. This is an unapproved draft using the target typed-inputs interface; typed-runner support and Q1/Q2 approval precede activation. No other component classes are supported by the sink, so proposed_recipe_updates, proposed_intent_examples, settings_adjustments and adjusted_volatile_messages remain empty.",
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need to validate raw timeout values before configuring a service."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-timeout-ms",
+        "description": "Pure-logic guard: returns whether a raw timeout value is an exact integer in 0..7500 inclusive. Reads timeout_ms from the step-local inputs mapping via inputs.get so missing and null remain distinct. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid or null otherwise. No imports, host calls, I/O, exceptions or coercion.",
+        "content": "def check_timeout_ms(inputs):\n    timeout_ms = inputs.get('timeout_ms')\n    valid = type(timeout_ms) is int and not isinstance(timeout_ms, bool) and 0 <= timeout_ms <= 7500\n    if valid:\n        result = {'valid': True, 'timeout_ms': timeout_ms}\n    else:\n        result = {'valid': False, 'timeout_ms': None}\n    return result\nresult = check_timeout_ms(inputs)"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "bridge_messages": []
+}

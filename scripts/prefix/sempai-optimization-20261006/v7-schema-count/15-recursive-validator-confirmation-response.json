@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8bac87cfe1c2190a",
+  "object": "chat.completion",
+  "created": 1791321495,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Offline-design mode: no host sink support for class 22 was resolved, and no real catalogue/draft UUIDs were supplied, so no component entry is emitted. The draft is a design-only artifact, not a submitted/activated component. The class-22 body is a pure-logic guard with zero host calls, module-scope result assignment on every branch, no imports/host/I/O, no coercion, and fail-closed semantics for missing/null/extra/invalid shapes. Raw candidate fields are read with inputs.get so absence is a valid decision, not an exception; the result object contains only the declared fields. The target typed-input interface is not deployed runtime support. No compatibility/intent/settings updates were requested; those arrays remain empty. Conversation preserved exactly.\",\n  \"proposed_components\": [],\n  \"settings_adjustments\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate raw weighted entries, including an empty selection.\"]\n  ]\n  ,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76477,
+    "total_tokens": 76715,
+    "completion_tokens": 238,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

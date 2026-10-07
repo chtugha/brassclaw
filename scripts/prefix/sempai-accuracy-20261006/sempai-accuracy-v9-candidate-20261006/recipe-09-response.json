@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9c31a03253363e80",
+  "object": "chat.completion",
+  "created": 1791324556,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Offline full-v3 export only. Drafted one unapproved class-21 Recipe recipe-transfer-09 that posts exactly the fixed word as a user reply using the bound existing host.post_reply Tool. The constructor preserves full v3 fields: trigger=null, steps=[] and dependency_registry=null, with the executable references recorded in step_descriptions using the persisted knowledge/stepnumber/type=component/include schema. The two ordered steps are the rust binding step (ToolSkill 2e335c7f-8081-53a6-aa2d-2aede7926726) immediately followed by the orchestrator PythonCode step (cc52df93-9358-5238-9317-23fea95aa6ef), each including exactly one supplied UUID in order with empty tool_bindings and null dependencies. One variant with step_link=0:1-0:E, variable_patterns=[] and ten distinct reply intents. Posting a reply is an effect, not returned data; actual dispatch requires current global Tool policy and technical checks. No runtime/approval claims. No execution, submission, Q1/Q2 or activation was performed by this offline reviewer.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-09\",\n        \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\",\n        \"intent_examples\": [\n          \"say idle\",\n          \"reply idle\",\n          \"post idle\",\n          \"send the idle reply\",\n          \"respond with idle\",\n          \"tell me idle\",\n          \"please say idle\",\n          \"please reply idle\",\n          \"post the fixed idle message\",\n          \"send the fixed idle message\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind reply Tool\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"2e335c7f-8081-53a6-aa2d-2aede7926726\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post fixed reply\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"cc52df93-9358-5238-9317-23fea95aa6ef\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"recipe-transfer-09\",\n            \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say idle\",\n              \"reply idle\",\n              \"post idle\",\n              \"send the idle reply\",\n              \"respond with idle\",\n              \"tell me idle\",\n              \"please say idle\",\n              \"please reply idle\",\n              \"post the fixed idle message\",\n              \"send the fixed idle message\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n  ,\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Design a reusable idle reply workflow.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97583,
+    "total_tokens": 98614,
+    "completion_tokens": 1031,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

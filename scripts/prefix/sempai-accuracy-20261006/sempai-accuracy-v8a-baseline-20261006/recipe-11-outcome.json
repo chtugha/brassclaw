@@ -1,0 +1,91 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. Preserved the supplied volatile tail exactly (one user message, no invented assistant acknowledgement, action, result or approval). The requested class-21 Recipe draft is emitted as a full v3 constructor in proposed_components per the offline-design contract; it is unapproved, carries no version numbers or approval, and its dependencies (the existing host.post_reply Tool, a compatible ToolSkill binding and the class-22 PythonCode) are stated as unapproved/unresolved. The current sink cannot preserve the full v3 Recipe fields (step_descriptions, variants, dependency_registry), so this is an offline export draft, not a live insert. The class-22 PythonCode body is a direct module-level result assignment with no helper, no Markdown, and no runtime/approval claims. No runtime or approval claims are made.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable prepared reply workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-11",
+        "description": "Unapproved offline full-v3 export draft. Posts exactly the fixed word 'Prepared' as a user reply using a bound existing host.post_reply Tool. Unapproved; no version numbers or approval. Dependencies (existing host.post_reply Tool, compatible ToolSkill binding, class-22 PythonCode) are unresolved and unapproved. The current sink cannot preserve the full v3 fields below; this is an offline export draft, not a live insert. Q1 and human Q2 are required before activation.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": null,
+        "intent_examples": [
+          "say prepared",
+          "reply prepared",
+          "post prepared",
+          "tell me you are prepared",
+          "please say prepared",
+          "respond with prepared",
+          "send a prepared reply",
+          "give me a prepared response",
+          "answer with prepared",
+          "please post the word prepared"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Post the fixed readiness reply",
+            "yaml_source": "Human-readable documentation of the same two steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind the reply Tool",
+                "content": "Bind host.post_reply",
+                "type": "component",
+                "include": [
+                  "6d31defa-e5d3-5103-bd01-49143f9d47f6"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post the fixed reply",
+                "content": "Run the fixed-reply PythonCode",
+                "type": "component",
+                "include": [
+                  "5e27ba17-04a3-5357-bee2-00a87cac9ae1"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fixed-readiness-reply",
+            "description": "Post exactly Ready. without input slots",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say ready",
+              "reply ready",
+              "post ready",
+              "tell me you are ready",
+              "please say ready",
+              "respond with ready",
+              "send a readiness reply",
+              "give me a readiness response",
+              "answer with ready",
+              "please post the word ready"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ]
+}

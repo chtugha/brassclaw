@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-tcp-port-list",
+    "description": "Pure-logic validation of a TCP-port list. Accepts a nonempty list of exact integers, each in 1..65535 inclusive; booleans are rejected because a boolean is not an integer. Missing, null, scalar, empty, bool-element and out-of-range inputs fail closed by returning valid=false with ports=[]; no exception is raised. Returns {valid: boolean, ports: original list when valid else []}. Target interface: the consuming Recipe supplies the typed ports value through the step-local inputs[\"ports\"] mapping. Typed inputs are a target interface, not guaranteed deployed runtime support; the typed runner must be implemented before this component executes.",
+    "content": "ports = inputs.get(\"ports\")\nvalid = isinstance(ports, list) and len(ports) > 0\nif valid:\n    for port in ports:\n        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:\n            valid = False\n            break\nresult = {\"valid\": valid, \"ports\": ports if valid else []}"
+  }
+}

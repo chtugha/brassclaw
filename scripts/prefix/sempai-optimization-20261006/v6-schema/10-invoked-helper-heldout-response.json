@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-88e9af1b95945cd0",
+  "object": "chat.completion",
+  "created": 1791320803,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the supplied user message unchanged. Drafted one class-22 PythonCode candidate pc-check-flag that validates an exact boolean flag from raw inputs and returns {valid, flag}. The body reads the raw candidate with inputs.get('flag') so missing and null remain distinct, validates that the value is an actual bool (not a truthy string/number/list), and assigns result via a helper call at module scope. No imports, I/O, host calls, exceptions or coercion are used. The draft is unapproved; no submission, tests, approval or activation occurred, and no observed provider capabilities were claimed.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-flag\",\n        \"description\": \"Validates that a raw candidate is an exact boolean (True or False) and returns an advisory result object. Missing and null are both invalid. Returns {valid, flag} where flag is the original bool when valid, else null. Pure logic; no Tool call, no I/O, no exceptions.\",\n        \"content\": \"def check_flag(candidate):\\n    is_exact_bool = type(candidate) is bool\\n    return {'valid': is_exact_bool, 'flag': candidate if is_exact_bool else None}\\nresult = check_flag(inputs.get('flag'))\"\n      }\n    }\n  ],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Create a reusable validator for an exact boolean flag.\"]\n  ]\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76165,
+    "total_tokens": 76534,
+    "completion_tokens": 369,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

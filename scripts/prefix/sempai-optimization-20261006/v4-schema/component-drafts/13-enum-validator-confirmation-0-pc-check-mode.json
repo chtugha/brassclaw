@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-mode",
+    "description": "Raw validator that accepts only the exact strings 'eco' or 'boost' (case-sensitive, no normalization) and returns {accepted, mode} where mode is the original string when accepted and null otherwise. Pure logic; no imports, host calls, I/O or coercion. Reads the raw candidate with inputs.get so missing and null are both reported as not accepted rather than raising.",
+    "content": "mode = inputs.get(\"mode\")\naccepted = isinstance(mode, str) and mode in (\"eco\", \"boost\")\nresult = {\"accepted\": accepted, \"mode\": mode if accepted else None}"
+  }
+}

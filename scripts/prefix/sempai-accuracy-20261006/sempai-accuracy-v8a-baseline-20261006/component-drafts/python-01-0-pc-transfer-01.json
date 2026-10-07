@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-01",
+    "description": "Pure-logic guard: accepts an exact integer window in -3..6 inclusive and returns the original value when accepted, otherwise null. Rejects booleans, floats, strings and out-of-range values without raising or coercing. No Tool call, I/O or host boundary.",
+    "content": "def classify_window(raw):\n    if 'window' not in inputs:\n        result = {'accepted': False, 'window': None}\n    else:\n        window = inputs['window']\n        if type(window) is bool or not type(window) is int or not -3 <= window <= 6:\n            result = {'accepted': False, 'window': None}\n        else:\n            result = {'accepted': True, 'window': window}\n    return result\nresult = classify_window(inputs.get('window'))"
+  }
+}

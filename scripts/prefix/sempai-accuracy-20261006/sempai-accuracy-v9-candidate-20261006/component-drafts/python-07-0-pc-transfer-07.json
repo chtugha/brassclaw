@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-07",
+    "description": "Classify raw window: missing -> {kind:\"missing\",window:null}; explicit null -> {kind:\"null\",window:null}; exact integer 3..12 -> {kind:\"integer\",window:original}; other -> {kind:\"invalid\",window:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "window = inputs.get('window')\nif window is None and 'window' not in inputs:\n    result = {'kind': 'missing', 'window': None}\nelif window is None:\n    result = {'kind': 'null', 'window': None}\nelif type(window) is int and 3 <= window <= 12:\n    result = {'kind': 'integer', 'window': window}\nelse:\n    result = {'kind': 'invalid', 'window': None}"
+  }
+}

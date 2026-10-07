@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9109fee9cee19226",
+  "object": "chat.completion",
+  "created": 1791319892,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Preserved the single user message unchanged; no justified prompt repair. The task is a component draft, not a submission or activation. Drafted one class-22 pure-logic candidate pc-check-timeout-ms with only name/description/content, per the target typed-inputs interface. The body uses inputs.get(\\\"timeout_ms\\\") (not direct access) so a missing key is a valid validation outcome, returns {valid, timeout_ms} with no exceptions or coercion, and assigns result on every path. It makes zero host calls and contains no imports or I/O. This is an unapproved draft; Q1, observed behavior and human Q2 precede activation, and the target inputs interface is not guaranteed deployed runtime support. No compatibility/intent/settings arrays were populated.\",\n  \"settings_adjustments\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [[\"user\", \"We need to validate raw timeout values before configuring a service.\"]],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-timeout-ms\",\n        \"description\": \"Pure-logic validator that inspects a raw candidate timeout_ms and returns whether it is a valid integer in 0..7500 inclusive. Reads the raw value with inputs.get so a missing key is a valid outcome, never raises, and never coerces. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid or null otherwise. No host calls, imports or I/O.\",\n        \"content\": \"def check_timeout_ms():\\n    raw = inputs.get(\\\"timeout_ms\\\")\\n    valid = isinstance(raw, int) and not isinstance(raw, bool) and 0 <= raw <= 7500\\n    result = {\\\"valid\\\": valid, \\\"timeout_ms\\\": raw if valid else None}\\n\"\n      }\n    }\n  ]\n,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73628,
+    "total_tokens": 74063,
+    "completion_tokens": 435,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

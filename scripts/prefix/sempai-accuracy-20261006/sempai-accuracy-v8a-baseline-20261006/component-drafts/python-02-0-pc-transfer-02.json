@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-02",
+    "description": "Pure-logic guard: accepts a raw quota value only when it is an exact integer in -2..7 inclusive (booleans and floats are rejected). Returns {accepted, quota} where quota is the original value when accepted, else null. No imports, I/O, host calls or exceptions.",
+    "content": "def classify_quota(quota):\n    if type(quota) is bool or not type(quota) is int or not -2 <= quota <= 7:\n        result = {'accepted': False, 'quota': None}\n    else:\n        result = {'accepted': True, 'quota': quota}\nresult = classify_quota(inputs.get('quota'))"
+  }
+}

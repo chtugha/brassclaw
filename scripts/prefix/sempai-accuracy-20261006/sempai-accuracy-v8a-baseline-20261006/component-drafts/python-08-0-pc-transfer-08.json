@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-08",
+    "description": "Pure-logic classification of a raw quota value. Reads the raw candidate with inputs.get('quota') so missing and null stay distinct. Returns {kind, quota} only: missing -> {kind:'missing',quota:null}; explicit null -> {kind:'null',quota:null}; exact integer in 4..13 -> {kind:'integer',quota:original}; anything else (wrong type, out of range, bool, float, string, list) -> {kind:'invalid',quota:null}. No imports, I/O, host calls, coercion, defaults, or exceptions.",
+    "content": "quota = inputs.get('quota')\nif quota is None:\n    result = {'kind': 'null', 'quota': None}\nelif type(quota) is int and not quota is True and 4 <= quota <= 13:\n    result = {'kind': 'integer', 'quota': quota}\nelse:\n    result = {'kind': 'invalid', 'quota': None}"
+  }
+}

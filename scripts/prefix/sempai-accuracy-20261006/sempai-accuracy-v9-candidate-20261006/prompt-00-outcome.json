@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Removed the explicitly authorized duplicate 'accurately' from the system message, preserving the user message byte-for-byte and all roles/order/count. No provider facts, components or other changes were inferred.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8f193277018f67e3",
+  "object": "chat.completion",
+  "created": 1791323351,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Offline full-v3 export only. The requested class-21 Recipe payload is emitted with the exact supplied constructor keys (name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry) and the exact supplied UUIDs in order, using the persisted knowledge/stepnumber/type=component/include schema with one UUID per step, tool_bindings=[] and dependencies=null. trigger=null, steps=[] and dependency_registry=null as instructed. The bound existing Tool host.post_reply(answer:string) is referenced by the class-22 PythonCode (249e49eb-fc44-5605-aa6d-6b7299216502) and the ToolSkill (8002e1ff-f3d9-57f7-8a1c-62b33b0da73a); both are unapproved drafts with no version numbers or approval, and this export does not claim runtime dispatch, activation or approval. The current offline sink cannot preserve the full v3 Recipe constructor (step_descriptions/variants/dependency_registry are not stored here); this is a design export, not a live submission. Q1, human Q2 and exact-combination approval are required before any activation or reuse. The original conversation is preserved unchanged; compatibility/intent/settings arrays are empty under the test persona.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Design a reusable stable reply workflow.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-07\",\n        \"description\": \"Posts exactly the fixed word as a user reply using the bound existing host.post_reply Tool. Unapproved draft; Q1 and human Q2 required before activation or reuse.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": null,\n        \"intent_examples\": [\n          \"say ready\",\n          \"reply ready\",\n          \"post ready\",\n          \"tell me you are ready\",\n          \"please say ready\",\n          \"respond with ready\",\n          \"send a readiness reply\",\n          \"give me a readiness response\",\n          \"answer with ready\",\n          \"please post the word ready\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Post the fixed readiness reply\",\n            \"yaml_source\": \"Human-readable documentation of the same two steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind the reply Tool\",\n                \"content\": \"Bind host.post_reply\",\n                \"type\": \"component\",\n                \"include\": [\"8002e1ff-f3d9-57f7-8a1c-62b33b0da73a\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post the fixed reply\",\n                \"content\": \"Run the fixed-reply PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"249e49eb-fc44-5605-aa6d-6b7299216502\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-readiness-reply\",\n            \"description\": \"Post exactly Ready. without input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say ready\",\n              \"reply ready\",\n              \"post ready\",\n              \"tell me you are ready\",\n              \"please say ready\",\n              \"respond with ready\",\n              \"send a readiness reply\",\n              \"give me a readiness response\",\n              \"answer with ready\",\n              \"please post the word ready\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 77043,
+    "total_tokens": 78024,
+    "completion_tokens": 981,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

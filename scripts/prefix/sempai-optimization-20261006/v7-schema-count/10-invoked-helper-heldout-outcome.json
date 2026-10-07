@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied volatile message unchanged; no justified prompt repair was warranted. The task is a single class-22 PythonCode draft. The requested semantics are a raw validator: it must accept only the exact booleans True and False, treat missing/null/any-other-value as invalid, and return {valid:boolean, flag:original bool if valid else null} without raising or coercing. The body uses a small helper check_flag that returns the exact decision, and the module scope invokes it with inputs.get('flag') so result is assigned on every outcome. No imports, I/O, host calls, exceptions or type coercion are used. The draft is an unapproved proposal; no submission, activation, tests or approval claims are made. Supported sink fields (name/description/content) are used; class 21/1-3/13 are not supported in this sink.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-flag",
+        "description": "Raw validator returning whether a raw candidate flag is exactly the boolean True or False. Accepts missing, null or any non-boolean value as invalid. Returns {valid, flag} where flag is the original boolean when valid and null otherwise. No imports, I/O, host calls, exceptions or type coercion.",
+        "content": "def check_flag(candidate):\n    return {'valid': type(candidate) is bool, 'flag': candidate if type(candidate) is bool else None}\nresult = check_flag(inputs.get('flag'))"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create a reusable validator for an exact boolean flag."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

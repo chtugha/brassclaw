@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a2a7d181a56d7c60",
+  "object": "chat.completion",
+  "created": 1791330741,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"task_kind\": \"review\",\n  \"branches\": [\n    {\n      \"guard\": \"key-presence\",\n      \"result\": \"absent\"\n    },\n    {\n      \"guard\": \"explicit-null\",\n      \"result\": \"null\"\n    },\n    {\n      \"guard\": \"exact-interval\",\n      \"result\": \"number\"\n    },\n    {\n      \"guard\": \"malformed\",\n      \"result\": \"invalid\"\n    }\n  ],\n  \"helper_required\": false,\n  \"workflow\": [\n    {\n      \"knowledge\": \"orchestrator\",\n      \"uuid\": \"00000000-0000-4000-8000-000000000000\"\n    }\n  ],\n  \"authorized_edits\": [\n    \"remove-duplicate\"\n  ],\n  \"prerequisites\": [\n    \"q1\",\n    \"q2\"\n  ],\n  \"notes\": \"audit-only\"\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 101248,
+    "total_tokens": 101503,
+    "completion_tokens": 255,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

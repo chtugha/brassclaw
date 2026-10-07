@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-07T08:02:07.401494+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "fresh-nested-bools",
+      "construction_plan": {
+        "seconds": 6.523,
+        "usage": {
+          "prompt_tokens": 99442,
+          "total_tokens": 99665,
+          "completion_tokens": 223,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified repair analysis from current contract and observed validation feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "usage": {
+        "prompt_tokens": 99806,
+        "total_tokens": 100365,
+        "completion_tokens": 559,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "kv_transfer_params": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 97152,
+          "num_lmcache_cached_tokens": 97152,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 19.776
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-repair-round1",
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [
+    "fresh-authorized-0",
+    "fresh-authorized-1"
+  ],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "single_layout_requested": true,
+  "cache_salt": "sempai-v14-fresh-repair2-20261007-a",
+  "direct_repair_feedback_requested": true,
+  "evaluator_sha256": "80e7ab4534c61ce997d9cdb2fda21ad8dfb064222654f66550d5ce86c6a8c3a8",
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "repair_source_sha256": {
+    "model-evaluation.json": "a6f148caa46250e07e0ffe13c760a9ed46b881427c36cbfe57c5fa2f420bc057",
+    "case-manifest.json": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b",
+    "candidate-checks.json": "2eb8563a9a8db12b6edd98627ed28d28de23593c215094da2f40768955404bad"
+  },
+  "repair_response_sha256": {
+    "fresh-nested-bools": "6c31c30a97f9879d623677bcac260bc2f21673181e4869ee244b7e70227b7fbc"
+  },
+  "feedback_sha256": "57518b7780248becf0cf2b8a107319274735eca614d56a3ba86cc5eeaed8fce9",
+  "case_manifest_sha256": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b"
+}

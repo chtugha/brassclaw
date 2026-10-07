@@ -1,0 +1,36 @@
+{
+  "class_code": 21,
+  "payload": {
+    "name": "recipe-fixed-ready-result",
+    "description": "Deterministic subworkflow that returns a fixed readiness result object. Returns result only; it does not post a user reply, change policy or perform any external effect. Unapproved draft; requires Q1 and human Q2 before activation. The current Sempai sink cannot preserve this v3 draft (it drops step_descriptions, variants and dependency_registry).",
+    "trigger": null,
+    "steps": [
+      {
+        "desc_idx": 0,
+        "label": "Return the fixed readiness result",
+        "knowledge": "orchestrator",
+        "goal": "Return the fixed readiness result",
+        "content": "Run the fixed-ready-result PythonCode",
+        "type": "component",
+        "include": [
+          "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+        ],
+        "tool_bindings": [],
+        "dependencies": null
+      }
+    ],
+    "prior_knowledge_content": "Unapproved draft dependency: PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), which is unapproved and unverified. Q1 and human Q2 are required before activation. This subworkflow returns result only; it does not post a user reply, change policy or perform any external effect. The current Sempai sink cannot preserve this v3 draft (it drops step_descriptions, variants and dependency_registry).",
+    "intent_examples": [
+      "return a fixed readiness result",
+      "give me a ready result",
+      "output ready",
+      "return ready status",
+      "produce a readiness result",
+      "return the ready object",
+      "give me a readiness response",
+      "return ready",
+      "output a ready result",
+      "return a ready status object"
+    ]
+  }
+}

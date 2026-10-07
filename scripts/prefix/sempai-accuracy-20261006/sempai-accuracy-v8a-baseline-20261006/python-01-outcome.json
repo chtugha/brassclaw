@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-01 with name/description/content only, per the supported offline-design sink. The body is executable Python at module scope: it reads raw inputs via inputs.get() so missing/empty window is a valid validation outcome, accepts only exact integers in -3..6 inclusive (rejecting bool/float/strings), and assigns result on every branch without raising or coercing. result is {accepted:boolean, window:original if accepted else null}. No imports, I/O, host calls or LLM step. This is an unapproved draft; typed-input transport and Monty runner support remain prerequisites, and no observed tests, submission or activation occurred. No class-21/1-3/13 proposals were made because the sink does not support those constructors here.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-01",
+        "description": "Pure-logic guard: accepts an exact integer window in -3..6 inclusive and returns the original value when accepted, otherwise null. Rejects booleans, floats, strings and out-of-range values without raising or coercing. No Tool call, I/O or host boundary.",
+        "content": "def classify_window(raw):\n    if 'window' not in inputs:\n        result = {'accepted': False, 'window': None}\n    else:\n        window = inputs['window']\n        if type(window) is bool or not type(window) is int or not -3 <= window <= 6:\n            result = {'accepted': False, 'window': None}\n        else:\n            result = {'accepted': True, 'window': window}\n    return result\nresult = classify_window(inputs.get('window'))"
+      }
+    }
+  ]
+}

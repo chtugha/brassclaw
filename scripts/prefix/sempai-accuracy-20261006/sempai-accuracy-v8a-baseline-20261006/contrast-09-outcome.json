@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one class-22 pure-logic component pc-contrast-09: it reads raw records via inputs.get('records') (never direct access), validates that records is a nonempty list of 1..2 objects each with exactly code (string length 2..5) and enabled (exact bool), and returns {ok, records: original if valid else []} with no exceptions or coercion. The body assigns result on every outcome, makes zero host/IO calls, and does not assume upstream validation. This is an unapproved target-interface draft; activation requires Q1, human Q2 and runtime typed-runner support, which are not claimed here.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-09",
+        "description": "Pure-logic guard: validates a raw records list of 1..2 objects, each with exactly code (string length 2..5) and enabled (exact bool), and returns {ok, records: original if valid else []}. No I/O, imports, host calls or upstream validation assumption. Unapproved target-interface draft.",
+        "content": "def classify_records(records):\n    if not (type(records) is list and 1 <= len(records) <= 2):\n        return {'ok': False, 'records': []}\n    for rec in records:\n        if not (type(rec) is dict and set(rec.keys()) == {'code', 'enabled'}\n                and type(rec['code']) is str and 2 <= len(rec['code']) <= 5\n                and type(rec['enabled']) is bool):\n            return {'ok': False, 'records': []}\n    return {'ok': True, 'records': records}\nresult = classify_records(inputs.get('records'))"
+      }
+    }
+  ]
+}

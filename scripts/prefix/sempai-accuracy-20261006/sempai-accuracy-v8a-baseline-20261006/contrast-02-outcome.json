@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-02: it reads raw slots via inputs.get('slots') so absence is a valid outcome, validates that slots is a list of length 0..4 with every item an exact integer in 2..6 (rejecting bools, floats, non-integers, out-of-range and non-list shapes), and returns {ok, slots: original if valid else []} with no I/O, imports, host calls, exceptions or upstream-validation assumption. The body assigns result on every branch and defines its helper before calling it. This is an unapproved target-interface draft; activation requires Q1, human Q2 and typed-runner support, which are not claimed.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-02",
+        "description": "Pure-logic guard: validates a raw 'slots' list of length 0..4 with every item an exact integer in 2..6, and returns {ok, slots: original if valid else []}. No I/O, imports, host calls, exceptions or upstream-validation assumption. Empty list is valid.",
+        "content": "def classify_slots(raw):\n    if not isinstance(raw, list) or not all(isinstance(x, int) and not isinstance(x, bool) and 2 <= x <= 6 for x in raw) or not 0 <= len(raw) <= 4:\n        return {'ok': False, 'slots': []}\n    return {'ok': True, 'slots': raw}\nresult = classify_slots(inputs.get('slots'))"
+      }
+    }
+  ]
+}

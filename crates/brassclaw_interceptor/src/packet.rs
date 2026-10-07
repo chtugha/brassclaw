@@ -106,7 +106,7 @@ pub struct TokenAccountingSnapshot {
 /// The assembled prompt sent to the Kohai provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CapturedPrompt {
-    /// All messages in the final prompt (role + content-ref text).
+    /// Authorized resolved messages captured before provider dispatch.
     /// Each element is `(role, content_text)`.
     pub messages: Vec<(String, String)>,
     /// Logical segments that were assembled to build the prompt, with

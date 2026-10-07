@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-10: it reads raw records via inputs.get('records') (no direct access, no raise), validates each item is a dict with exactly the keys code and enabled, code a string of length 2..5, and enabled an exact bool, then returns {ok, records: original list if valid else []}. No imports, host calls, I/O, or upstream-validation assumption; result is assigned on every branch. This is an unapproved target-interface draft only; activation requires Q1, human Q2 and runtime typed-runner support, which are not established here.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-10",
+        "description": "Pure-logic guard: validates a raw list of records, each an object with exactly the keys code (string length 2..5) and enabled (exact boolean), and returns {ok, records} where records is the original list when valid or [] otherwise. No I/O, imports, host calls or upstream-validation assumption. Unapproved target-interface draft; activation requires Q1, human Q2 and typed-runner support.",
+        "content": "def classify_records(records):\n    valid = isinstance(records, list) and len(records) <= 3\n    if valid:\n        for item in records:\n            if not (type(item) is dict and set(item.keys()) == {'code', 'enabled'}\n                    and type(item['code']) is str and 2 <= len(item['code']) <= 5\n                    and type(item['enabled']) is bool):\n                valid = False\n                break\n    if valid:\n        result = {'ok': True, 'records': records}\n    else:\n        result = {'ok': False, 'records': []}\n    return result\nresult = classify_records(inputs.get('records'))"
+      }
+    }
+  ]
+}

@@ -82,6 +82,8 @@ pub struct GovernorBackedAccountant {
     /// as the recorded actual until provider-supplied token usage threads
     /// through the loop layer.
     in_flight: Arc<DashMap<TurnRunId, InFlightReservation>>,
+    // Claim before contacting the governor; no map lock spans external work.
+    reserving: Arc<DashSet<TurnRunId>>,
     seeding_policy: Option<BudgetSeedingPolicy>,
     /// Accounts already successfully seeded this process lifetime.
     /// Bounded by the number of distinct (user, project) pairs the
@@ -125,6 +127,7 @@ impl GovernorBackedAccountant {
             overestimate_factor: Decimal::from_f64(DEFAULT_OVERESTIMATE_FACTOR)
                 .unwrap_or(Decimal::ONE),
             in_flight: Arc::new(DashMap::new()),
+            reserving: Arc::new(DashSet::new()),
             seeding_policy: None,
             seeded: Arc::new(DashSet::new()),
             gate_store: None,
@@ -163,7 +166,7 @@ impl GovernorBackedAccountant {
     /// Override the per-token cost charged when the cost table has no
     /// entry for a model. Composition callers wiring a known-zero-cost
     /// table (Ollama, free tier) explicitly set this to
-    /// `ModelCost::default()` or a `ZeroCostTable` instead of letting
+    /// a row with zero input/output prices or a `ZeroCostTable` instead of letting
     /// the conservative GPT-4o-priced fallback fire.
     pub fn with_default_cost(mut self, cost: ModelCost) -> Self {
         self.default_cost = cost;
@@ -324,16 +327,19 @@ impl GovernorBackedAccountant {
         context: &LoopRunContext,
         estimate: ResourceEstimate,
     ) -> Result<(), LoopModelGatewayError> {
-        // Reject a second concurrent reservation for the same run: the loop
-        // calls model work serially per run, so overlap means a prior post-call
-        // leaked. Hold one reservation only — release the new hold immediately
-        // rather than overwriting and leaking the old one.
+        // Claim the run before making any governor call. This prevents two
+        // concurrent callers from creating holds and then racing to publish
+        // one of them. The claim has its own short-lived guard, so governor
+        // errors and unwinding cannot leave a permanent admission lock.
+        if !self.reserving.insert(context.run_id) {
+            return Err(overlapping_reservation_error());
+        }
+        let _claim = ReservationClaim {
+            reserving: self.reserving.as_ref(),
+            run_id: context.run_id,
+        };
         if self.in_flight.contains_key(&context.run_id) {
-            return Err(LoopModelGatewayError::new(
-                AgentLoopHostErrorKind::BudgetAccountingFailed,
-                "budget accountant has an in-flight reservation for this run",
-            )
-            .map_err(internal_summary_error)?);
+            return Err(overlapping_reservation_error());
         }
 
         let scope = self.resource_scope(context);
@@ -344,26 +350,13 @@ impl GovernorBackedAccountant {
             .reserve_with_id_and_outcome(scope, estimate.clone(), reservation_id)
         {
             Ok(outcome) => {
-                // Defense in depth: if another task raced us between the
-                // `contains_key` check above and now, refuse the second
-                // reservation by releasing this one and surfacing an error.
-                use dashmap::mapref::entry::Entry;
-                match self.in_flight.entry(context.run_id) {
-                    Entry::Vacant(slot) => {
-                        slot.insert(InFlightReservation {
-                            id: outcome.reservation.id,
-                            estimate,
-                        });
-                    }
-                    Entry::Occupied(_) => {
-                        let _ = self.governor.release(outcome.reservation.id);
-                        return Err(LoopModelGatewayError::new(
-                            AgentLoopHostErrorKind::BudgetAccountingFailed,
-                            "budget accountant has an in-flight reservation for this run",
-                        )
-                        .map_err(internal_summary_error)?);
-                    }
-                }
+                self.in_flight.insert(
+                    context.run_id,
+                    InFlightReservation {
+                        id: outcome.reservation.id,
+                        estimate,
+                    },
+                );
                 if !outcome.warnings.is_empty() {
                     tracing::debug!(
                         warnings = outcome.warnings.len(),
@@ -428,6 +421,22 @@ impl GovernorBackedAccountant {
 
 #[async_trait]
 impl LoopModelBudgetAccountant for GovernorBackedAccountant {
+    fn isolated_work_accountant(&self) -> Option<Arc<dyn LoopModelBudgetAccountant>> {
+        Some(Arc::new(Self {
+            governor: Arc::clone(&self.governor),
+            cost_table: Arc::clone(&self.cost_table),
+            overestimate_factor: self.overestimate_factor,
+            default_cost: self.default_cost,
+            event_sink: Arc::clone(&self.event_sink),
+            in_flight: Arc::new(DashMap::new()),
+            reserving: Arc::new(DashSet::new()),
+            seeding_policy: self.seeding_policy.clone(),
+            seeded: Arc::clone(&self.seeded),
+            gate_store: self.gate_store.clone(),
+            gate_expires_after: self.gate_expires_after,
+        }))
+    }
+
     async fn pre_model_work(
         &self,
         context: &LoopRunContext,
@@ -484,17 +493,27 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         }
     }
 
-    /// Override the default `post_model_call` so the assistant model path
-    /// reconciles against *provider-reported* usage (real USD spend) rather
-    /// than the reservation estimate. The neutral `ModelWorkOutcome` boundary
-    /// used by `post_model_work` does not carry `LoopModelResponse::usage`, so
-    /// the richer reconciliation lives here where the full response is in hand.
-    /// System-inference callers that have no provider usage continue to flow
-    /// through `post_model_work` and reconcile the estimate.
+    /// Preserve the full response for accurate assistant-work reconciliation.
+    /// Auxiliary provider work uses the same richer hook with its own retained
+    /// work request and isolated reservation namespace.
     async fn post_model_call(
         &self,
         context: &LoopRunContext,
-        _request: &LoopModelRequest,
+        request: &LoopModelRequest,
+        outcome: ModelCallOutcome<'_>,
+    ) -> Result<(), LoopModelGatewayError> {
+        self.post_model_work_result(
+            context,
+            &ModelWorkRequest::for_assistant(context, request),
+            outcome,
+        )
+        .await
+    }
+
+    async fn post_model_work_result(
+        &self,
+        context: &LoopRunContext,
+        _request: &ModelWorkRequest,
         outcome: ModelCallOutcome<'_>,
     ) -> Result<(), LoopModelGatewayError> {
         // Peek without removing — only clear the in-flight entry after the
@@ -582,6 +601,26 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
                 );
             }
         }
+    }
+}
+
+struct ReservationClaim<'a> {
+    reserving: &'a DashSet<TurnRunId>,
+    run_id: TurnRunId,
+}
+
+impl Drop for ReservationClaim<'_> {
+    fn drop(&mut self) {
+        self.reserving.remove(&self.run_id);
+    }
+}
+
+fn overlapping_reservation_error() -> LoopModelGatewayError {
+    LoopModelGatewayError {
+        kind: AgentLoopHostErrorKind::BudgetAccountingFailed,
+        safe_summary: brassclaw_turns::run_profile::LoopSafeSummary::model_gateway_failed(),
+        reason_kind: None,
+        diagnostic_ref: None,
     }
 }
 
@@ -1200,6 +1239,40 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind, AgentLoopHostErrorKind::BudgetAccountingFailed);
+    }
+
+    #[test]
+    fn concurrent_reservation_admission_keeps_one_actual_hold() {
+        let governor: Arc<dyn ResourceGovernor> = Arc::new(InMemoryResourceGovernor::new());
+        let accountant = GovernorBackedAccountant::new(governor, Arc::new(ZeroCostTable));
+        let context = run_context();
+        let barrier = std::sync::Barrier::new(16);
+        let outcomes = std::thread::scope(|scope| {
+            let threads = (0..16)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        accountant.reserve_estimate(&context, ResourceEstimate::default())
+                    })
+                })
+                .collect::<Vec<_>>();
+            threads
+                .into_iter()
+                .map(|thread| thread.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+        for error in outcomes.into_iter().filter_map(Result::err) {
+            assert_eq!(error.kind, AgentLoopHostErrorKind::BudgetAccountingFailed);
+        }
+        assert!(accountant.reserving.is_empty());
+        assert_eq!(accountant.in_flight.len(), 1);
+        accountant.release_in_flight(&context);
+        assert!(accountant.in_flight.is_empty());
+        accountant
+            .reserve_estimate(&context, ResourceEstimate::default())
+            .unwrap();
+        accountant.release_in_flight(&context);
     }
 
     #[tokio::test]

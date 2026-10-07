@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-95b219b22c677b30",
+  "object": "chat.completion",
+  "created": 1791358540,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"class_code == 21\", \"result\": \"class21 recipe-transfer-11 full-v3 export with the exact supplied UUIDs in the persisted knowledge/stepnumber/type=component/include schema, one desc_idx=0, one variant step_link=0:1-0:E, ten distinct intents, and the required unapproved/Q1/human-Q2/sink-c\"}, {\"guard\": \"class_code == 22\", \"result\": \"class22 draft only; the host already allocated the unapproved PythonCode 5e27ba17-04a3-5357-bee2-00a87cac9ae1, so emit no new class22 entry\"}, {\"guard\": \"class_code == 13\", \"result\": \"class13 draft only; the host already allocated the unapproved ToolSkill 6d31defa-e5d3-5103-bd01-49143f9d47f6, so emit no new class13 entry\"}, {\"guard\": \"class_code == 1..3\", \"result\": \"class1-3 association draft only; the host does not support a class1-3 constructor, so emit no class1-3 entry\"}, {\"guard\": \"class_code == 23\", \"result\": \"class23 export only; the host does not support a class23 constructor, so emit no class23 entry\"}, {\"guard\": \"else\", \"result\": \"unknown class_code; emit no component entry and explain the blocker in composition_summary\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"5e27ba17-04a3-5357-bee2-00a87cac9ae1\"}, {\"knowledge\": \"rust\", \"uuid\": \"6d31defa-e5d3-5103-bd01-49143f9d47f6\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\"], \"notes\": \"offline full-v3 export only; no runtime/approval claims; original conversation preserved; root compatibility arrays empty under test persona\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98737,
+    "total_tokens": 99242,
+    "completion_tokens": 505,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

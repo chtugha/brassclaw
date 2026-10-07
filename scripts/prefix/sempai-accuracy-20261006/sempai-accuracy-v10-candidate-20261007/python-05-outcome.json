@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-05: it reads rank via inputs.get('rank') (so missing and null are both invalid, not defaulted), accepts only exact integers in 1..10 inclusive, and returns {accepted:boolean, rank:original if accepted else null} with no exceptions or coercion. The body assigns result on every outcome and makes no host calls. No execution, submission, Q1/Q2 or activation occurred; the target typed-inputs interface requires selected-runner support.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-05",
+        "description": "Raw rank must be an exact integer in 1..10 inclusive. Missing or null is invalid (no default). Accept only exact integers 1..10; reject bool/float/string/wrong types. Always result={accepted:boolean, rank:original if accepted else null}. No exceptions, no coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "rank = inputs.get('rank')\naccepted = type(rank) is int and not type(rank) is bool and 1 <= rank <= 10\nresult = {'accepted': accepted, 'rank': rank if accepted else None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

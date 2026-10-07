@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Removed the authorized duplicate 'concise' from the system message, leaving exactly 'Keep it concise.'. Preserved the user message byte-for-byte and both roles. No provider facts or components were inferred.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Keep it concise."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

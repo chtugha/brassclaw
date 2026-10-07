@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-11",
+    "description": "Pure-logic rank classifier. Reads a raw rank candidate and returns {kind, rank}: 'missing' when the key is absent, 'null' when present but null, 'integer' when it is an exact integer in 7..16 (inclusive), otherwise 'invalid'. No coercion, defaults, exceptions, imports, I/O or host calls. Unapproved draft; typed-input transport and Monty execution are target interfaces requiring runner support.",
+    "content": "def classify_rank(inputs):\n    if 'rank' not in inputs:\n        result = {'kind': 'missing', 'rank': None}\n    else:\n        rank = inputs['rank']\n        if rank is None:\n            result = {'kind': 'null', 'rank': None}\n        elif type(rank) is int and not isinstance(rank, bool) and 7 <= rank <= 16:\n            result = {'kind': 'integer', 'rank': rank}\n        else:\n            result = {'kind': 'invalid', 'rank': None}\n    return result\nresult = classify_rank(inputs.get('rank'))"
+  }
+}

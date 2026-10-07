@@ -30,9 +30,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use std::collections::HashMap;
 
-use monty::{
-    DictPairs, ExtFunctionResult, FunctionCall, LimitedTracker, MontyObject, MontyRun,
-    NameLookupResult, PrintWriter, ResourceLimits, RunProgress,
+use monty::{FunctionCall, MontyRun, RunProgress};
+use monty_types::{
+    CompileOptions, ExtFunctionResult, MontyObject, MontyUuid, NameLookupResult, PrintWriter,
+    ResourceLimits, ResourceTracker,
 };
 use tracing::{debug, warn};
 
@@ -62,7 +63,15 @@ pub(crate) const RUNTIME_CHECKPOINT_METADATA_KEY: &str = "runtime_checkpoint";
 /// public attr not in attrs to `MethodCall`, surfacing as a `FunctionCall` with the
 /// bare tool name and `method_call = true`. The id is arbitrary — it never keys into
 /// Monty's type table; it only identifies the `host` object for repr/equality.
-const HOST_NAMESPACE_TYPE_ID: u64 = 0x484F_5354; // "HOST"
+const HOST_NAMESPACE_TYPE_ID: MontyUuid = MontyUuid::from_u128(0x484F_5354); // "HOST"
+
+fn host_namespace(receiver: MontyUuid) -> MontyObject {
+    MontyObject::class_instance(
+        MontyObject::class_type("host", HOST_NAMESPACE_TYPE_ID, true, true, []),
+        receiver,
+        [],
+    )
+}
 
 /// Outcome of a Tier-0 (no-LLM) recipe execution, surfaced from the
 /// Tier-0 recipe branch through [`OrchestratorResult`] (v3 Phase H4.6,
@@ -200,9 +209,6 @@ fn orchestrator_max_duration() -> std::time::Duration {
         std::time::Duration::from_secs(secs)
     })
 }
-
-/// Maximum allocation steps allowed per orchestrator VM execution.
-const ORCHESTRATOR_MAX_ALLOCATIONS: usize = 5_000_000;
 
 /// Classify a Monty orchestrator failure into a typed
 /// [`OrchestratorFailure`] that carries a user-safe classification plus
@@ -449,8 +455,9 @@ fn warn_on_lease_refresh_failure(context: &'static str, error: &crate::types::er
 /// `reborn_monty_vm_settings.max_duration_secs` by the caller.
 /// Pass `None` in DB-less / test contexts to use the env-var / compiled-in default.
 pub struct MontySession {
-    progress: Option<RunProgress<LimitedTracker>>,
-    parked_call: Option<FunctionCall<LimitedTracker>>,
+    host_receiver: MontyUuid,
+    progress: Option<RunProgress>,
+    parked_call: Option<FunctionCall>,
     total_tokens: TokenUsage,
     final_result: Option<serde_json::Value>,
     stdout: String,
@@ -476,7 +483,12 @@ impl MontySession {
 
         // Parse and compile
         let runner = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            MontyRun::new(code.to_string(), "orchestrator.py", input_names)
+            MontyRun::new(
+                code.to_string(),
+                "orchestrator.py",
+                input_names,
+                CompileOptions::default(),
+            )
         })) {
             Ok(Ok(runner)) => runner,
             Ok(Err(e)) => {
@@ -496,20 +508,19 @@ impl MontySession {
         // Resolve wall-clock budget: DB-backed value takes priority over the
         // env-var / compiled-in DB-less fallback (Step 9.3 demotion).
         let effective_duration = max_duration_override.unwrap_or_else(orchestrator_max_duration);
-        let effective_limits = ResourceLimits::new()
-            .max_duration(effective_duration)
-            .max_allocations(ORCHESTRATOR_MAX_ALLOCATIONS)
+        let effective_limits = ResourceLimits::default()
+            .max_feed_duration(effective_duration)
             .max_memory(128 * 1024 * 1024); // 128 MB
 
         // Start execution
         let mut stdout = String::new();
-        let tracker = LimitedTracker::new(effective_limits);
+        let tracker = ResourceTracker::new(effective_limits);
 
         let run_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             runner.start(
                 input_values,
                 tracker,
-                PrintWriter::CollectString(&mut stdout),
+                PrintWriter::collect_string(&mut stdout),
             )
         }));
 
@@ -530,6 +541,7 @@ impl MontySession {
         };
 
         Ok(Self {
+            host_receiver: MontyUuid::from_bytes(*uuid::Uuid::new_v4().as_bytes()),
             progress: Some(progress),
             parked_call: None,
             total_tokens,
@@ -582,10 +594,10 @@ impl MontySession {
         // suspended call with the new turn's input before continuing the
         // dispatch loop.
         if let Some(call) = self.parked_call.take() {
-            let ext_result = ExtFunctionResult::Return(new_input.unwrap_or(MontyObject::None));
+            let ext_result = ExtFunctionResult::Return(new_input.unwrap_or_else(MontyObject::none));
             self.progress = Some(
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    call.resume(ext_result, PrintWriter::CollectString(&mut self.stdout))
+                    call.resume(ext_result, PrintWriter::collect_string(&mut self.stdout))
                 })) {
                     Ok(Ok(p)) => p,
                     Ok(Err(e)) => {
@@ -615,6 +627,11 @@ impl MontySession {
                 }
             };
             match progress {
+                RunProgress::ControlYield(_) => {
+                    return Err(EngineError::Effect {
+                        reason: "unexpected control yield in legacy orchestrator adapter".into(),
+                    });
+                }
                 RunProgress::Complete(obj) => {
                     // Use FINAL result if set, otherwise fall back to VM return value
                     let result = if let Some(ref fr) = self.final_result {
@@ -641,14 +658,23 @@ impl MontySession {
                     // the session can be resumed later (true cross-turn
                     // persistence). The non-persistent caller treats this as
                     // an error; the persistent driver parks the session.
-                    if call.method_call && action_name == "await_next_turn" {
+                    if call.object_id == Some(self.host_receiver)
+                        && action_name == "await_next_turn"
+                    {
                         debug!("orchestrator: host.await_next_turn() - parking session");
                         self.parked_call = Some(call);
                         self.kohai_context = None;
                         return Ok(OrchestratorYield::AwaitNextTurn);
                     }
-                    let args = &call.args;
-                    let kwargs = &call.kwargs;
+                    let owned_args: Vec<_> =
+                        call.args.args().map(|value| value.to_owned()).collect();
+                    let owned_kwargs: Vec<_> = call
+                        .args
+                        .kwargs()
+                        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+                        .collect();
+                    let args = &owned_args;
+                    let kwargs = &owned_kwargs;
 
                     debug!(action = %action_name, "orchestrator: host function call");
 
@@ -657,7 +683,7 @@ impl MontySession {
                         "FINAL" => {
                             let val = args.first().map(monty_to_json).unwrap_or_default();
                             self.final_result = Some(val);
-                            ExtFunctionResult::Return(MontyObject::None)
+                            ExtFunctionResult::Return(MontyObject::none())
                         }
 
                         // __check_signals__()
@@ -737,29 +763,32 @@ impl MontySession {
                         // (Phase 2) + post_reply (end-of-turn chat post) are done;
                         // kohai_complete follows next; compose_orchestrator's rewrite lands
                         // with the Recipe/Component rework in a later C substep.
-                        "resolve_intent" if call.method_call => {
-                            handle_resolve_intent(&args[1..], kwargs, thread, component_port).await
+                        "resolve_intent" if call.object_id == Some(self.host_receiver) => {
+                            handle_resolve_intent(args, kwargs, thread, component_port).await
                         }
-                        "post_reply" if call.method_call => {
-                            handle_post_reply(&args[1..], kwargs, thread, event_tx)
+                        "post_reply" if call.object_id == Some(self.host_receiver) => {
+                            handle_post_reply(args, kwargs, thread, event_tx)
                         }
-                        "fetch_component" if call.method_call => {
-                            handle_fetch_component(&args[1..], thread, component_port).await
+                        "fetch_component" if call.object_id == Some(self.host_receiver) => {
+                            handle_fetch_component(args, thread, component_port).await
                         }
-                        "resolve_component_by_name" if call.method_call => {
-                            handle_resolve_component_by_name(&args[1..], thread, component_port)
-                                .await
+                        "resolve_component_by_name"
+                            if call.object_id == Some(self.host_receiver) =>
+                        {
+                            handle_resolve_component_by_name(args, thread, component_port).await
                         }
-                        "validate_component" if call.method_call => {
-                            handle_validate_component(&args[1..], thread, store).await
+                        "validate_component" if call.object_id == Some(self.host_receiver) => {
+                            handle_validate_component(args, thread, store).await
                         }
-                        "check_signals" if call.method_call => {
+                        "check_signals" if call.object_id == Some(self.host_receiver) => {
                             handle_check_signals(signal_rx, thread)
                         }
                         // Reused existing tools exposed under the `host.*` namespace.
-                        "regex_match" if call.method_call => handle_regex_match(&args[1..]),
-                        "skill_list" if call.method_call => {
-                            handle_list_skills(&args[1..], thread, component_port).await
+                        "regex_match" if call.object_id == Some(self.host_receiver) => {
+                            handle_regex_match(args)
+                        }
+                        "skill_list" if call.object_id == Some(self.host_receiver) => {
+                            handle_list_skills(args, thread, component_port).await
                         }
 
                         // C.4.5.17: host.run_program(code) — run a dynamically-provided
@@ -768,9 +797,9 @@ impl MontySession {
                         // Monty iterates composed.steplist and calls this once per
                         // step's executable_code. Returns {ok, return_value, stdout,
                         // error}.
-                        "run_program" if call.method_call => {
+                        "run_program" if call.object_id == Some(self.host_receiver) => {
                             handle_run_program(
-                                &args[1..],
+                                args,
                                 thread,
                                 effects,
                                 leases,
@@ -790,8 +819,8 @@ impl MontySession {
                         // rust_directives is a C.5/C.6 concern (deferred). Returns
                         // {ok, program} on success; {ok:false, error} on no bridge
                         // / not found / failure.
-                        "compose_orchestrator" if call.method_call => {
-                            handle_compose_orchestrator(&args[1..], thread, component_port).await
+                        "compose_orchestrator" if call.object_id == Some(self.host_receiver) => {
+                            handle_compose_orchestrator(args, thread, component_port).await
                         }
 
                         // C.5: host.kohai_complete(prompt={chat_history, user_query,
@@ -802,7 +831,7 @@ impl MontySession {
                         // {ok, answer, usage} on success; {ok:false, error} on no
                         // bridge / invalid prompt / failure. Monty drives this; Rust
                         // is the host.
-                        "kohai_complete" if call.method_call => {
+                        "kohai_complete" if call.object_id == Some(self.host_receiver) => {
                             let context = self.kohai_context.clone();
                             if let Some(active) = &mut self.kohai_context {
                                 active.iteration =
@@ -813,8 +842,7 @@ impl MontySession {
                                         ))
                                     })?;
                             }
-                            handle_kohai_complete(&args[1..], kwargs, context.as_ref(), kohai_port)
-                                .await
+                            handle_kohai_complete(args, kwargs, context.as_ref(), kohai_port).await
                         }
 
                         // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
@@ -824,10 +852,12 @@ impl MontySession {
                         // resolve it (user-defined functions, builtins). The impl lives in
                         // composition (C.5/C.6) over `DynamicToolLoader`; until then
                         // `dynamic_tools` is `None` and this arm is dormant.
-                        other if call.method_call => match dynamic_tools {
-                            Some(port) => dispatch_dynamic_tool(&**port, other, &args[1..], kwargs),
-                            None => ExtFunctionResult::NotFound(other.to_string()),
-                        },
+                        other if call.object_id == Some(self.host_receiver) => {
+                            match dynamic_tools {
+                                Some(port) => dispatch_dynamic_tool(&**port, other, args, kwargs),
+                                None => ExtFunctionResult::NotFound(other.to_string()),
+                            }
+                        }
 
                         // Unknown — let Monty resolve it (user-defined functions, builtins)
                         other => ExtFunctionResult::NotFound(other.to_string()),
@@ -836,7 +866,7 @@ impl MontySession {
                     // Resume the orchestrator VM
                     self.progress = Some(
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            call.resume(ext_result, PrintWriter::CollectString(&mut self.stdout))
+                            call.resume(ext_result, PrintWriter::collect_string(&mut self.stdout))
                         })) {
                             Ok(Ok(p)) => p,
                             Ok(Err(e)) => {
@@ -874,20 +904,14 @@ impl MontySession {
                     // CallAttr, so the namespace deliberately carries no attrs.
                     let result = if name == "host" {
                         debug!(name = %name, "orchestrator: resolved host namespace");
-                        NameLookupResult::Value(MontyObject::Dataclass {
-                            name: "host".to_string(),
-                            type_id: HOST_NAMESPACE_TYPE_ID,
-                            field_names: Vec::new(),
-                            attrs: DictPairs::from(Vec::new()),
-                            frozen: true,
-                        })
+                        NameLookupResult::Value(host_namespace(self.host_receiver))
                     } else {
                         debug!(name = %name, "orchestrator: unresolved name");
                         NameLookupResult::Undefined
                     };
                     self.progress = Some(
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            lookup.resume(result, PrintWriter::CollectString(&mut self.stdout))
+                            lookup.resume(result, PrintWriter::collect_string(&mut self.stdout))
                         })) {
                             Ok(Ok(p)) => p,
                             Ok(Err(e)) => {
@@ -976,7 +1000,7 @@ pub async fn prepare_monty_session(
 fn handle_check_signals(signal_rx: &mut SignalReceiver, thread: &mut Thread) -> ExtFunctionResult {
     match signal_rx.try_recv() {
         Ok(ThreadSignal::Stop) | Ok(ThreadSignal::Suspend) => {
-            ExtFunctionResult::Return(MontyObject::String("stop".into()))
+            ExtFunctionResult::Return(MontyObject::string("stop"))
         }
         Ok(ThreadSignal::InjectMessage(msg)) => {
             thread.add_message(msg.clone());
@@ -984,9 +1008,9 @@ fn handle_check_signals(signal_rx: &mut SignalReceiver, thread: &mut Thread) -> 
             ExtFunctionResult::Return(json_to_monty(&result))
         }
         Ok(ThreadSignal::Resume) | Ok(ThreadSignal::ChildCompleted { .. }) => {
-            ExtFunctionResult::Return(MontyObject::None)
+            ExtFunctionResult::Return(MontyObject::none())
         }
-        Err(_) => ExtFunctionResult::Return(MontyObject::None),
+        Err(_) => ExtFunctionResult::Return(MontyObject::none()),
     }
 }
 
@@ -1107,7 +1131,7 @@ fn handle_emit_event(
         }
         _ => {
             debug!(kind = %kind_str, "orchestrator: unknown event kind, skipping");
-            return ExtFunctionResult::Return(MontyObject::None);
+            return ExtFunctionResult::Return(MontyObject::none());
         }
     };
 
@@ -1118,7 +1142,7 @@ fn handle_emit_event(
     thread.events.push(event);
     thread.updated_at = chrono::Utc::now();
 
-    ExtFunctionResult::Return(MontyObject::None)
+    ExtFunctionResult::Return(MontyObject::none())
 }
 
 /// Handle `host.post_reply(answer=...)` — end-of-turn answer post. `text` is
@@ -1138,22 +1162,21 @@ fn handle_post_reply(
     // `text`. Accept exactly one supplied string in either existing contract,
     // without priority rules, coercion or silently dropping malformed replies.
     let text = match (args, kwargs) {
-        ([MontyObject::String(text)], []) => text,
-        ([], [(MontyObject::String(name), MontyObject::String(text))])
-            if name == "answer" || name == "text" =>
-        {
-            text
+        ([value], []) => value.as_ref().as_str(),
+        ([], [(name, value)]) if matches!(name.as_ref().as_str(), Some("answer" | "text")) => {
+            value.as_ref().as_str()
         }
-        _ => {
-            return ExtFunctionResult::Error(monty::MontyException::new(
-                monty::ExcType::TypeError,
-                Some("post_reply requires exactly one string answer".to_owned()),
-            ));
-        }
+        _ => None,
+    };
+    let Some(text) = text else {
+        return ExtFunctionResult::Error(monty_types::MontyException::new(
+            monty_types::ExcType::TypeError,
+            Some("post_reply requires exactly one string answer".to_owned()),
+        ));
     };
     if text.is_empty() {
-        return ExtFunctionResult::Error(monty::MontyException::new(
-            monty::ExcType::ValueError,
+        return ExtFunctionResult::Error(monty_types::MontyException::new(
+            monty_types::ExcType::ValueError,
             Some("post_reply answer must not be empty".to_owned()),
         ));
     }
@@ -1171,7 +1194,7 @@ fn handle_post_reply(
     }
     thread.events.push(event);
     thread.updated_at = chrono::Utc::now();
-    ExtFunctionResult::Return(MontyObject::None)
+    ExtFunctionResult::Return(MontyObject::none())
 }
 
 /// Handle `__save_checkpoint__(state, counters)`.
@@ -1205,7 +1228,7 @@ fn handle_save_checkpoint(
     }
     thread.updated_at = chrono::Utc::now();
 
-    ExtFunctionResult::Return(MontyObject::None)
+    ExtFunctionResult::Return(MontyObject::none())
 }
 
 /// Handle `__transition_to__(state, reason)`.
@@ -1224,17 +1247,17 @@ fn handle_transition_to(
         "waiting" => crate::types::thread::ThreadState::Waiting,
         "suspended" => crate::types::thread::ThreadState::Suspended,
         other => {
-            return ExtFunctionResult::Error(monty::MontyException::new(
-                monty::ExcType::ValueError,
+            return ExtFunctionResult::Error(monty_types::MontyException::new(
+                monty_types::ExcType::ValueError,
                 Some(format!("Unknown thread state: {other}")),
             ));
         }
     };
 
     match thread.transition_to(target, reason) {
-        Ok(()) => ExtFunctionResult::Return(MontyObject::None),
-        Err(e) => ExtFunctionResult::Error(monty::MontyException::new(
-            monty::ExcType::RuntimeError,
+        Ok(()) => ExtFunctionResult::Return(MontyObject::none()),
+        Err(e) => ExtFunctionResult::Error(monty_types::MontyException::new(
+            monty_types::ExcType::RuntimeError,
             Some(format!("State transition failed: {e}")),
         )),
     }
@@ -1264,7 +1287,9 @@ async fn handle_fetch_component(
         return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
     };
     let class_code = match _args.get(1) {
-        Some(MontyObject::Int(i)) => *i as i32,
+        Some(value) if value.as_ref().as_int().is_some() => {
+            i32::try_from(value.as_ref().as_int().unwrap()).unwrap_or(-1)
+        }
         _ => {
             return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
         }
@@ -1426,7 +1451,9 @@ async fn handle_resolve_component_by_name(
         return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
     }
     let class_code = match _args.get(1) {
-        Some(MontyObject::Int(i)) => *i as i32,
+        Some(value) if value.as_ref().as_int().is_some() => {
+            i32::try_from(value.as_ref().as_int().unwrap()).unwrap_or(-1)
+        }
         _ => {
             return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
         }
@@ -1576,7 +1603,7 @@ async fn handle_kohai_complete(
     let prompt_value = kwargs
         .iter()
         .find_map(|(k, v)| match k {
-            MontyObject::String(key) if key == "prompt" => Some(monty_to_json(v)),
+            _ if k.as_ref().as_str() == Some("prompt") => Some(monty_to_json(v)),
             _ => None,
         })
         .or_else(|| args.first().map(monty_to_json));
@@ -2350,10 +2377,7 @@ fn handle_log_budget_warning(
     };
     let value = args
         .get(1)
-        .and_then(|v| match v {
-            MontyObject::Int(i) => Some(*i),
-            _ => None,
-        })
+        .and_then(|v| v.as_ref().as_int())
         .or_else(|| extract_i64_kwarg(kwargs, "value"))
         .unwrap_or(0);
     let message = if args.len() >= 3 {
@@ -2374,7 +2398,7 @@ fn handle_log_budget_warning(
     thread.events.push(event);
     thread.updated_at = chrono::Utc::now();
 
-    ExtFunctionResult::Return(MontyObject::None)
+    ExtFunctionResult::Return(MontyObject::none())
 }
 
 /// Handle `__get_actions__()`.
@@ -2548,18 +2572,18 @@ async fn handle_record_skill_usage(
     store: Option<&Arc<dyn Store>>,
 ) -> ExtFunctionResult {
     let Some(store) = store else {
-        return ExtFunctionResult::Return(MontyObject::None);
+        return ExtFunctionResult::Return(MontyObject::none());
     };
 
     let doc_id_str = args.first().map(monty_to_string).unwrap_or_default();
     let success = args
         .get(1)
-        .map(|o| matches!(o, MontyObject::Bool(true)))
+        .map(|o| o.as_ref().as_bool() == Some(true))
         .unwrap_or(false);
 
     let Ok(uuid) = uuid::Uuid::parse_str(&doc_id_str) else {
         debug!("__record_skill_usage__: invalid doc_id: {doc_id_str}");
-        return ExtFunctionResult::Return(MontyObject::None);
+        return ExtFunctionResult::Return(MontyObject::none());
     };
 
     let tracker = crate::memory::SkillTracker::new(Arc::clone(store));
@@ -2570,7 +2594,7 @@ async fn handle_record_skill_usage(
         debug!("__record_skill_usage__: failed: {e}");
     }
 
-    ExtFunctionResult::Return(MontyObject::None)
+    ExtFunctionResult::Return(MontyObject::none())
 }
 
 /// Handle `__regex_match__(pattern, text) -> bool`.
@@ -2595,7 +2619,7 @@ fn handle_regex_match(args: &[MontyObject]) -> ExtFunctionResult {
     let pattern = args.first().map(monty_to_string).unwrap_or_default();
     let text = args.get(1).map(monty_to_string).unwrap_or_default();
     if pattern.is_empty() {
-        return ExtFunctionResult::Return(MontyObject::Bool(false));
+        return ExtFunctionResult::Return(MontyObject::bool(false));
     }
     // Cap compiled regex size to prevent ReDoS (matches the 64 KiB limit used
     // by `LoadedSkill::compile_patterns` in `brassclaw_skills`). Also cap the
@@ -2614,7 +2638,7 @@ fn handle_regex_match(args: &[MontyObject]) -> ExtFunctionResult {
             false
         }
     };
-    ExtFunctionResult::Return(MontyObject::Bool(matched))
+    ExtFunctionResult::Return(MontyObject::bool(matched))
 }
 
 /// Handle `__validate_component__(title, content, doc_type, metadata)`.
@@ -2740,8 +2764,8 @@ async fn handle_validate_component(
                 error = %e,
                 "validate_component: store write failed"
             );
-            ExtFunctionResult::Error(monty::MontyException::new(
-                monty::ExcType::RuntimeError,
+            ExtFunctionResult::Error(monty_types::MontyException::new(
+                monty_types::ExcType::RuntimeError,
                 Some(format!("__validate_component__ store write failed: {e}")),
             ))
         }
@@ -2822,7 +2846,7 @@ fn build_orchestrator_inputs(
 
     let values = vec![
         json_to_monty(&serde_json::json!(context)),
-        MontyObject::String(thread.goal.clone()),
+        MontyObject::string(thread.goal.clone()),
         json_to_monty(&serde_json::json!([])), // actions loaded dynamically via __get_actions__
         json_to_monty(persisted_state),
         json_to_monty(&config),
@@ -3140,7 +3164,7 @@ fn extract_string_arg(
     position: usize,
 ) -> Option<String> {
     for (k, v) in kwargs {
-        if let MontyObject::String(key) = k
+        if let Some(key) = k.as_ref().as_str()
             && key == name
         {
             return Some(monty_to_string(v));
@@ -3151,7 +3175,7 @@ fn extract_string_arg(
 
 fn extract_string_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Option<String> {
     for (k, v) in kwargs {
-        if let MontyObject::String(key) = k
+        if let Some(key) = k.as_ref().as_str()
             && key == name
         {
             return Some(monty_to_string(v));
@@ -3162,11 +3186,11 @@ fn extract_string_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Op
 
 fn extract_u64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Option<u64> {
     for (k, v) in kwargs {
-        if let MontyObject::String(key) = k
+        if let Some(key) = k.as_ref().as_str()
             && key == name
-            && let MontyObject::Int(i) = v
+            && let Some(i) = v.as_ref().as_int()
         {
-            return Some(*i as u64);
+            return u64::try_from(i).ok();
         }
     }
     None
@@ -3174,11 +3198,11 @@ fn extract_u64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Optio
 
 fn extract_i64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Option<i64> {
     for (k, v) in kwargs {
-        if let MontyObject::String(key) = k
+        if let Some(key) = k.as_ref().as_str()
             && key == name
-            && let MontyObject::Int(i) = v
+            && let Some(i) = v.as_ref().as_int()
         {
-            return Some(*i);
+            return Some(i);
         }
     }
     None
@@ -3197,10 +3221,7 @@ fn dynamic_call_args_to_json(
         map.insert(format!("__arg{i}"), monty_to_json(arg));
     }
     for (key, value) in kwargs {
-        let key_str = match key {
-            MontyObject::String(s) => s.clone(),
-            other => monty_to_string(other),
-        };
+        let key_str = monty_to_string(key);
         map.insert(key_str, monty_to_json(value));
     }
     serde_json::Value::Object(map)
@@ -3222,8 +3243,8 @@ fn dispatch_dynamic_tool(
     let args_json = dynamic_call_args_to_json(args, kwargs);
     match port.invoke(tool_name, args_json) {
         Ok(value) => ExtFunctionResult::Return(json_to_monty(&value)),
-        Err(err) => ExtFunctionResult::Error(monty::MontyException::new(
-            monty::ExcType::RuntimeError,
+        Err(err) => ExtFunctionResult::Error(monty_types::MontyException::new(
+            monty_types::ExcType::RuntimeError,
             Some(format!("dynamic tool '{tool_name}' failed: {err}")),
         )),
     }
@@ -3251,13 +3272,7 @@ mod tests {
 
     #[test]
     fn post_reply_preserves_answer_contract_and_rejects_ambiguous_or_invalid_data() {
-        let host = MontyObject::Dataclass {
-            name: "host".into(),
-            type_id: HOST_NAMESPACE_TYPE_ID,
-            field_names: Vec::new(),
-            attrs: DictPairs::from(Vec::new()),
-            frozen: true,
-        };
+        let host = host_namespace(MontyUuid::from_bytes(*uuid::Uuid::new_v4().as_bytes()));
         let answer = "quoted '\"\\\nÜ {{vars.slot0}}";
         for source in [
             "host.post_reply(answer=answer)",
@@ -3268,13 +3283,15 @@ mod tests {
                 source.into(),
                 "reply.py",
                 vec!["host".into(), "answer".into()],
+                CompileOptions::default(),
             )
             .unwrap();
             let progress = runner
                 .start(
-                    vec![host.clone(), MontyObject::String(answer.into())],
-                    LimitedTracker::new(
-                        ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS),
+                    vec![host.clone(), MontyObject::string(answer.to_string())],
+                    ResourceTracker::new(
+                        ResourceLimits::default()
+                            .max_feed_duration(std::time::Duration::from_secs(5)),
                     ),
                     PrintWriter::Disabled,
                 )
@@ -3283,53 +3300,66 @@ mod tests {
                 panic!("expected actual host reply call");
             };
             assert_eq!(call.function_name, "post_reply");
-            assert!(call.method_call);
+            assert!(call.object_id.is_some());
             let mut thread = make_validate_thread();
-            let result = handle_post_reply(&call.args[1..], &call.kwargs, &mut thread, None);
+            let result = handle_post_reply(
+                &call
+                    .args
+                    .args()
+                    .map(|value| value.to_owned())
+                    .collect::<Vec<_>>(),
+                &call
+                    .args
+                    .kwargs()
+                    .map(|(key, value)| (key.to_owned(), value.to_owned()))
+                    .collect::<Vec<_>>(),
+                &mut thread,
+                None,
+            );
             assert!(matches!(
                 result,
-                ExtFunctionResult::Return(MontyObject::None)
+                ExtFunctionResult::Return(ref value) if value.type_name() == "NoneType"
             ));
             assert_eq!(thread.messages.len(), 1);
             assert_eq!(thread.messages[0].content, answer);
             assert_eq!(thread.events.len(), 1);
             assert!(matches!(
                 call.resume(result, PrintWriter::Disabled).unwrap(),
-                RunProgress::Complete(MontyObject::None)
+                RunProgress::Complete(ref value) if value.type_name() == "NoneType"
             ));
         }
         let mut thread = make_validate_thread();
         let before = thread.updated_at;
-        let string = MontyObject::String("valid reply".into());
+        let string = MontyObject::string("valid reply");
         for (args, kwargs) in [
             (vec![], vec![]),
-            (vec![MontyObject::None], vec![]),
+            (vec![MontyObject::none()], vec![]),
             (
                 vec![],
-                vec![(MontyObject::String("answer".into()), MontyObject::Int(42))],
+                vec![(MontyObject::string("answer"), MontyObject::int(42))],
             ),
             (
                 vec![],
                 vec![(
-                    MontyObject::String("answer".into()),
-                    MontyObject::String(String::new()),
+                    MontyObject::string("answer"),
+                    MontyObject::string(String::new()),
                 )],
             ),
             (
                 vec![string.clone()],
-                vec![(MontyObject::String("answer".into()), string.clone())],
+                vec![(MontyObject::string("answer"), string.clone())],
             ),
             (
                 vec![],
                 vec![
-                    (MontyObject::String("answer".into()), string.clone()),
-                    (MontyObject::String("text".into()), string.clone()),
+                    (MontyObject::string("answer"), string.clone()),
+                    (MontyObject::string("text"), string.clone()),
                 ],
             ),
             (vec![string.clone(), string.clone()], vec![]),
             (
                 vec![],
-                vec![(MontyObject::String("unknown".into()), string.clone())],
+                vec![(MontyObject::string("unknown"), string.clone())],
             ),
         ] {
             assert!(matches!(
@@ -3404,10 +3434,10 @@ mod tests {
 
     #[test]
     fn dynamic_call_args_to_json_builds_kwargs_object() {
-        let args = vec![monty::MontyObject::String("p".into())];
+        let args = vec![monty_types::MontyObject::string("p")];
         let kwargs = vec![(
-            monty::MontyObject::String("x".into()),
-            monty::MontyObject::String("y".into()),
+            monty_types::MontyObject::string("x"),
+            monty_types::MontyObject::string("y"),
         )];
         let json = super::dynamic_call_args_to_json(&args, &kwargs);
         assert_eq!(json, serde_json::json!({"__arg0": "p", "x": "y"}));
@@ -3418,17 +3448,17 @@ mod tests {
         let port = MockDynamicToolPort::new(true);
         *port.invoke_result.lock().unwrap() = Some(Ok(serde_json::json!({"echoed": true})));
         let kwargs = vec![(
-            monty::MontyObject::String("k".into()),
-            monty::MontyObject::String("v".into()),
+            monty_types::MontyObject::string("k"),
+            monty_types::MontyObject::string("v"),
         )];
         let result = super::dispatch_dynamic_tool(
             &port,
             "fixture_echo",
-            &[monty::MontyObject::String("p".into())],
+            &[monty_types::MontyObject::string("p")],
             &kwargs,
         );
         match result {
-            monty::ExtFunctionResult::Return(obj) => {
+            monty_types::ExtFunctionResult::Return(obj) => {
                 assert_eq!(
                     super::monty_to_json(&obj),
                     serde_json::json!({"echoed": true})
@@ -3449,7 +3479,7 @@ mod tests {
         let result = super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
         assert!(matches!(
             result,
-            monty::ExtFunctionResult::NotFound(ref n) if n == "fixture_echo"
+            monty_types::ExtFunctionResult::NotFound(ref n) if n == "fixture_echo"
         ));
     }
 
@@ -3461,7 +3491,7 @@ mod tests {
             reason: "boom".into(),
         }));
         let result = super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
-        assert!(matches!(result, monty::ExtFunctionResult::Error(_)));
+        assert!(matches!(result, monty_types::ExtFunctionResult::Error(_)));
     }
 
     // ── C.4.5.17 Part 3a: host.compose_orchestrator handler ────────────────
@@ -3584,9 +3614,9 @@ mod tests {
     async fn compose_orchestrator_no_port_returns_unavailable() {
         let thread = make_validate_thread();
         let args = vec![
-            MontyObject::String(uuid::Uuid::nil().to_string()),
-            MontyObject::String("0:1".into()),
-            MontyObject::String("hi".into()),
+            MontyObject::string(uuid::Uuid::nil().to_string()),
+            MontyObject::string("0:1"),
+            MontyObject::string("hi"),
         ];
         let result = handle_compose_orchestrator(&args, &thread, None).await;
         let json = match result {
@@ -3602,8 +3632,8 @@ mod tests {
         let thread = make_validate_thread();
         let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::ok());
         let args = vec![
-            MontyObject::String("not-a-uuid".into()),
-            MontyObject::String("0:1".into()),
+            MontyObject::string("not-a-uuid"),
+            MontyObject::string("0:1"),
         ];
         let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
         let json = match result {
@@ -3630,7 +3660,7 @@ mod tests {
             },
         ));
         // No step_link arg → defaults to "" inside handle_compose_orchestrator.
-        let args = vec![MontyObject::String(uuid::Uuid::nil().to_string())];
+        let args = vec![MontyObject::string(uuid::Uuid::nil().to_string())];
         let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
@@ -3649,9 +3679,9 @@ mod tests {
         let thread = make_validate_thread();
         let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::ok());
         let args = vec![
-            MontyObject::String(uuid::Uuid::nil().to_string()),
-            MontyObject::String("0:1".into()),
-            MontyObject::String("user text".into()),
+            MontyObject::string(uuid::Uuid::nil().to_string()),
+            MontyObject::string("0:1"),
+            MontyObject::string("user text"),
         ];
         let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
         let json = match result {
@@ -3683,8 +3713,8 @@ mod tests {
             },
         ));
         let args = vec![
-            MontyObject::String(uuid::Uuid::nil().to_string()),
-            MontyObject::String("0:1".into()),
+            MontyObject::string(uuid::Uuid::nil().to_string()),
+            MontyObject::string("0:1"),
         ];
         let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
         let json = match result {
@@ -3791,7 +3821,7 @@ mod tests {
     async fn kohai_complete_non_dict_prompt_returns_error() {
         let context = test_kohai_context();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
-        let args = vec![MontyObject::String("not-a-dict".into())];
+        let args = vec![MontyObject::string("not-a-dict")];
         let result = handle_kohai_complete(&args, &[], Some(&context), Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
@@ -3813,7 +3843,7 @@ mod tests {
             "chat_history": [],
             "prefix_placeholder": "{{prefix}}",
         });
-        let kwargs = vec![(MontyObject::String("prompt".into()), json_to_monty(&prompt))];
+        let kwargs = vec![(MontyObject::string("prompt"), json_to_monty(&prompt))];
         let result = handle_kohai_complete(&[], &kwargs, Some(&context), Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
@@ -3913,7 +3943,7 @@ mod tests {
                     None,
                     None,
                     Some(&port),
-                    Some(MontyObject::String("exact admitted input".into())),
+                    Some(MontyObject::string("exact admitted input")),
                 )
                 .await
                 .unwrap(),
@@ -3934,8 +3964,6 @@ mod tests {
         session.begin_kohai_task(next).unwrap();
     }
 
-    /// Max VM allocations for test helper runs (lower than production).
-    const TEST_MAX_ALLOCATIONS: usize = 500_000;
     /// Max consecutive errors used in None-guard regression test.
     const TEST_CONSECUTIVE_ERRORS: i64 = 99;
     /// Negative token budget value used in event map tests.
@@ -4505,17 +4533,23 @@ mod tests {
             "{'steplist': [{'executable_code': 'host.effect()'}, {}]}",
         ] {
             let code = format!("{helpers}\n_run_steplist({program}, {{}})['ok']");
-            let runner = MontyRun::new(code, "recipe-preflight.py", vec![])
-                .expect("production helpers must compile");
-            let tracker =
-                LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
+            let runner = MontyRun::new(
+                code,
+                "recipe-preflight.py",
+                vec![],
+                CompileOptions::default(),
+            )
+            .expect("production helpers must compile");
+            let tracker = ResourceTracker::new(
+                ResourceLimits::default().max_feed_duration(std::time::Duration::from_secs(5)),
+            );
             let progress = runner
                 .start(vec![], tracker, PrintWriter::Disabled)
                 .expect("malformed programs must return a failed result");
             match progress {
                 RunProgress::Complete(value) => assert_eq!(
                     value,
-                    MontyObject::Bool(false),
+                    MontyObject::bool(false),
                     "malformed program was accepted: {program}"
                 ),
                 _ => panic!("malformed program reached a host boundary: {program}"),
@@ -4533,14 +4567,15 @@ mod tests {
     /// value as a `MontyObject`. This is the common core for `eval_python_bool`
     /// and `eval_python_int`.
     fn run_python_final(code: String) -> MontyObject {
-        let runner =
-            MontyRun::new(code, "test.py", vec![]).expect("Failed to parse orchestrator helpers");
+        let runner = MontyRun::new(code, "test.py", vec![], CompileOptions::default())
+            .expect("Failed to parse orchestrator helpers");
         let mut stdout = String::new();
-        let tracker =
-            LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
+        let tracker = ResourceTracker::new(
+            ResourceLimits::default().max_feed_duration(std::time::Duration::from_secs(5)),
+        );
 
         let mut progress = runner
-            .start(vec![], tracker, PrintWriter::CollectString(&mut stdout))
+            .start(vec![], tracker, PrintWriter::collect_string(&mut stdout))
             .expect("Failed to start orchestrator test");
 
         loop {
@@ -4548,26 +4583,36 @@ mod tests {
                 RunProgress::Complete(obj) => return obj,
                 RunProgress::FunctionCall(call) => {
                     if call.function_name == "FINAL" {
-                        let val = call.args.first().cloned().unwrap_or(MontyObject::None);
+                        let val = call
+                            .args
+                            .arg(0)
+                            .map(|value| value.to_owned())
+                            .unwrap_or_else(MontyObject::none);
                         let _ = call.resume(
-                            ExtFunctionResult::Return(MontyObject::None),
-                            PrintWriter::CollectString(&mut stdout),
+                            ExtFunctionResult::Return(MontyObject::none()),
+                            PrintWriter::collect_string(&mut stdout),
                         );
                         return val;
                     }
                     let ext_result = match call.function_name.as_str() {
-                        "__regex_match__" => handle_regex_match(&call.args),
-                        _ => ExtFunctionResult::Return(MontyObject::None),
+                        "__regex_match__" => handle_regex_match(
+                            &call
+                                .args
+                                .args()
+                                .map(|value| value.to_owned())
+                                .collect::<Vec<_>>(),
+                        ),
+                        _ => ExtFunctionResult::Return(MontyObject::none()),
                     };
                     progress = call
-                        .resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                        .resume(ext_result, PrintWriter::collect_string(&mut stdout))
                         .expect("resume failed");
                 }
                 RunProgress::NameLookup(lookup) => {
                     progress = lookup
                         .resume(
                             NameLookupResult::Undefined,
-                            PrintWriter::CollectString(&mut stdout),
+                            PrintWriter::collect_string(&mut stdout),
                         )
                         .expect("name lookup resume failed");
                 }
@@ -4587,7 +4632,7 @@ mod tests {
 
         let code = format!("{helpers}\nFINAL({expr})");
         match run_python_final(code) {
-            MontyObject::Bool(v) => v,
+            obj if obj.as_ref().as_bool().is_some() => obj.as_ref().as_bool().unwrap(),
             other => panic!("Expected bool, got: {other:?}"),
         }
     }
@@ -4602,7 +4647,7 @@ mod tests {
 
         let code = format!("{helpers}\n{program}");
         match run_python_final(code) {
-            MontyObject::Int(v) => v,
+            obj if obj.as_ref().as_int().is_some() => obj.as_ref().as_int().unwrap(),
             other => panic!("Expected int, got: {other:?}"),
         }
     }
@@ -4829,7 +4874,7 @@ mod tests {
         assert_eq!(json["error"], serde_json::json!("missing user_input"));
 
         // Present user_input, no port.
-        let args = vec![MontyObject::String("deploy the thing".into())];
+        let args = vec![MontyObject::string("deploy the thing")];
         let result = handle_resolve_intent(&args, &[], &thread, None).await;
         let ExtFunctionResult::Return(obj) = result else {
             panic!("handle_resolve_intent did not return a value");
@@ -4842,7 +4887,7 @@ mod tests {
     #[tokio::test]
     async fn handle_resolve_intent_only_successful_matcher_returns_no_match() {
         let thread = phase_f7_thread("input");
-        let args = vec![MontyObject::String("input".into())];
+        let args = vec![MontyObject::string("input")];
         for (port, status) in [
             (MockComponentPort::ok(), "no_match"),
             (
@@ -4929,7 +4974,7 @@ mod tests {
                 None,
                 Some(&port),
                 None,
-                Some(MontyObject::String("accepted input".into())),
+                Some(MontyObject::string("accepted input")),
             )
             .await;
         let Err(EngineError::Orchestrator(failure)) = result else {
@@ -5772,19 +5817,16 @@ FINAL(batch_error_count)
             crate::types::thread::ThreadConfig::default(),
         );
         thread.transition_to(ThreadState::Running, None).unwrap();
-        let args = vec![MontyObject::String("budget_warning".into())];
+        let args = vec![MontyObject::string("budget_warning")];
         let kwargs = vec![
+            (MontyObject::string("field"), MontyObject::string("tokens")),
             (
-                MontyObject::String("field".into()),
-                MontyObject::String("tokens".into()),
+                MontyObject::string("value"),
+                MontyObject::int(TEST_NEG_TOKENS_50),
             ),
             (
-                MontyObject::String("value".into()),
-                MontyObject::Int(TEST_NEG_TOKENS_50),
-            ),
-            (
-                MontyObject::String("message".into()),
-                MontyObject::String("token budget low".into()),
+                MontyObject::string("message"),
+                MontyObject::string("token budget low"),
             ),
         ];
         handle_emit_event(&args, &kwargs, &mut thread, None);
@@ -5808,15 +5850,15 @@ FINAL(batch_error_count)
             crate::types::thread::ThreadConfig::default(),
         );
         thread.transition_to(ThreadState::Running, None).unwrap();
-        let args = vec![MontyObject::String("prompt_over_budget".into())];
+        let args = vec![MontyObject::string("prompt_over_budget")];
         let kwargs = vec![
             (
-                MontyObject::String("estimated_tokens".into()),
-                MontyObject::Int(TEST_ESTIMATED_TOKENS_8K),
+                MontyObject::string("estimated_tokens"),
+                MontyObject::int(TEST_ESTIMATED_TOKENS_8K),
             ),
             (
-                MontyObject::String("budget_tokens".into()),
-                MontyObject::Int(TEST_BUDGET_TOKENS_6K),
+                MontyObject::string("budget_tokens"),
+                MontyObject::int(TEST_BUDGET_TOKENS_6K),
             ),
         ];
         handle_emit_event(&args, &kwargs, &mut thread, None);
@@ -5857,29 +5899,31 @@ FINAL(batch_error_count)
         let recipe_name = "greet-recipe";
 
         // started
-        let args = vec![MontyObject::String("recipe_tier_zero_started".into())];
+        let args = vec![MontyObject::string("recipe_tier_zero_started")];
         let kwargs = vec![
             (
-                MontyObject::String("recipe".into()),
-                MontyObject::String(recipe_name.into()),
+                MontyObject::string("recipe"),
+                MontyObject::string(recipe_name.to_string()),
             ),
             (
-                MontyObject::String("recipe_id".into()),
-                MontyObject::String(recipe_id.into()),
+                MontyObject::string("recipe_id"),
+                MontyObject::string(recipe_id.to_string()),
             ),
         ];
         handle_emit_event(&args, &kwargs, &mut thread, None);
 
         // succeeded
-        let args = vec![MontyObject::String("recipe_tier_zero_succeeded".into())];
+        let args = vec![MontyObject::string(
+            "recipe_tier_zero_succeeded".to_string(),
+        )];
         handle_emit_event(&args, &kwargs, &mut thread, None);
 
         // failed (adds a `message` kwarg)
-        let args = vec![MontyObject::String("recipe_tier_zero_failed".into())];
+        let args = vec![MontyObject::string("recipe_tier_zero_failed")];
         let mut failed_kwargs = kwargs.clone();
         failed_kwargs.push((
-            MontyObject::String("message".into()),
-            MontyObject::String("step raised: boom".into()),
+            MontyObject::string("message"),
+            MontyObject::string("step raised: boom"),
         ));
         handle_emit_event(&args, &failed_kwargs, &mut thread, None);
 
@@ -6052,9 +6096,9 @@ FINAL(batch_error_count)
             .unwrap();
 
         let args = vec![
-            MontyObject::String("tokens".into()),
-            MontyObject::Int(TEST_NEG_TOKENS_42),
-            MontyObject::String("token budget low".into()),
+            MontyObject::string("tokens"),
+            MontyObject::int(TEST_NEG_TOKENS_42),
+            MontyObject::string("token budget low"),
         ];
         let kwargs: Vec<(MontyObject, MontyObject)> = vec![];
         handle_log_budget_warning(&args, &kwargs, &mut thread, None);
@@ -6094,9 +6138,9 @@ FINAL(batch_error_count)
         let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
         let thread = make_validate_thread();
         let args = vec![
-            MontyObject::String("my-skill".into()),
-            MontyObject::String("skill content here".into()),
-            MontyObject::String("skill".into()),
+            MontyObject::string("my-skill"),
+            MontyObject::string("skill content here"),
+            MontyObject::string("skill"),
         ];
 
         let result = handle_validate_component(&args, &thread, Some(&store)).await;
@@ -6124,10 +6168,7 @@ FINAL(batch_error_count)
     async fn validate_component_no_op_on_empty_payload() {
         let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
         let thread = make_validate_thread();
-        let args = vec![
-            MontyObject::String("my-skill".into()),
-            MontyObject::String("".into()),
-        ];
+        let args = vec![MontyObject::string("my-skill"), MontyObject::string("")];
 
         let result = handle_validate_component(&args, &thread, Some(&store)).await;
         let json = match result {
@@ -6147,8 +6188,8 @@ FINAL(batch_error_count)
     async fn validate_component_no_op_without_store() {
         let thread = make_validate_thread();
         let args = vec![
-            MontyObject::String("my-skill".into()),
-            MontyObject::String("content".into()),
+            MontyObject::string("my-skill"),
+            MontyObject::string("content"),
         ];
 
         let result = handle_validate_component(&args, &thread, None).await;
@@ -6174,9 +6215,9 @@ FINAL(batch_error_count)
             "codeact_preamble must be a protected component"
         );
         let args = vec![
-            MontyObject::String("orchestrator:main".into()),
-            MontyObject::String("def run_loop(): pass".into()),
-            MontyObject::String("skill".into()),
+            MontyObject::string("orchestrator:main"),
+            MontyObject::string("def run_loop(): pass"),
+            MontyObject::string("skill"),
         ];
 
         let result = handle_validate_component(&args, &thread, Some(&store)).await;
@@ -6205,9 +6246,9 @@ FINAL(batch_error_count)
         let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
         let thread = make_validate_thread();
         let args = vec![
-            MontyObject::String("my-custom-skill".into()),
-            MontyObject::String("skill content here".into()),
-            MontyObject::String("skill".into()),
+            MontyObject::string("my-custom-skill"),
+            MontyObject::string("skill content here"),
+            MontyObject::string("skill"),
         ];
 
         let result = handle_validate_component(&args, &thread, Some(&store)).await;
@@ -6560,22 +6601,18 @@ FINAL(batch_error_count)
 
         // No-pool path (the unit-test reality): a well-formed call returns Null.
         let json = null_from(
-            vec![MontyObject::String("deploy".into()), MontyObject::Int(16)],
+            vec![MontyObject::string("deploy"), MontyObject::int(16)],
             &thread,
         )
         .await;
         assert!(json.is_null(), "no-pool path must return Null, got {json}");
 
         // Empty name early-returns Null.
-        let json = null_from(
-            vec![MontyObject::String("".into()), MontyObject::Int(16)],
-            &thread,
-        )
-        .await;
+        let json = null_from(vec![MontyObject::string(""), MontyObject::int(16)], &thread).await;
         assert!(json.is_null(), "empty name must return Null, got {json}");
 
         // Missing class-code arg returns Null.
-        let json = null_from(vec![MontyObject::String("deploy".into())], &thread).await;
+        let json = null_from(vec![MontyObject::string("deploy")], &thread).await;
         assert!(
             json.is_null(),
             "missing class-code must return Null, got {json}"

@@ -149,6 +149,43 @@ pub struct TypedCompositionError {
     pub reason: &'static str,
 }
 
+/// Typed source/binding preparation is one coherent IBS operation. This is not
+/// a catalogue approval record; the caller must supply the pinned snapshot.
+pub struct PreparedTypedProgram {
+    program: ComposedProgram,
+    inputs: super::typed_bindings::PreparedInputLayout,
+}
+
+impl PreparedTypedProgram {
+    pub fn program(&self) -> &ComposedProgram {
+        &self.program
+    }
+    pub fn inputs(&self) -> &super::typed_bindings::PreparedInputLayout {
+        &self.inputs
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TypedProgramPreparationError {
+    #[error(transparent)]
+    Composition(#[from] TypedCompositionError),
+    #[error(transparent)]
+    Inputs(#[from] super::typed_bindings::InputPreparationError),
+}
+
+pub fn prepare_typed_program(
+    ordered: &OrderedBuildInstruction,
+    resolver: &dyn ComponentResolver,
+    task_inputs: &brassclaw_skills::value_contract::InputContract,
+    contracts: &std::collections::BTreeMap<String, super::typed_bindings::StepContracts>,
+    declarations: &std::collections::BTreeMap<String, Vec<super::typed_bindings::InputBinding>>,
+) -> Result<PreparedTypedProgram, TypedProgramPreparationError> {
+    let program = compose_typed_program(ordered, resolver)?;
+    let inputs =
+        super::typed_bindings::prepare_input_layout(ordered, task_inputs, contracts, declarations)?;
+    Ok(PreparedTypedProgram { program, inputs })
+}
+
 /// V3 assembly keeps selected PythonCode unchanged. Inputs are supplied by the
 /// task host as values; no variable substitution or prose execution occurs.
 /// The resolver must represent the caller's single pinned catalogue snapshot.

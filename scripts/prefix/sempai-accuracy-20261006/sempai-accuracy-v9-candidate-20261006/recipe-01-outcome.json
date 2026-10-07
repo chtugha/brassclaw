@@ -1,0 +1,88 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode d0a73787-74ae-55cb-b6a0-25131936e06d (result = host.post_reply(answer='Ready')) and unapproved ToolSkill a6ed3264-13bc-56ae-9de7-064df4b3d2ce (binds existing host.post_reply(answer:string)). This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. The constructor preserves full v3 fields; steps is empty and the executable references are in step_descriptions. No actual tests, Q1/Q2, submission or activation occurred in this offline-design reviewer. The shared word Ready selects a posted-message effect, not returned data.",
+  "proposed_recipe_updates": [
+    {
+      "name": "recipe-transfer-01",
+      "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+      "trigger": null,
+      "steps": [],
+      "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+      "intent_examples": [
+        "say ready",
+        "reply ready",
+        "post ready",
+        "send the ready reply",
+        "respond with ready",
+        "tell me ready",
+        "please say ready",
+        "please reply ready",
+        "post the fixed ready message",
+        "send the fixed ready message"
+      ],
+      "step_descriptions": [
+        {
+          "desc_idx": 0,
+          "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "yaml_source": "Documentation of supplied offline fixture steps",
+          "steps": [
+            {
+              "stepnumber": 1,
+              "knowledge": "rust",
+              "goal": "Bind reply Tool",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "a6ed3264-13bc-56ae-9de7-064df4b3d2ce"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            },
+            {
+              "stepnumber": 2,
+              "knowledge": "orchestrator",
+              "goal": "Post fixed reply",
+              "content": "Use the supplied offline fixture",
+              "type": "component",
+              "include": [
+                "d0a73787-74ae-55cb-b6a0-25131936e06d"
+              ],
+              "tool_bindings": [],
+              "dependencies": null
+            }
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "variant_key": "ready-reply",
+          "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+          "step_link": "0:1-0:E",
+          "intent_examples": [
+            "say ready",
+            "reply ready",
+            "post ready",
+            "send the ready reply",
+            "respond with ready",
+            "tell me ready",
+            "please say ready",
+            "please reply ready",
+            "post the fixed ready message",
+            "send the fixed ready message"
+          ],
+          "variable_patterns": []
+        }
+      ],
+      "dependency_registry": null
+    }
+  ],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable ready reply workflow."
+    ]
+  ]
+}

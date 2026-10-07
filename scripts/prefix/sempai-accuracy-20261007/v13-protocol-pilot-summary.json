@@ -1,0 +1,42 @@
+{
+  "partial_pilot_only": true,
+  "not_a_60_case_score": true,
+  "cases": [
+    {
+      "id": "python-08",
+      "response_contract_passed": false,
+      "whole_artifacts_passed": false,
+      "proposals": 10
+    },
+    {
+      "id": "python-09",
+      "response_contract_passed": false,
+      "whole_artifacts_passed": false,
+      "proposals": 2
+    },
+    {
+      "id": "python-10",
+      "response_contract_passed": false,
+      "whole_artifacts_passed": false,
+      "proposals": 2
+    },
+    {
+      "id": "python-11",
+      "response_contract_passed": false,
+      "whole_artifacts_passed": false,
+      "proposals": 2
+    },
+    {
+      "id": "recipe-06",
+      "response_contract_passed": true,
+      "whole_artifacts_passed": true,
+      "proposals": 1
+    },
+    {
+      "id": "evidence-11",
+      "response_contract_passed": true,
+      "whole_artifacts_passed": true,
+      "proposals": 0
+    }
+  ]
+}

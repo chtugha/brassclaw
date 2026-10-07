@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create a reusable validator for an exact boolean flag."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline-design mode. Proposed one class-22 PythonCode draft named pc-check-flag (name/description/content only) that validates an exact boolean flag: reads inputs.get(\"flag\") with a presence branch, treats only True and False as valid, returns {valid, flag} with flag null when invalid, uses a small helper and invokes it at module scope to assign result, and contains no imports, I/O, host calls, exceptions or coercion. The draft is an unapproved proposal; no submission, activation, tests or approval occurred. The host sink supports class 22 (name/description/content); class 21 drops step_descriptions/variants/dependency_registry, and classes 1-3/13 are unsupported there, so no Recipe/intent/settings proposals were emitted. Typed inputs remain a target interface, not guaranteed runtime support.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-flag",
+        "description": "Validate an exact boolean flag from raw inputs and return a valid/flag result object. Reads inputs.get(\"flag\") with a presence branch so missing and null are distinct invalid outcomes. Only the exact booleans True and False are valid; any other value (including non-boolean types) is invalid. Uses a small helper is_exact_flag and invokes it at module scope to assign result. Returns {valid: boolean, flag: original bool if valid else null}. No imports, I/O, host calls, exceptions or type coercion. Pure logic, zero host calls.",
+        "content": "flag = inputs.get(\"flag\")\nif is_exact_flag(flag):\n    result = {\"valid\": True, \"flag\": flag}\nelse:\n    result = {\"valid\": False, \"flag\": None}"
+      }
+    }
+  ]
+}

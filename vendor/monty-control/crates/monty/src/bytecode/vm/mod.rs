@@ -157,7 +157,13 @@ macro_rules! handle_call_result {
             Ok(CallResult::Value(result)) => $self.push(result),
             Ok(CallResult::FramePushed) => {}
             Ok(CallResult::External(name, args)) => {
-                let call_id = $self.allocate_call_id();
+                let call_id = match $self.allocate_call_id() {
+                    Ok(id) => id,
+                    Err(error) => {
+                        args.drop_with($self);
+                        return Err(error);
+                    }
+                };
                 let name_load_ip = $self.ext_function_load_ip.take();
                 return Ok(FrameExit::ExternalCall {
                     function_name: name,
@@ -177,7 +183,13 @@ macro_rules! handle_call_result {
                 Err(err) => catch!($self, err),
             },
             Ok(CallResult::MethodCall { name, args, object_id }) => {
-                let call_id = $self.allocate_call_id();
+                let call_id = match $self.allocate_call_id() {
+                    Ok(id) => id,
+                    Err(error) => {
+                        args.drop_with($self);
+                        return Err(error);
+                    }
+                };
                 return Ok(FrameExit::MethodCall {
                     method_name: name,
                     args,
@@ -929,6 +941,8 @@ impl<'h> VM<'h> {
         print_writer: PrintWriter<'h>,
     ) -> Self {
         let SessionTables { global_names, interns } = tables;
+        // New feeds create a new scheduler; restore keeps the serialized one.
+        heap.tracker.set_execution_context(Some(0));
         Self {
             stack: Vec::with_capacity(64),
             globals,
@@ -1127,16 +1141,24 @@ impl<'h> VM<'h> {
             }
         } else {
             // The effect is armed only after this exit is accepted for dispatch.
+            let call_id = match self.allocate_call_id() {
+                Ok(id) => id,
+                Err(error) => {
+                    call.drop_with(self);
+                    release_pending_effect(effect, self.heap);
+                    return Err(error);
+                }
+            };
             Ok(Some(FrameExit::OsCall {
                 function_call: call,
-                call_id: self.allocate_call_id(),
+                call_id,
                 effect,
             }))
         }
     }
 
     /// Allocates a new `CallId` for an external function call.
-    fn allocate_call_id(&mut self) -> CallId {
+    fn allocate_call_id(&mut self) -> RunResult<CallId> {
         self.scheduler.allocate_call_id()
     }
 
@@ -2105,7 +2127,10 @@ impl<'h> VM<'h> {
                 return self.run_external();
             }
             Some(PendingEffect::Post(PostConversionEffect::SleepResult { result })) => {
-                let settled = self.settled_awaitable(result);
+                let settled = match self.settled_awaitable(result) {
+                    Ok(value) => value,
+                    Err(error) => return self.resume_with_exception(error),
+                };
                 self.push(settled);
                 return self.run_external();
             }

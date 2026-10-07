@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9f00fd7dc09e666f",
+  "object": "chat.completion",
+  "created": 1791357156,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"key absent\", \"result\": \"{'kind': 'missing', 'quota': None}\"}, {\"guard\": \"value is None\", \"result\": \"{'kind': 'null', 'quota': None}\"}, {\"guard\": \"type(value) is int and 4 <= value <= 13\", \"result\": \"{'kind': 'integer', 'quota': value}\"}, {\"guard\": \"else\", \"result\": \"{'kind': 'invalid', 'quota': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\"], \"notes\": \"Pure-logic class22 draft; target typed inputs needs runner support; no observed tests/submission/activation.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98409,
+    "total_tokens": 98589,
+    "completion_tokens": 180,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 0,
+      "num_lmcache_cached_tokens": 0,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

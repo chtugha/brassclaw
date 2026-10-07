@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a08d7c16d60dfde0",
+  "object": "chat.completion",
+  "created": 1791323135,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-11: it classifies a raw rank value into {kind, rank} with the requested missing/null/exact-integer-7..16/other semantics, using inputs.get() so absence is a valid outcome, exact integer type checks (booleans rejected), and no coercion/defaults/exceptions/imports/host calls. The body assigns result on every branch. This is an unapproved draft; typed-input transport and Monty execution are target interfaces requiring runner support, and no observed tests, submission or activation occurred. The host sink supports class-22 name/description/content; activation and reuse require Q1 and human Q2.\",\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Prepare the requested reusable draft without executing any operation.\"]\n  ],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-11\",\n        \"description\": \"Pure-logic rank classifier. Reads a raw rank candidate and returns {kind, rank}: 'missing' when the key is absent, 'null' when present but null, 'integer' when it is an exact integer in 7..16 (inclusive), otherwise 'invalid'. No coercion, defaults, exceptions, imports, I/O or host calls. Unapproved draft; typed-input transport and Monty execution are target interfaces requiring runner support.\",\n        \"content\": \"def classify_rank(inputs):\\n    if 'rank' not in inputs:\\n        result = {'kind': 'missing', 'rank': None}\\n    else:\\n        rank = inputs['rank']\\n        if rank is None:\\n            result = {'kind': 'null', 'rank': None}\\n        elif type(rank) is int and not isinstance(rank, bool) and 7 <= rank <= 16:\\n            result = {'kind': 'integer', 'rank': rank}\\n        else:\\n            result = {'kind': 'invalid', 'rank': None}\\n    return result\\nresult = classify_rank(inputs.get('rank'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76878,
+    "total_tokens": 77397,
+    "completion_tokens": 519,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

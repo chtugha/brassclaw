@@ -1,5 +1,27 @@
 # Monty resumable control gate
 
+Current extension: control.6 / dump ABI 0xBC05, private root-worker protocol 4.
+
+`flow_host.rs` runs the actual class-10 pure prepared-flow helpers in the contained
+utility worker. Four cases cover whole-tree preflight failures, branch dominance,
+iteration-local results, explicit repeat carry, actual list collection and runtime
+shape failures. No component/provider/Tool success is substituted. The transient
+`recipe-flow/1` candidate still needs persisted authoring/IBS schema, exact approval,
+effect occurrence and production caller integration; these are not tests of the
+seven production composition message flows.
+The sections below record earlier validation milestones; version numbers and
+then-open items within those milestones describe their recorded state. The
+current host contract is in the linked hosting README.
+
+The extension exposes actual coroutine identity at control
+and host boundaries and separates execution from preparation. The new root case
+checks A→B→A attribution and excludes real host waits. `scheduler_accounting.rs`
+checks native Python callback reentry, exception handling, exact snapshot identity,
+and short completion/error clocks. Coroutine identities are reused by persistent
+workers; the host now binds admitted task accounts and protected root scopes
+explicitly. Durable finish/cancellation acknowledgement remains production work.
+The extension also prevents call/coroutine counter wrap before dispatch/ownership.
+
 This independent workspace executes the versioned extension at
 `vendor/monty-control` without changing production dependencies. Its lockfile
 pins the resolved gate dependencies. Run Cargo sequentially:
@@ -33,8 +55,8 @@ charged on success and syntax failure, with live control checked on entry/exit.
 Compiler-exit cancellation restores the moved REPL compiler tables and prevents
 any opcode from running. Three additional actual-interpreter cases cover that
 failure path, preparation persistence and old-ABI rejection, and a real shared
-600→30-second settings publication at compiler exit. Extension `control.3` uses
-dump ABI `0xBC03`; reconcile older continuations before any upgrade. Static
+600→30-second settings publication at compiler exit. Extension `control.4` uses
+dump ABI `0xBC04`; reconcile older continuations before any upgrade. Static
 feed/turn clocks and `elapsed()` remain VM-only; the control clock additionally
 includes `preparation_elapsed()`. Restore adapters must preserve both parts and
 their shared-account cursor, without debiting earlier preparation twice.
@@ -80,7 +102,7 @@ unchanged; this is not the seven composition tests' acceptance.
 After the preparation change, all 47 actual interpreter checks in this workspace
 and strict extension/host/caller lints passed in the sequential screen queue.
 
-Extension `control.3` uses dump ABI `0xBC03` and owned preparation guards for
+Extension `control.4` uses dump ABI `0xBC04` and owned preparation guards for
 interpreter graph imports and exported arguments/results. Nested conversion
 uses its existing clock, VM reentry pauses preparation, and real native sleep
 pauses both clocks. Telemetry returns explicit errors on accounting failure;
@@ -146,3 +168,34 @@ pending boundary. Strict host/caller lints pass:
 `/private/tmp/brassclaw-process-host-bounded-data.log`,
 `/private/tmp/brassclaw-process-host-bounded-data-lints.log` and
 `/private/tmp/brassclaw-process-host-bounded-data-caller-lints.log`.
+
+
+Current isolated extension: control.6 / dump ABI 0xBC05; private worker protocol 4.
+The root establishes a protected task scope before dispatch. Compute exhaustion
+can interrupt pure root bytecode without terminating unrelated workers. An
+outstanding host result settles its exact future before the task handler runs;
+its actual answer remains in the private snapshot for reconciliation. This does
+not establish production cutover or bounded task cancellation acknowledgement.
+
+
+`utility_host.rs` verifies the real one-operation contained parser/formatter
+mode. It supplies no host-effect success. Parsing does not execute; hostile
+strings/control characters and opaque envelope values round-trip as data.
+Unsupported/cyclic output and stdout overflow fail explicitly. Aggregate input
+rejection preserves the original request before spawn/serialization. Busy
+execution deadlines and actual native allocator failure retain reaped exits;
+the caller and a later independent utility remain available. The utility's
+private protocol 1 is separate from global worker protocol 3 and does not create
+a per-chat orchestrator. Production utility-call migration remains open.
+
+
+The control.6 allocator ownership cases exercise real zeroed/overaligned
+allocations, nested scopes, growth/shrink outside scope and cross-thread freeing.
+Actual root/child interpreter heaps share the counter and preserve retained
+parent objects after child release. The process caller checks manual rejection,
+pending automatic reduction, admission backpressure, revision fencing and real
+soft-limit preflight without killing the root. The service caller verifies heap
+edits during real paused file I/O, expected denial without service failure and
+publication after a waiter is dropped. Physical backstop probes deliberately
+omit a soft limit only in the standalone mechanical worker; ServiceOwner refuses
+such a boot. No adaptive OS sampling or production WebUI uptake is claimed.

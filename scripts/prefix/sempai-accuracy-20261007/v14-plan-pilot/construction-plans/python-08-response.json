@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-afba820498dbcf0a",
+  "object": "chat.completion",
+  "created": 1791330675,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"task_kind\": \"review\",\n  \"branches\": [\n    {\n      \"guard\": \"key-presence\",\n      \"result\": \"{\\\"kind\\\":\\\"missing\\\",\\\"quota\\\":null}\"\n    },\n    {\n      \"guard\": \"explicit-null\",\n      \"result\": \"{\\\"kind\\\":\\\"null\\\",\\\"quota\\\":null}\"\n    },\n    {\n      \"guard\": \"exact-integer-4..13\",\n      \"result\": \"{\\\"kind\\\":\\\"integer\\\",\\\"quota\\\":<original>}\"\n    },\n    {\n      \"guard\": \"other\",\n      \"result\": \"{\\\"kind\\\":\\\"invalid\\\",\\\"quota\\\":null}\"\n    }\n  ],\n  \"helper_required\": true,\n  \"workflow\": [\n    {\n      \"knowledge\": \"orchestrator\",\n      \"uuid\": \"pc-transfer-08\"\n    }\n  ],\n  \"authorized_edits\": [],\n  \"prerequisites\": [\n    \"Q1\",\n    \"human-Q2\",\n    \"runner-support\"\n  ]\n  ,\n  \"notes\": \"Pure-logic class22 draft; no execution/approval/submission.\"\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98368,
+    "total_tokens": 98635,
+    "completion_tokens": 267,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

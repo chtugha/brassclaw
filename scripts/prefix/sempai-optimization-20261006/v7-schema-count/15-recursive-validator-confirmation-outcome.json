@@ -1,0 +1,14 @@
+{
+  "composition_summary": "Offline-design mode: no host sink support for class 22 was resolved, and no real catalogue/draft UUIDs were supplied, so no component entry is emitted. The draft is a design-only artifact, not a submitted/activated component. The class-22 body is a pure-logic guard with zero host calls, module-scope result assignment on every branch, no imports/host/I/O, no coercion, and fail-closed semantics for missing/null/extra/invalid shapes. Raw candidate fields are read with inputs.get so absence is a valid decision, not an exception; the result object contains only the declared fields. The target typed-input interface is not deployed runtime support. No compatibility/intent/settings updates were requested; those arrays remain empty. Conversation preserved exactly.",
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate raw weighted entries, including an empty selection."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

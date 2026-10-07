@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8b9f0dc346684518",
+  "object": "chat.completion",
+  "created": 1791329281,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Drafted one unapproved pure-logic class22 component. The helper receives the whole mapping so it can distinguish missing from explicit null; it returns the complete object and the module assigns it to result. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-06\",\n        \"description\": \"Classify raw offset: missing -> {kind:\\\"missing\\\",offset:null}; explicit null -> {kind:\\\"null\\\",offset:null}; exact integer 2..11 -> {kind:\\\"integer\\\",offset:original}; other -> {kind:\\\"invalid\\\",offset:null}. No bool/float/coercion/defaults/exceptions. Helper receives the mapping, is invoked at module scope and its returned object is assigned to result. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"def classify_offset(mapping):\\n    if 'offset' not in mapping:\\n        return {'kind': 'missing', 'offset': None}\\n    value = mapping['offset']\\n    if value is None:\\n        return {'kind': 'null', 'offset': None}\\n    if type(value) is int and 2 <= value <= 11:\\n        return {'kind': 'integer', 'offset': value}\\n    return {'kind': 'invalid', 'offset': None}\\nresult = classify_offset(inputs)\"\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97018,
+    "total_tokens": 97431,
+    "completion_tokens": 413,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

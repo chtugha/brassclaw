@@ -185,6 +185,8 @@ jobs:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: Test Reborn boot config crate
         run: cargo test -p brassclaw_reborn_config
+      - name: Build contained Monty worker
+        run: cargo build -p brassclaw_monty_host --bin monty_worker --locked
       - name: Test Reborn CLI binary crate
         run: cargo test -p brassclaw_reborn_cli
       - name: Test Reborn architecture boundaries

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a2437cfedd6f87df",
+  "object": "chat.completion",
+  "created": 1791331658,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"system\",\"Keep it concise concise.\"],[\"user\",\"Keep my exact request and punctuation: {a:1}.\"]], \"bridge_messages\": [], \"composition_summary\": \"Audit only; no edits authorized. Repeated wording does not permit a change. Echoed all messages exactly with no proposals or new messages. Target provider metadata is null/unknown; no capabilities were inferred.\", \"proposed_components\": [], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98530,
+    "total_tokens": 98643,
+    "completion_tokens": 113,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

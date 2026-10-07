@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-84de77dcf5ff3a60",
+  "object": "chat.completion",
+  "created": 1791330997,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-transfer-01. Raw window may be absent or any JSON value; accepts exact int -3..6 inclusive (bool/float rejected); always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. No imports/I/O/host calls. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-transfer-01\", \"description\": \"Raw window may omit or contain any JSON value. Accept exact integers -3..6 inclusive (not bool/float). Always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"window = inputs.get('window')\\naccepted = type(window) is int and -3 <= window <= 6\\nresult = {'accepted': accepted, 'window': window if accepted else None}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98724,
+    "total_tokens": 99015,
+    "completion_tokens": 291,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

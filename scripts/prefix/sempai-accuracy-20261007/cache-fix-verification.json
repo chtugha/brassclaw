@@ -1,0 +1,28 @@
+{
+  "generation": "3c6b8ac31b98e5b0c418befd071efb0fd5ded723613aa6f70aec8cfcae2dea1f",
+  "plain_payloads_identical_except_namespace": true,
+  "plain_restoration_corrupt_before": true,
+  "object_separation_alone_insufficient": true,
+  "plain_external_restore_passed": true,
+  "structured_external_restore_passed": true,
+  "post_fix_external_restores": 3,
+  "no_post_fix_http_errors": true,
+  "base_units_and_prefix_override_unchanged_verified": true,
+  "patched_adapter_sha256": "bb8d04b6676315ee8253639b702f22dcd259700e340a2e71c1563193ea52f9af",
+  "runtime_versions": {
+    "vllm": "0.31.0",
+    "lmcache": "0.5.5 with local upstream PR 4253 backport"
+  },
+  "evidence_sha256": {
+    "cache-path-before.json": "d8f8b9485be1cea8e4d266b41dc08d3c39011fde7d35744cd2d7772770a5f189",
+    "cache-path-after.json": "d01c7d1cdec1a8351481ea0fac2b611e575a6988b6df61dee77147803dc592ce",
+    "cache-path-backport.json": "bc07db2ddf3dac7c52366c6738ff5e8dc23af8ec73dccea612169bf09ad9c353",
+    "cache-path-backport-structured.json": "50577a813301f60b46932bc4e051e2b3acd7f93f780cfda5c57d0cea445299fb"
+  },
+  "limitations": [
+    "short sentinel correctness, not sixty-case accuracy",
+    "no arbitrary concurrent-load proof",
+    "no disk/restart persistence proof",
+    "patch must be checked after package upgrades"
+  ]
+}

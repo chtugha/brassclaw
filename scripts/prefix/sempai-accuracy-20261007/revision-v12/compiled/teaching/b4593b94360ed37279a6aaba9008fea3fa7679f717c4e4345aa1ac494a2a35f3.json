@@ -1,0 +1,278 @@
+{
+  "schema": 1,
+  "source_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+  "manifest_sha256": "5c261a45647bf202f12a2d123917002b3cda931b16b6f67f50ba987fe72bede8",
+  "checker_sha256": "966003d6fa1d6d4a4d7392d32ad65a48a1dc96ab1acb6b1dc36480f6a6252edb",
+  "validator_sha256": "4095812570a44bb98ac3c3def665acb179a22b226161f0fc25b0fde2991dfb59",
+  "engine": "bounded isolated Linux CPython and offline design checks, not Monty/Q1/Q2",
+  "passed": true,
+  "examples": [
+    {
+      "id": "helper-range",
+      "kind": "python",
+      "program_sha256": "ff6921e37156a73f8927aa5020814d25a07d7fb8d123573390c899a9a273a9d2",
+      "behavior_cases": 9,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "empty-allowed",
+      "kind": "python",
+      "program_sha256": "b10545f7ea4fe0ab4270a4ffdae91d55e01b4ff328af83e67a3299b98bedbe6e",
+      "behavior_cases": 10,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "nonempty-required",
+      "kind": "python",
+      "program_sha256": "675577379050d7543c4861f9df8cc91f12589ae77b3953ce61224964d45979ad",
+      "behavior_cases": 10,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "recursive-shape",
+      "kind": "python",
+      "program_sha256": "facbb3cc45f7502a5abe23a9567aa482817e7267c3370090c252884dc90ea057",
+      "behavior_cases": 10,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "missing-null",
+      "kind": "python",
+      "program_sha256": "905c5e6eb0076695c4b4553198404170e0e788a4f15d687e737f55abfd8164c7",
+      "behavior_cases": 8,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "default-missing",
+      "kind": "python",
+      "program_sha256": "9c68fd31bcc2f9a39b75f38b3dd4a787825bb3f87af6e78afa8db7cf305a13de",
+      "behavior_cases": 8,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "enum-exact",
+      "kind": "python",
+      "program_sha256": "d717b972381c526938ff0ca5d6cbf9a24f421dab502be91b28ed30b9506a9db1",
+      "behavior_cases": 8,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "flag-both",
+      "kind": "python",
+      "program_sha256": "94614aba7ba3cbd0bac5fa26a1976a09e4b68226245c4294c46c2ca803568843",
+      "behavior_cases": 7,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "exact-output",
+      "kind": "python",
+      "program_sha256": "a4cbbaa1ec4762e5d20f5fd80ed85db94ef2b054edb5d28f8ce1ed678adaa48a",
+      "behavior_cases": 6,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "two-level",
+      "kind": "python",
+      "program_sha256": "6682b240087eaf0a1d4289d8d5e445c05dced8b31b9ec4921ab64fd0b5208d41",
+      "behavior_cases": 10,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "all-fields",
+      "kind": "python",
+      "program_sha256": "5fec988e54cb6ff73790aa6df12ac4f39cb5e38258d26553d2b9bf08b073123a",
+      "behavior_cases": 5,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ready-data",
+      "kind": "recipe",
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "tool_execution_verified": false,
+      "passed": true
+    },
+    {
+      "id": "ready-reply",
+      "kind": "recipe",
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "tool_execution_verified": false,
+      "passed": true
+    },
+    {
+      "id": "healthy-data",
+      "kind": "recipe",
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "tool_execution_verified": false,
+      "passed": true
+    },
+    {
+      "id": "healthy-reply",
+      "kind": "recipe",
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "tool_execution_verified": false,
+      "passed": true
+    },
+    {
+      "id": "repair-english",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "repair-german",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "no-edit",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "provider-unknown",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "provider-known",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "effect-completed",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "effect-unknown",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "blocked-live-recipe",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "unsupported-skill",
+      "kind": "review",
+      "passed": true
+    },
+    {
+      "id": "mapping-presence-helper",
+      "kind": "python",
+      "program_sha256": "c3af44a26f2fb36821bea26c0b5b2bb27c8f04f83ea8f40df31d5766d20340a3",
+      "behavior_cases": 10,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "parameterized-presence",
+      "kind": "python",
+      "program_sha256": "25f7d99db5f533704cc3ed6e247b396b8099f8812ba06137810e23316cac3c16",
+      "behavior_cases": 9,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "parameterized-recursive",
+      "kind": "python",
+      "program_sha256": "d02d6c859ad8f03a70cc7765dd182689559e4e48a829424e68d77f0838711914",
+      "behavior_cases": 11,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "duplicate-views",
+      "kind": "review",
+      "passed": true
+    }
+  ],
+  "mutation_checks": [
+    {
+      "mutation": "helper-range",
+      "rejected": true
+    },
+    {
+      "mutation": "recursive-shape",
+      "rejected": true
+    },
+    {
+      "mutation": "flag-both",
+      "rejected": true
+    },
+    {
+      "mutation": "extra-result-field",
+      "rejected": true
+    },
+    {
+      "mutation": "duplicate-intent",
+      "rejected": true
+    },
+    {
+      "mutation": "missing-binding",
+      "rejected": true
+    }
+  ],
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false
+}

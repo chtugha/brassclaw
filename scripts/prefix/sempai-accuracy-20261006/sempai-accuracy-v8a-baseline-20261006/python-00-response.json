@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8f561de9e7e605cf",
+  "object": "chat.completion",
+  "created": 1791323031,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the supplied volatile tail unchanged (one user message, no assistant action invented). Drafted one pure-logic class-22 component pc-transfer-00 with name/description/content only, per the supported offline sink. The body is executable Python at module scope: it reads offset via inputs.get('offset') so missing/absent is a valid outcome, classifies the raw value (None, bool, non-int, or out of -4..5) before any arithmetic, and assigns result to the helper's returned object on every branch. No imports, I/O, host calls, exceptions, or coercion. The draft is unapproved; target typed inputs require runner support, and no observed tests/submission/activation are claimed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-00\",\n        \"description\": \"Pure-logic guard that accepts an exact integer offset in -4..5 inclusive and returns the accepted boolean plus the original value or null; no Tool call, no I/O, no exceptions.\",\n        \"content\": \"def classify_offset(value):\\n    if value is None:\\n        return {'accepted': False, 'offset': None}\\n    if type(value) is bool:\\n        return {'accepted': False, 'offset': None}\\n    if type(value) is not int:\\n        return {'accepted': False, 'offset': None}\\n    if not -4 <= value <= 5:\\n        return {'accepted': False, 'offset': None}\\n    return {'accepted': True, 'offset': value}\\nresult = classify_offset(inputs.get('offset'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76880,
+    "total_tokens": 77315,
+    "completion_tokens": 435,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

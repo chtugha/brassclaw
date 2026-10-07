@@ -1,0 +1,62 @@
+{
+  "generation": "a01e9bea93b87b54cf8873e5ee85adcc680c368f4a9dee39588d169615e4ca49",
+  "server": "http://127.0.0.1:8000",
+  "tokenization_probes": [
+    {
+      "thinking": false,
+      "tools": false,
+      "tokens": 96526,
+      "exact_match": true
+    },
+    {
+      "thinking": true,
+      "tools": false,
+      "tokens": 96528,
+      "exact_match": true
+    },
+    {
+      "thinking": false,
+      "tools": true,
+      "tokens": 96766,
+      "exact_match": true
+    }
+  ],
+  "requests": [
+    {
+      "seconds": 48.101,
+      "usage": {
+        "prompt_tokens": 96522,
+        "total_tokens": 96523,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "metric_deltas": {
+        "prefix_cache_hits_total": 0.0,
+        "prefix_cache_queries_total": 96522.0,
+        "external_prefix_cache_hits_total": 0.0
+      }
+    },
+    {
+      "seconds": 0.905,
+      "usage": {
+        "prompt_tokens": 96522,
+        "total_tokens": 96523,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "metric_deltas": {
+        "prefix_cache_hits_total": 96096.0,
+        "prefix_cache_queries_total": 96522.0,
+        "external_prefix_cache_hits_total": 0.0
+      }
+    }
+  ],
+  "automatic_server_injection_verified": true,
+  "native_hybrid_cache_reuse_verified": true
+}

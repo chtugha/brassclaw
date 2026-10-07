@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail exactly. The only permitted change is replacing system content with exactly \"Answer accurately.\", which I did not apply because the instruction forbids it. The user message was kept byte-for-byte, roles, order and count unchanged. No proposals were made: the task is a no-op review with no justified edit, and no component draft was requested. Target provider metadata is null (no model/protocol/capabilities), so no provider facts were inferred. The standalone citation is a source-question benchmark, not the production reviewer/proposal API, and does not apply prompt changes or create/approve components.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

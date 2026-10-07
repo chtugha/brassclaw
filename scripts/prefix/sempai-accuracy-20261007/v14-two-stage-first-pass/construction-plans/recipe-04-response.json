@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-ae31f455c6c37d55",
+  "object": "chat.completion",
+  "created": 1791331384,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"state_data\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"d4808be6-83e3-5831-b710-c7f2ce88c711\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human_Q2\"], \"notes\": \"Draft returns state DATA only; no host.post_reply effect. Offline full-v3 export only; current sink cannot preserve full v3 fields.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98641,
+    "total_tokens": 98789,
+    "completion_tokens": 148,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

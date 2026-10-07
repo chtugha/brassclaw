@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8d1fa51db6385fc8",
+  "object": "chat.completion",
+  "created": 1791323443,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the supplied volatile tail exactly: system message unchanged and user message reproduced byte-for-byte with its original role, order and count. No proposals or other changes were made. The only permitted edit is the system content replacement to exactly \\\"Preserve evidence.\\\", which is a host-side prefix change, not a volatile-tail edit, so the volatile array is left as supplied. No provider facts were invented: the target metadata carries null catalogue_revision, null protocol_capabilities and no tool envelope, so no capability claims were added. The standalone citation is a source-question benchmark; it does not apply prompt changes or create/approve components, so proposed_components, proposed_recipe_updates, proposed_intent_examples and settings_adjustments remain empty. The requested system replacement is outside the volatile tail and is not reflected here.\",\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Preserve evidence evidence.\"],\n    [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]\n  ],\n  \"settings_adjustments\": []\n  ,\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76835,
+    "total_tokens": 77092,
+    "completion_tokens": 257,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

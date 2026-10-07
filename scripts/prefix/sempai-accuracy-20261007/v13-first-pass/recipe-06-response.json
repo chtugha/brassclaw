@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bbeda56331977340",
+  "object": "chat.completion",
+  "created": 1791329569,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\", \"Design a reusable stable data-result workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode c7983481-a51f-5068-ba4a-11220f293cd3 with content result = {'state': 'Stable'}; zero inputs, no dependencies, no version numbers or approval. Emitted one class21 recipe-transfer-06 with the requested keys; trigger=null, steps=[], dependency_registry=null. step_descriptions uses persisted knowledge/stepnumber/type=component/include with the supplied UUIDs in order, one UUID per step, tool_bindings=[] and dependencies=null. One variant with step_link=0:1-0:E, variable_patterns=[], and ten distinct data-returning intents in both the payload and variant arrays. This subworkflow returns state DATA only and never posts a user message. State unapproved dependencies, Q1 and human Q2 required; the current sink cannot preserve full v3 fields. No runtime or approval claims. Original conversation preserved; compatibility arrays empty under the test persona.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-transfer-06\", \"description\": \"Offline unapproved stable data-result subworkflow; returns state data only, no Tool calls and no posted message\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.\", \"intent_examples\": [\"compute the stable state data\", \"return the stable state object\", \"produce the fixed stable object\", \"obtain the stable result data\", \"calculate the stable state result\", \"yield the stable state object\", \"get the fixed stable state data\", \"build the stable state object\", \"evaluate the stable data subworkflow\", \"derive the fixed stable state result\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved stable data-result subworkflow; returns state data only, no Tool calls and no posted message\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"orchestrator\", \"goal\": \"Return state data\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"c7983481-a51f-5068-ba4a-11220f293cd3\"], \"tool_bindings\": [], \"dependencies\": null}, {\"stepnumber\": 2, \"knowledge\": \"orchestrator\", \"goal\": \"Return state data\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"c7983481-a51f-5068-ba4a-11220f293cd3\"], \"tool_bindings\": [], \"dependencies\": null}], \"step_link\": \"0:1-0:E\"}], \"variants\": [{\"variant_key\": \"stable-data\", \"description\": \"Offline unapproved stable data-result subworkflow; returns state data only, no Tool calls and no posted message\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"compute the stable state data\", \"return the stable state object\", \"produce the fixed stable object\", \"obtain the stable result data\", \"calculate the stable state result\", \"yield the stable state object\", \"get the fixed stable state data\", \"build the stable state object\", \"evaluate the stable data subworkflow\", \"derive the fixed stable state result\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97117,
+    "total_tokens": 97958,
+    "completion_tokens": 841,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

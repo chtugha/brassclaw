@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8c3e345953ab112d",
+  "object": "chat.completion",
+  "created": 1791318994,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\", \"We need a reusable deterministic guard before considering a retry.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline-design mode: no supported sink for class 22 (only class 22 name/description/content is available, which is sufficient here), so the draft is emitted as a class-22 payload rather than inserted. The requested component is a pure-logic guard with no Tool binding, so it is Tier 0 and no Sempai call is required. The guard is evidence-conditioned: it returns a boolean eligibility result only; it does not grant dispatch permission, does not replay completed effects, and does not replace live global Tool policy, cancellation, resource limits or actual deduplication evidence. The content is executable Python that assigns result on every path, uses inputs.get for presence, treats booleans as exact booleans, validates all required fields before any access, and contains no imports/host calls. The description retains the typed-runner gap and the requirement that live policy/cancellation/resource checks remain enforced at dispatch. No observed provider capabilities were claimed; catalogue_revision and protocol_capabilities are null and not asserted.\", \"proposed_recipe_updates\": [], \"proposed_intent_examples\": [], \"settings_adjustments\": [], \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-check-retry-eligibility\", \"description\": \"Deterministic evidence-conditioned guard that decides whether a retry is eligible before any retry is considered. It returns a boolean only; it never grants dispatch permission, never replays a completed effect, and never replaces live global Tool policy, cancellation, resource limits or actual deduplication evidence. Eligibility is true only when outcome is retryable, attempt is strictly less than max_attempts, operation_state is not completed, and read_only is true or dedup_verified is true. Completed effects never replay even when read_only or dedup_verified is true. Missing, null or invalid data fails closed. This is pure logic with no I/O, imports or host calls; the typed inputs interface (operation_state, outcome, attempt, max_attempts, read_only, dedup_verified) is a target contract that requires actual runner support before activation. The kernel still checks current instance-wide Tool policy, technical constraints and fresh execution identity before every actual dispatch, including retries and continuations.\", \"content\": \"operation_state = inputs.get(\\\"operation_state\\\")\\noutcome = inputs.get(\\\"outcome\\\")\\nattempt = inputs.get(\\\"attempt\\\")\\nmax_attempts = inputs.get(\\\"max_attempts\\\")\\nread_only = inputs.get(\\\"read_only\\\")\\ndedup_verified = inputs.get(\\\"dedup_verified\\\")\\n\\nif not isinstance(operation_state, str) or not isinstance(outcome, str):\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nif not isinstance(attempt, int) or isinstance(attempt, bool) or not isinstance(max_attempts, int) or isinstance(max_attempts, bool):\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nif not isinstance(read_only, bool) or not isinstance(dedup_verified, bool):\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nif operation_state == \\\"completed\\\":\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nif outcome != \\\"retryable\\\":\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nif attempt >= max_attempts:\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nif not (read_only or dedup_verified):\\n    result = {\\\"retry\\\": False}\\n    return\\n\\nresult = {\\\"retry\\\": True}\\n\"}}, \"proposed_intent_examples\"]\n\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72539,
+    "total_tokens": 73310,
+    "completion_tokens": 771,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-classify-value",
+    "description": "Classify an optional raw value while preserving the distinction between missing and null. Returns {state, value}: 'missing' when the key is absent, 'null' when explicitly null, 'value' for an exact integer in 0..10 inclusive, and 'invalid' for any other value. No defaults, coercion, exceptions, imports, host calls or I/O.",
+    "content": "value = inputs.get('value')\nif 'value' not in inputs:\n    result = {'state': 'missing', 'value': None}\nelif value is None:\n    result = {'state': 'null', 'value': None}\nelif type(value) is int and not 0 <= value <= 10:\n    result = {'state': 'invalid', 'value': None}\nelse:\n    result = {'state': 'value', 'value': value}"
+  }
+}

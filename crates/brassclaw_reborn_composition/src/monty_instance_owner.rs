@@ -13,7 +13,7 @@ use deadpool_postgres::{Client, ClientWrapper};
 const INSTANCE_NAMESPACE: i32 = 0x4252_434c;
 const MONTY_OWNER: i32 = 0x4d4f_4e54;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 pub(crate) enum OwnershipError {
     #[error("global Monty already has an instance owner")]
     AlreadyOwned,

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-mode",
+    "description": "Pure-logic validator that accepts only the exact strings 'eco' or 'boost' (case-sensitive, no normalization) and returns an invalid-result object for any other value, including missing mode. Reads the raw candidate with inputs.get('mode') so absence is a valid invalid-result, never raises. Returns {accepted, mode} where mode is the original string when accepted and null otherwise. No imports, host calls, I/O or coercion; booleans and other JSON values are rejected, not coerced.",
+    "content": "def check_mode(mode):\n    accepted = isinstance(mode, str) and mode in ('eco', 'boost')\n    return {'accepted': accepted, 'mode': mode if accepted else None}\nresult = check_mode(inputs.get('mode'))"
+  }
+}

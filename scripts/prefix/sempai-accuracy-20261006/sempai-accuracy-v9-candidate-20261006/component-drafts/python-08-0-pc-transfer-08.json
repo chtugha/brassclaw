@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-08",
+    "description": "Classify raw quota: missing -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..12 -> {kind:\"integer\",quota:original}; other -> {kind:\"invalid\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "quota = inputs.get('quota')\nvalid = type(quota) is int and 4 <= quota <= 12\nresult = {'kind': 'integer' if valid else 'invalid', 'quota': quota if valid else None}"
+  }
+}

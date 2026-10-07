@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-809cafcb1aac88e4",
+  "object": "chat.completion",
+  "created": 1791323297,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Offline full-v3 export only. The requested class-21 Recipe draft is emitted with the exact supplied constructor keys (name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry), trigger=null, steps=[], dependency_registry=null, one desc_idx=0 with a single persisted step using the knowledge/stepnumber/type=component/include schema and the two supplied UUIDs in order (ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548, PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3), tool_bindings=[], dependencies=null, and one variant with step_link=0:1-0:E, variable_patterns=[], and ten distinct intent examples. This is an unapproved draft: it carries no version numbers, no Q1/Q2 approval, and no runtime/activation claims. The current offline sink cannot preserve the full v3 field set (step_descriptions, variants, dependency_registry); those are retained in the exported draft but not inserted into production tables. The draft remains unapproved even though its intended future execution is deterministic; activation requires Q1, human Q2 and coherent versioned activation through supported stores. The original conversation is preserved unchanged; compatibility, intent and settings arrays are empty under the test persona.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Design a reusable healthy reply workflow.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-03\",\n        \"description\": \"Posts exactly the fixed word as a user reply using the bound existing post_reply Tool. Unapproved draft; no version numbers, no Q1/Q2 approval, no runtime/activation claims. The current offline sink cannot preserve the full v3 field set (step_descriptions, variants, dependency_registry); those are retained in the exported draft but not inserted into production tables.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": null,\n        \"intent_examples\": [\n          \"say healthy\",\n          \"reply healthy\",\n          \"post healthy\",\n          \"tell me you are healthy\",\n          \"please say healthy\",\n          \"respond with healthy\",\n          \"send a healthy reply\",\n          \"give me a healthy response\",\n          \"answer with healthy\",\n          \"please post the word healthy\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Post the fixed readiness reply\",\n            \"yaml_source\": \"Human-readable documentation of the same two steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind the post_reply Tool\",\n                \"content\": \"Bind host.post_reply\",\n                \"type\": \"component\",\n                \"include\": [\"95a56828-1af9-58d3-8b46-107c7a1fb548\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post the fixed reply\",\n                \"content\": \"Run the fixed-reply PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"52840069-3cd9-5ba7-bfe2-e160739911b3\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-healthy-reply\",\n            \"description\": \"Post exactly Healthy. without input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say healthy\",\n              \"reply healthy\",\n              \"post healthy\",\n              \"tell me you are healthy\",\n              \"please say healthy\",\n              \"respond with healthy\",\n              \"send a healthy reply\",\n              \"give me a healthy response\",\n              \"answer with healthy\",\n              \"please post the word healthy\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 77041,
+    "total_tokens": 78076,
+    "completion_tokens": 1035,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

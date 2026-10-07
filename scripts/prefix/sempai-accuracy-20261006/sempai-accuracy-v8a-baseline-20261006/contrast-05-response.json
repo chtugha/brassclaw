@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-80c77b6676899e77",
+  "object": "chat.completion",
+  "created": 1791323194,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-05: it reads raw slots via inputs.get('slots') so absence is a valid invalid-result, validates that the list has length 1..4 and every item is an exact integer in 5..9 (rejecting bool, float, non-integer and out-of-range), and assigns result={ok:boolean, slots:original if valid else []} on every branch without raising or performing I/O/host calls. The draft is an unapproved target-interface component only; no UUID, tests or approval were claimed, and no operation was executed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-05\",\n        \"description\": \"Pure-logic guard: validates a raw 'slots' list of length 1..4 with every item an exact integer in 5..9, and returns {ok, slots} where slots is the original list only when valid, else []. No I/O, imports, host calls or upstream validation assumption; result is assigned on every branch.\",\n        \"content\": \"def classify_slots(raw):\\n    slots = raw.get('slots')\\n    valid = (\\n        type(slots) is list and 1 <= len(slots) <= 4\\n        and all(type(item) is int and not isinstance(item, bool) and 5 <= item <= 9 for item in slots)\\n    )\\n    result = {'ok': valid, 'slots': slots if valid else []}\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76863,
+    "total_tokens": 77291,
+    "completion_tokens": 428,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

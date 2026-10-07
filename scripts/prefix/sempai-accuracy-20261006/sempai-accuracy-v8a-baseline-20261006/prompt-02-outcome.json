@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail exactly: system role replaced with exactly \"Return JSON.\" and the user message kept byte-for-byte as \"Keep my exact request and punctuation: {a:1}.\". Roles, order and count are unchanged. No proposals were made. The target_provider_metadata carries no protocol_capabilities, so no provider-side change was proposed; the permitted system edit is the only change and it is reported as-is without inventing provider facts.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Drafted one unapproved pure-logic class-22 component pc-transfer-04 per the supplied target inputs contract. Raw inputs may omit ttl or contain any JSON value; accepted is exact integer 0..9 inclusive (not bool/float); invalid/missing returns {accepted:false,ttl:null} with no exceptions or coercion. The body uses inputs.get('ttl') so absence and null both reach the decision, validates type is int and 0 <= ttl <= 9, and assigns result on every outcome. No imports, I/O or host calls. No execution, submission, Q1/Q2 or activation was performed by this reviewer; the target typed-inputs interface requires selected-runner support.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-04",
+        "description": "Raw ttl may be absent or any JSON value. Accept exact integer 0..9 inclusive (not bool/float). Always result={accepted:boolean,ttl:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "ttl = inputs.get('ttl')\naccepted = type(ttl) is int and not type(ttl) is bool and 0 <= ttl <= 9\nresult = {'accepted': accepted, 'ttl': ttl if accepted else None}"
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ]
+}

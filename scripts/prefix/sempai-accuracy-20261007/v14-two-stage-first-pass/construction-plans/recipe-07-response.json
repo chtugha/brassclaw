@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-970275f920364cb9",
+  "object": "chat.completion",
+  "created": 1791331435,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design\", \"result\": \"offline-full-v3-export-only\"}, {\"guard\": \"offline-design\", \"result\": \"host-allocated-unapproved-drafts\"}, {\"guard\": \"offline-design\", \"result\": \"one-class21-recipe-transfer-07\"}, {\"guard\": \"offline-design\", \"result\": \"exact-payload-keys\"}, {\"guard\": \"offline-design\", \"result\": \"trigger-null-steps-empty-dependency-registry-null\"}, {\"guard\": \"offline-design\", \"result\": \"one-desc_idx-0-persisted-schema\"}, {\"guard\": \"offline-design\", \"result\": \"exact-supplied-uuids-in-order\"}, {\"guard\": \"offline-design\", \"result\": \"one-variant-step-link-ten-intents\"}, {\"guard\": \"offline-design\", \"result\": \"state-unapproved-dependencies-q1-q2-required\"}, {\"guard\": \"offline-design\", \"result\": \"preserve-original-conversation-empty-compat-arrays\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"offline-design\", \"host-allocated-unapproved-drafts\", \"one-class21-recipe-transfer-07\", \"exact-payload-keys\", \"trigger-null-steps-empty-dependency-registry-null\", \"one-desc_idx-0-persisted-schema\", \"exact-supplied-uuids-in-order\", \"one-variant-step-link-ten-intents\"], \"notes\": \"Offline full-v3 export only. The host allocated two unapproved draft components: PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502 (result = host.post_reply(answ'\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98745,
+    "total_tokens": 99135,
+    "completion_tokens": 390,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

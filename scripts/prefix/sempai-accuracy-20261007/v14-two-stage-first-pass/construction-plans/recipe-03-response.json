@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b4611cd9f75c1601",
+  "object": "chat.completion",
+  "created": 1791331349,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"host.post_reply posts a user-visible reply\", \"result\": \"A class-21 recipe-transfer-03 subworkflow that binds the existing host.post_reply(answer:string) ToolSkill and executes the allocated PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3 to post exactly the fixed word Healthy as a user reply. One desc_idx=0, a \"}, {\"guard\": \"host.post_reply is not available or the draft is unapproved\", \"result\": \"No class-21 payload is emitted; the draft PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3 and ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548 remain unapproved, and Q1 plus human Q2 are required before activation.\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"host.post_reply(answer:string) ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548\", \"PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3\", \"Q1 validation\", \"human Q2 approval\"], \"notes\": \"The draft posts a user reply via host.post_reply, so its ten intent examples must describe posting a fixed reply, not returning data. The current offline sink (\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98741,
+    "total_tokens": 99134,
+    "completion_tokens": 393,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

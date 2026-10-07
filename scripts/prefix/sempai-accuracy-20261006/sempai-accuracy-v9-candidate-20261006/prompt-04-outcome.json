@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Removed the authorized duplicate 'units' from the system message, preserving the user message byte-for-byte and both roles. No provider facts or components were inferred.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Use metric units."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ]
+}

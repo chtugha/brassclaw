@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-02 per the requested contract: raw quota may be absent or any JSON value; accepts exact integers -2..7 inclusive (rejecting bool/float/strings); always returns {accepted:boolean, quota:original if accepted else null}; missing/invalid yield false/null without exceptions or coercion. The body uses a direct module-level result assignment with no imports, I/O or host calls. No execution, submission, Q1/Q2 or activation was performed; the target typed-inputs interface requires selected-runner support. No provider facts were inferred.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-02",
+        "description": "Raw quota may omit or contain any JSON value. Accept exact integers -2..7 inclusive (not bool/float). Always result={accepted:boolean,quota:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "quota = inputs.get('quota')\naccepted = type(quota) is int and not type(quota) is bool and -2 <= quota <= 7\nresult = {'accepted': accepted, 'quota': quota if accepted else None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

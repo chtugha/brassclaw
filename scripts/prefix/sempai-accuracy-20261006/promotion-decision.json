@@ -1,0 +1,20 @@
+{
+  "minimum_first_pass_cases": 54,
+  "total_cases": 60,
+  "v9_accepted": 49,
+  "v10_accepted": 53,
+  "v10_paired_regressions": [
+    "python-07",
+    "contrast-09",
+    "prompt-11"
+  ],
+  "promoted": false,
+  "decision": "Restore previously active v8a prefix; retain v9 tutorial/compiler source and both immutable candidate evidence sets. Neither candidate meets the promotion target; v10 also introduces paired regressions.",
+  "restore_generation": "1b7c3c117e57e5c0efb3355afcc7b40ff73a07251677af8235494908771881b3",
+  "remaining": "Unseen independent trials, targeted corpus/placement ablations and bounded repair/decoding controls require separate validation; production lossless sink, Monty and Q1/Q2 remain prerequisites.",
+  "restoration_health_verified": true,
+  "restored_token_ids_verified": true,
+  "restored_native_cache_hit_tokens": 76032.0,
+  "base_unit_sha256": "0a61271c8e7901796101d2a2ca8abcb97bb06e8ffb18168bbbb89da826101192",
+  "retained_compiler_source": "verified v9 corpus/layout; candidate only"
+}

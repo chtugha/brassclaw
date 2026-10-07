@@ -209,6 +209,7 @@ impl FunctionCall {
         self.snapshot.run_inner(
             Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
             Some(self.call_id),
+            None,
             print,
         )
     }
@@ -307,6 +308,7 @@ impl OsCall {
         self.snapshot.run_inner(
             Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
             Some(self.call_id),
+            None,
             print,
         )
     }
@@ -821,7 +823,16 @@ impl ControlYield {
         &mut self.snapshot.heap.tracker
     }
     pub fn resume(self, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
-        self.snapshot.run_inner(None, None, print)
+        self.snapshot.run_inner(None, None, None, print)
+    }
+    /// Raise an ordinary exception at the retained opcode boundary without
+    /// fabricating an external-call result or changing another coroutine.
+    ///
+    /// The trusted host must establish a protected task scope and settle any
+    /// pending external futures belonging to that scope before using this.
+    /// Resource-control errors remain terminal; this cannot clear their latch.
+    pub fn raise(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
+        self.snapshot.run_inner(None, None, Some(exc), print)
     }
     pub fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
         self.snapshot.abort(exc, print)
@@ -850,7 +861,7 @@ impl Snapshot {
         result: impl Into<ExtFunctionResult>,
         print: PrintWriter<'_>,
     ) -> Result<RunProgress, MontyException> {
-        self.run_inner(Some(result.into()), None, print)
+        self.run_inner(Some(result.into()), None, None, print)
     }
 
     /// Shared body of [`Self::run`] and [`FunctionCall::resume_eager`];
@@ -859,6 +870,7 @@ impl Snapshot {
         self,
         ext_result: Option<ExtFunctionResult>,
         eager_call_id: Option<u32>,
+        control_exception: Option<MontyException>,
         print: PrintWriter<'_>,
     ) -> Result<RunProgress, MontyException> {
         let Self {
@@ -878,9 +890,11 @@ impl Snapshot {
                     print.reborrow(),
                 );
 
-                let vm_result = match ext_result {
-                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
-                    None => vm.run_external(),
+                let vm_result = match (control_exception, ext_result) {
+                    (Some(exc), None) => vm.resume_with_exception(exc.into()),
+                    (None, Some(result)) => resume_with_result(&mut vm, result, eager_call_id),
+                    (None, None) => vm.run_external(),
+                    (Some(_), Some(_)) => unreachable!("control interruption is not a host result"),
                 };
 
                 // Three-phase: convert while VM alive, snapshot, build progress

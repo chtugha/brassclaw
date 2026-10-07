@@ -55,6 +55,7 @@ fn map_json(e: serde_json::Error) -> SessionThreadError {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct ThreadSnapshot {
     record: Option<SessionThreadRecord>,
+    #[serde(serialize_with = "crate::stored_message::serialize_messages")]
     messages: Vec<ThreadMessageRecord>,
     summary_artifacts: Vec<SummaryArtifact>,
     next_sequence: u64,
@@ -530,9 +531,6 @@ impl SessionThreadService for PgSessionThreadService {
             let request = request.clone();
             async move {
                 check_thread_scope(&snapshot, &request.thread_id, &request.scope)?;
-                let message_id = Self::new_message_id();
-                let sequence = snapshot.next_sequence + 1;
-                snapshot.next_sequence = sequence;
                 let envelope = ToolResultReferenceEnvelope::new_best_effort_model_observation(
                     request.result_ref.clone(),
                     request.safe_summary,
@@ -546,6 +544,47 @@ impl SessionThreadService for PgSessionThreadService {
                         .validate()
                         .map_err(SessionThreadError::Serialization)?;
                 }
+                if let Some(existing) = snapshot.messages.iter_mut().find(|message| {
+                    message.kind == MessageKind::ToolResultReference
+                        && message.status == MessageStatus::Finalized
+                        && message.turn_run_id.as_deref() == Some(request.turn_run_id.as_str())
+                        && message.tool_result_ref.as_deref() == Some(envelope.result_ref.as_str())
+                }) {
+                    if let Some(provider_call) = &request.provider_call {
+                        match existing.tool_result_provider_call.as_ref() {
+                            Some(previous) if previous == provider_call => {}
+                            Some(_) => {
+                                return Err(SessionThreadError::Serialization(
+                                    "tool result provider metadata conflicts with existing record"
+                                        .into(),
+                                ));
+                            }
+                            None => {
+                                existing.tool_result_provider_call = Some(provider_call.clone())
+                            }
+                        }
+                    }
+                    if let Some(observation) = envelope.model_observation.clone() {
+                        let previous = existing.content.as_deref().ok_or_else(|| {
+                            SessionThreadError::Serialization(
+                                "tool result reference content is missing".into(),
+                            )
+                        })?;
+                        if let Some(merged) =
+                            ToolResultReferenceEnvelope::merge_model_observation_content_if_absent(
+                                previous,
+                                observation,
+                            )
+                            .map_err(SessionThreadError::Serialization)?
+                        {
+                            existing.content = Some(merged);
+                        }
+                    }
+                    return Ok((existing.clone(), snapshot));
+                }
+                let message_id = Self::new_message_id();
+                let sequence = snapshot.next_sequence + 1;
+                snapshot.next_sequence = sequence;
                 let message = ThreadMessageRecord {
                     message_id,
                     thread_id: request.thread_id,
@@ -810,7 +849,15 @@ impl SessionThreadService for PgSessionThreadService {
         }
         Ok(ThreadHistory {
             thread: thread.clone(),
-            messages: snapshot.messages.clone(),
+            messages: snapshot
+                .messages
+                .iter()
+                .map(|message| {
+                    let mut visible = message.clone();
+                    visible.tool_result_provider_call = None;
+                    visible
+                })
+                .collect(),
             summary_artifacts: snapshot.summary_artifacts.clone(),
         })
     }

@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the supplied volatile tail unchanged (one user message, no assistant action invented). Drafted one pure-logic class-22 component pc-transfer-00 with name/description/content only, per the supported offline sink. The body is executable Python at module scope: it reads offset via inputs.get('offset') so missing/absent is a valid outcome, classifies the raw value (None, bool, non-int, or out of -4..5) before any arithmetic, and assigns result to the helper's returned object on every branch. No imports, I/O, host calls, exceptions, or coercion. The draft is unapproved; target typed inputs require runner support, and no observed tests/submission/activation are claimed.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-00",
+        "description": "Pure-logic guard that accepts an exact integer offset in -4..5 inclusive and returns the accepted boolean plus the original value or null; no Tool call, no I/O, no exceptions.",
+        "content": "def classify_offset(value):\n    if value is None:\n        return {'accepted': False, 'offset': None}\n    if type(value) is bool:\n        return {'accepted': False, 'offset': None}\n    if type(value) is not int:\n        return {'accepted': False, 'offset': None}\n    if not -4 <= value <= 5:\n        return {'accepted': False, 'offset': None}\n    return {'accepted': True, 'offset': value}\nresult = classify_offset(inputs.get('offset'))"
+      }
+    }
+  ]
+}

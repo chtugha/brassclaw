@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Drafted one unapproved class-22 pure-logic component per the requested contract. Raw records must be a list of 1..4 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list is invalid; missing/null/wrong types/extra fields are invalid, with no exceptions or coercion. The body uses inputs.get('records') so absence and null both reach the decision, validates outer length 1..4 before iterating, checks each object has exactly {'code','enabled'} with exact int-string and bool types, and assigns result on every outcome. No Tool calls, imports, host calls, I/O, upstream validation assumption, or approval claims. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-11",
+        "description": "Raw records must be a list of 1..4 items. Every object has exactly code and enabled, code string length 2..5 inclusive, enabled exact bool (False valid). Empty is invalid; missing/null/wrong types/extra fields invalid without exceptions/coercion. Always result={ok:boolean,records:original if valid else []}. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "records = inputs.get('records')\nok = type(records) is list and 1 <= len(records) <= 4\nif ok:\n    for rec in records:\n        if type(rec) is not dict or set(rec) != {'code', 'enabled'}:\n            ok = False\n            break\n        if not (type(rec['code']) is str and 2 <= len(rec['code']) <= 5 and type(rec['enabled']) is bool):\n            ok = False\n            break\nresult = {'ok': ok, 'records': records if ok else []}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

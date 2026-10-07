@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b88cd836f5f6be03",
+  "object": "chat.completion",
+  "created": 1791321472,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Applied the one explicitly permitted repair: removed the adjacent repeated word 'briefly' from the system message, yielding exactly 'Answer briefly.' Both messages, their roles, order and the user content are preserved byte-for-byte. No component proposals, no new messages, no policy change. The target_provider_metadata carries no resolved provider capabilities (model revision, protocol_capabilities, catalogue_revision are all null), so no provider-specific prompt-structure changes are proposed; the repair is purely textual and within the permitted scope.\",\n  \"proposed_components\": []\n  ,\n  \"settings_adjustments\": []\n  ,\n  \"proposed_recipe_updates\": []\n  ,\n  \"bridge_messages\": []\n  ,\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Answer briefly.\"],\n    [\"user\", \"List exactly three reasons to validate input.\"]\n  ]\n  ,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76427,
+    "total_tokens": 76630,
+    "completion_tokens": 203,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,12 @@
+{
+  "generation": "783660eccd6b11370c56018c4811965b66696c1eb95ec5dae61fceb8519f238c",
+  "bundle": "/opt/vLLM/prefixes/sempai/783660eccd6b11370c56018c4811965b66696c1eb95ec5dae61fceb8519f238c",
+  "base_unit": "/etc/systemd/system/vllm.service",
+  "base_unit_sha256": "0a61271c8e7901796101d2a2ca8abcb97bb06e8ffb18168bbbb89da826101192",
+  "override": "/etc/systemd/system/vllm.service.d/90-reference-prefix.conf",
+  "backup": "/opt/vLLM/prefixes/sempai/783660eccd6b11370c56018c4811965b66696c1eb95ec5dae61fceb8519f238c/deployment-backups/20261006T231151Z",
+  "activated": true,
+  "health_verified": true,
+  "automatic_server_injection_verified": false,
+  "lmcache_restarted_to_release_gpu_ipc": true
+}

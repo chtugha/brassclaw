@@ -1,0 +1,314 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "fresh-nested-bools-response.json",
+      "name": "pc-fresh-nested-bools",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "51a229f3975a9ed56f8461ec82a054e15da228bae101dfd4363b4de5521559d2",
+      "pure_python_gate": true,
+      "behavior_cases": 11,
+      "behavior_passed": 9,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "frames": []
+          },
+          "expected": {
+            "ok": true,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "frames": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "frames": [
+                {
+                  "toggles": [
+                    false,
+                    true
+                  ]
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "frames": [
+                {
+                  "toggles": [
+                    false,
+                    true
+                  ]
+                },
+                {
+                  "toggles": [
+                    false,
+                    true
+                  ]
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": []
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": []
+              }
+            ]
+          },
+          "actual": {
+            "result": {
+              "ok": true,
+              "frames": [
+                {
+                  "toggles": []
+                }
+              ]
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  false,
+                  false
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  0
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [],
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": []
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": null
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "result": {
+              "ok": false,
+              "frames": null
+            }
+          },
+          "passed": false
+        }
+      ],
+      "offline_acceptance_passed": false
+    }
+  ],
+  "component_activation_performed": false
+}

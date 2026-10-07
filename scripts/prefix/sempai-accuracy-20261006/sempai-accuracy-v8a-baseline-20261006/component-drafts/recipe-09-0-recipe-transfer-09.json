@@ -1,0 +1,76 @@
+{
+  "class_code": 21,
+  "payload": {
+    "name": "recipe-transfer-09",
+    "description": "Posts exactly the fixed word 'Idle' as a user reply using the bound existing host.post_reply Tool. Unapproved draft: no version numbers or approval; Q1 and human Q2 required before activation. The current offline sink cannot preserve the full v3 field set (step_descriptions, variants, dependency_registry are dropped); this is a design export, not a live insert. Typed inputs remain a target interface, not deployed runtime support.",
+    "trigger": null,
+    "steps": [],
+    "prior_knowledge_content": null,
+    "intent_examples": [
+      "say idle",
+      "reply idle",
+      "post idle",
+      "tell me you are idle",
+      "please say idle",
+      "respond with idle",
+      "send an idle reply",
+      "give me an idle response",
+      "answer with idle",
+      "please post the word idle"
+    ],
+    "step_descriptions": [
+      {
+        "desc_idx": 0,
+        "label": "Post the fixed idle reply",
+        "yaml_source": "Human-readable documentation of the same two steps",
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "rust",
+            "goal": "Bind the idle-reply Tool",
+            "content": "Bind host.post_reply",
+            "type": "component",
+            "include": [
+              "2e335c7f-8081-53a6-aa2d-2aede7926726"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          },
+          {
+            "stepnumber": 2,
+            "knowledge": "orchestrator",
+            "goal": "Post the fixed idle reply",
+            "content": "Run the fixed-idle-reply PythonCode",
+            "type": "component",
+            "include": [
+              "cc52df93-9358-5238-9317-23fea95aa6ef"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "variant_key": "fixed-idle-reply",
+        "description": "Post exactly Idle. without input slots",
+        "step_link": "0:1-0:E",
+        "intent_examples": [
+          "say idle",
+          "reply idle",
+          "post idle",
+          "tell me you are idle",
+          "please say idle",
+          "respond with idle",
+          "send an idle reply",
+          "give me an idle response",
+          "answer with idle",
+          "please post the word idle"
+        ],
+        "variable_patterns": []
+      }
+    ],
+    "dependency_registry": null
+  }
+}

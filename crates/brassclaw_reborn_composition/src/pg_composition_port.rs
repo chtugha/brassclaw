@@ -778,6 +778,7 @@ mod tests {
         assert!(!code.contains(question));
         let prompt =
             brassclaw_engine::executor::scripting::run_python_code_body(code, &[("state", state)])
+                .await
                 .unwrap()
                 .unwrap();
         assert_eq!(
@@ -795,6 +796,7 @@ mod tests {
             &formatter.effective_content,
             &[("state", state)],
         )
+        .await
         .unwrap()
         .unwrap();
         assert_eq!(

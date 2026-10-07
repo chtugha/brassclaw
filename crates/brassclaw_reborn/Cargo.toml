@@ -33,12 +33,15 @@ parking_lot = "0.12"
 ulid = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_ignored = "0.1.14"
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 
 [dev-dependencies]
+brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
+brassclaw_pg = { path = "../brassclaw_pg" }
 chrono = "0.4"
 brassclaw_agent_loop = { path = "../brassclaw_agent_loop", version = "0.1.0", features = ["test-support"] }
 brassclaw_authorization = { path = "../brassclaw_authorization", version = "0.1.0" }
@@ -53,7 +56,7 @@ rust_decimal = "1"
 serde = "1"
 serde_json = "1"
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
 wat = "1.245.1"
 tracing-test = "0.2"
 

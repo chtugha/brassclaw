@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-05: it reads rank via inputs.get('rank') so missing and null stay distinct, accepts only exact integers in 1..10 (rejecting bool/float/strings), and returns {accepted, rank} with rank null on rejection. No imports, I/O, host calls or exceptions; result is assigned on every branch. This is an unapproved draft; target typed inputs require runner support, and no observed tests, submission or activation occurred. The standalone citation is a source benchmark, not a submission or activation path.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-05",
+        "description": "Pure-logic guard: accept an exact integer rank in 1..10 inclusive (not bool/float/string) and return {accepted, rank}; missing or invalid rank returns accepted=false and rank=null without exceptions or coercion.",
+        "content": "rank = inputs.get('rank')\naccepted = type(rank) is int and not isinstance(rank, bool) and 1 <= rank <= 10\nresult = {'accepted': accepted, 'rank': rank if accepted else None}"
+      }
+    }
+  ]
+}

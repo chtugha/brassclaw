@@ -1,0 +1,216 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "python-08-response.json",
+      "name": "pc-transfer-08",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "96a610a641d8f90f0b70f90fff456242b01e3894b0bc2cc5d6ac96025957f56e",
+      "pure_python_gate": true,
+      "behavior_cases": 12,
+      "behavior_passed": 12,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "missing",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": null
+          },
+          "expected": {
+            "kind": "null",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "null",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": false
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 3
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 4
+          },
+          "expected": {
+            "kind": "integer",
+            "quota": 4
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "quota": 4
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 13
+          },
+          "expected": {
+            "kind": "integer",
+            "quota": 13
+          },
+          "actual": {
+            "result": {
+              "kind": "integer",
+              "quota": 13
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 14
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": 4.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": "4"
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "quota": {}
+          },
+          "expected": {
+            "kind": "invalid",
+            "quota": null
+          },
+          "actual": {
+            "result": {
+              "kind": "invalid",
+              "quota": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    }
+  ],
+  "component_activation_performed": false
+}

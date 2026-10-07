@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-00. Raw offset may be absent or any JSON value; accepts exact integers -4..5 inclusive (bool/float rejected); always returns {accepted:boolean, offset:original if accepted else null}. A helper inspects_offset validates type and range and returns the complete object; the module invokes it and assigns its returned object to result. No imports, I/O, host calls, Tool dispatch, submission, Q1/Q2 or activation. Target typed inputs requires selected-runner support.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-00",
+        "description": "Raw offset may be absent or any JSON value. Accepts exact integers -4..5 inclusive (bool/float rejected). Always returns {accepted:boolean, offset:original if accepted else null}. Invalid/missing return false/null without exceptions or coercion. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.",
+        "content": "def inspects_offset(value):\n    accepted = type(value) is int and -4 <= value <= 5\n    return {'accepted': accepted, 'offset': value if accepted else None}\nresult = inspects_offset(inputs.get('offset'))"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

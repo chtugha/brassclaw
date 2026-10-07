@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Antworte sachlich sachlich."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only. No edits authorized; repeated wording does not permit a change. Echoed both messages exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown; no rewrite or inferred capability facts were applied.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

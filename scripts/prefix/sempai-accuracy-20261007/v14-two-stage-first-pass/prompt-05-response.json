@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8d7ab0ec3276d223",
+  "object": "chat.completion",
+  "created": 1791331619,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"system\", \"Keep it concise.\"], [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]], \"bridge_messages\": [], \"composition_summary\": \"Replaced the duplicated system text with exactly 'Keep it concise.'; preserved the user message byte-for-byte, roles, order and count. No proposals or other changes were made, and no provider facts were invented.\", \"proposed_components\": [], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98601,
+    "total_tokens": 98715,
+    "completion_tokens": 114,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,152 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "fresh-missing-default-response.json",
+      "name": "pc-fresh-missing-default",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "3d2fca0508473814944fd8fb06946eb989be5b28c8daffbd6ee5686ec9099730",
+      "pure_python_gate": true,
+      "behavior_cases": 7,
+      "behavior_passed": 7,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "mode": "watch"
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "watch"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "mode": "watch"
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "pause"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "pause"
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "mode": "pause"
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "Watch"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": " pause"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": null
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": false
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "fresh-nested-bools-response.json",
+      "name": "pc-fresh-nested-bools",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "9c7edfcfdb8417e9e921003f280d87d8cf43e4fc0f5a3af54e55f9fe15c4a798",
+      "error": "Missing result assignment: a helper definition alone is not an executable component",
+      "offline_acceptance_passed": false
+    }
+  ],
+  "component_activation_performed": false
+}

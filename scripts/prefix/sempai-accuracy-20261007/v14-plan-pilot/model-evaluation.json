@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-06T23:51:12.621338+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "python-08",
+      "construction_plan": {
+        "seconds": 6.59,
+        "usage": {
+          "prompt_tokens": 98368,
+          "total_tokens": 98635,
+          "completion_tokens": 267,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98711,
+        "total_tokens": 99166,
+        "completion_tokens": 455,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 16.318
+    },
+    {
+      "id": "python-09",
+      "error": "Construction plan truncated; no component generation",
+      "seconds": 24.739
+    },
+    {
+      "id": "recipe-06",
+      "error": "Construction plan truncated; no component generation",
+      "seconds": 24.879
+    },
+    {
+      "id": "evidence-11",
+      "construction_plan": {
+        "seconds": 8.389,
+        "usage": {
+          "prompt_tokens": 101248,
+          "total_tokens": 101503,
+          "completion_tokens": 255,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 101574,
+        "total_tokens": 103177,
+        "completion_tokens": 1603,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 43.472
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20"
+}

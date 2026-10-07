@@ -1,0 +1,6 @@
+{
+  "original_60_schemas_unchanged": true,
+  "protected_grammar_count": 32,
+  "decoder_constraints": "Trusted unchanged input messages, offline constructor field names/types and empty compatibility arrays. No behavioral code/oracle/expected proposals constrained.",
+  "default_decoder_controls_unchanged": true
+}

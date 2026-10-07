@@ -21,6 +21,7 @@ pub mod similarity_checker;
 pub mod skill_tracker;
 pub mod store;
 pub mod template_extractor;
+pub mod typed_bindings;
 
 pub use composition::{
     ComponentResolver, ComposedProgram, ComposedStep, ResolvedComponent, RustDirective, SkillRef,

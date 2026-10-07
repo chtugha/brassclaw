@@ -13,7 +13,7 @@
 #   docker run --env-file .env -p 3000:3000 brassclaw:latest
 
 # Stage 1: Install cargo-chef
-FROM rust:1.94-bookworm AS chef
+FROM rust:1.96-bookworm AS chef
 
 RUN cargo install --locked cargo-chef@0.1.77
 
@@ -24,10 +24,13 @@ FROM chef AS planner
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY vendor/monty-control/ vendor/monty-control/
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/
 COPY providers.json providers.json
+COPY *.md ./
+COPY docs/ docs/
 
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -47,12 +50,15 @@ FROM deps AS builder
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY vendor/monty-control/ vendor/monty-control/
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/
 COPY providers.json providers.json
+COPY *.md ./
+COPY docs/ docs/
 
-RUN cargo build --profile dist --bin brassclaw
+RUN cargo build --profile dist -p brassclaw -p brassclaw_monty_host --bins
 
 # Stage 5a: Shared runtime base
 FROM debian:bookworm-slim AS runtime-base
@@ -62,6 +68,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/dist/brassclaw /usr/local/bin/brassclaw
+COPY --from=builder /app/target/dist/monty_worker /usr/local/bin/monty_worker
 COPY --from=builder /app/migrations /app/migrations
 
 # Non-root user

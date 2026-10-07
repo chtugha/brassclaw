@@ -123,7 +123,7 @@ jobs:
           # crates, migrations, or shared build config. Modernized from the
           # v1 src/ path filters that the legacy "Tests (Legacy)" workflow used
           # (src/agent, src/channels/wasm, src/db, etc. — all removed in Phase 6).
-          if has_match '^(crates/brassclaw_(reborn|reborn_composition|reborn_cli|reborn_config|agent_loop|threads|turns|capabilities|host_runtime|secrets|safety|hooks|hooks_postgres|process_sandbox|processes|dispatcher|network|runtime_policy|authorization|trust|approvals|run_state|loop_support|common|memory|events|event_projections|event_streams|reborn_event_store)/|migrations/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/reborn-tests\.yml$)'; then
+          if has_match '^(crates/brassclaw_(reborn|reborn_composition|reborn_cli|reborn_config|agent_loop|threads|turns|capabilities|host_runtime|secrets|safety|hooks|hooks_postgres|monty_host|process_sandbox|processes|dispatcher|network|runtime_policy|authorization|trust|approvals|run_state|loop_support|common|memory|events|event_projections|event_streams|reborn_event_store)/|vendor/monty-control/|tests/monty_control/|migrations/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/reborn-tests\.yml$)'; then
             echo "has_runtime_heavy_risk=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_runtime_heavy_risk=false" >> "$GITHUB_OUTPUT"
@@ -196,6 +196,7 @@ jobs:
                         or (.name == "brassclaw_telegram_v2_adapter")
                         or (.name | startswith("brassclaw_webui_v2"))
                         or (.name == "brassclaw_memory")
+                        or (.name == "brassclaw_monty_host")
                         or (.name == "brassclaw_secrets")
                       )
                     | .name
@@ -266,6 +267,9 @@ jobs:
         with:
           key: reborn-tests-${{ matrix.package }}
           save-if: \${{ github.event_name == 'workflow_call' }}
+
+      - name: Build contained Monty worker
+        run: cargo build -p brassclaw_monty_host --bin monty_worker --locked
 
       - name: Run crate tests
         run: |

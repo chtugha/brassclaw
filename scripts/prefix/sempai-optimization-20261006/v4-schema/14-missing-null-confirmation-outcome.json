@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Preserved the volatile tail exactly (one user message, no invented assistant reply). Task is a single class-22 pure-logic draft, which the supported sink accepts (name/description/content). The draft is a target-interface authoring artifact: it reads raw candidate data with inputs.get() so missing and null stay distinct, validates integer type/bounds/bool-exclusion before classifying, and returns the requested invalid-result object for malformed data instead of raising. It assigns result on every path, uses no imports/host/IO, and carries no defaults or coercion. This is an unapproved draft; Q1/Q2 and host execution are still required. No compatibility/intent/settings changes were proposed.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Classify an optional raw value while preserving the distinction between missing and null."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-classify-value",
+        "description": "Classify an optional raw value while preserving the distinction between missing and null. Reads the raw candidate with inputs.get('value') so absence and explicit null remain distinct. Returns {state:'missing',value:null} when the key is absent, {state:'null',value:null} when the value is an explicit null, {state:'value',value:original} when the value is an exact integer in 0..10 inclusive (booleans and floats are rejected), and {state:'invalid',value:null} for any other value. No defaults, coercion, exceptions, imports, host calls or I/O. This is an unapproved target-interface draft; Q1, human Q2 and host execution are still required.",
+        "content": "value = inputs.get('value')\nif value is None:\n    result = {'state': 'null', 'value': None}\nelif isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10:\n    result = {'state': 'invalid', 'value': None}\nelse:\n    result = {'state': 'value', 'value': value}"
+      }
+    }
+  ],
+  "proposed_recipe_updates": []
+}

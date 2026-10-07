@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-11: it reads raw records via inputs.get('records') (never direct access), validates each item is a non-empty object with exactly the string field 'code' (length 2..5) and an exact-boolean 'enabled', and returns {ok, records: original list if valid else []} with no exceptions, coercion, I/O, imports or host calls. Empty list is invalid; missing/null/wrong-type/extra-field items are invalid. This is an unapproved target-interface draft only; no tests, approval, activation or observed provider capabilities were claimed. The host sink supports class 22 name/description/content; activation and Q1/Q2 remain separate.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-11",
+        "description": "Pure-logic validator for raw records. Returns {ok, records} where records is the original list only if every item is a non-empty object with exactly the string field 'code' (length 2..5) and an exact-boolean 'enabled'; otherwise records is []. Empty list is invalid. No exceptions, coercion, I/O, imports or host calls; no upstream validation assumption.",
+        "content": "def classify_records(records):\n    if not isinstance(records, list) or len(records) == 0:\n        return {'ok': False, 'records': []}\n    for item in records:\n        if not isinstance(item, dict) or len(item) == 0:\n            return {'ok': False, 'records': []}\n        if 'code' not in item or 'enabled' not in item or len(item) != 2:\n            return {'ok': False, 'records': []}\n        code = item['code']\n        enabled = item['enabled']\n        if not (type(code) is str and 2 <= len(code) <= 5):\n            return {'ok': False, 'records': []}\n        if not (type(enabled) is bool):\n            return {'ok': False, 'records': []}\n    return {'ok': True, 'records': records}\nresult = classify_records(inputs.get('records'))"
+      }
+    }
+  ]
+}

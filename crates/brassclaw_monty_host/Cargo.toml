@@ -7,10 +7,10 @@ publish = false
 license = "MIT OR Apache-2.0"
 description = "Isolated Monty 1.0 task program hosting for the global orchestrator cutover"
 
-# Keep the new ABI outside the application graph until Phase 3a acceptance.
-[workspace]
+# The worker is packaged separately; its allocator never enters the product.
 
 [dependencies]
+futures = "0.3"
 brassclaw_resources = { path = "../brassclaw_resources" }
 monty = { path = "../../vendor/monty-control/crates/monty" }
 monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
@@ -18,7 +18,7 @@ sha2 = "0.10"
 num-traits = "0.2"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["io-util", "process", "time"] }
+tokio = { version = "1", features = ["io-util", "process", "time", "rt", "sync", "macros"] }
 monty-alloc = { path = "../../vendor/monty-control/crates/monty-alloc", features = ["exit-code"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 

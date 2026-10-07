@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9cdd29ef37a6730f",
+  "object": "chat.completion",
+  "created": 1791325466,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode d0a73787-74ae-55cb-b6a0-25131936e06d (result = host.post_reply(answer='Ready')) and unapproved ToolSkill a6ed3264-13bc-56ae-9de7-064df4b3d2ce (binds existing host.post_reply(answer:string)). This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. The current live sink drops v3 fields (step_descriptions, variants, dependency_registry) and cannot preserve the full constructor, so no live insertion occurs; this is an offline-design export only. The draft is unapproved: Q1 and human Q2 are required before activation, and no runtime/approval claims are made. Original conversation preserved; root compatibility arrays empty under test persona.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-01\",\n        \"description\": \"Offline full-v3 export only; unapproved draft. Posts exactly the fixed word as a user reply using the bound existing host.post_reply Tool. No runtime/approval claims.\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\",\n        \"intent_examples\": [\n          \"say ready\",\n          \"reply ready\",\n          \"post ready\",\n          \"send the ready reply\",\n          \"respond with ready\",\n          \"tell me ready\",\n          \"please say ready\",\n          \"please reply ready\",\n          \"post the fixed ready message\",\n          \"send the fixed ready message\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind reply Tool\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"a6ed3264-13bc-56ae-9de7-064df4b3d2ce\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post fixed reply\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"d0a73787-74ae-55cb-b6a0-25131936e06d\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"ready-reply\",\n            \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say ready\",\n              \"reply ready\",\n              \"post ready\",\n              \"send the ready reply\",\n              \"respond with ready\",\n              \"tell me ready\",\n              \"please say ready\",\n              \"please reply ready\",\n              \"post the fixed ready message\",\n              \"send the fixed ready message\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n  ,\n  \"settings_adjustments\": []\n  ,\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Design a reusable ready reply workflow.\"\n    ]\n  ]\n  ,\n  \"proposed_intent_examples\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98440,
+    "total_tokens": 99436,
+    "completion_tokens": 996,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

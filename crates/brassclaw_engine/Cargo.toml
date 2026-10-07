@@ -2,7 +2,7 @@
 name = "brassclaw_engine"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.96"
 description = "Unified thread-capability-CodeAct execution engine for BrassClaw"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
@@ -26,6 +26,7 @@ skills-db = ["brassclaw_skills/db-store", "dep:brassclaw_pg", "dep:brassclaw_cap
 v2-skill-tracker = ["brassclaw_skills/v2-compat"]
 
 [dependencies]
+brassclaw_monty_host = { path = "../brassclaw_monty_host" }
 async-trait = "0.1"
 cron = "0.13"
 brassclaw_capabilities = { path = "../brassclaw_capabilities", optional = true }
@@ -34,7 +35,10 @@ brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-fe
 brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }
 tokio-postgres = { version = "0.7", optional = true }
 chrono = { version = "0.4", features = ["serde"] }
-monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.16" }
+# Verified v1.0.0 plus the versioned control extension; both application
+# consumers share exactly these sources. See vendor/monty-control/BRASSCLAW.md.
+monty = { path = "../../vendor/monty-control/crates/monty" }
+monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -1,0 +1,91 @@
+{
+  "format": "sempai-compact-grammar/1",
+  "any_whitespace": false,
+  "xgrammar_version": "0.2.7",
+  "schemas": [
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_kind",
+          "branches",
+          "helper_required",
+          "workflow",
+          "authorized_edits",
+          "prerequisites",
+          "notes"
+        ],
+        "properties": {
+          "task_kind": {
+            "type": "string",
+            "enum": [
+              "python",
+              "recipe",
+              "review"
+            ]
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "guard",
+                "result"
+              ],
+              "properties": {
+                "guard": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "helper_required": {
+            "type": "boolean"
+          },
+          "workflow": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "knowledge",
+                "uuid"
+              ],
+              "properties": {
+                "knowledge": {
+                  "type": "string"
+                },
+                "uuid": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "authorized_edits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "schema_sha256": "de38a7fae16f6d2d4c3533a99d08193a6ec44f8e59522dd8f11ee4cd542326bc",
+      "grammar_sha256": "60831c8723d8707961152589fd32080197b6ab72653ab7ef634eb2d4306a1183"
+    }
+  ],
+  "answers_or_behavioral_oracles_used": false
+}

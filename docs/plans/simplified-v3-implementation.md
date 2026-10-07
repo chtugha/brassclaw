@@ -1470,3 +1470,700 @@ pass (`/private/tmp/brassclaw-process-host-bounded-data.log`,
 transport limits never justify silently truncating history or reintroducing token
 budgets: production must handle larger eligible data with bounded transfers or
 run-scoped references. No application dependency/driver cutover is claimed.
+
+
+### 2026-10-06 Contained Recipe contexts and explicit child handoff
+
+The isolated Monty 1.0 worker now owns bounded task/context registries as well
+as the single instance root. Private protocol 2 deliberately replaces protocol
+1: boot requires validated task settings and a context bound; admission accepts
+exactly six data fields and returns a fresh worker-issued task handle. Conversation,
+message, turn and run IDs remain opaque and unchanged. The owning Rust actor must
+associate that handle with the exact admitted attempt host; it is never a claim,
+credential, permission or substitute for durable fencing.
+
+Contexts execute only caller-selected, integrity-checked Python artifacts. They
+retain locals between feeds and bind inputs separately from source. Children
+require an explicit same-task, live parent; actual computed return values are
+resumed into the parent through its exact continuation. Cancelling a parent
+releases its descendants, retaining every outstanding child host identity.
+Descendant traversal visits the graph once rather than repeatedly scanning a
+chain. Released root contexts cannot be recreated for the old handle; stale
+answers fail with retained command evidence. A running child yields at actual
+bytecode checkpoints, and its cancellation leaves the instance root and other
+tasks alive. Classified domain exceptions are catchable; terminal child errors
+are uncatchable. Root port replies reject child-abort requests.
+
+Every context for one task shares the same live compute account. Context/artifact
+construction and existing conversion/execution clocks debit non-overlapping
+segments. Settings edits compare exact revisions and retain consumption; stale
+settings fail distinctly. Snapshots report effective settings and task accounting
+errors explicitly. Graceful root-worker closure refuses remaining task records.
+Production must fence and reconcile attempts/effects before releasing them;
+local release cannot establish durable completion or external quiescence.
+
+Actual screen checks run sequentially with no simultaneous Cargo executions:
+11 child-host, six root-host and eight subprocess cases pass, plus strict host
+and isolated caller lints. Evidence is in
+`/private/tmp/brassclaw-process-recipe-contexts.log`,
+`/private/tmp/brassclaw-process-recipe-context-lints.log` and
+`/private/tmp/brassclaw-process-recipe-caller-lints.log`.
+The subprocess cases use actual Monty computation, host suspensions, native
+allocation failure and process lifecycle; no successful provider/Recipe/finish
+port result is fabricated.
+
+This supplies contained child hosting, not the production cutover. Root CPU
+attribution, shared adaptive logical heap enforcement, desired/effective WebUI
+coordination, immutable complete manifests/recursive binding contracts, durable
+effect accounting, instance ownership/startup/shutdown and production host-port
+integration remain required. The legacy UUID-only driver remains active, so the
+original seven composition failures have not been accepted as resolved. No
+Rust-loop/model fallback or per-task process is introduced.
+
+The final explicit settings-conflict assertion and changed caller lint also pass
+(`/private/tmp/brassclaw-process-recipe-settings-final.log` and
+`/private/tmp/brassclaw-process-recipe-caller-final-lints.log`). No application
+Cargo build was run for this isolated hosting change.
+
+
+### 2026-10-06 Instance-owned transport actor
+
+`brassclaw_monty_host::transport_actor` now owns worker IPC independently of a
+cancellable turn future. Accepted commands have bounded, privately retained
+receipts; abandoning a waiter leaves the command/result recoverable through the
+supervisor inbox. Collection releases count/frame credits. Overflow and closed
+queues return the complete unaccepted command. Command validation uses the same
+bounded data traversal as direct IPC; retained encoding reserves the largest
+sequence representation before acceptance. This evidence encoding is never sent
+or replayed as a request.
+
+A separate bounded control/completion lane prevents ordinary abandoned receipts
+from occupying all cancellation/settings/continuation capacity. Priority is
+bounded to eight consecutive controls before available ordinary work is preferred;
+instance termination remains independently addressable. The actor performs only
+explicit transport operations. Recipe order, child result handoff and Tools are
+still selected by Monty, not this Rust loop.
+
+Normal shutdown joins after the actual Stopped/exit handshake. Fatal transport
+failure retains the completed failure and explicit not-started queued receipts.
+An interrupted join retains its handle. OS kill/reap failures remain accessible
+in ProcessError/ActorExit, including failed startup where the process object would
+otherwise be dropped. The instance owner must retain PostgreSQL ownership until
+actual local quiescence and durable effect reconciliation; neither a local receipt
+nor actor exit proves external settlement. The actor inbox is RAM infrastructure,
+not durable admission or a replay permission. Frame credits bound retained transport
+payloads; they do not claim exact physical memory accounting for decoded values.
+
+Four actual actor cases and eight affected transport regressions pass, along with
+strict host/caller lints, in sequential screen execution with `--locked`:
+`/private/tmp/brassclaw-instance-actor-host.log`,
+`/private/tmp/brassclaw-instance-actor-host-lints.log`, and
+`/private/tmp/brassclaw-instance-actor-caller-lints.log`.
+The first native-failure test incorrectly used unsupported bytearray and stalled
+waiting for an instance failure; the owned run was interrupted, process cleanup
+was verified, and the case now uses actual supported string allocation with
+bounded waits. A separate real Python-error case verifies the deliberate task
+failure/instance failure distinction. No native failure, model, Tool or durable
+finish success is fabricated. Unchanged root/child evidence remains applicable.
+
+The next root-accounting change must use actual scheduler identity and switches
+(`bytecode/vm/async_exec.rs::activate_task`, task cleanup and host/control boundaries).
+The current ExecutionControl::checkpoint receives only elapsed time, and its
+control-error latch terminates that interpreter. It cannot associate root CPU
+with a BrassClaw task or safely impose a task-local failure on the global VM.
+Do not attribute the shared cumulative clock to the last Rust-handled task.
+A persistent worker coroutine is reused for successive admissions: task accounting
+must bind the current admitted handle, retain its usage through switches/waits,
+and clear that association on completion. Service/idle time stays separate.
+Any interpreter extension must preserve task-local failure handling in the trusted
+root, keep unrelated workers alive, version its ABI/patch/integrity record, and
+prove A→B→A plus short/error/native/preparation boundaries before production use.
+
+Production dependencies/driver remain unchanged. Monty 1.0 integration, root CPU
+attribution, shared adaptive logical heap, immutable manifests and typed component
+contracts, durable effect accounting, retained instance ownership and production
+port/startup/shutdown coordination remain gates. The original seven composition
+failures have not been rerun or accepted as resolved by this isolated actor proof.
+
+### 2026-10-06 Actual scheduler accounting prerequisite
+
+The isolated interpreter is now `1.0.0-brassclaw.control.4`, dump ABI `0xBC04`.
+`ExecutionObservation` exposes separate cumulative execution/preparation clocks
+and the actual loaded coroutine. Scheduler activation samples the outgoing
+context before switching; actual task exit clears it. Mechanical VM cleanup
+during snapshot creation preserves the suspended identity. New REPL feeds select
+main context 0. A transition-latched fatal control error is checked before loading
+or executing the next coroutine, including a short feed that would otherwise
+reach a host call before its first periodic checkpoint. Existing child controls
+retain their combined-clock API, terminal latch and shared task account.
+
+`GlobalVm::execution_accounting` now partitions executing time into a bounded
+main/worker/discarded-context map and reports preparation separately.
+`pending_context` identifies the coroutine that issued an actual pending call.
+Preparation is not charged to that coroutine: importing A's host result while B
+was last loaded must not charge B. Persistent coroutine identity is not admitted
+task identity or authority. The next integration must bind each admitted handle
+to its actual worker context, debit the same root/child task account, retain usage
+across waits/settings revisions, and clear the association on completion. The
+interpreter-terminal control error must not be used to kill the root for a single
+task; scoped interruption and trusted failure/finish handling remain required.
+That interruption must retain or explicitly settle the interrupted task's actual
+pending futures, with matching continuation/context and attempt fencing. Raising
+into a coroutine after creating an external future but before its `await` can
+leave an orphan in the scheduler's pending index; removing only the host map would
+break the exact pending-set invariant. Prove this boundary and permit trusted
+failure/finish service work after a task budget latches, without allowing further
+task Tools or affecting another worker's pending calls.
+
+Coroutine and host-call counters now reject exhaustion before mutating counters,
+taking references or dispatching. Release builds cannot wrap and reuse an old
+correlation identity. Refused external/method/OS calls and settled awaitables
+release arguments, values and pending effects. This is instance-fatal identity
+exhaustion, not permission to retry/replay a task. Old dump ABIs are explicitly
+rejected; reconcile their continuations/effects before an upgrade.
+
+All 228 recorded upstream hashes and the exact zero-context patch round trip were
+verified against the retained upstream checkout. The final changed interpreter,
+host and callers pass 47 real regressions plus two counter-exhaustion unit cases,
+and strict extension/host/caller Clippy checks in sequential background screen
+execution. Evidence:
+`/private/tmp/brassclaw-monty-context-final.log`,
+`/private/tmp/brassclaw-monty-context-identities.log`,
+`/private/tmp/brassclaw-monty-context-extension-lints.log`,
+`/private/tmp/brassclaw-monty-context-host-lints.log`, and
+`/private/tmp/brassclaw-monty-context-caller-lints.log`.
+
+The new cases cover A→B→A real coroutine execution, unchanged clocks during a real
+host wait, native callback reentry with an error and deferred safe-boundary yield,
+exact identity/clocks after dump/restore, short completion/error exits, and fatal
+transition failure before dispatch. Initial build errors (one missed asyncio
+caller and old value constructors in the new test) and the native-test setup
+failure are preserved in the initial logs. The setup now supplies a top-level
+periodic checkpoint after native reentry; a pending yield need not supersede an
+earlier host boundary. No warning is suppressed or product success fabricated.
+
+This is a root accounting prerequisite, not completed task budget enforcement or
+production/global hosting. Production dependencies/driver are unchanged; original
+seven composition failures remain unaccepted. Root admission/account association,
+scoped failure and preparation accounting, adaptive logical heap, complete
+immutable component manifests/bindings, durable effects/ownership and production
+ports/startup/shutdown/WebUI coordination still require their documented cutover
+acceptance. No Rust-loop fallback is added.
+
+The final context-map bound uses checked arithmetic; the affected seven root
+cases and host lint also pass in
+`/private/tmp/brassclaw-monty-context-bound-final.log` and
+`/private/tmp/brassclaw-monty-context-bound-lints.log`. These checks used
+Rust 1.98.1 and the unchanged NVMe target/profile settings; they do not replace
+the minimum-version/production cutover gates.
+
+### 2026-10-06 Failed-root transport fencing
+
+Review of instance-fatal counter exhaustion exposed an adjacent actor error:
+all framed VM failures were treated as task-local, even when the actual root
+lifecycle was Failed. `GlobalProcess` now immediately fences/kills transport
+for that state while preserving the failure diagnostic and snapshot. The actor
+recognizes Failed snapshots in both result branches, reports `InstanceFailed`,
+joins actual termination/reaping and retains every queued command as not started.
+Child Python failures whose root remains Ready continue to leave the instance
+available. A frozen pending set is reconciliation evidence, not task completion
+or permission to replay; instance ownership must still outlive quiescence and
+durable effect reconciliation.
+
+The new real worker case raises from a worker after accepted admission, proves
+the other actual work wait remains in the failure snapshot, joins local exit and
+collects the undispatched queued command with its exact original contents.
+Five actor and eight process cases pass along with strict host/caller checks:
+`/private/tmp/brassclaw-monty-root-fatal-actor.log`,
+`/private/tmp/brassclaw-monty-root-fatal-host-lints.log`, and
+`/private/tmp/brassclaw-monty-root-fatal-caller-lints.log`.
+Together with unchanged passing interpreter/root evidence, 50 unique focused
+cases pass. This remains isolated infrastructure; the seven production composition
+failures are not claimed resolved, and no production dependency is upgraded here.
+
+
+### 2026-10-07 Mandatory shared root/child task account
+
+The isolated root admission API now requires an existing shared task account.
+There is no unmetered admission overload. The contained worker creates that
+account before admitting Python and retains the same account in its child
+registry. Actual coroutine execution deltas debit it; boot, another task's CPU,
+idle/external waits and the separate root preparation clock are not assigned to
+this task. Child execution adds to the same consumption while root execution is
+parked. Root clock cursors and lifetime telemetry never reset when workers are
+reused or live settings change.
+
+Input/continuation/conversion rejection occurs before root binding and rolls
+back the registry's task/run reservation. Duplicate live routing tokens and
+already-terminal supplied accounts reject without consuming the work wait.
+Fatal admitted execution preserves the issued task handle and account in the
+failure snapshot, including failures before the first port. The actor's existing
+instance-failure fencing/reaping retains that snapshot and undispatched receipts.
+
+Returning to the trusted work wait releases the coroutine/task association only
+after its actual pending host calls have been settled. Closing a task account
+while the root still owns it now rejects without deleting its child state or
+consumption; child cancellation alone is not root cancellation, durable finish
+or external-effect acknowledgement. Root compute/accounting failures remain
+explicit in the shared account and `task_compute_failure`; they never become a
+whole-instance control-latch failure.
+
+The final changed path passes 22 affected regressions (nine root, eight actual
+subprocess and five actor cases) and strict host/caller Clippy checks, queued
+sequentially in screen with the required NVMe target/profile settings. Evidence:
+`/private/tmp/brassclaw-monty-required-root-account.log`,
+`/private/tmp/brassclaw-monty-required-root-host-lints.log`, and
+`/private/tmp/brassclaw-monty-required-root-caller-lints.log`. No build errors or
+warnings were suppressed. The terminal-account fixture explicitly injects an
+account counter to check failure handling; it does not claim 601 seconds of
+measured VM work or successful external execution. Actual root/child execution,
+A/B isolation, exact root telemetry deltas, real waits, admission rejection,
+worker reuse and fatal evidence are exercised through real interpreters.
+
+This closes the account-association prerequisite, not Phase 3a enforcement or
+production acceptance. Root preparation still needs explicit owner attribution.
+A terminal account is reported, but expired root bytecode is not yet safely
+interrupted inside the trusted task handler: the existing uncatchable global
+control latch would destroy the instance, and injecting while an unresolved
+future exists can orphan its correlation. Task-scoped interruption, bounded
+failure/finishing, pending-future/effect reconciliation and dispatch fencing must
+be completed before production wiring. The original seven composition failures
+remain unaccepted; application dependencies and the legacy driver are unchanged.
+No Rust agent-loop fallback or fabricated provider/Recipe completion is added.
+
+
+### 2026-10-07 Protected root interruption and typed task ports
+
+The isolated extension is now `1.0.0-brassclaw.control.5`, dump ABI `0xBC05`.
+`ControlYield::raise` injects an ordinary exception at the retained opcode,
+without a fabricated external return or clearing a terminal control latch.
+The candidate class-10 root establishes its protected handler through synchronous
+private `host.enter_task`; eager-await eligibility is a scheduling hint, not a
+validity requirement. Task compute failure and cancellation reach that handler
+while unrelated workers remain alive. The host refuses a second root port in
+one scope while its first future is unsettled, before dispatching any effect.
+
+`RecipeCommand::CancelTask` accepts only an issued handle in the current worker
+registry. It requests root interruption, fences existing child contexts and
+rejects further context creation/source feeds. Contexts, accounts and outstanding
+keys remain retained. `CancellationRequested` is not acknowledgement of task
+completion, external-effect settlement or Rust attempt-fence quiescence.
+An outstanding root result settles its actual future before interruption. A
+withheld real answer is retained with its exact continuation in private protocol
+3 snapshots for trusted reconciliation. Taking this evidence authorizes no replay.
+
+All 228 upstream hashes and the exact extension patch round trip were verified.
+The full isolated interpreter/host queue passed, followed by 24 refreshed root,
+process and actor regressions and strict host/caller Clippy checks:
+`/private/tmp/brassclaw-monty-task-interruption.log`,
+`/private/tmp/brassclaw-monty-scoped-cancel.log`,
+`/private/tmp/brassclaw-monty-scoped-cancel-host-lints.log`,
+`/private/tmp/brassclaw-monty-scoped-cancel-caller-lints.log`.
+Pure-bytecode interruption uses a clearly identified terminal-account fixture;
+cancellation uses an actual private command and actual unresolved host error,
+without supplying a provider, Recipe, Tool or durable finish success.
+
+`MontyTaskHost::dispatch_port` now maps typed Monty data to one existing prompt,
+model, capability or transcript port. It preserves structured model output and
+host-issued result/message refs; it does not iterate a model or sequence a
+workflow. Unknown fields, including nested fields, and raw prompt bypasses are
+rejected before dispatch. The unchanged task host still checks cancellation and
+attempt fencing. Its late successful results are now retained privately instead
+of discarded after fencing; recording completes before local call-settlement
+waiters wake. The permanent fence and its bounded in-flight capacity bound these
+receipts. Taking a receipt does not settle a durable effect. Four fence/data
+regressions, four existing task-host caller cases through the typed boundary and
+strict affected Reborn linting pass:
+`/private/tmp/brassclaw-monty-retained-task-results.log`,
+`/private/tmp/brassclaw-monty-retained-task-ports.log`,
+`/private/tmp/brassclaw-monty-retained-task-results-lints.log`.
+Those existing caller fixtures do not establish native production composition
+acceptance; no replacement/mock production path was introduced.
+
+Production remains unwired: the old driver still performs its UUID engine Thread
+lookup. The seven original composition failures therefore remain outstanding.
+Next acceptance work must connect verified/pinned IBS programs and these scoped
+ports to the single startup-owned transport, complete the two production Monty
+1.0 API/dependency/resource migrations, and retain the owner through VM/effect
+quiescence. Root preparation ownership, bounded finishing/reconciliation and
+live desired/effective settings acknowledgement remain open. Do not activate the
+candidate or claim the seven failures resolved from these isolated checks.
+
+### 2026-10-07 Correlated root preparation accounting
+
+The isolated Monty 1.0 host now charges interpreter preparation to the shared
+admitted task account as well as actual coroutine execution. A serialized
+single-future resume explicitly owns import preparation; the scheduler still
+owns bytecode attribution. A parked `ResolveFutures` has no runnable coroutine,
+and only the addressed future is resolved. This prevents importing A's actual
+host answer from charging B merely because B was the last worker to park.
+Preparation scope cleanup is guarded across failures and unwinding; account
+poison, overflow or ownership mismatch stays a failure. Boot/service telemetry
+and execution/preparation totals remain separate, and external waits stay free.
+
+Evidence: `/private/tmp/brassclaw-monty-owned-root-preparation.log` passed the
+24 affected root/process/actor tests. The real A → B → A regression checks both
+preparation ownership and the combined shared account, including child work,
+worker reuse and unchanged consumption during an external wait. Affected host
+and caller Clippy logs with the same prefix passed with `-D warnings` after
+resolving the reported collapsible conditional. These isolated checks do not
+resolve the original seven production composition failures or activate the
+global service; production dependency, catalogue/Recipe and lifecycle cutover
+remain required.
+
+### 2026-10-07 Typed adapters, contained utilities and prepared flow
+
+The root's synchronous typed-data adapters now debit the same admitted compute
+account as root preparation/bytecode and child execution, with separate bounded
+per-coroutine telemetry. They preserve the actual original host answer when a
+conversion exhausts the task budget. The A → B → A regression includes all three
+clocks; another actual error-return case checks withheld-answer preservation.
+`/private/tmp/brassclaw-monty-root-adapter-accounting.log` passed 25 affected
+actor/root/process tests; strict affected host/caller linting passed.
+
+The isolated allocator worker now supports one-operation parse/evaluate utilities.
+It receives separately typed inputs through private pipes, rejects host/file/sleep
+authority, exports cycle-checked finite typed results and retains actual diagnostics
+and stdout on failure. Parent deadlines cover transport, response and reaped exit;
+success requires the worker's actual successful exit, not merely a reply frame.
+Input aggregates are checked before serialization/spawn. Four real-process tests
+include a busy timeout, actual allocator exhaustion contained to the disposable
+worker, invalid outputs and subsequent successful reuse of the utility service.
+Utility/process/actor checks passed in
+`/private/tmp/brassclaw-monty-contained-utilities.log`; final utility and strict
+caller checks passed in `...-contained-utility-final.log` and
+`...-contained-utility-final-lints.log`. Strict host linting passed in the first
+batch. Application utility callers still use the legacy Monty ABI; this candidate
+does not establish their cutover or dynamic compilation accounting.
+
+The actual composition Q1 adapter now supplies candidate name/description/content
+as typed `inputs` values. Only fixed legacy placeholder spellings are adapted in
+the trusted validator source; candidate values never become Python source. Its
+successful result requires exactly a boolean `pass` and a string-list `errors`,
+with consistent success/failure semantics. Twelve Q1 checks and strict affected
+composition linting passed in `/private/tmp/brassclaw-monty-q1-typed-data.log` and
+`...-lints.log`. This is the actual adapter and pure result contract, not completed
+native approval-store or Q2 acceptance.
+
+The candidate global Python source now validates and executes generic prepared
+`recipe-flow/1` control trees. Step, branch, foreach, bounded repeat with explicit
+carry and return nodes use typed references and distinct occurrence addresses.
+Preflight rejects forward/unavailable results, unreachable/duplicate steps,
+invalid scope and excessive expanded dispatch counts. Iteration-local results
+cannot implicitly leak into a later iteration. Runtime errors never enter Tier 2.
+Actual Reborn model output is externally tagged (`assistant_reply` or
+`capability_calls`) under `LoopModelResponse.output`; do not invent a `type` tag
+or flatten capability calls into text. Thirty actor/flow/root/global-lifecycle/
+process checks and strict caller linting passed in
+`/private/tmp/brassclaw-monty-recipe-flow.log` and `...-lints.log`. The four pure
+flow cases execute actual interpreter helpers without simulated component/Tool/
+provider success. This format is transient prepared metadata, **not an accepted
+new field in persisted Recipe JSONB**. Authoring/compiler support, recursive schema
+proofs, complete approved snapshot manifests and durable occurrence/effect records
+must precede activation. The source bound is now 32 KiB to accommodate the actual
+verified root; no data truncation was introduced.
+
+Production turn-runner configuration now distinguishes an optional independent
+driver wall-time liveness deadline from Monty task compute duration. Composition
+does not feed `max_duration_secs` into the wall-time timer, which would charge
+provider/queue waits. Explicit driver deadlines still stop the exact attempt before
+claiming more work. A failed actual startup settings DB read now fails startup
+instead of silently disabling limits. Twenty turn-runner checks and one native
+PostgreSQL settings failure/default case passed in
+`/private/tmp/brassclaw-monty-compute-not-wall-time.log` and
+`/private/tmp/brassclaw-monty-settings-startup-failure.log`. Strict Reborn and
+composition all-target checks passed in `...-compute-not-wall-time-reborn-lints.log`
+and `/private/tmp/brassclaw-monty-startup-proof-final-lints.log`. The migration proof
+is used by the native fixture; its must-use warning was fixed without suppression.
+Static legacy duration uptake is not the shared live effective-revision cutover.
+
+**The seven original composition failures remain unresolved.** Their production
+driver still reaches the UUID-only Thread load. None of these checks changes
+their assertions, substitutes a model reply, activates global hosting or completes
+Phase 3a. Continue with actual recursive contracts, immutable catalogue/association
+selection, the two-dependency Monty migration and startup-owned service integration.
+
+### 2026-10-07 Recursive contracts, typed IBS preparation and graduation evidence
+
+`brassclaw_skills::value_contract` now validates the recursive contracts in
+`skills.md`: exact fields/duplicate keys, nullable versus missing values,
+consumer-only defaults, object/list children and extras, Unicode lengths,
+exact numeric bounds/cross-input checks and declared computed arguments.
+Binding checks aggregate default expansion before copying; output validation
+never fills missing data. Producer/consumer types must match exactly, including
+integer versus number. Error paths remain private because dynamic keys may
+contain input data. Nine focused contract checks passed in
+`/private/tmp/brassclaw-monty-exact-binding-types.log`; strict default-feature
+checks passed in `...-lints.log`. The existing legacy credential functions and
+tests now correctly require `v1-types`; their relevant enabled-feature checks
+remain passing (`...-credential-feature-boundary.log`, `...-credential-feature-lints.log`).
+
+`prepare_typed_program` combines the actual ordered typed composer with
+`typed_bindings::prepare_input_layout`. It rejects incomplete/duplicate local
+bindings, undeclared task references, forward results, unsafe optional/null
+field access, wrong declared types and invalid constants/default requests.
+Prepared metadata contains data references, not substituted code. Four actual
+IBS checks passed in `/private/tmp/brassclaw-monty-typed-input-preparation.log`
+and again through the affected caller in `...-association-ibs-caller.log`.
+This is straight ordered-workflow preparation; it neither establishes trusted
+catalogue/association approval nor proves conditional graph guards.
+
+The actual legacy validation queue now locks the review row inside its
+graduation transaction and shares queue-before-component lock order with
+invalidation/purge. Rejection and threshold promotion use one guarded update.
+Upgrade fields/types fail closed at submission and graduation; class checks
+prevent a class-1 usage ticket from modifying/deleting a class-10 Orchestrator
+in the shared table. Invalid Q1 pass-with-errors is rejected before SQL.
+V094 retains exact component/queue bytes, SHA-256 checksums and reviewer in
+immutable graduation receipts before queue deletion. Receipt insertion failure
+rolls back the whole graduation. These legacy receipts are **not**
+`skill-association-approval/1` evidence and do not fix mutable component rows.
+
+The repeated real graduation regression exposed a V077/V092 interaction:
+updating `last_graduation_at` incorrectly required a new resource settings
+revision. V095 permits only that cursor to differ at the existing revision;
+every other column remains revision-checked, including future settings columns.
+Actual resource changes still fail without the next revision. Cursor updates
+also work at exhausted revisions; settings changes remain rejected. Sixteen
+native queue cases and the native settings CAS/exhaustion case passed in
+`/private/tmp/brassclaw-monty-graduation-evidence.log` and
+`...-graduation-settings-revision.log`; strict composition all-target linting
+passed in `...-graduation-evidence-lints.log`.
+
+Production remains the legacy UUID-only per-chat driver. The seven original
+composition cases have not been made green by these prerequisite changes.
+The model trace also identifies missing Sempai/Kohai hooks at the new task-host
+port; integrating them must capture host-resolved prompts and preserve issued
+prompt authority/structured Tool replay, rather than forwarding raw reference
+strings as a Sempai-adjusted prompt. The resolved-prompt/accounting repair is
+covered by the 2026-10-07 section below; global hosting remains open.
+
+### 2026-10-07 Exact association declarations
+
+`brassclaw_skills::association_contract` parses the exact `skill-association/1`
+and `skill-association-approval/1` shapes from skills.md. It rejects duplicate
+and unknown fields, malformed UUID/class/version/checksum references and
+incomplete argument maps. Actual arguments must retain direct input values
+and satisfy computed contracts; the registered Tool contract is checked
+separately. Combination selection compares exact association bytes and the
+entire supplied dependency graph. Failure declarations count the initial
+dispatch and require the declared retry/idempotency evidence. Parsing never
+resolves evidence, grants permission or performs a retry.
+
+Five new association checks and the existing eleven unit/nine recursive
+contract checks passed in `/private/tmp/brassclaw-monty-association-contracts.log`.
+Four actual IBS caller checks passed in `...-association-ibs-caller.log`.
+Strict all-target checks passed for Skills with db-store/v2-compat and Engine
+with skills-db (`...-association-contracts-lints.log`,
+`...-association-ibs-caller-lints.log`). Parsed approval declarations remain
+untrusted: immutable catalogue storage, evidence provenance, activation and
+production manifest consumers are still required. The seven original failures
+remain open; this contract work does not activate the candidate global service.
+
+### 2026-10-07 Resolved model interception and shared review accounting
+
+The actual task-host model port now captures host-authorized resolved messages,
+not executor reference strings. Native PostgreSQL cases preserve the selected
+System prefix, opaque conversation identity, structured capability requests and
+Tool replay metadata. Sempai uses that selected prefix and valid message refs;
+invalid review output stops dispatch. Public raw resolved-prompt injection is
+rejected before consuming a prompt grant. The reference-only executor hook no
+longer creates a duplicate forensic packet.
+
+Sempai review checks the same model policy and resource governor as its enclosing
+call, with an isolated reservation namespace retaining the exact run identity.
+Reported usage reconciles at the selected review-model price. Policy/budget denial
+calls neither provider and releases the enclosing reservation. Concurrent
+reservation admission now claims before creating a governor hold. V096 supplies
+the JSONB snapshot column omitted by the existing PostgreSQL budget store;
+initialization and update use distinct CAS writes, and exhausted versions fail
+without overwriting data or recreating a deleted snapshot.
+
+Four native model-port cases, two native governor CAS cases, fifteen accountant
+checks, all 103 Reborn host cases and 55 model-port cases passed in
+`/private/tmp/brassclaw-monty-review-budget-{native,cas,accountant,host,support}.log`.
+Strict all-target checks passed for Reborn with and without root-llm-provider,
+LoopSupport, Resources and the skills-db composition consumer in
+`...-review-budget-{lints,default-lints,consumer-lints}.log`. These results cover
+real host ports and PostgreSQL with recording provider fixtures. They do not
+claim live provider coverage, global startup wiring or resolution of the seven
+original composition failures. The production driver still requires an engine
+Thread; the Monty 1.0/resource/catalogue cutover remains open.
+
+### 2026-10-07 Exact Q1 candidate and Q2 review seals
+
+Q1 now reviews the actual proposed upgrade, while retaining native PostgreSQL
+canonical bytes for both the current component and its queued submission.
+Recording a pass or failure compares those exact bytes again under queue-then-
+component locks. Q2 validates the proposed fields and refuses graduation if the
+reviewed content, metadata or submission changed. Accounting/lifecycle updates
+do not invalidate an authoring review. V097 retains existing proposals and
+returns previously unsealed Q2-pending rows to Q1 rather than inventing evidence.
+
+Validator Recipe/PythonCode selection uses one read-only repeatable-read
+transaction. Unapproved code, multiple entry points, extra bindings, malformed
+steps and ambiguous validators fail explicitly. Trusted checked-in seed auditing
+retains its existing bootstrap exemption with exact candidate seals; it does
+not constitute ordinary authored Q1, human Q2 or combination approval.
+
+Twenty-four actual PostgreSQL queue cases, thirteen Q1 cases (including native
+proposed-content execution), the idempotent boot/integrity case and strict
+composition all-target linting passed in
+`/private/tmp/brassclaw-monty-q1-review-{queue,caller,boot,lints}.log`.
+These seals do not implement immutable component versions, persisted validator
+dependency manifests, system-validator visibility across legacy scopes or the
+full recursive/semantic Q1 gates. Those remain explicit cutover work; the seven
+original message-flow failures remain open until the global driver is wired.
+
+### 2026-10-07 Global service, model/Tool caller and durable handoff
+
+The isolated Monty 1.0 service retains admitted task ports, started host futures,
+actual late answers and failed IPC exchanges independently of turn waiters.
+Dropping a waiter fences only its own attempt. Root/child settlement and return
+to the real work wait precede a successful local cancellation acknowledgement.
+Fatal transport failures retain evidence and wait for started host futures;
+they do not authorize task replay or claim external-effect quiescence.
+
+Service-mediated settings publication obtains the VM's exact revision receipt
+before publishing the same effective task limits to Rust. It preserves compute
+consumption, including while a Tool waits, and preserves the root boundary
+still awaiting service delivery. Stale edits fail without changing either side.
+All five service cases passed in
+`/private/tmp/brassclaw-monty-live-settings-service.log`; the service strict check
+passed in `/private/tmp/brassclaw-monty-owned-service-lints.log`. This is not yet
+a WebUI desired/effective store subscription or adaptive live-heap uptake.
+
+The real model caller now resolves authorized complete eligible transcript and
+retained Tool payload bytes before model policy/accounting. Both Reborn model
+gateways retain that prepared request for provider dispatch. Disabled token
+budgets preserve all eligible history; the native caller verifies 140 historical
+messages, exact current input, exclusion of later input and joint live budget
+revision changes. The selected system bundle stays fixed across model calls.
+All 103 affected Reborn host cases, six model-gateway cases and strict affected
+consumer checks passed in
+`/private/tmp/brassclaw-monty-prepared-{host,model-gateway,consumer-lints}.log`.
+
+V098 retains actual capability inputs/results with exact identity checks and
+immutable conflict rejection. The native global Python caller invokes the real
+filesystem Tool through the instance-policy kernel, reads its persisted result
+and supplies its complete output and provider replay metadata to the next model
+call. PostgreSQL transcript persistence now uses a private replay-preserving
+serializer; public history still omits that metadata. Repeated result appends
+retain their original message identity and reject conflicting provider metadata.
+Recording gateways remain provider fixtures; no live provider claim is made.
+
+`global_monty_driver.rs` is the owned-handoff cutover candidate, compiled through
+the isolated caller rather than enabled in application startup. It reads the
+exact admitted input, supplies complete typed history, addresses cancellation by
+the Rust-only attempt and returns the actual published final-reply reference.
+Two opaque conversations complete on one already-started service. Its capacity
+is bounded; unresolved attempts and receipts require supervisor reconciliation.
+
+V099 and `pg_monty_admission.rs` retain durable no-replay admission receipts.
+Reservation and each host dispatch check the real locked turn snapshot, exact
+scope/message/run/claim and actual database-time lease validity. Settlement is
+written after the actual service receipt, not merely Python's finish request.
+Repeated fresh execution and stale claims fail explicitly. These records are
+neither Tool grants nor effect deduplication evidence; uncertain admissions and
+continuation recovery cannot be reset or replayed automatically. Three native
+caller cases, including durable settlement/replay/stale-claim checks, and strict
+caller linting passed in
+`/private/tmp/brassclaw-monty-durable-driver-{caller,lints}.log`.
+
+The original seven composition failures remain open: production startup still
+wires the legacy UUID-dependent driver. Before replacing it, complete the
+coordinated application Monty dependency/API/resource migration, exclusive
+instance-owner supervision through settlement, approved catalogue/Recipe/IBS
+snapshot adapters, durable waits/children/effects and live settings wiring.
+These caller proofs must be reused by that cutover; they do not weaken or
+replace the seven original acceptance assertions.
+
+
+### 2026-10-07 Contained application utilities and packaged worker
+
+Engine and Composition now share the versioned vendored Monty 1.0 dependency.
+Pure Python syntax/formatter and Q1 validator execution use the separately
+packaged disposable worker. Caller inputs are bounded before copying, runtime
+values stay separate from source, and actual interpreter/containment diagnostics
+remain visible. Source, recursive value, frame, output, compute and wall bounds
+are distinct from disabled token budgets. There is no in-process fallback.
+
+The worker is a root workspace member and is packaged beside both supported
+product binaries. Source-build instructions, installer checksum verification,
+release assets, CI test prerequisites and Docker copies now include it. Shell,
+JavaScript and workflow syntax were checked; Docker/release builds have not been
+executed. The actual Engine formatter cases, syntax caller, all thirteen Q1
+cases and affected strict consumer checks passed in the
+`/private/tmp/brassclaw-monty-v1-contained-*.log` and
+`...-monty-boot-{utilities,utility-lints}.log` batches. Utility waiter Drop still
+uses child kill-on-drop; it does not provide an owned reap receipt to that caller.
+Other legacy Engine execution paths remain in-process and must be retired or
+contained before production upgrade acceptance.
+
+### 2026-10-07 Startup ownership and retained quarantine
+
+Instance ownership is registered before awaiting worker boot and retained by a
+process-owned registry through actual worker and host-future settlement. Dropping
+a startup waiter, quarantine evidence or a supervisor no longer unlocks a live
+or uncertain instance. Quarantine capacity is bounded and fails before spawning
+another worker. Only proven quiescence releases the guard; failed unlocks remain
+visible. Real PostgreSQL cancellation-during-boot and evidence-drop cases pass
+alongside the existing global/model/ownership caller cases: all seven native
+cases and strict caller checks passed in
+`/private/tmp/brassclaw-monty-quarantine-{caller,lints}.log`. These are isolated
+ownership/model proofs, not the original seven composition acceptance failures.
+
+### 2026-10-07 Removed allocation count and honest lifecycle facade
+
+V100 retains old allocation-count values in immutable historical storage without
+changing operator revisions. Active DTOs explicitly report that Monty 1.0 does
+not support that limit; requests to set it fail before store mutation. The WebUI
+shows retirement and the retained historical value. Defaults, custom historical
+values, revision exhaustion, old writers and atomic settings edits were checked
+against real PostgreSQL in
+`/private/tmp/brassclaw-monty-allocation-{migration,http,consumer-lints}.log`.
+
+An unwired facade now returns unavailable for VM status/restart instead of
+fabricating Running, an applied settings revision or Restarting. The regression
+uses real workflow/turn services in
+`/private/tmp/brassclaw-monty-lifecycle-facade.log`; default-feature and skills-db
+consumer linting and Q1 checks passed in `...-lifecycle-*.log`. This deliberately
+does not claim that the actual global lifecycle port or WebUI publication exists.
+
+### 2026-10-07 Shared VM allocation domain and live heap receipts
+
+The versioned `control.6` allocator records ownership on each allocation, including
+headers/alignment padding. Tags survive nested scopes, scope exit, grow/shrink and
+cross-thread deallocation. Synchronous worker VM hosting includes root/child
+interpreter state, compilation and controlled adaptation; frame decoding and
+encoding remain outside. Real shared bytes, rather than baseline subtraction or
+serialized length estimates, travel in private worker protocol 4. Physical
+worker headroom remains separately finite; logical growth currently cannot
+exceed that configured physical reserve.
+
+The instance service requires an initial logical limit before its real Ready
+handshake. Revisioned manual reductions below live usage are rejected without
+changing effective limits. Automatic reductions remain pending with admission
+backpressure until actual state reclamation permits uptake. Existing scopes,
+other tasks and compute charges are retained. The actual root-plus-child caller
+checks reclamation, stale edits and a native allocation rejected by the new soft
+limit while the parent/root remain usable. Standalone physical-backstop probes
+explicitly omit soft preflight; the instance service refuses that configuration.
+
+Task and heap edits share a bounded FIFO service control lane. Actual worker
+acknowledgement precedes publication. Expected infeasible edits do not kill the
+service; uncertain transport/protocol failures retain actual receipts and require
+containment. A dropped edit waiter cannot withdraw an accepted publication.
+Allocator ownership, ten process cases, five initial service cases and seven
+native owner/model cases passed in
+`/private/tmp/brassclaw-monty-{vm-ownership,live-heap}-*.log`. The expanded six
+service cases, real soft-limit caller and strict control consumers passed in
+`/private/tmp/brassclaw-monty-owned-heap-{process,service,lints}.log`.
+
+The latest pending-reclamation timer and syntax/transport diagnostic distinction
+still require their next targeted checks. OS/cgroup pressure sampling, physical
+backstop resizing, full adaptive publication, immutable catalogue/association
+selection, durable effects/waits and actual application startup wiring remain
+open. None of these proofs substitutes a No-Match-only production adapter for
+ordinary Recipe support. The original seven remain open until that conforming
+cutover and their unchanged production assertions pass.

@@ -183,6 +183,12 @@ fn map_model_error(kind: HostManagedModelErrorKind) -> SystemInferenceError {
     let safe_summary = match kind {
         HostManagedModelErrorKind::Cancelled => return SystemInferenceError::Cancelled,
         HostManagedModelErrorKind::BudgetExceeded => "system inference budget exceeded",
+        HostManagedModelErrorKind::BudgetApprovalRequired => {
+            "system inference budget approval required"
+        }
+        HostManagedModelErrorKind::BudgetAccountingFailed => {
+            "system inference budget accounting failed"
+        }
         HostManagedModelErrorKind::Unavailable => "system inference unavailable",
         HostManagedModelErrorKind::CredentialUnavailable => {
             "system inference credential unavailable"

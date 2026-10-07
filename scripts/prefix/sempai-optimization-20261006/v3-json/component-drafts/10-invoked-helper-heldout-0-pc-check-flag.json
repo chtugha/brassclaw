@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-flag",
+    "description": "Validate an exact boolean flag from raw inputs and return a valid/flag result object. Reads inputs.get(\"flag\") with a presence branch so missing and null are distinct invalid outcomes. Only the exact booleans True and False are valid; any other value (including non-boolean types) is invalid. Uses a small helper is_exact_flag and invokes it at module scope to assign result. Returns {valid: boolean, flag: original bool if valid else null}. No imports, I/O, host calls, exceptions or type coercion. Pure logic, zero host calls.",
+    "content": "flag = inputs.get(\"flag\")\nif is_exact_flag(flag):\n    result = {\"valid\": True, \"flag\": flag}\nelse:\n    result = {\"valid\": False, \"flag\": None}"
+  }
+}

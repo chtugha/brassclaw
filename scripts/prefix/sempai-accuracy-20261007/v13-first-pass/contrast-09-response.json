@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-88326c71226942cb",
+  "object": "chat.completion",
+  "created": 1791329422,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Prepare the requested reusable draft without executing any operation.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Drafted one unapproved class-22 pure-logic component matching the supplied target-input contract: raw records is a list of 1..2 objects, each with exactly code (string length 2..5) and enabled (exact bool, including False). Missing/null/empty/wrong types/extra fields are invalid. The body uses inputs.get('records'), validates outer length and each item's exact shape, and assigns result on every path. No Tool calls, no I/O, no imports, no host calls. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-09\",\n        \"description\": \"Raw records must be a list of 1..2 items, each with exactly code (string length 2..5) and enabled (exact bool, including False). Empty is invalid; missing/null/wrong types/extra fields invalid without exceptions/coercion. Always result={ok:boolean,records:original if valid else []}. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 1 <= len(records) <= 2\\nif ok:\\n    for record in records:\\n        if type(record) is not dict or set(record) != {'code', 'enabled'}:\\n            ok = False\\n            break\\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5 and type(record['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97004,
+    "total_tokens": 97468,
+    "completion_tokens": 464,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

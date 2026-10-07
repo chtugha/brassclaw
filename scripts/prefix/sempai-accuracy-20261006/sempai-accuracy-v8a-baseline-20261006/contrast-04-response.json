@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-be493a9760c89b7c",
+  "object": "chat.completion",
+  "created": 1791323183,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one class-22 pure-logic component pc-contrast-04: it reads raw slots via inputs.get('slots') so absence is a valid outcome, validates that slots is a list of length 0..3 with every item an exact integer in 4..8 (rejecting bool, float, non-integers and out-of-range values), and assigns result = {'ok': valid, 'slots': original if valid else []} at module scope with no I/O, imports, host calls or exceptions. The draft is an unapproved target-interface component only; activation requires Q1/human Q2 and typed-runner support, which remain separate prerequisites.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-04\",\n        \"description\": \"Pure-logic guard: validates raw slots as a list of length 0..3 with every item an exact integer in 4..8 inclusive, and returns {'ok': boolean, 'slots': original if valid else []}. No I/O, imports, host calls or exceptions; absence of the key is a valid empty result. Typed inputs are a target interface, not deployed runtime support.\",\n        \"content\": \"def classify_slots(raw):\\n    if 'slots' not in raw:\\n        return {'ok': True, 'slots': []}\\n    slots = raw['slots']\\n    if not isinstance(slots, list) or not 0 <= len(slots) <= 3:\\n        return {'ok': False, 'slots': []}\\n    valid = True\\n    for item in slots:\\n        if isinstance(item, bool) or not isinstance(item, int) or not 4 <= item <= 8:\\n            valid = False\\n            break\\n    return {'ok': valid, 'slots': slots if valid else []}\\nresult = classify_slots(inputs.get('slots'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76863,
+    "total_tokens": 77367,
+    "completion_tokens": 504,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

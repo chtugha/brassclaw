@@ -1,0 +1,320 @@
+{
+  "format": "sempai-compact-grammar/1",
+  "any_whitespace": false,
+  "xgrammar_version": "0.2.7",
+  "schemas": [
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "adjusted_volatile_messages",
+          "bridge_messages",
+          "composition_summary",
+          "proposed_components",
+          "proposed_intent_examples",
+          "proposed_recipe_updates",
+          "settings_adjustments"
+        ],
+        "properties": {
+          "settings_adjustments": {
+            "type": "array"
+          },
+          "composition_summary": {
+            "type": "string"
+          },
+          "proposed_recipe_updates": {
+            "type": "array"
+          },
+          "proposed_components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "class_code",
+                "payload"
+              ],
+              "properties": {
+                "class_code": {
+                  "type": "integer",
+                  "enum": [
+                    21,
+                    22
+                  ]
+                },
+                "payload": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "bridge_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "proposed_intent_examples": {
+            "type": "array"
+          },
+          "adjusted_volatile_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      },
+      "schema_sha256": "39eab0f0aa89447a106fdeb351ac32f4ccf37eb5c1c771335f917bcedb1ffc8b",
+      "grammar_sha256": "e092e1a8848d173c89edddd076dfe5f0db5b2393911614344d83e2e57c2ff9c5"
+    },
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "adjusted_volatile_messages",
+          "bridge_messages",
+          "composition_summary",
+          "proposed_components",
+          "proposed_intent_examples",
+          "proposed_recipe_updates",
+          "settings_adjustments"
+        ],
+        "properties": {
+          "settings_adjustments": {
+            "type": "array"
+          },
+          "composition_summary": {
+            "type": "string"
+          },
+          "proposed_recipe_updates": {
+            "type": "array"
+          },
+          "proposed_components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "class_code",
+                "payload"
+              ],
+              "properties": {
+                "class_code": {
+                  "type": "integer",
+                  "enum": [
+                    21,
+                    22
+                  ]
+                },
+                "payload": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "bridge_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "proposed_intent_examples": {
+            "type": "array"
+          },
+          "adjusted_volatile_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 4,
+            "maxItems": 4
+          }
+        }
+      },
+      "schema_sha256": "87b6bafaf951fba1d7b86fe3556614f853982d7e3b4cfa7215d09436c12a961c",
+      "grammar_sha256": "52d9486ebae20a3ed340b36d68ca83c442fe52c965bb21aa0c0736a99fb7ab0c"
+    },
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "adjusted_volatile_messages",
+          "bridge_messages",
+          "composition_summary",
+          "proposed_components",
+          "proposed_intent_examples",
+          "proposed_recipe_updates",
+          "settings_adjustments"
+        ],
+        "properties": {
+          "settings_adjustments": {
+            "type": "array"
+          },
+          "composition_summary": {
+            "type": "string"
+          },
+          "proposed_recipe_updates": {
+            "type": "array"
+          },
+          "proposed_components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "class_code",
+                "payload"
+              ],
+              "properties": {
+                "class_code": {
+                  "type": "integer",
+                  "enum": [
+                    21,
+                    22
+                  ]
+                },
+                "payload": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "bridge_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "proposed_intent_examples": {
+            "type": "array"
+          },
+          "adjusted_volatile_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      },
+      "schema_sha256": "b43c8c523ec86b79ee68ae0670824dcc6e5ff779e3fedf5ffa4b240af770355e",
+      "grammar_sha256": "76221460c22e72062967342e8f2a756036736ae4f6b93700a09e11d96701bba1"
+    },
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "adjusted_volatile_messages",
+          "bridge_messages",
+          "composition_summary",
+          "proposed_components",
+          "proposed_intent_examples",
+          "proposed_recipe_updates",
+          "settings_adjustments"
+        ],
+        "properties": {
+          "settings_adjustments": {
+            "type": "array"
+          },
+          "composition_summary": {
+            "type": "string"
+          },
+          "proposed_recipe_updates": {
+            "type": "array"
+          },
+          "proposed_components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "class_code",
+                "payload"
+              ],
+              "properties": {
+                "class_code": {
+                  "type": "integer",
+                  "enum": [
+                    21,
+                    22
+                  ]
+                },
+                "payload": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "bridge_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "proposed_intent_examples": {
+            "type": "array"
+          },
+          "adjusted_volatile_messages": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 5,
+            "maxItems": 5
+          }
+        }
+      },
+      "schema_sha256": "06fbeb06691477a917173e534268aa68b2323cda49844af37fc05a621405402f",
+      "grammar_sha256": "f560309661f0d4c95659709bc4aa7513ed3d9e1c64b362825b7446ac5c87c1b3"
+    }
+  ],
+  "answers_or_behavioral_oracles_used": false
+}

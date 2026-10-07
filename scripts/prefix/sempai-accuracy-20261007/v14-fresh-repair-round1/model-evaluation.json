@@ -1,0 +1,142 @@
+{
+  "date": "2026-10-07T07:57:24.712814+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "fresh-nested-bools",
+      "construction_plan": {
+        "seconds": 8.982,
+        "usage": {
+          "prompt_tokens": 99147,
+          "total_tokens": 99507,
+          "completion_tokens": 360,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified repair analysis from current contract and observed validation feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "usage": {
+        "prompt_tokens": 99630,
+        "total_tokens": 100189,
+        "completion_tokens": 559,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "kv_transfer_params": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 97152,
+          "num_lmcache_cached_tokens": 97152,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 22.125
+    },
+    {
+      "id": "fresh-missing-default",
+      "construction_plan": {
+        "seconds": 5.334,
+        "usage": {
+          "prompt_tokens": 98871,
+          "total_tokens": 99053,
+          "completion_tokens": 182,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified repair analysis from current contract and observed validation feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 97152,
+            "num_lmcache_cached_tokens": 97152,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "usage": {
+        "prompt_tokens": 99176,
+        "total_tokens": 99476,
+        "completion_tokens": 300,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "kv_transfer_params": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 97152,
+          "num_lmcache_cached_tokens": 97152,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 13.099
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": "scripts/prefix/sempai-accuracy-20261007/v14-fresh-retest-first-pass",
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [
+    "fresh-authorized-0",
+    "fresh-authorized-1"
+  ],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "single_layout_requested": true,
+  "cache_salt": "sempai-v14-fresh-repair1-20261007-a",
+  "evaluator_sha256": "b8ef6a949dc8421aa2087545ec9725168e8f1453df6cd9a21244901a37422889",
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "repair_source_sha256": {
+    "model-evaluation.json": "d41ee5c729eb654a8e51409216145155e6071734ce2e11efe6e851747049a726",
+    "case-manifest.json": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b",
+    "candidate-checks.json": "a5e3d46f3a8bb62aaf67d8c652bf4efdfe7d7b6412aef12326b69948f73291ff"
+  },
+  "repair_response_sha256": {
+    "fresh-nested-bools": "81196606273bb5e02e094c0ed6eb7bf7a880a6abd9e8813d0eeb69fed57d62eb",
+    "fresh-missing-default": "0d727c8ed8ea805ad5a38e244b90c8df1912b9158b8a2784f4a2c0f35b5393dd"
+  },
+  "feedback_sha256": "ce93f1c6f4165e284aabbbf912ce4e31e1eeff1a774732c4624d8640d20ee896",
+  "case_manifest_sha256": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b"
+}

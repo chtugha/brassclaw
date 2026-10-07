@@ -79,6 +79,9 @@ impl ModelWorkRequest {
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ModelWorkKind {
     Assistant,
+    /// Host-side review of the resolved primary-model prompt. This is separately
+    /// authorized/accounted provider work, not an assistant run or Tool grant.
+    SempaiReview,
     SystemInference {
         task_kind: SystemTaskKind,
         prompt_source: SystemPromptSource,

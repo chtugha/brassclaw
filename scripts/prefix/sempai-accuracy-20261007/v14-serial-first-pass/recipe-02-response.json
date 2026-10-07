@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a1c019481529cff5",
+  "object": "chat.completion",
+  "created": 1791358343,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Design a reusable healthy data-result workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved PythonCode 6ca96ef8-0b75-572f-987b-38c88d423828 with content result = {'state': 'Healthy'}. Zero inputs/dependencies; no version numbers or approval. The supplied program returns only state DATA and never posts a user message, so its ten intents request state data, not a posted reply. Created exactly one class21 recipe-transfer-02 with the exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema, exact supplied UUID 6ca96ef8-0b75-572f-987b-38c88d423828 in order, each step includes one UUID, tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. State unapproved dependencies, Q1 and human Q2 required; current sink cannot preserve full v3 fields. No runtime/approval claims. Original conversation preserved; root compatibility arrays empty under test persona.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-transfer-02\", \"description\": \"Offline unapproved healthy data-result subworkflow; returns state data only, never posts a user message\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.\", \"intent_examples\": [\"compute the healthy state data\", \"return the healthy state object\", \"produce the fixed healthy object\", \"obtain the healthy result data\", \"calculate the healthy state result\", \"yield the healthy state object\", \"get the fixed healthy state data\", \"build the healthy state object\", \"evaluate the healthy data subworkflow\", \"derive the fixed healthy state result\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved healthy data-result subworkflow; returns state data only, never posts a user message\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"orchestrator\", \"goal\": \"Return state data\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"6ca96ef8-0b75-572f-987b-38c88d423828\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"healthy-data\", \"description\": \"Offline unapproved healthy data-result subworkflow; returns state data only, never posts a user message\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"compute the healthy state data\", \"return the healthy state object\", \"produce the fixed healthy object\", \"obtain the healthy result data\", \"calculate the healthy state result\", \"yield the healthy state object\", \"get the fixed healthy state data\", \"build the healthy state object\", \"evaluate the healthy data subworkflow\", \"derive the fixed healthy state result\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98953,
+    "total_tokens": 99759,
+    "completion_tokens": 806,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

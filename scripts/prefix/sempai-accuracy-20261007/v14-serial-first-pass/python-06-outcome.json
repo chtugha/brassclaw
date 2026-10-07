@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-06. It distinguishes missing (key absent) from explicit null before reading the value, accepts exact integer 2..11 inclusive, and returns {kind,offset} in every outcome. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-06",
+        "description": "Classify raw offset: missing -> {kind:\"missing\",offset:null}; explicit null -> {kind:\"null\",offset:null}; exact integer 2..11 -> {kind:\"integer\",offset:original}; other -> {kind:\"invalid\",offset:null}. No bool/float/coercion/defaults/exceptions. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "def classify_offset(mapping):\n    if 'offset' not in mapping:\n        return {'kind': 'missing', 'offset': None}\n    value = mapping['offset']\n    if value is None:\n        return {'kind': 'null', 'offset': None}\n    if type(value) is int and 2 <= value <= 11:\n        return {'kind': 'integer', 'offset': value}\n    return {'kind': 'invalid', 'offset': None}\nresult = classify_offset(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

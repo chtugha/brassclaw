@@ -1,7 +1,7 @@
 //! Bounded, private pipe transport for one isolated instance-root interpreter.
 //!
 //! This is not the production instance supervisor. The caller still owns the
-//! database lock, durable admission, attempts, host effects and child registry.
+//! database lock, durable admission, attempts, host effects and durable continuation records.
 //! No command selects a Recipe, dispatches a Tool or retries an operation.
 //! Transport cancellation is fatal instance containment. The future belongs to
 //! the instance actor, never to a cancellable user turn. Task cancellation must
@@ -10,7 +10,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     io::{self, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::Arc,
     time::Duration,
@@ -26,14 +26,49 @@ use tokio::{
 
 use crate::{
     ContinuationKey, HostAnswer, ValueBudget, VmBounds, VmFailure,
-    global::{GlobalBoundary, GlobalBounds, GlobalVm, Lifecycle},
+    global::{GlobalBoundary, GlobalBounds, GlobalVm, Lifecycle, WithheldHostAnswer},
 };
 
-const PROTOCOL: u32 = 1;
+use crate::heap::{HeapSettings, HeapStatus, WorkerHeap};
+use crate::process_recipe::WorkerRecipes;
+pub use crate::process_recipe::{
+    RecipeBoundary, RecipeCommand, RecipeContextId, RecipeEvent, ReleasedContext, SelectedPython,
+    TaskAccounting, TaskHandle, TaskSettings,
+};
+
+const PROTOCOL: u32 = 4;
 const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
 const MAX_TRANSPORT_DEPTH: usize = 64;
+
+/// Locate the separately packaged worker beside the trusted application.
+/// Cargo test executables live in `deps`; their companion is in the profile
+/// directory. Never search PATH or accept a task/model-selected executable.
+pub fn installed_worker() -> io::Result<PathBuf> {
+    let executable = std::env::current_exe()?;
+    let mut directory = executable
+        .parent()
+        .ok_or_else(|| io::Error::other("application directory missing"))?;
+    if directory.file_name().is_some_and(|name| name == "deps") {
+        directory = directory
+            .parent()
+            .ok_or_else(|| io::Error::other("Cargo profile directory missing"))?;
+    }
+    let name = if cfg!(windows) {
+        "monty_worker.exe"
+    } else {
+        "monty_worker"
+    };
+    let worker = directory.join(name);
+    if !worker.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "packaged monty_worker executable missing",
+        ));
+    }
+    Ok(worker)
+}
 
 /// A finite physical allocator backstop, distinct from adaptive logical heap
 /// policy. A response deadline interrupts compilation/native work by killing
@@ -45,7 +80,7 @@ pub struct ProcessLimits {
     pub response_timeout: Duration,
 }
 impl ProcessLimits {
-    fn valid(self) -> bool {
+    pub(crate) fn valid(self) -> bool {
         (1024..=MAX_FRAME_BYTES).contains(&self.max_frame_bytes)
             && self.hard_memory_bytes > self.max_frame_bytes
             && self.hard_memory_bytes != usize::MAX
@@ -60,11 +95,16 @@ impl ProcessLimits {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RootBoot {
+    /// Only standalone physical-backstop probes may omit the logical policy.
+    /// The instance service requires a finite initial setting before Ready.
+    pub heap_settings: Option<HeapSettings>,
     pub source: String,
     pub checksum: [u8; 32],
     pub aliases: BTreeSet<String>,
     pub bounds: GlobalBounds,
     pub startup_timeout: Duration,
+    pub task_settings: TaskSettings,
+    pub max_recipe_contexts: u32,
 }
 
 /// Exact mechanical VM operation. Payloads deliberately have no Debug output.
@@ -73,6 +113,13 @@ pub struct RootBoot {
 pub enum WorkerCommand {
     Boot {
         boot: RootBoot,
+    },
+    /// Actual worker receipt without advancing Python or inventing liveness.
+    Inspect,
+    UpdateHeap {
+        expected_revision: u64,
+        settings: HeapSettings,
+        automatic: bool,
     },
     Admit {
         key: ContinuationKey,
@@ -88,6 +135,9 @@ pub enum WorkerCommand {
         key: ContinuationKey,
         answer: PortAnswer,
     },
+    Recipe {
+        command: RecipeCommand,
+    },
     BeginShutdown,
     CloseWorker {
         key: ContinuationKey,
@@ -102,26 +152,30 @@ pub enum WorkerCommand {
 pub enum PortAnswer {
     Return { value: Value },
     DomainError { reason_kind: String },
+    TerminalError { reason_kind: String },
 }
 impl PortAnswer {
-    fn into_host(self) -> Result<HostAnswer, VmFailure> {
+    pub(crate) fn into_host(self) -> Result<HostAnswer, VmFailure> {
         match self {
             Self::Return { value } => Ok(HostAnswer::Return(value)),
-            Self::DomainError { reason_kind }
-                if !reason_kind.is_empty()
-                    && reason_kind.len() <= 64
-                    && reason_kind
-                        .bytes()
-                        .all(|b| b == b'_' || b.is_ascii_lowercase()) =>
-            {
-                Ok(HostAnswer::Raise(MontyException::new(
-                    ExcType::RuntimeError,
-                    Some(reason_kind),
-                )))
+            Self::DomainError { reason_kind } => {
+                classified_error(reason_kind).map(HostAnswer::Raise)
             }
-            _ => Err(VmFailure::InvalidHostArguments),
+            Self::TerminalError { reason_kind } => {
+                classified_error(reason_kind).map(HostAnswer::Abort)
+            }
         }
     }
+}
+
+fn classified_error(reason: String) -> Result<MontyException, VmFailure> {
+    if reason.is_empty()
+        || reason.len() > 64
+        || !reason.bytes().all(|b| b == b'_' || b.is_ascii_lowercase())
+    {
+        return Err(VmFailure::InvalidHostArguments);
+    }
+    Ok(MontyException::new(ExcType::RuntimeError, Some(reason)))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -162,11 +216,20 @@ impl From<GlobalBoundary> for ProcessBoundary {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessSnapshot {
+    /// Real shared allocator ownership, never a serialized-frame estimate or
+    /// process-baseline subtraction. Includes root and task-owned child state.
+    pub vm_live_bytes: usize,
+    pub heap: HeapStatus,
     pub lifecycle: Lifecycle,
     pub boundary: Option<ProcessBoundary>,
     pub work_waits: Vec<(u32, ContinuationKey)>,
     pub outstanding: Vec<ContinuationKey>,
     pub stdout: String,
+    pub admitted_task: Option<TaskHandle>,
+    pub recipe: Option<RecipeEvent>,
+    pub effective_task_settings: Option<TaskSettings>,
+    pub task_accounting: Vec<TaskAccounting>,
+    pub withheld_answers: Vec<WithheldHostAnswer>,
 }
 impl fmt::Debug for ProcessSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -174,15 +237,16 @@ impl fmt::Debug for ProcessSnapshot {
             .field("lifecycle", &self.lifecycle)
             .field("work_waits", &self.work_waits.len())
             .field("outstanding", &self.outstanding.len())
+            .field("tasks", &self.task_accounting.len())
             .finish_non_exhaustive()
     }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Request {
+struct Request<C = WorkerCommand> {
     protocol: u32,
     sequence: u64,
-    command: WorkerCommand,
+    command: C,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -215,15 +279,19 @@ pub struct ProcessError {
     pub snapshot: Option<Box<ProcessSnapshot>>,
     pub diagnostic: Option<String>,
     pub exit_status: Option<ExitStatus>,
+    pub containment_error: Option<io::Error>,
+    pub reap_error: Option<io::Error>,
 }
 impl ProcessError {
-    fn new(kind: ProcessFailure) -> Self {
+    pub(crate) fn new(kind: ProcessFailure) -> Self {
         Self {
             kind,
             command: None,
             snapshot: None,
             diagnostic: None,
             exit_status: None,
+            containment_error: None,
+            reap_error: None,
         }
     }
 }
@@ -254,6 +322,7 @@ pub struct GlobalProcess {
     stopped: bool,
     interrupted_command: Option<Box<WorkerCommand>>,
     kill_error: Option<io::Error>,
+    reap_error: Option<io::Error>,
 }
 impl GlobalProcess {
     pub async fn start(
@@ -284,6 +353,7 @@ impl GlobalProcess {
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let workers = boot.bounds.workers;
+        let expected_heap = boot.heap_settings;
         let values = boot.bounds.values;
         let mut process = Self {
             child,
@@ -296,6 +366,7 @@ impl GlobalProcess {
             stopped: false,
             interrupted_command: None,
             kill_error: None,
+            reap_error: None,
         };
         let snapshot = match process.exchange(WorkerCommand::Boot { boot }).await {
             Ok(snapshot) => snapshot,
@@ -303,10 +374,14 @@ impl GlobalProcess {
                 if error.exit_status.is_none() {
                     error.exit_status = process.terminate().await;
                 }
+                process.attach_failures(&mut error);
                 return Err(error);
             }
         };
         if snapshot.lifecycle != Lifecycle::Ready
+            || snapshot.heap.desired != expected_heap
+            || snapshot.heap.effective != expected_heap
+            || snapshot.heap.pending_reduction
             || snapshot.work_waits.len() != workers as usize
             || snapshot
                 .work_waits
@@ -319,6 +394,7 @@ impl GlobalProcess {
             let mut error = ProcessError::new(ProcessFailure::Protocol);
             error.snapshot = Some(Box::new(snapshot));
             error.exit_status = process.terminate().await;
+            process.attach_failures(&mut error);
             return Err(error);
         }
         Ok((process, snapshot))
@@ -340,6 +416,11 @@ impl GlobalProcess {
         self.kill_error.take()
     }
 
+    /// A missing exit acknowledgement retains its OS error/deadline separately.
+    pub fn take_reap_error(&mut self) -> Option<io::Error> {
+        self.reap_error.take()
+    }
+
     pub async fn exchange(
         &mut self,
         command: WorkerCommand,
@@ -349,18 +430,9 @@ impl GlobalProcess {
             error.command = Some(Box::new(command));
             return Err(error);
         }
-        let data = match &command {
-            WorkerCommand::Admit { task, .. } => Some(task),
-            WorkerCommand::Resolve {
-                answer: PortAnswer::Return { value },
-                ..
-            } => Some(value),
-            _ => None,
-        };
-        if data
-            .is_some_and(|value| !transport_value(value, self.values, self.limits.max_frame_bytes))
+        if let Err(kind) = validate_command_data(&command, self.values, self.limits.max_frame_bytes)
         {
-            let mut error = ProcessError::new(ProcessFailure::ValueLimit);
+            let mut error = ProcessError::new(kind);
             error.command = Some(Box::new(command));
             return Err(error);
         }
@@ -438,11 +510,18 @@ impl GlobalProcess {
                     .take()
                     .map(|request| Box::new(request.command));
                 error.exit_status = guard.owner.terminate().await;
+                guard.owner.attach_failures(&mut error);
                 return Err(error);
             }
         };
         guard.owner.sequence = sequence;
         guard.armed = false;
+        if reply.snapshot.lifecycle == Lifecycle::Failed {
+            // A failed root is an instance failure, even when the framed VM
+            // error arrived correctly. Fence further transport immediately;
+            // the instance actor/caller still owns explicit kill/reap joining.
+            guard.owner.interrupt();
+        }
         if let Some(failure) = reply.failure {
             let mut error = ProcessError::new(ProcessFailure::Vm(failure));
             error.command = guard
@@ -451,6 +530,7 @@ impl GlobalProcess {
                 .map(|request| Box::new(request.command));
             error.snapshot = Some(Box::new(reply.snapshot));
             error.diagnostic = reply.diagnostic;
+            guard.owner.attach_failures(&mut error);
             return Err(error);
         }
         if reply.snapshot.lifecycle == Lifecycle::Stopped {
@@ -460,6 +540,15 @@ impl GlobalProcess {
             guard.owner.stdout = None;
         }
         Ok(reply.snapshot)
+    }
+
+    fn attach_failures(&mut self, error: &mut ProcessError) {
+        if error.containment_error.is_none() {
+            error.containment_error = self.take_containment_error();
+        }
+        if error.reap_error.is_none() {
+            error.reap_error = self.take_reap_error();
+        }
     }
 
     fn interrupt(&mut self) {
@@ -477,10 +566,19 @@ impl GlobalProcess {
     /// None means local exit was not acknowledged within the response bound.
     pub async fn terminate(&mut self) -> Option<ExitStatus> {
         self.interrupt();
-        tokio::time::timeout(self.limits.response_timeout, self.child.wait())
-            .await
-            .ok()
-            .and_then(Result::ok)
+        match tokio::time::timeout(self.limits.response_timeout, self.child.wait()).await {
+            Ok(Ok(status)) => Some(status),
+            Ok(Err(error)) => {
+                self.reap_error.get_or_insert(error);
+                None
+            }
+            Err(_) => {
+                self.reap_error.get_or_insert_with(|| {
+                    io::Error::new(io::ErrorKind::TimedOut, "worker exit was not acknowledged")
+                });
+                None
+            }
+        }
     }
 
     /// Reap only after the actual VM shutdown acknowledgement. Wait normally
@@ -497,7 +595,11 @@ impl GlobalProcess {
                 } else {
                     ProcessFailure::Transport
                 });
+                if let Ok(Err(cause)) = result {
+                    self.reap_error.get_or_insert(cause);
+                }
                 error.exit_status = self.terminate().await;
+                self.attach_failures(&mut error);
                 Err(error)
             }
         }
@@ -518,13 +620,66 @@ impl Drop for ExchangeGuard<'_> {
     }
 }
 
+pub(crate) fn retain_command(
+    command: &WorkerCommand,
+    bounds: VmBounds,
+    limit: usize,
+) -> Result<Vec<u8>, ProcessFailure> {
+    validate_command_data(command, bounds, limit)?;
+    // Reserve the largest sequence representation before accepting into the
+    // actor. These evidence bytes are never sent or replayed as an IPC request.
+    encode(
+        &Request {
+            protocol: PROTOCOL,
+            sequence: u64::MAX,
+            command,
+        },
+        limit,
+    )
+    .map_err(|_| ProcessFailure::FrameLimit)
+}
+pub(crate) fn recover_command(bytes: &[u8]) -> Result<WorkerCommand, ProcessFailure> {
+    serde_json::from_slice::<Request>(bytes)
+        .map(|request| request.command)
+        .map_err(|_| ProcessFailure::Protocol)
+}
+fn validate_command_data(
+    command: &WorkerCommand,
+    bounds: VmBounds,
+    limit: usize,
+) -> Result<(), ProcessFailure> {
+    let data = match command {
+        WorkerCommand::Admit { task, .. } => Some(task),
+        WorkerCommand::Resolve {
+            answer: PortAnswer::Return { value },
+            ..
+        } => Some(value),
+        WorkerCommand::Recipe {
+            command: RecipeCommand::Start { inputs, .. },
+        } => Some(inputs),
+        WorkerCommand::Recipe {
+            command:
+                RecipeCommand::ResumeHost {
+                    answer: PortAnswer::Return { value },
+                    ..
+                },
+        } => Some(value),
+        _ => None,
+    };
+    if data.is_some_and(|value| !transport_value(value, bounds, limit)) {
+        Err(ProcessFailure::ValueLimit)
+    } else {
+        Ok(())
+    }
+}
+
 // Bounded serialization must fail before allocating an unbounded intermediate
 // buffer. It does not silently truncate either commands or returned evidence.
 struct Frame {
     bytes: Vec<u8>,
     limit: usize,
 }
-fn transport_value(value: &Value, mut bounds: VmBounds, frame_limit: usize) -> bool {
+pub(crate) fn transport_value(value: &Value, mut bounds: VmBounds, frame_limit: usize) -> bool {
     bounds.max_value_depth = bounds.max_value_depth.min(MAX_TRANSPORT_DEPTH);
     bounds.max_value_nodes = bounds.max_value_nodes.min(frame_limit);
     bounds.max_value_bytes = bounds.max_value_bytes.min(frame_limit);
@@ -588,7 +743,7 @@ impl Write for Frame {
         Ok(())
     }
 }
-fn encode(value: &impl Serialize, limit: usize) -> io::Result<Vec<u8>> {
+pub(crate) fn encode(value: &impl Serialize, limit: usize) -> io::Result<Vec<u8>> {
     let mut frame = Frame {
         bytes: Vec::new(),
         limit,
@@ -596,7 +751,10 @@ fn encode(value: &impl Serialize, limit: usize) -> io::Result<Vec<u8>> {
     serde_json::to_writer(&mut frame, value).map_err(io::Error::other)?;
     Ok(frame.bytes)
 }
-fn read_frame<T: DeserializeOwned>(input: &mut impl Read, limit: usize) -> io::Result<T> {
+pub(crate) fn read_frame<T: DeserializeOwned>(
+    input: &mut impl Read,
+    limit: usize,
+) -> io::Result<T> {
     let mut header = [0; 4];
     input.read_exact(&mut header)?;
     let length = u32::from_be_bytes(header) as usize;
@@ -607,7 +765,11 @@ fn read_frame<T: DeserializeOwned>(input: &mut impl Read, limit: usize) -> io::R
     input.read_exact(&mut bytes)?;
     serde_json::from_slice(&bytes).map_err(io::Error::other)
 }
-fn write_frame(output: &mut impl Write, reply: &Reply, limit: usize) -> io::Result<()> {
+pub(crate) fn write_frame(
+    output: &mut impl Write,
+    reply: &impl Serialize,
+    limit: usize,
+) -> io::Result<()> {
     let bytes = encode(reply, limit)?;
     output.write_all(&(bytes.len() as u32).to_be_bytes())?;
     output.write_all(&bytes)?;
@@ -620,7 +782,9 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = std::env::args().skip(1);
     let hard_memory_bytes: usize = arguments.next().ok_or("missing memory limit")?.parse()?;
     let max_frame_bytes: usize = arguments.next().ok_or("missing frame limit")?.parse()?;
-    if arguments.next().is_some()
+    let mode = arguments.next();
+    if mode.as_deref().is_some_and(|mode| mode != "--utility")
+        || arguments.next().is_some()
         || !(1024..=MAX_FRAME_BYTES).contains(&max_frame_bytes)
         || hard_memory_bytes <= max_frame_bytes
         || hard_memory_bytes == usize::MAX
@@ -630,9 +794,16 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
     // Arm before receiving/compiling source. Never reset this ceiling per chat,
     // task or IPC command, and never disable it after the initial boot.
     monty_alloc::set_hard_limit(Some(hard_memory_bytes))?;
+    monty_alloc::enable_vm_accounting()?;
+    if mode.is_some() {
+        return crate::utility::worker_main(max_frame_bytes);
+    }
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
     let mut vm: Option<GlobalVm> = None;
+    let mut heap = WorkerHeap::new(hard_memory_bytes, max_frame_bytes)
+        .map_err(|_| "invalid worker heap capacity")?;
+    let mut recipes: Option<WorkerRecipes> = None;
     let mut sequence = 0u64;
     loop {
         let request: Request = read_frame(&mut input, max_frame_bytes)
@@ -641,37 +812,100 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("invalid worker sequence".into());
         }
         sequence = request.sequence;
-        let result = match request.command {
-            WorkerCommand::Boot { boot } if vm.is_none() && sequence == 1 => GlobalVm::start_ready(
-                Arc::from(boot.source),
-                boot.checksum,
-                boot.aliases,
-                boot.bounds,
-                boot.startup_timeout,
-            )
-            .map(|root| {
-                let boundary = GlobalBoundary::Waiting(root.outstanding());
-                vm = Some(root);
-                Some(boundary)
-            }),
-            command => match vm.as_mut() {
-                Some(root) => match command {
-                    WorkerCommand::Admit { key, task } => root.admit(key, task).map(Some),
-                    WorkerCommand::Defer { key } => root.defer(key).map(Some),
-                    WorkerCommand::ResumeControl { key } => root.resume_control(key).map(Some),
-                    WorkerCommand::Resolve { key, answer } => answer
-                        .into_host()
-                        .map_err(crate::VmError::kind)
-                        .and_then(|answer| root.resolve(key, answer))
-                        .map(Some),
-                    WorkerCommand::BeginShutdown => root.begin_shutdown().map(|()| None),
-                    WorkerCommand::CloseWorker { key } => root.close_worker(key).map(Some),
-                    WorkerCommand::Boot { .. } => {
-                        Err(crate::VmError::kind(VmFailure::WrongBoundary))
+        let mut admitted_task = None;
+        let mut recipe = None;
+        let recipe_command = matches!(&request.command, WorkerCommand::Recipe { .. });
+        let recipe_context = match &request.command {
+            WorkerCommand::Recipe {
+                command:
+                    RecipeCommand::Start { context, .. }
+                    | RecipeCommand::ResumeHost { context, .. }
+                    | RecipeCommand::ResumeControl { context, .. }
+                    | RecipeCommand::CancelContext { context },
+            } => Some(*context),
+            _ => None,
+        };
+        let result = {
+            // Only synchronous interpreter/hosting work enters the VM domain.
+            // Frame decoding/encoding stays outside. Allocations retain their tags
+            // through later destruction and suspended root/child execution.
+            let _allocation_scope = monty_alloc::VmAllocationScope::enter()?;
+            match request.command {
+                WorkerCommand::Boot { boot } if vm.is_none() && sequence == 1 => {
+                    if let Some(settings) = boot.heap_settings {
+                        heap.update(0, settings, false)
+                            .map_err(|_| "invalid initial VM heap limit")?;
                     }
+                    WorkerRecipes::new(
+                        boot.task_settings,
+                        boot.bounds.workers,
+                        boot.max_recipe_contexts,
+                        boot.bounds.values,
+                    )
+                    .and_then(|registry| {
+                        GlobalVm::start_ready(
+                            Arc::from(boot.source),
+                            boot.checksum,
+                            boot.aliases,
+                            boot.bounds,
+                            boot.startup_timeout,
+                        )
+                        .map(|root| {
+                            let boundary = GlobalBoundary::Waiting(root.outstanding());
+                            vm = Some(root);
+                            recipes = Some(registry);
+                            Some(boundary)
+                        })
+                    })
+                }
+                command => match (vm.as_mut(), recipes.as_mut()) {
+                    (Some(root), Some(registry)) => match command {
+                        WorkerCommand::Inspect => Ok(None),
+                        WorkerCommand::UpdateHeap {
+                            expected_revision,
+                            settings,
+                            automatic,
+                        } => heap
+                            .update(expected_revision, settings, automatic)
+                            .map(|()| None),
+                        WorkerCommand::Admit { .. } if heap.status().pending_reduction => {
+                            Err(crate::VmError::kind(VmFailure::HeapBackpressure))
+                        }
+                        WorkerCommand::Admit { key, task } => registry
+                            .admit(root, key, task, &mut admitted_task)
+                            .map(Some),
+                        WorkerCommand::Recipe { command } => {
+                            registry.apply(command, root).map(|event| {
+                                recipe = Some(event);
+                                None
+                            })
+                        }
+                        WorkerCommand::Defer { key } => root.defer(key).map(Some),
+                        WorkerCommand::ResumeControl { key } => root.resume_control(key).map(Some),
+                        WorkerCommand::Resolve {
+                            answer: PortAnswer::TerminalError { .. },
+                            ..
+                        } => {
+                            // A task-local technical abort must never kill the root VM.
+                            Err(crate::VmError::kind(VmFailure::InvalidHostArguments))
+                        }
+                        WorkerCommand::Resolve { key, answer } => answer
+                            .into_host()
+                            .map_err(crate::VmError::kind)
+                            .and_then(|answer| root.resolve(key, answer))
+                            .map(Some),
+                        WorkerCommand::BeginShutdown => root.begin_shutdown().map(|()| None),
+                        WorkerCommand::CloseWorker { .. } if !registry.empty() => {
+                            Err(crate::VmError::kind(VmFailure::WrongBoundary))
+                        }
+                        WorkerCommand::CloseWorker { key } => root.close_worker(key).map(Some),
+                        WorkerCommand::Boot { .. } => {
+                            Err(crate::VmError::kind(VmFailure::WrongBoundary))
+                        }
+                    },
+                    _ => Err(crate::VmError::kind(VmFailure::Terminal)),
                 },
-                None => Err(crate::VmError::kind(VmFailure::Terminal)),
-            },
+            }
         };
         let (boundary, failure, diagnostic, failed_stdout) = match result {
             Ok(boundary) => (
@@ -687,22 +921,55 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 error.stdout,
             ),
         };
+        let failed_stdout = if recipe_command && failure.is_some() {
+            recipe = Some(RecipeEvent::Failed {
+                context: recipe_context,
+                stdout: failed_stdout,
+            });
+            String::new()
+        } else {
+            failed_stdout
+        };
+        let effective_task_settings = recipes.as_ref().map(WorkerRecipes::settings);
+        let task_accounting = recipes
+            .as_ref()
+            .map(WorkerRecipes::accounting)
+            .unwrap_or_default();
         let snapshot = match vm.as_mut() {
             Some(root) => ProcessSnapshot {
+                vm_live_bytes: 0,
+                heap: heap.status(),
                 lifecycle: root.lifecycle(),
                 boundary,
                 work_waits: root.work_waits(),
                 outstanding: root.outstanding(),
                 stdout: format!("{failed_stdout}{}", root.take_stdout()),
+                admitted_task,
+                recipe,
+                effective_task_settings,
+                task_accounting,
+                withheld_answers: root.take_withheld_answers(),
             },
             None => ProcessSnapshot {
+                vm_live_bytes: 0,
+                heap: heap.status(),
                 lifecycle: Lifecycle::Failed,
                 boundary,
                 work_waits: Vec::new(),
                 outstanding: Vec::new(),
                 stdout: failed_stdout,
+                admitted_task,
+                recipe,
+                effective_task_settings,
+                task_accounting,
+                withheld_answers: Vec::new(),
             },
         };
+        let mut snapshot = snapshot;
+        heap.reconcile()
+            .map_err(|_| "worker heap reconciliation failed")?;
+        snapshot.heap = heap.status();
+        snapshot.vm_live_bytes = monty_alloc::vm_live_bytes();
         let stopped = snapshot.lifecycle == Lifecycle::Stopped;
         write_frame(
             &mut output,

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b305a3cffe950b96",
+  "object": "chat.completion",
+  "created": 1791331614,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"explicitly permitted change is to replace system content with exactly 'Keep it concise.'\", \"result\": \"system: 'Keep it concise.'\"}, {\"guard\": \"preserve user byte-for-byte, roles/order/count\", \"result\": \"user: 'Keep my exact request and punctuation: {a:1}.'\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"system content replaced with exactly 'Keep it concise.'\"], \"prerequisites\": [\"target_provider_metadata is null\", \"no proposals or other changes\", \"report only this real edit\", \"no invented provider facts\"], \"notes\": \"The instruction is a pure prompt-review edit: replace the duplicated system text with exactly 'Keep it concise.' and preserve the user message verbatim. No new/\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98296,
+    "total_tokens": 98479,
+    "completion_tokens": 183,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

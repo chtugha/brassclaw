@@ -5,6 +5,238 @@
 import asyncio
 
 
+def _exact_fields(value, names):
+    if not isinstance(value, dict) or len(value) != len(names):
+        raise RuntimeError("recipe_composition_failed")
+    for name in names:
+        if name not in value:
+            raise RuntimeError("recipe_composition_failed")
+
+
+def _input_name(name):
+    if not isinstance(name, str) or name == "":
+        return False
+    alphabet = "abcdefghijklmnopqrstuvwxyz"
+    if name[0] not in alphabet:
+        return False
+    for char in name:
+        if char not in alphabet + "0123456789_":
+            return False
+    return True
+
+
+def _validate_ref(ref, available, input_names, items):
+    if not isinstance(ref, dict):
+        raise RuntimeError("recipe_composition_failed")
+    kind = ref.get("kind")
+    if kind == "input":
+        _exact_fields(ref, ["kind", "name"])
+        if ref["name"] not in input_names:
+            raise RuntimeError("recipe_composition_failed")
+    elif kind == "constant":
+        _exact_fields(ref, ["kind", "value"])
+    elif kind == "result" or kind == "item":
+        field = "step_id" if kind == "result" else "loop_id"
+        _exact_fields(ref, ["kind", field, "path"])
+        allowed = available if kind == "result" else items
+        if ref[field] not in allowed:
+            raise RuntimeError("recipe_composition_failed")
+        path = ref["path"]
+        if not isinstance(path, list) or len(path) > 16:
+            raise RuntimeError("recipe_composition_failed")
+        for part in path:
+            if not isinstance(part, str) or part == "":
+                raise RuntimeError("recipe_composition_failed")
+    else:
+        raise RuntimeError("recipe_composition_failed")
+
+
+def _flow_bound(value, maximum):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1 or value > maximum:
+        raise RuntimeError("recipe_composition_failed")
+    return value
+
+
+def _validate_flow_nodes(nodes, step_ids, input_names, available, items, seen, depth):
+    # A structured tree has no arbitrary back edges. Only repeat/foreach nodes
+    # repeat work, with explicit technical bounds and unique occurrence IDs.
+    if depth > 16 or not isinstance(nodes, list) or len(nodes) == 0:
+        raise RuntimeError("recipe_composition_failed")
+    available = list(available)
+    maximum = 0
+    returned = False
+    for node in nodes:
+        if returned or not isinstance(node, dict):
+            raise RuntimeError("recipe_composition_failed")
+        node_id = node.get("node_id")
+        if not _input_name(node_id) or node_id in seen or len(seen) >= 512:
+            raise RuntimeError("recipe_composition_failed")
+        seen.append(node_id)
+        kind = node.get("kind")
+        if kind == "step":
+            _exact_fields(node, ["kind", "node_id", "step_id", "inputs"])
+            step_id = node["step_id"]
+            bindings = node["inputs"]
+            if step_id not in step_ids or not isinstance(bindings, dict):
+                raise RuntimeError("recipe_composition_failed")
+            for name in bindings:
+                if not _input_name(name):
+                    raise RuntimeError("recipe_composition_failed")
+                _validate_ref(bindings[name], available, input_names, items)
+            # A selected source step has one declaration. Repetition instantiates
+            # that declaration; duplicate declarations cannot change bindings.
+            if step_id in seen:
+                raise RuntimeError("recipe_composition_failed")
+            seen.append(step_id)
+            available.append(step_id)
+            maximum = maximum + 1
+        elif kind == "branch":
+            _exact_fields(node, ["kind", "node_id", "source", "cases"])
+            _validate_ref(node["source"], available, input_names, items)
+            cases = node["cases"]
+            if not isinstance(cases, dict) or len(cases) == 0:
+                raise RuntimeError("recipe_composition_failed")
+            common = None
+            branch_maximum = 0
+            all_returned = True
+            for tag in cases:
+                if not _input_name(tag):
+                    raise RuntimeError("recipe_composition_failed")
+                checked = _validate_flow_nodes(cases[tag], step_ids, input_names, available, items, seen, depth + 1)
+                branch_maximum = max(branch_maximum, checked[1])
+                all_returned = all_returned and checked[2]
+                if not checked[2]:
+                    if common is None:
+                        common = checked[0]
+                    else:
+                        common = [name for name in common if name in checked[0]]
+            if common is not None:
+                available = common
+            maximum = maximum + branch_maximum
+            returned = all_returned
+        elif kind == "foreach":
+            _exact_fields(node, ["kind", "node_id", "source", "max_items", "body", "result"])
+            _validate_ref(node["source"], available, input_names, items)
+            count = _flow_bound(node["max_items"], 256)
+            checked = _validate_flow_nodes(node["body"], step_ids, input_names, available, items + [node_id], seen, depth + 1)
+            _validate_ref(node["result"], checked[0], input_names, items + [node_id])
+            # Only the declared collected result escapes, including [] for no items.
+            available.append(node_id)
+            maximum = maximum + count * checked[1]
+        elif kind == "repeat":
+            _exact_fields(node, ["kind", "node_id", "max_iterations", "initial", "body", "update"])
+            count = _flow_bound(node["max_iterations"], 64)
+            _validate_ref(node["initial"], available, input_names, items)
+            checked = _validate_flow_nodes(node["body"], step_ids, input_names, available, items + [node_id], seen, depth + 1)
+            _validate_ref(node["update"], checked[0], input_names, items + [node_id])
+            maximum = maximum + count * checked[1]
+            # Exhaustion fails; an explicit return exits the entire Recipe.
+            returned = True
+        elif kind == "return":
+            _exact_fields(node, ["kind", "node_id", "source"])
+            _validate_ref(node["source"], available, input_names, items)
+            returned = True
+        else:
+            raise RuntimeError("recipe_composition_failed")
+        if maximum > 4096:
+            raise RuntimeError("recipe_composition_failed")
+    return [available, maximum, returned]
+
+
+def _validate_flow(flow, step_ids, inputs):
+    # This is a prepared runtime contract, not a new accepted database field.
+    # IBS must also validate recursive schemas and pin exact approved artifacts.
+    _exact_fields(flow, ["format", "body"])
+    if flow["format"] != "recipe-flow/1":
+        raise RuntimeError("recipe_composition_failed")
+    seen = []
+    checked = _validate_flow_nodes(flow["body"], step_ids, list(inputs), [], [], seen, 0)
+    if not checked[2]:
+        raise RuntimeError("recipe_composition_failed")
+    for step_id in step_ids:
+        if step_id not in seen:
+            raise RuntimeError("recipe_composition_failed")
+
+
+def _flow_value(ref, state, items):
+    kind = ref["kind"]
+    if kind == "constant":
+        return ref["value"]
+    if kind == "input":
+        return state["inputs"][ref["name"]]
+    if kind == "result":
+        value = state["results"][ref["step_id"]]
+    else:
+        value = items[ref["loop_id"]]
+    for part in ref["path"]:
+        if not isinstance(value, dict) or part not in value:
+            raise RuntimeError("recipe_execution_failed")
+        value = value[part]
+    return value
+
+
+async def _run_flow_nodes(task_token, program_ref, nodes, state, items, occurrence):
+    for node in nodes:
+        node_id = node["node_id"]
+        kind = node["kind"]
+        address = occurrence + [node_id]
+        if kind == "step":
+            step_inputs = {}
+            for name in node["inputs"]:
+                step_inputs[name] = _flow_value(node["inputs"][name], state, items)
+            step_id = node["step_id"]
+            # Opaque program_ref and selected step_id resolve only pinned code.
+            # Occurrence is data for durable effect identity, never a Tool grant.
+            result = await host.run_program(task_token, program_ref, step_id, {
+                "inputs": step_inputs, "occurrence": address
+            })
+            if not isinstance(result, dict) or result.get("ok") is not True or "return_value" not in result:
+                raise RuntimeError("recipe_execution_failed")
+            state["results"][step_id] = result["return_value"]
+            state["previous_result"] = result["return_value"]
+        elif kind == "return":
+            return {"returned": True, "value": _flow_value(node["source"], state, items)}
+        elif kind == "branch":
+            value = _flow_value(node["source"], state, items)
+            if not isinstance(value, dict) or len(value) != 1:
+                raise RuntimeError("recipe_execution_failed")
+            tags = list(value)
+            tag = tags[0]
+            if tag not in node["cases"]:
+                raise RuntimeError("recipe_execution_failed")
+            outcome = await _run_flow_nodes(task_token, program_ref, node["cases"][tag], state, items, address + [tag])
+            if outcome["returned"]:
+                return outcome
+        elif kind == "foreach":
+            values = _flow_value(node["source"], state, items)
+            if not isinstance(values, list) or len(values) > node["max_items"]:
+                raise RuntimeError("recipe_execution_failed")
+            # A nested frame owns its result/item scope. A later item cannot
+            # read values left by an earlier item or a different iteration.
+            collected = []
+            for index in range(len(values)):
+                local = {"inputs": state["inputs"], "results": dict(state["results"]), "previous_result": state["previous_result"]}
+                local_items = dict(items)
+                local_items[node_id] = values[index]
+                outcome = await _run_flow_nodes(task_token, program_ref, node["body"], local, local_items, address + [index])
+                if outcome["returned"]:
+                    return outcome
+                collected.append(_flow_value(node["result"], local, local_items))
+            state["results"][node_id] = collected
+        elif kind == "repeat":
+            carried = _flow_value(node["initial"], state, items)
+            for index in range(node["max_iterations"]):
+                local = {"inputs": state["inputs"], "results": dict(state["results"]), "previous_result": state["previous_result"]}
+                local_items = dict(items)
+                local_items[node_id] = carried
+                outcome = await _run_flow_nodes(task_token, program_ref, node["body"], local, local_items, address + [index])
+                if outcome["returned"]:
+                    return outcome
+                carried = _flow_value(node["update"], local, local_items)
+            raise RuntimeError("recipe_execution_failed")
+    return {"returned": False, "value": None}
+
+
 async def _execute_recipe(task_token, recipe_id, step_link, inputs):
     # Composition returns a task-owned program reference, not authority to run
     # arbitrary Python supplied by the caller. The host resolves each step from
@@ -28,14 +260,113 @@ async def _execute_recipe(task_token, recipe_id, step_link, inputs):
             raise RuntimeError("recipe_composition_failed")
         step_ids.append(step_id)
     recipe_state = {"inputs": inputs, "results": {}, "previous_result": None}
+    if "flow" in composed:
+        _validate_flow(composed["flow"], step_ids, inputs)
+        outcome = await _run_flow_nodes(task_token, program_ref, composed["flow"]["body"], recipe_state, {}, [])
+        if not outcome["returned"]:
+            raise RuntimeError("recipe_execution_failed")
+        return outcome["value"]
     for step_id in step_ids:
         result = await host.run_program(task_token, program_ref, step_id, recipe_state)
-        if not isinstance(result, dict) or result.get("ok") is not True:
+        if not isinstance(result, dict) or result.get("ok") is not True or "return_value" not in result:
             raise RuntimeError("recipe_execution_failed")
         value = result.get("return_value")
         recipe_state["results"][step_id] = value
         recipe_state["previous_result"] = value
     return recipe_state["previous_result"]
+
+
+async def _non_match(task_token):
+    # Only the explicit No-Match branch enters this mode. The global Python
+    # orchestrator owns model/Tool sequencing; Rust ports perform one operation.
+    # The host assembles the selected library prefix and eligible transcript and
+    # issues scoped prompt references. Source, raw prompts and grants do not
+    # cross this interface. Actual model/context limits remain host-enforced.
+    while True:
+        surface = await host.visible_capabilities(task_token, {})
+        if not isinstance(surface, dict) or not isinstance(surface.get("descriptors"), list):
+            raise RuntimeError("capability_surface_invalid")
+        version = surface.get("version")
+        if not isinstance(version, str) or version == "":
+            raise RuntimeError("capability_surface_invalid")
+        visible = []
+        for descriptor in surface["descriptors"]:
+            if not isinstance(descriptor, dict):
+                raise RuntimeError("capability_surface_invalid")
+            capability_id = descriptor.get("capability_id")
+            if not isinstance(capability_id, str) or capability_id == "" or capability_id in visible:
+                raise RuntimeError("capability_surface_invalid")
+            visible.append(capability_id)
+        capability_view = {"visible_capability_ids": visible}
+        bundle = await host.build_prompt_bundle(task_token, {
+            "mode": "text_only", "context_cursor": None, "surface_version": version,
+            "capability_view": capability_view, "checkpoint_state_ref": None,
+            "max_messages": None, "inline_messages": []
+        })
+        if not isinstance(bundle, dict) or not isinstance(bundle.get("messages"), list):
+            raise RuntimeError("prompt_bundle_invalid")
+        if bundle.get("surface_version") != version:
+            raise RuntimeError("prompt_bundle_invalid")
+        response = await host.stream_model(task_token, {
+            "messages": bundle["messages"], "surface_version": version,
+            "model_preference": None, "capability_view": capability_view
+        })
+        if not isinstance(response, dict):
+            raise RuntimeError("model_output_invalid")
+        output = response.get("output")
+        if not isinstance(output, dict) or len(output) != 1:
+            raise RuntimeError("model_output_invalid")
+        if "assistant_reply" in output:
+            reply = output["assistant_reply"]
+            if not isinstance(reply, dict) or not isinstance(reply.get("content"), str):
+                raise RuntimeError("model_output_invalid")
+            return await host.post_reply(task_token, {"answer": reply["content"]})
+        calls = output.get("capability_calls")
+        if not isinstance(calls, list) or len(calls) == 0:
+            raise RuntimeError("model_output_invalid")
+        # Validate the complete batch before the first effect. The host still
+        # checks current policy and the issued input reference at each dispatch.
+        for call in calls:
+            if not isinstance(call, dict) or call.get("surface_version") != version:
+                raise RuntimeError("model_output_invalid")
+            if call.get("capability_id") not in visible:
+                raise RuntimeError("model_output_invalid")
+            if not isinstance(call.get("input_ref"), str) or call["input_ref"] == "":
+                raise RuntimeError("model_output_invalid")
+            effective = call.get("effective_capability_ids", [])
+            if not isinstance(effective, list):
+                raise RuntimeError("model_output_invalid")
+            for capability in effective:
+                if capability not in visible:
+                    raise RuntimeError("model_output_invalid")
+            replay = call.get("provider_replay")
+            if replay is not None and not isinstance(replay, dict):
+                raise RuntimeError("model_output_invalid")
+        for call in calls:
+            outcome = await host.invoke_capability(task_token, {
+                "surface_version": call["surface_version"],
+                "capability_id": call["capability_id"], "input_ref": call["input_ref"]
+            })
+            if not isinstance(outcome, dict) or len(outcome) != 1:
+                raise RuntimeError("capability_result_invalid")
+            completed = outcome.get("completed")
+            if completed is None:
+                # Gate/process/child continuations need the durable global wait
+                # adapter. Never turn a blocked/failed effect into success or
+                # retry it by asking the model again. Preserve its host record.
+                raise RuntimeError("capability_dispatch_incomplete")
+            if not isinstance(completed, dict):
+                raise RuntimeError("capability_result_invalid")
+            provider_call = None
+            if call.get("provider_replay") is not None:
+                provider_call = dict(call["provider_replay"])
+                provider_call["capability_id"] = call["capability_id"]
+            # Preserve provider call/turn IDs, arguments, reasoning and signatures
+            # as typed data so the next prompt can replay the actual Tool result.
+            await host.append_capability_result_ref(task_token, {
+                "result_ref": completed["result_ref"], "safe_summary": completed["safe_summary"],
+                "provider_call": provider_call, "model_observation": None
+            })
 
 
 async def _execute_task(task):
@@ -52,11 +383,15 @@ async def _execute_task(task):
         recipe_id = intent.get("component_id")
         step_link = intent.get("step_link")
     elif status == "no_match":
-        recipe = await host.resolve_component_by_name(task_token, "host-non-match-llm-answer", 21)
-        if not isinstance(recipe, dict):
-            raise RuntimeError("non_match_instruction_unavailable")
-        recipe_id = recipe.get("id")
-        step_link = recipe.get("step_link")
+        reply_ref = await _non_match(task_token)
+        if not isinstance(reply_ref, str) or not reply_ref.startswith("msg:"):
+            raise RuntimeError("recipe_reply_invalid")
+        # post_reply persists the real scoped transcript. Verify its actual
+        # finalization before completing; no duplicate reply or history replay.
+        answer = await host.resolve_reply(task_token, reply_ref)
+        if not isinstance(answer, str):
+            raise RuntimeError("recipe_reply_invalid")
+        return reply_ref
     elif status == "disambiguation":
         raise RuntimeError("intent_disambiguation_required")
     else:
@@ -110,6 +445,10 @@ async def _worker(worker_id):
         reply_ref = None
         reason_kind = None
         try:
+            # VM hosting control, not a Tool invocation or permission grant.
+            # This protected scope permits one task to fail without ending the
+            # permanent worker or poisoning the instance control latch.
+            host.enter_task(task_token)
             reply_ref = await _execute_task(task)
         except Exception as error:
             # The service retains the actual host failure/cancellation reason.
@@ -120,7 +459,10 @@ async def _worker(worker_id):
             if safe_reason in ["recipe_composition_failed", "recipe_execution_failed",
                               "recipe_reply_invalid", "history_persistence_failed",
                               "intent_resolution_failed", "intent_disambiguation_required",
-                              "non_match_instruction_unavailable"]:
+                              "non_match_instruction_unavailable", "task_compute_exceeded",
+                              "task_accounting_failed", "task_cancelled", "capability_surface_invalid",
+                              "prompt_bundle_invalid", "model_output_invalid", "capability_result_invalid",
+                              "capability_dispatch_incomplete"]:
                 reason_kind = safe_reason
             safe_reason = None
         await host.finish_task(task_token, {

@@ -1,0 +1,79 @@
+{
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode c7983481-a51f-5068-ba4a-11220f293cd3 (content: result = {'state': 'Stable'}), zero inputs/dependencies, no version/approval. The shared word Stable yields DATA only; this subworkflow returns state data and never posts a user message. Emitted one class-21 recipe-transfer-06 with the exact requested keys, trigger=null, steps=[], dependency_registry=null, one desc_idx=0 with a single component step (knowledge/stepnumber/type=component/include), the two supplied UUIDs in order each including one UUID, tool_bindings=[], dependencies=null, one variant with step_link=0:1-0:E, variable_patterns=[], and ten distinct data-returning intents in both payload and variant arrays. No execution, submission, Q1/Q2 or activation occurred; current live sink drops step_descriptions/variants/dependency_registry. Original conversation preserved; compatibility/intent/settings arrays empty under test persona.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-06",
+        "description": "Offline unapproved stable data-result subworkflow; no Tool calls and no posted message",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the stable state data",
+          "return the stable state object",
+          "produce the fixed stable object",
+          "obtain the stable result data",
+          "calculate the stable state result",
+          "yield the stable state object",
+          "get the fixed stable state data",
+          "build the stable state object",
+          "evaluate the stable data subworkflow",
+          "derive the fixed stable state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved stable data-result subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "c7983481-a51f-5068-ba4a-11220f293cd3"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "recipe-transfer-06",
+            "description": "Offline unapproved stable data-result subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the stable state data",
+              "return the stable state object",
+              "produce the fixed stable object",
+              "obtain the stable result data",
+              "calculate the stable state result",
+              "yield the stable state object",
+              "get the fixed stable state data",
+              "build the stable state object",
+              "evaluate the stable data subworkflow",
+              "derive the fixed stable state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable stable data-result workflow."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

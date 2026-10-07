@@ -1,0 +1,91 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Offline full-v3 export only. Drafted one unapproved class-21 Recipe (recipe-transfer-11) that posts exactly the fixed word 'Prepared' as a user reply using a bound existing host.post_reply Tool. The constructor preserves the requested full-v3 fields: trigger=null, steps=[] (executable references live in step_descriptions), dependency_registry=null, one desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema, each step including exactly one supplied UUID in order (ToolSkill 6d31defa-e5d3-5103-bd01-49143f9d47f6 then PythonCode 5e27ba17-04a3-5357-bee2-00a87cac9ae1), one variant with step_link=0:1-0:E and ten distinct reply intents in matching payload and variant arrays. Posting a reply is an effect, not returned data; actual dispatch requires current global Tool policy and technical checks. No runtime, Q1/Q2, submission or activation was performed by this offline reviewer; the current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry fields.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-11",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply(answer='Prepared'). No runtime or approval claims.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "say prepared",
+          "reply prepared",
+          "post prepared",
+          "send the prepared reply",
+          "respond with prepared",
+          "tell me prepared",
+          "please say prepared",
+          "please reply prepared",
+          "post the fixed prepared message",
+          "send the fixed prepared message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "6d31defa-e5d3-5103-bd01-49143f9d47f6"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "5e27ba17-04a3-5357-bee2-00a87cac9ae1"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "recipe-transfer-11",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say prepared",
+              "reply prepared",
+              "post prepared",
+              "send the prepared reply",
+              "respond with prepared",
+              "tell me prepared",
+              "please say prepared",
+              "please reply prepared",
+              "post the fixed prepared message",
+              "send the fixed prepared message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable prepared reply workflow."
+    ]
+  ]
+}

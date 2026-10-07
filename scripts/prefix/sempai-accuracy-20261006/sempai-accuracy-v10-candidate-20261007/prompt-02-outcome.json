@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Preserved the volatile tail unchanged. The only authorized edit was replacing the system message content with exactly \"Return JSON.\"; the user message was kept byte-for-byte. No provider facts, capabilities, or components were inferred. No proposals or other changes were made.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

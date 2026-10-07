@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-823ecb5f837832b4",
+  "object": "chat.completion",
+  "created": 1791325191,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Preserved the supplied user message unchanged. Drafted one unapproved pure-logic class-22 component pc-transfer-04: it reads raw inputs with inputs.get('ttl') (so missing and null both reach the validator), accepts only exact integers 0..9 inclusive, and returns {accepted:boolean, ttl:original if accepted else null} with no exceptions or coercion. The body assigns result on every outcome and makes no host calls. No execution, submission, Q1/Q2 or activation occurred; the target typed-inputs interface requires selected-runner support.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-04\",\n        \"description\": \"Raw ttl may be absent or any JSON value. Accept exact integers 0..9 inclusive (not bool/float). Always result={accepted:boolean, ttl:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"ttl = inputs.get('ttl')\\naccepted = type(ttl) is int and not type(ttl) is bool and 0 <= ttl <= 9\\nresult = {'accepted': accepted, 'ttl': ttl if accepted else None}\"\n      }\n    }\n  ],\n  \"settings_adjustments\": []\n  ,\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ],\n  \"proposed_intent_examples\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98266,
+    "total_tokens": 98643,
+    "completion_tokens": 377,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

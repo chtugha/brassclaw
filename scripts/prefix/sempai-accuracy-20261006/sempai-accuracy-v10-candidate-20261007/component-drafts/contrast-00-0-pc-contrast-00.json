@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-00",
+    "description": "Raw slots must be a list with length 0..2 inclusive, all items exact integers 0..4 inclusive. Empty is valid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "slots = inputs.get('slots')\nok = type(slots) is list and 0 <= len(slots) <= 2\nif ok:\n    for slot in slots:\n        if not (type(slot) is int and 0 <= slot <= 4):\n            ok = False\n            break\nresult = {'ok': ok, 'slots': slots if ok else []}"
+  }
+}

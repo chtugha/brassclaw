@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a613b58bb82b94b5",
+  "object": "chat.completion",
+  "created": 1791330977,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"offset not in inputs\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"offset is None\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"type(offset) is not int\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"not -4 <= offset <= 5\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"type(offset) is int and -4 <= offset <= 5\", \"result\": \"{'accepted': True, 'offset': offset}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; no provider facts available\"], \"notes\": \"Draft only; no execution, submission, activation or approval performed.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98413,
+    "total_tokens": 98619,
+    "completion_tokens": 206,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

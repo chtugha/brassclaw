@@ -24,8 +24,17 @@
 //!   The `reborn_skills` CRUD store; required when the engine uses the DB
 //!   fast path (`skills-db` feature on `brassclaw_engine`).
 
-/// v3 content escaping and name/credential validation — always compiled.
+/// v3 content escaping and name/path validation — always compiled.
+/// Legacy credential-spec validation requires `v1-types`.
 pub mod validation;
+
+/// Strict recursive v3 input/result contracts. Validation does not establish
+/// component or association approval and never grants Tool authority.
+pub mod value_contract;
+
+/// Machine-readable usage and exact-combination evidence declarations. Parsing
+/// does not establish trusted evidence, activate components or grant authority.
+pub mod association_contract;
 
 /// `reborn_skills` DB reader/writer — gated on `db-store` feature.
 #[cfg(feature = "db-store")]
@@ -60,9 +69,12 @@ pub mod v2;
 
 pub use validation::{
     SafeRelativePathError, escape_skill_content, escape_xml_attr, normalize_line_endings,
-    normalize_safe_relative_path, validate_credential_name, validate_credential_spec,
-    validate_path_pattern, validate_skill_name,
+    normalize_safe_relative_path, validate_credential_name, validate_path_pattern,
+    validate_skill_name,
 };
+
+#[cfg(feature = "v1-types")]
+pub use validation::validate_credential_spec;
 
 // ── Re-exports (v1-types feature) ─────────────────────────────────────────────
 

@@ -1,0 +1,91 @@
+{
+  "composition_summary": "Offline full-v3 export only. Drafted one unapproved class-21 Recipe (recipe-transfer-05) that posts exactly the fixed word 'Available' as a user reply using the bound existing host.post_reply Tool. The constructor preserves full v3 fields: trigger=null, steps=[] (executable references documented in step_descriptions), dependency_registry=null, one desc_idx=0 with two persisted component steps (rust binding then orchestrator execution), one variant with step_link=0:1-0:E and ten distinct reply intents. The bound ToolSkill 9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7 and PythonCode ca75d647-4f0e-5a35-abe7-cee7353e03c2 are supplied unapproved fixtures; no version numbers or approval were added. No execution, submission, Q1/Q2 or activation occurred; current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry fields. Original conversation preserved; compatibility/intent/settings arrays empty under test persona.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-05",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply(answer='Available'). No runtime/approval claims.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "say available",
+          "reply available",
+          "post available",
+          "send the available reply",
+          "respond with available",
+          "tell me available",
+          "please say available",
+          "please reply available",
+          "post the fixed available message",
+          "send the fixed available message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "ca75d647-4f0e-5a35-abe7-cee7353e03c2"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "recipe-transfer-05",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say available",
+              "reply available",
+              "post available",
+              "send the available reply",
+              "respond with available",
+              "tell me available",
+              "please say available",
+              "please reply available",
+              "post the fixed available message",
+              "send the fixed available message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable available reply workflow."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

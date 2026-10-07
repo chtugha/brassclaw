@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-04",
+    "description": "Pure-logic guard: accepts a raw candidate ttl only when it is exactly an integer in 0..9 inclusive (not bool/float/string); returns {accepted, ttl} with ttl null when rejected. No imports, I/O or host calls.",
+    "content": "def classify_ttl(raw):\n    if 'ttl' not in raw:\n        result = {'accepted': False, 'ttl': None}\n    else:\n        ttl = raw['ttl']\n        if type(ttl) is bool or not type(ttl) is int or not 0 <= ttl <= 9:\n            result = {'accepted': False, 'ttl': None}\n        else:\n            result = {'accepted': True, 'ttl': ttl}\n    return result\nresult = classify_ttl(inputs.get('raw'))"
+  }
+}

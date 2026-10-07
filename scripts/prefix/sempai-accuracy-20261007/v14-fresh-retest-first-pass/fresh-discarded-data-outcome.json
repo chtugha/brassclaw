@@ -1,0 +1,79 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Make a reusable Discarded workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Host-allocated unapproved documentation fixture: class21 recipe-fresh-discarded-data with trigger null, empty steps, empty dependency_registry, one desc_idx=0 step referencing PythonCode 5a261cd4-ea35-5517-b971-71565df9386a, one variant step_link 0:1-0:E, ten unique data-returning intents. The fixture returns phase DATA; no message is posted regardless of the word Sent or Discarded. No execution, submission, Q1/Q2 or activation occurred.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fresh-discarded-data",
+        "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the discarded phase data",
+          "return the discarded phase object",
+          "produce the fixed discarded object",
+          "obtain the discarded result data",
+          "calculate the discarded state result",
+          "yield the discarded phase object",
+          "get the fixed discarded state data",
+          "build the discarded phase object",
+          "evaluate the discarded data subworkflow",
+          "derive the fixed discarded state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "5a261cd4-ea35-5517-b971-71565df9386a"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fresh-discarded-data",
+            "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the discarded phase data",
+              "return the discarded phase object",
+              "produce the fixed discarded object",
+              "obtain the discarded result data",
+              "calculate the discarded state result",
+              "yield the discarded phase object",
+              "get the fixed discarded state data",
+              "build the discarded phase object",
+              "evaluate the discarded data subworkflow",
+              "derive the fixed discarded state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

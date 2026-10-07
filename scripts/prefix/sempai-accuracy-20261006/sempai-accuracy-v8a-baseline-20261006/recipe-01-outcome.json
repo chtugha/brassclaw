@@ -1,0 +1,91 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. The requested class-21 Recipe draft is emitted as a complete v3 constructor with the exact supplied UUIDs, persisted knowledge/stepnumber/type=component/include schema, one desc_idx=0, one variant step_link=0:1-0:E, ten distinct intents, and trigger=null/steps=[]/dependency_registry=null. The draft references the unapproved PythonCode d0a73787-74ae-55cb-b6a0-25131936e06d and the unapproved ToolSkill a6ed3264-13bc-56ae-9de7-064df4b3d2ce, both without version numbers or approval. The current offline sink cannot preserve the full v3 fields (step_descriptions, variants, dependency_registry); it accepts name/description/trigger/steps/prior_knowledge_content/intent_examples and drops the rest. This is an unapproved draft; Q1 and human Q2 are required before activation, and no runtime/approval claims are made. The original conversation is preserved unchanged.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable ready reply workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-01",
+        "description": "Posts exactly the fixed word as a user reply using the bound existing Tool. Unapproved draft; Q1 and human Q2 required before activation.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": null,
+        "intent_examples": [
+          "say ready",
+          "reply ready",
+          "post ready",
+          "tell me you are ready",
+          "please say ready",
+          "respond with ready",
+          "send a readiness reply",
+          "give me a readiness response",
+          "answer with ready",
+          "please post the word ready"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Post the fixed readiness reply",
+            "yaml_source": "Human-readable documentation of the same two steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind the reply Tool",
+                "content": "Bind host.post_reply",
+                "type": "component",
+                "include": [
+                  "a6ed3264-13bc-56ae-9de7-064df4b3d2ce"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post the fixed reply",
+                "content": "Run the fixed-reply PythonCode",
+                "type": "component",
+                "include": [
+                  "d0a73787-74ae-55cb-b6a0-25131936e06d"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fixed-readiness-reply",
+            "description": "Post exactly Ready. without input slots",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say ready",
+              "reply ready",
+              "post ready",
+              "tell me you are ready",
+              "please say ready",
+              "respond with ready",
+              "send a readiness reply",
+              "give me a readiness response",
+              "answer with ready",
+              "please post the word ready"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ]
+}

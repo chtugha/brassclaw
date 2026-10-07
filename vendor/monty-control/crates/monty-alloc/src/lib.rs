@@ -1,22 +1,117 @@
 #![doc = include_str!("../README.md")]
-#![expect(unsafe_code, reason = "Custom allocator is unsafe, the logic we add is all safe")]
+#![expect(
+    unsafe_code,
+    reason = "GlobalAlloc requires aligned private headers and matching System layouts"
+)]
 
 use std::{
     alloc::{GlobalAlloc, Layout, System},
+    cell::Cell,
     fmt,
     io::{self, Write},
+    marker::PhantomData,
     process,
+    rc::Rc,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 #[cfg(feature = "exit-code")]
 use monty_types::OOM_EXIT_CODE;
-use monty_types::{BASELINE_MEMORY, LIVE_MEMORY};
+use monty_types::{BASELINE_MEMORY, LIVE_MEMORY, VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT};
 
 /// The absolute ceiling for allocator-backed live bytes.
 /// Counting starts with the process: a counter armed later would see `dealloc`s
 /// it never charged and underflow.
 static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+thread_local! {
+    // Const initialization and a destructor-free Cell are essential: allocator
+    // entry must neither allocate recursively nor acquire a mutex.
+    static VM_SCOPE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Activate ownership accounting before creating any VM. This is irreversible
+/// for the process: retained allocations must never lose their measurement.
+pub fn enable_vm_accounting() -> Result<(), &'static str> {
+    if LIVE_MEMORY.load(Ordering::Relaxed) == 0 {
+        return Err("monty-alloc is not installed as the global allocator");
+    }
+    VM_MEMORY_ACCOUNTING.store(true, Ordering::Release);
+    Ok(())
+}
+
+/// Synchronous allocation ownership, not a task or an interpreter lifetime.
+/// Nested scopes restore their parent. The guard cannot move to another thread
+/// or span a migrating async future; tags in each allocation outlive the guard.
+#[must_use]
+pub struct VmAllocationScope {
+    previous: bool,
+    _thread: PhantomData<Rc<()>>,
+}
+impl VmAllocationScope {
+    pub fn enter() -> Result<Self, &'static str> {
+        if !VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) {
+            return Err("VM allocation accounting is not enabled");
+        }
+        let previous = VM_SCOPE
+            .try_with(|scope| scope.replace(true))
+            .map_err(|_| "VM allocation context is unavailable")?;
+        Ok(Self {
+            previous,
+            _thread: PhantomData,
+        })
+    }
+}
+impl Drop for VmAllocationScope {
+    fn drop(&mut self) {
+        // A destructing thread may no longer expose its TLS. Allocation headers
+        // still carry ownership; deallocation never consults TLS.
+        let _ = VM_SCOPE.try_with(|scope| scope.set(self.previous));
+    }
+}
+
+/// Actual charged VM-domain bytes, including compilation, root/child heaps,
+/// controlled host adaptation and retained execution bookkeeping. It excludes
+/// unadopted incoming frames and outgoing JSON serialization. This is requested
+/// allocator storage, not RSS or virtual memory.
+#[must_use]
+pub fn vm_live_bytes() -> usize {
+    VM_LIVE_MEMORY.load(Ordering::Relaxed)
+}
+
+/// Publish a finite shared soft ceiling while interpreter execution is
+/// quiescent. The serialized worker owner must exclude concurrent VM execution
+/// and admission. This never resets consumption, ownership tags or hard limits.
+/// Failed manual reductions preserve the last effective limit.
+pub fn set_vm_limit(bytes: usize) -> Result<(), &'static str> {
+    if !VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) {
+        return Err("VM allocation accounting is not enabled");
+    }
+    if bytes == 0 || bytes == usize::MAX {
+        return Err("invalid VM memory limit");
+    }
+    if vm_live_bytes() > bytes {
+        return Err("VM memory limit is below live allocations");
+    }
+    VM_MEMORY_LIMIT.store(bytes, Ordering::Relaxed);
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct Header {
+    vm_owned: bool,
+}
+
+fn storage_layout(payload: Layout) -> (Layout, usize) {
+    Layout::new::<Header>()
+        .extend(payload)
+        .map(|(layout, offset)| (layout.pad_to_align(), offset))
+        .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocation layout overflow")))
+}
+
+fn allocation_is_vm_owned() -> bool {
+    VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) && VM_SCOPE.try_with(Cell::get).unwrap_or(false)
+}
 
 /// Applies a worker's hard memory budget relative to its baseline.
 ///
@@ -52,65 +147,99 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str> 
 /// limit and a null check that ends the process deliberately.
 pub struct LimitedAllocator;
 
-// SAFETY: every method forwards its arguments unchanged to `System` and returns
-// what `System` returned (or diverges). No pointer is fabricated, aliased or
-// freed here, so this upholds exactly the invariants `System` upholds.
+// SAFETY: storage_layout reserves an aligned Header followed by a separately
+// aligned payload. System receives only that combined layout and its base
+// pointer. Callers receive only the payload, whose size/alignment are unchanged.
+// The offset depends only on payload alignment, so realloc retains both the
+// header and payload at their original offsets. Dealloc reconstructs exactly
+// the original layout; headers are private and initialized before publication.
 unsafe impl GlobalAlloc for LimitedAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        charge(layout.size());
-        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
-        let ptr = unsafe { System.alloc(layout) };
+        let (storage, offset) = storage_layout(layout);
+        let vm_owned = allocation_is_vm_owned();
+        charge(storage.size(), vm_owned);
+        // SAFETY: storage is a validated Layout containing header and payload.
+        let ptr = unsafe { System.alloc(storage) };
         if ptr.is_null() {
             out_of_memory(format_args!(
                 "monty worker: allocation of {} bytes failed",
                 layout.size()
             ));
         }
-        ptr
+        // SAFETY: storage reserves an aligned initialized header and a payload
+        // at offset, with the caller's requested size and alignment.
+        unsafe {
+            ptr.cast::<Header>().write(Header { vm_owned });
+            ptr.add(offset)
+        }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        refund(layout.size());
-        // SAFETY: `ptr` came from our `alloc`/`realloc` with this same `layout`.
-        unsafe { System.dealloc(ptr, layout) };
+        let (storage, offset) = storage_layout(layout);
+        // SAFETY: ptr is the live payload allocated with this layout. Its
+        // initialized header lies exactly offset bytes before it.
+        let base = unsafe { ptr.sub(offset) };
+        // SAFETY: base is the aligned initialized private Header.
+        let header = unsafe { base.cast::<Header>().read() };
+        // SAFETY: base and storage reconstruct the exact System allocation.
+        unsafe { System.dealloc(base, storage) };
+        refund(storage.size(), header.vm_owned);
     }
 
     // Overridden rather than left to the default (which routes through `alloc`)
     // so `System` keeps using calloc's pre-zeroed pages.
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        charge(layout.size());
-        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
-        let ptr = unsafe { System.alloc_zeroed(layout) };
+        let (storage, offset) = storage_layout(layout);
+        let vm_owned = allocation_is_vm_owned();
+        charge(storage.size(), vm_owned);
+        // SAFETY: validated combined layout; the payload remains all zeroes.
+        let ptr = unsafe { System.alloc_zeroed(storage) };
         if ptr.is_null() {
             out_of_memory(format_args!(
                 "monty worker: allocation of {} bytes failed",
                 layout.size()
             ));
         }
-        ptr
+        // SAFETY: initializing the private header touches no payload bytes.
+        unsafe {
+            ptr.cast::<Header>().write(Header { vm_owned });
+            ptr.add(offset)
+        }
     }
 
     // Overridden for the same reason: the default reallocates and copies, while
     // `System` can often grow a block in place.
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if let Some(size_change) = new_size.checked_sub(layout.size()) {
-            charge(size_change);
-        } else {
-            refund(layout.size() - new_size);
+        let (storage, offset) = storage_layout(layout);
+        let new_payload = Layout::from_size_align(new_size, layout.align())
+            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocation layout overflow")));
+        let (new_storage, _) = storage_layout(new_payload);
+        // SAFETY: reconstruct the live base/header from the caller's layout.
+        let base = unsafe { ptr.sub(offset) };
+        // SAFETY: our private header was initialized before returning ptr.
+        let header = unsafe { base.cast::<Header>().read() };
+        if new_storage.size() > storage.size() {
+            charge(new_storage.size() - storage.size(), header.vm_owned);
         }
-        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
-        // `new_size` is the caller's — all forwarded unchanged.
-        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
+        // SAFETY: storage describes base's live System block. Both layouts have
+        // identical alignment and header/payload offsets; nonzero new_size is
+        // part of the GlobalAlloc caller contract.
+        let new_ptr = unsafe { System.realloc(base, storage, new_storage.size()) };
         if new_ptr.is_null() {
             out_of_memory(format_args!("monty worker: allocation of {new_size} bytes failed"));
         }
-        new_ptr
+        if new_storage.size() < storage.size() {
+            refund(storage.size() - new_storage.size(), header.vm_owned);
+        }
+        // SAFETY: realloc preserves the initialized header and overlapping
+        // payload. The original payload offset remains valid after resize.
+        unsafe { new_ptr.add(offset) }
     }
 }
 
 /// Adds `size` to the live total, exiting past the hard limit.
 #[inline]
-fn charge(size: usize) {
+fn charge(size: usize, vm_owned: bool) {
     let previous = LIVE_MEMORY
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
         .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocator accounting overflow")));
@@ -122,17 +251,29 @@ fn charge(size: usize) {
             "monty worker: allocation of {size} bytes exceeds the memory limit"
         ));
     }
+    if vm_owned {
+        VM_LIVE_MEMORY
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
+            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: VM allocator accounting overflow")));
+    }
 }
 
 /// Returns `size` to the live total. `Relaxed` throughout: the count only has to
 /// be eventually right, and no other memory is published through it.
 #[inline]
-fn refund(size: usize) {
+fn refund(size: usize, vm_owned: bool) {
     if LIVE_MEMORY
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
         .is_err()
     {
         out_of_memory(format_args!("monty worker: allocator accounting underflow"));
+    }
+    if vm_owned
+        && VM_LIVE_MEMORY
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
+            .is_err()
+    {
+        out_of_memory(format_args!("monty worker: VM allocator accounting underflow"));
     }
 }
 

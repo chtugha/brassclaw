@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-08. It classifies raw quota with a presence-first guard: missing key -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..13 -> {kind:\"integer\",quota:original}; anything else (including bool/float/string/wrong type) -> {kind:\"invalid\",quota:null}. No imports, I/O, host calls, coercion, defaults or exceptions. The helper receives the mapping and returns the complete object on every branch; the module invokes it and assigns result. Conversation preserved unchanged. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites; no execution, submission, activation or approval.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-08",
+        "description": "Classify raw quota: missing -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..13 -> {kind:\"integer\",quota:original}; other -> {kind:\"invalid\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "def classify_quota(mapping):\n    if 'quota' not in mapping:\n        return {'kind': 'missing', 'quota': None}\n    value = mapping['quota']\n    if value is None:\n        return {'kind': 'null', 'quota': None}\n    if type(value) is int and 4 <= value <= 13:\n        return {'kind': 'integer', 'quota': value}\n    return {'kind': 'invalid', 'quota': None}\nresult = classify_quota(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Audit-only request with no edits authorized. Echoed both messages verbatim. No proposals: target provider protocol_capabilities, roles, tool and reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no justified prompt repair is warranted. The user message contains no embedded instructions requiring action; it is quoted user-selected content to be echoed exactly.",
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Antworte sachlich sachlich."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

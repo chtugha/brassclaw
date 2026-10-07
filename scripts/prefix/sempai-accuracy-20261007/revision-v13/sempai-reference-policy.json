@@ -1,0 +1,2854 @@
+{
+  "schema": 1,
+  "status": "reviewed-source-selection",
+  "policy": "Complete four authoring guides, full reviewer procedure and full proposal transport; explicit complete-unit selections elsewhere",
+  "source_drift_policy": "Reviewed document SHA and excerpt/unit identities must match; no line-only or greedy token deletion fallback",
+  "source_documents": 11,
+  "source_units": 284,
+  "selected_units": 156,
+  "units": [
+    {
+      "path": "recipe.md",
+      "line_start": 1,
+      "line_end": 13,
+      "heading": "# Recipe authoring instructions",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "a382b3384085abce223699d5479878bc721a9cb51032be7d53c4193ecbc8ec7e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 14,
+      "line_end": 15,
+      "heading": "## 1. Understand exactly what you are creating",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "48afb5dcfbe3f6c6c9b8b2f1dd1e369b39a279353fa67d4b2eff8764274397b7",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 16,
+      "line_end": 67,
+      "heading": "### Architectural goal: more reusable steps, fewer specialized Rust Tools",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "3119d4f25c07cf00c60a94b4ef079c5e6735364725e053e46efebeb1cebf7f10",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 68,
+      "line_end": 188,
+      "heading": "### Recipes for creating Tools or ToolSkills",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "3a09cd8dfcbb04bda04f418fe937f781db888449b9abcfc22c90ac6df087b082",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 189,
+      "line_end": 213,
+      "heading": "## 2. Reuse before creating anything",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "61d9a45a6bb070a9700136af13b4659bb74312325b3d56dc51be3d0221afbe5c",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 214,
+      "line_end": 252,
+      "heading": "## 3. Write the behavior contract before writing code",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "30c9e2c05b6461cf0f9c675171fd64fea9e18dc5d0191759faa3b39212f752d9",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 253,
+      "line_end": 262,
+      "heading": "## 4. Specify every input and its extraction",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "6fe30a74139efb9db5d7ca9243321465d7addb040e8d56f31b5c2c8129fb2c15",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 263,
+      "line_end": 295,
+      "heading": "### Current capture semantics",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "94879e0df2be9181108f33315b27a8bd0e987cd17bea86d144932adcc8b5502c",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 296,
+      "line_end": 308,
+      "heading": "### Verify which path receives the template",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "1862231197517f878297123c5a765a193dfd4b53e3f8892477cea5f92d53e91a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 309,
+      "line_end": 326,
+      "heading": "## 5. Keep captured values as data, never executable source",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "6d667d57215156842690502ef558689e4078a5a02754cf03ec7d5551786b8478",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 327,
+      "line_end": 378,
+      "heading": "### Binding convention for the v3 target",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "e6e1629d85cc4a2a6ca23c244d291d1320d907bd661b723fdf32d315699b7179",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 379,
+      "line_end": 457,
+      "heading": "## 6. Specify steps, bindings and result flow",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "b4defb3327102fe9f4d54cbf1c9e1e74b40f1f5b5909dae64b3cda6e50444a79",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 458,
+      "line_end": 552,
+      "heading": "## 7. Emit the actual persisted IBS schema",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "60dae73d7668375d58fa9e18e2a5670ba646a76ce2be4c038a5ea3e5e455f1dd",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 553,
+      "line_end": 576,
+      "heading": "## 8. Make failures and completion explicit",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "794bcb66e62fab02573bce05d3a0815b0968f9448c1a3a45edc3317d66117637",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 577,
+      "line_end": 595,
+      "heading": "## 9. Store and approve through supported paths",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "94153c2da3248375727e830acfb40e9b27b1b03c6f4386522ab3f283cd84364b",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 596,
+      "line_end": 634,
+      "heading": "### Immutable versions and task-start selection",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "f04a3266e3740dabe5a71b2cffd95f8d430a70610661a1f4b4f5b468781b7335",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 635,
+      "line_end": 678,
+      "heading": "## 10. Acceptance checklist — complete before claiming success",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "19a44179284c3ac1e9c56bd7a6e1213c742e0693c1192f865f3727309e1029c3",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "recipe.md",
+      "line_start": 679,
+      "line_end": 691,
+      "heading": "## Source references",
+      "document_sha256": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+      "excerpt_sha256": "5a9254ada0f2790701d90ca3881fd2dc69f33b18d0ea6cd4941c5d781ef46390",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 1,
+      "line_end": 2,
+      "heading": "# Skill definition and authoring instructions",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "040ba63588d5f5e22887f82e86935bf5681091b948370c352ed8ca6232a3f7a3",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 3,
+      "line_end": 39,
+      "heading": "## Review concerns — resolved in the documentation",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "86b2094371a87b62015fe1f6f2581031d3e618535adc5787c65c75b1ccbf2f3d",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 40,
+      "line_end": 61,
+      "heading": "## 1. What a Skill is",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "2b0949faceb726ea6f5ae0cae1a1909bc6d57d8d456abdbbeef94d3354b237d4",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 62,
+      "line_end": 85,
+      "heading": "## 2. Place the Skill in the complete architecture",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "796566cabbbdd917c20a806955a96c33cc2d9973266a574f804906c5dccd9a8f",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 86,
+      "line_end": 96,
+      "heading": "### What the Skill must leave to a Recipe",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "72b552285c87d5f3104be5a8732f0be808b73c7730e437f2b543f7e72db8d18b",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 97,
+      "line_end": 132,
+      "heading": "## 3. How IBS and the orchestrator use it",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "2657dd16d1f3b6b82e86c87d346637e31c4acb1463f5be1031ecea8bd5712ae6",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 133,
+      "line_end": 154,
+      "heading": "## 4. Decide whether a new Skill is needed",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "59bd498ab88cf087c2f458b8f9b05b228806705ac038521c4f2296210a44643d",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 155,
+      "line_end": 187,
+      "heading": "## 5. Define the usage contract before writing the prose",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "7fb7503b016706b922406bd3ed67630a0cee71b835a1f7e4e25e5d02b0a85502",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 188,
+      "line_end": 235,
+      "heading": "## 6. Write the prose using this exact structure",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "88e6a2b8f6285a8c435bc41d33f406fbe284e68ea51d386f28e31a3e7c75806e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 236,
+      "line_end": 243,
+      "heading": "## 7. Associate the executable PythonCode explicitly",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "eea137d8f5d13f9bc07798ff7df20af702e771f82b9eb2b5d254b01dae5fa67a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 244,
+      "line_end": 269,
+      "heading": "### Exact association record: target format `skill-association/1`",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "837ca05102d1225dfb26d3405b72e4cf9300d41be5b3041da4a75f5f02ba0014",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 270,
+      "line_end": 327,
+      "heading": "### Exact-version association approval evidence",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "a62473d4d883c3bcb4a5f74f479d02d299465fab3271e20607b31442ad1770c7",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 328,
+      "line_end": 373,
+      "heading": "### Recursive value schemas",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "81b477095880597ff2c3d427daa2f781c1a9f11964096afe378efef2c2697b58",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 374,
+      "line_end": 446,
+      "heading": "### Presence, null and defaults",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "4a31e1b7844e8d034284d278341e688a661be0dc1cd0dab6590f6c5ab7c8f815",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 447,
+      "line_end": 496,
+      "heading": "### Exact failure and retry contract",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "3300697541ad43dcda16f4938c308447b50bd1a7c2d2cc10f5a4ad5b5db17594",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 497,
+      "line_end": 551,
+      "heading": "### Recursive producer/consumer compatibility",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "f609c581e75c3ec4a83d06745c51909da38ce34bd386453373f6096f5423f54c",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 552,
+      "line_end": 577,
+      "heading": "## 8. Define input binding and result flow precisely",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "6c334495a3f5da50180ae679104a932cfbe3025b056620afccb5b289bb250a7a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 578,
+      "line_end": 591,
+      "heading": "## 9. Complete worked design: read a specified line interval",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "52040cd80f5df631ef9e2f6a0b39bd2e7eee6f6c33ac56baefc335e1eee7c899",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 592,
+      "line_end": 622,
+      "heading": "### Numeric transport and Tool bounds for this usage",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "237e4d69d27f97961aea7890cf89a55738b77ed13a5fb55f3f116418f35f311e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 623,
+      "line_end": 682,
+      "heading": "### 9.1 Skill prose",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "ecd81baf7a1260ec861f3a022d8489afdb41b455c769e985322e6913ed6a4b9e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 683,
+      "line_end": 708,
+      "heading": "### 9.2 Associated PythonCode",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "a524e4ac44fb8af9e2524c597e3dcc3cc291dcbac88509d689be5b657cc48a9a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 709,
+      "line_end": 753,
+      "heading": "### 9.3 Machine-readable target association",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "3552015281d9e5689115939c9ab6f87f38232e63b718e53ca58ac3861c350fb1",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 754,
+      "line_end": 785,
+      "heading": "### 9.4 Recipe input binding and step references",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "7ef4c018acc0a535c443952026528860b4a41b133403db6a0a2e4e911bb62ba0",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 786,
+      "line_end": 809,
+      "heading": "### 9.5 Exact expected result",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "ec60f6cc5eec356dd2d5c07d69d900c815ed79902e5a11b5893c40c8ceaf7af7",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 810,
+      "line_end": 839,
+      "heading": "## 10. Create, validate and activate",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "b0afc9264cb7d77accf0acf9c7d71efb2be20d3149f4a0dedef06946bdfc05ed",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 840,
+      "line_end": 865,
+      "heading": "### Semantic consistency is an authoring and approval responsibility",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "aaf4891701064748e824cf206ed4fee151a67b035716ee6c5e9428b86efb0277",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 866,
+      "line_end": 885,
+      "heading": "### Storage today versus the target",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "2e45db51aae47817bebdce1159ea4959ae4aa6c4ab5669cdc4dbf7b07f8cb48d",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 886,
+      "line_end": 907,
+      "heading": "## 11. Versioning and updates",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "9ac6ea5e0574685216b100a130ee8faed79e524247118d7ca9b5e14784d73e06",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 908,
+      "line_end": 931,
+      "heading": "### Pin the matched workflow, not only its executable components",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "d7d17e4653105c246525bc314f86a1b5de52da16a9b06e520ab9a1cbbb96a12a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 932,
+      "line_end": 978,
+      "heading": "### Exact compatibility checks during IBS assembly",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "52ee4d8bb421286fd80dc68d332ce8772b9d37c2fff5e6ab35ef2fcdb227d716",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 979,
+      "line_end": 1065,
+      "heading": "## 12. Acceptance matrix and checklist",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "1c97a2db5ba25759b594a85445bbf3d1705e3faf1355e5a97786abd0be9f3c7e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "skills.md",
+      "line_start": 1066,
+      "line_end": 1079,
+      "heading": "## References",
+      "document_sha256": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+      "excerpt_sha256": "63d04acabe017d408b990efc2f7fdd1660f871351676b6223f9a7e8762666875",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 1,
+      "line_end": 18,
+      "heading": "# Tool definition and authoring instructions — final v3",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "46ef45f1c5347a833a98c1799f1596e91eda8ac651838384de5aa4cb3b300c83",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 19,
+      "line_end": 49,
+      "heading": "## 1. Exact definition",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "d7509b555c0913b6a2b2c7972249b186b49e95eb2ea24b3cc3f204553c32d50b",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 50,
+      "line_end": 75,
+      "heading": "## 2. Keep the component roles separate",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "4b32d42052e1ef407a29d37fb9e5a970d9852fbb43aa19f2b40fa6bc4d44f147",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 76,
+      "line_end": 118,
+      "heading": "## 3. Identity, implementation, binding and permission are different",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "09616ef67f265d9049820ea6291dcd166dbecb56ce006822e32e90887dfcc9a8",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 119,
+      "line_end": 152,
+      "heading": "## 4. What happens on a matched Recipe",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "4d23149d5eeacc627b4e79bdcac67a1e7e25ef684e660fed2014f29b13bd37d9",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 153,
+      "line_end": 154,
+      "heading": "## 5. Global authority and technical enforcement",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "e910b94cf4cdd2b61c955f977208128fdb15491e718ac6519315a0f4ab27528b",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 155,
+      "line_end": 177,
+      "heading": "### Current global Tool policy applies before every dispatch",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "63f51ffb958cb010df748c508cb43044b9c0c3b6ce211505fd3c24f99c460493",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 178,
+      "line_end": 204,
+      "heading": "### Approval and execution validity remain separate",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "81bb6aaef213e79c9b71f5b62e5236964601c7e2fa85a600f9c51cb64a4e7edf",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 205,
+      "line_end": 234,
+      "heading": "## 6. Define a Tool's contract exactly",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "df19f278051158529b35974de8d5c0033df056faa1cfd3a53177bfbf186afe3b",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 235,
+      "line_end": 264,
+      "heading": "### Input and result rules",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "05154dfc2c87dd522b525638ec0b717aa658910f24cde8dfa76162b487d2129e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 265,
+      "line_end": 279,
+      "heading": "### Effects and implementation grain",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "7d1af2a19233a67cac54f2827c704e4aeb66b478b7994b025be6b43472b479bd",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 280,
+      "line_end": 312,
+      "heading": "## 7. Immutable implementations and live settings",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "4d9f5e16856f649cb745aa7a6ebb2c7d8fc98744d2d4ddf7746078eb55f4d238",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 313,
+      "line_end": 371,
+      "heading": "## 8. Retries, waits, cancellation and completion",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "7fa50c556fe34665cd5c2186e9840f26f240edef40d5ed7898fb8cb1447fc84c",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 372,
+      "line_end": 379,
+      "heading": "## 9. Source-checked examples inspired by the archive",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "29581d6244fcaa242dcbd0e263e95c12e058cf9feb955dc38da530b52bfa65e5",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 380,
+      "line_end": 426,
+      "heading": "### A. Read a line interval: one Tool, several reusable usages",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "c9884f903822e2a72c26afe612e716603181bcb8c8467bebabee5cb1ba5e4ac5",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 427,
+      "line_end": 451,
+      "heading": "### B. JSON operations: operation selection does not create a workflow Tool",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "147ad03a9e180ee722abe6e0f4f5eb039f281dc7b83bd3413bf7ef520cbe030e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 452,
+      "line_end": 465,
+      "heading": "### C. Shell and process work: approval does not change the tier",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "d9fa49728450504e592b78fef0278cb67f9cf76603bcb0a2bdd8e3a606773a40",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 466,
+      "line_end": 497,
+      "heading": "### D. Composition and Python execution are Rust-side host operations",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "7859810e21e7e504143fc36c4fd14fbf080f63a70801ace31eda83581aa866b9",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 498,
+      "line_end": 535,
+      "heading": "## 10. When and how to create a new Tool",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "bdbe696d0710e2dba32c270d6b970790cc5eb804c9888bd11a15d1245124078a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 536,
+      "line_end": 565,
+      "heading": "## 11. Storage and implementation status today",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "3c9d8ab3d111758d41c203d4eb52fb373bbb61914bbabcf389280f9abae568fc",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 566,
+      "line_end": 618,
+      "heading": "## 12. Acceptance and authoring checklist",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "27b3c0586dd6bbf868958b7aa25d2cd919b26298d8366b749b8b10513a05013f",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "tools.md",
+      "line_start": 619,
+      "line_end": 637,
+      "heading": "## References",
+      "document_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+      "excerpt_sha256": "e1366a890bd6ed72fccd3a48a3f4a5f1c459c1b4e819298e5fb2b22f4c8d7b17",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 1,
+      "line_end": 18,
+      "heading": "# ToolSkill definition and authoring instructions — final v3",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "820ff622b0366ec7180ab6329483aa1482028797a4c2cb98b3e8d07f53ca7262",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 19,
+      "line_end": 54,
+      "heading": "## 1. The definition",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "58d056cff446759bb1ad11f0300b815954b0a43e31a7ae478967ac733146bd0f",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 55,
+      "line_end": 79,
+      "heading": "## 2. ToolSkill, Tool, Skill and PythonCode are different",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "649ac02353df788bfcb5e6e2b6ec51bafa0c6118d5269360ac2f11b18ea15417",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 80,
+      "line_end": 105,
+      "heading": "## 3. Reuse or create: decide before writing",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "f16775d7c18854aca461b937dfd41eb8e5539fa00ce183e085aeb095757146a1",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 106,
+      "line_end": 147,
+      "heading": "## 4. What happens when a Recipe uses a ToolSkill",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "36a7cbc37ba96c9fc23c719146f627aa76523da54043f829c6f4731e12b760b2",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 148,
+      "line_end": 182,
+      "heading": "## 5. Complete the binding design before creating a row",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "4ddb16b4f2cc11ddea7eb1638a14625fb301bc91626a9b763ab027843a7e793e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 183,
+      "line_end": 199,
+      "heading": "### Identity and binding rules",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "44de5b137dc6241f952c278f8d2110ba20bee34b6522e56065173c9be5623400",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 200,
+      "line_end": 227,
+      "heading": "### Parameter and result rules",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "afd453cdfacdce48c46a78adc6d2fde29b532537ba35ac073e8771f01e11b49a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 228,
+      "line_end": 249,
+      "heading": "### Template and data rules",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "cda57cfa6d38a161bc42fff611c2538d4bf9996036329a0ee8a77d8a74d63749",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 250,
+      "line_end": 296,
+      "heading": "## 6. Write metadata, not an execution body",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "9f45f21b148180f59fcfbf7845cc1b0a87fb024722b09dea060acd26e936515e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 297,
+      "line_end": 341,
+      "heading": "## 7. Current storage: what exists and what does not",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "65d2abc62b2fe018d4af21ca5377b4c0c9ebed78162468c60a506b18a8a04745",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 342,
+      "line_end": 355,
+      "heading": "### Structural metadata includes",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "23ee5a7996936229890e1ce9c3c16e3ff32d9a6d87977138805bd4f2ba0051e1",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 356,
+      "line_end": 381,
+      "heading": "### Current composition is not proof of final binding support",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "7f27963a4dc8a89b6d0aa0912de06e1c602c665a980318fcb8a86f84d418525c",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 382,
+      "line_end": 438,
+      "heading": "## 8. Versions, approval and live policy",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "07111da3d6a4f85535a63e1a5b92aadf55a184beade95f1737afe8eb3fe803fb",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 439,
+      "line_end": 470,
+      "heading": "## 9. Errors, retries and tier restrictions",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "901ca3d4875c2119ebea584620405d42dbde913a46006fe898ca54c8f29a8dc3",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 471,
+      "line_end": 476,
+      "heading": "## 10. Worked example: bind file reading, execute an interval usage",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "409863e859de99c29e153b8991a8edf9b7e0cb4bfa71131677df68f16510a902",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 477,
+      "line_end": 487,
+      "heading": "### A. Check the primitive before reusing the descriptor",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "53eba39917283ca5fcbce0324a5e075fdd2c79bb409215be9f735dd899914f84",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 488,
+      "line_end": 509,
+      "heading": "### B. Specify the correct binding",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "6037b5884a11b9d792fb5f2b5556fd15e93c00e77853179d78b368c223efcead",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 510,
+      "line_end": 538,
+      "heading": "### C. Keep the execution in PythonCode",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "7504f99ff3a0f0ff47fa375e60b3345026d2e8a009747b061b2f4b836d8faa33",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 539,
+      "line_end": 561,
+      "heading": "### D. Check concrete expected behavior",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "118ee8cb24b964f81d870b03dd844371ebd5ed8551c18b280e30543fbfefba84",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 562,
+      "line_end": 603,
+      "heading": "## 11. Author a new ToolSkill: follow this order",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "4cda5aa89382d59af02aa24615483a12835b38d33b7b5295f5efe359d86043ce",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 604,
+      "line_end": 654,
+      "heading": "## 12. Acceptance matrix and final checklist",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "9df0f9b25fcb7adb7825487a6dceda3828f7d1a5953f4dca076990ba566efe03",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "toolskills.md",
+      "line_start": 655,
+      "line_end": 672,
+      "heading": "## References",
+      "document_sha256": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+      "excerpt_sha256": "67b701ede223e542bc90df32bc320f2bc428a93bfa3e2b8e88e3f40a264d82cf",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 1,
+      "line_end": 2,
+      "heading": "# Agent Rules",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "bc7f328ed0e7e95c5ea6756620922fbf96811cf7648ef3df890e1088c3fa8085",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 3,
+      "line_end": 53,
+      "heading": "## Binding Recipe architecture (v3)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "2e445062fe9e39b1ae74ae43c9b7c52b23d4d318bfece87b2dd5d16901e01992",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 54,
+      "line_end": 120,
+      "heading": "### Required authoring and startup checks",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "1cd0d048c7a90ef287a0f53459f385418e41fc2f6d10cc82ee3689fa3e4d4792",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 121,
+      "line_end": 156,
+      "heading": "## Binding Skill definition (v3)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "0ec59596e9051b32b6d20d1b715e6941d4b9fee90481b09ea1f0a42233762832",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 157,
+      "line_end": 214,
+      "heading": "## Binding Tool and ToolSkill definitions (v3)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "4bb8a456c442b7c247de79ab5e7f5c3f70c99837bac55bd4d410bf6da60c19a8",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 215,
+      "line_end": 236,
+      "heading": "## Purpose and Precedence",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "68e6597b95c5e92d315bbd8fb602a4d6c311ac5b3373fa2ec2318db24988c3a2",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 237,
+      "line_end": 280,
+      "heading": "## Architecture Mental Model",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "e4a531b3023b31fc3fd81b58c67265e666cbc68fe7f951900b17a22dd43bc444",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 281,
+      "line_end": 328,
+      "heading": "### Simplified v3 authorization target (binding)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "6e794a752c25477755a24e4c3a897b19a4a97ef179ec62410e3373be784dac01",
+      "selected": true,
+      "reason": "Retain binding authorization, actual status, global Monty prerequisite, tier decision and authoring gates"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 329,
+      "line_end": 337,
+      "heading": "## Orchestrator-First, LLM-Minimal Design (Mandatory)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "834a002bfd3eb7916537e01462dd623f31b20c2aff2e9c041af634f655a4a399",
+      "selected": true,
+      "reason": "Retain binding authorization, actual status, global Monty prerequisite, tier decision and authoring gates"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 338,
+      "line_end": 373,
+      "heading": "### Global Monty lifecycle (binding target architecture)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "14cc16e3bfa22835c3551a5aee6ec3a6f7beb081cb0c7218a717651524f4a50d",
+      "selected": true,
+      "reason": "Retain binding authorization, actual status, global Monty prerequisite, tier decision and authoring gates"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 374,
+      "line_end": 433,
+      "heading": "### Turn Execution Flow — binding target",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "d9b584860ccc824ecf9a1e93f7e43623fc40a23587ed5c4fbf7a56fe01ca8116",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 434,
+      "line_end": 455,
+      "heading": "### Component Roles — What Each Type IS",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "cc62399a6d083a1ad04b7a2bb987ae07d01f39c41c852e26ede853727f83e359",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 456,
+      "line_end": 468,
+      "heading": "### The Two-Channel Execution Model",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "2d26b18e850677a73a98917fd62481edeab601e5f1a4d189fa9cf19dc7e8fbf1",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 469,
+      "line_end": 477,
+      "heading": "### Tier Decision Hierarchy",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "199b290c065e3f159677d6e7359dcc8873a8010578f9f3102c1f5b8e5f7c7b2e",
+      "selected": true,
+      "reason": "Retain binding authorization, actual status, global Monty prerequisite, tier decision and authoring gates"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 478,
+      "line_end": 530,
+      "heading": "### PythonCode input pattern (v3 target; runtime support required)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "2b4f34a4143186401db2019cd77d526ad4b5acae96699c252252623848130309",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 531,
+      "line_end": 541,
+      "heading": "### What Forces Tier 1",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "0a8e67401cdf6459d32d7f3b810aaf53ddfef5cf3a0b4633a1785654479011a1",
+      "selected": true,
+      "reason": "Retain binding authorization, actual status, global Monty prerequisite, tier decision and authoring gates"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 542,
+      "line_end": 569,
+      "heading": "### Q1 required authoring gates (verify runtime enforcement)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "ae6aaf8bc8fb3379c392dce200c8ac13d28ce2d7572636b91a8ce457587c1c16",
+      "selected": true,
+      "reason": "Retain binding authorization, actual status, global Monty prerequisite, tier decision and authoring gates"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 570,
+      "line_end": 626,
+      "heading": "### Recipe Tier Lifecycle — LLM as One-Time Cost",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "f4bbbab66bd8259aee66ff03bc227d1dc4a963158e3eba4cf621037fff01a50a",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 627,
+      "line_end": 635,
+      "heading": "### Extension Authoring Reference",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "c3103530da36b0f0c29eb039ac3c55e0a05fadb8f3edfed6cc965b58bfbd8faa",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 636,
+      "line_end": 666,
+      "heading": "## Adding a New Capability (Start Here)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "8285b3f6b4f23251312b3413510e0953105513b0678cb224587aab4ae8e06100",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 667,
+      "line_end": 705,
+      "heading": "## Where to Work",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "1d4dafb5be491157255385807e434a280f1f0af7c3f262596383aad0baaa40a6",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 706,
+      "line_end": 714,
+      "heading": "## Subagent and Loop Rules",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "5656886d30a4a74251a66155c5534aa8a6297b7c6663ccb8c0a085a0dd46ccd6",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 715,
+      "line_end": 726,
+      "heading": "## Repo-Wide Coding Rules",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "b73319c70e6e4765ead7661e92ecee243f393cbc24d8ac821d625ed634ac9011",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 727,
+      "line_end": 732,
+      "heading": "## Database Rules",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "3998cad7a7d77091722b10f9ca262570376b8c57da5756ed7f8e756c6b184687",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 733,
+      "line_end": 743,
+      "heading": "## Security Invariants",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "ec9d1909878b107286fce8a750c89f3dffb31104d694fe2121cff96bcbf73578",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 744,
+      "line_end": 759,
+      "heading": "### Capability Lease Authority Invariants (`brassclaw_authorization`)",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "3ab71f53161dea716c147158e78f932b6140998cb8d83018abeb4fa2502a590c",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 760,
+      "line_end": 765,
+      "heading": "## Testing Rules",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "bd2bc8d4574f925a031595daaf75fa2d4fe3b5e6e97b63bd07a1dba3eaa14a39",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 766,
+      "line_end": 783,
+      "heading": "## Key Environment Variables",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "92eb8a45ea82b2990091e832ea0ea65a1a1ded8e5d2f2e0b26c0a3a8e9bb42eb",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 784,
+      "line_end": 824,
+      "heading": "## Build and Test",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "937f4f6370564942db1ec8ae8b1b512f830f74b24051d41bb203c40b4dba8f5d",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "AGENTS.md",
+      "line_start": 825,
+      "line_end": 834,
+      "heading": "## Before Finishing",
+      "document_sha256": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+      "excerpt_sha256": "b9a747ef8587618fd9ad9fbc6d00416770c1bd129c724d0ec0256b66ac0a76bf",
+      "selected": false,
+      "reason": "Exclude duplicated authoring definitions, development/administration instructions or legacy authority guidance; binding guides and selected current target rules retained"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1,
+      "line_end": 2,
+      "heading": "# BrassClaw Development Guide",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "e0ffabc8de34bea4263393074ca7c2fa97c392969e4722d18681f3929bd4b4f3",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 3,
+      "line_end": 53,
+      "heading": "## Binding Recipe architecture (v3)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "2e445062fe9e39b1ae74ae43c9b7c52b23d4d318bfece87b2dd5d16901e01992",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 54,
+      "line_end": 120,
+      "heading": "### Required authoring and startup checks",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "1cd0d048c7a90ef287a0f53459f385418e41fc2f6d10cc82ee3689fa3e4d4792",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 121,
+      "line_end": 156,
+      "heading": "## Binding Skill definition (v3)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "0ec59596e9051b32b6d20d1b715e6941d4b9fee90481b09ea1f0a42233762832",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 157,
+      "line_end": 290,
+      "heading": "## Binding Tool and ToolSkill definitions (v3)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "24611caa50c65720a794811407205ee4a7ede1d89a4ed8df4c0d7f912c8daa3f",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 291,
+      "line_end": 306,
+      "heading": "## Code Style",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "2746546f418dd6a9d27797f321e2a19cb047e271205dde53c0fd24c929b7055e",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 307,
+      "line_end": 308,
+      "heading": "## Tool Usage Guidelines",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "5caac84cc4b960d1dbd1dba2bb614fc6c052adbb90d18fb276067a1f1396c4b6",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 309,
+      "line_end": 316,
+      "heading": "### Searching the codebase",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "8defca4744196568927f6e3b6db798313081db623e35c65472c83761c0d62817",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 317,
+      "line_end": 360,
+      "heading": "## Architecture",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "27ea62df94f482815367f63d31548842e442ae72c6c923f96a4fd9229a461471",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 361,
+      "line_end": 396,
+      "heading": "### Component Catalog and Class Codes",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "c8c3fb0c6b1caada55358c5eaf42ce4079b37d40457b3b474d0a2ebe351bc673",
+      "selected": true,
+      "reason": "Retain observed class/table mapping; scope descriptions are legacy storage, not target authority"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 397,
+      "line_end": 444,
+      "heading": "### Simplified v3 authorization target (binding)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "6e794a752c25477755a24e4c3a897b19a4a97ef179ec62410e3373be784dac01",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 445,
+      "line_end": 483,
+      "heading": "### Orchestrator-First, LLM-Minimal (Core Design Principle)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "d80e9a434d222c5b118201e0ca925debe0e921cba0beff4748e06b01543d2a40",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 484,
+      "line_end": 554,
+      "heading": "#### Turn Execution Flow (binding target — read this first)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "d11adb19405b787cb74fb996d97f0268002dd33e49dd2db2dc7e3f9a1089b436",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 555,
+      "line_end": 594,
+      "heading": "#### One global orchestrator, bounded tasks (binding target architecture)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "cf7bd03e71a5e5670e6c0d5b52d6464bc1b4ae615b86aa1f78b395fa461e0430",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 595,
+      "line_end": 602,
+      "heading": "#### Phase 1 — boot once, receive work (built-in, the one exception)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "cc83dd8dee0e3864abf57ebc42966752fc29d28921ca0271f9c9523f6c2af6a3",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 603,
+      "line_end": 613,
+      "heading": "#### Phase 2 — intent match (recipe-driven in principle; Rust today)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "3704a3293197b8ee62540fa02ac5425432efb9d6330eda7128e8b5a496f4e5de",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 614,
+      "line_end": 663,
+      "heading": "#### Phase 3 — dispatch",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "52e5cdd59028d0d04bcfca533f7a60ef5716c97806715333b46a51f58ea7f897",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 664,
+      "line_end": 675,
+      "heading": "#### Every LLM prompt is assembled by the orchestrator (ground truth 2)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "75fddb59c3dac401df9c52687b0855a8881c219171f7ab04a7adeaa7ba3b5937",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 676,
+      "line_end": 696,
+      "heading": "#### Tool Binding — how Tools become callable",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "b6f195734ceb89a475037ecd977963af6fa2197ec5e8c8f4e97ed2ce200261f4",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 697,
+      "line_end": 723,
+      "heading": "#### Runtime authority — enforced before every Tool dispatch",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "26189ab30a5021866c8fc6e0d5ebf29b7c2b179ad82fd1a5b9b63fe05c391a05",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 724,
+      "line_end": 731,
+      "heading": "#### Components are the crucial thing",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "a8ce133164854356e484cdacf029098f04a48c929e2732c79d6a6cdb5c74e26f",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 732,
+      "line_end": 799,
+      "heading": "#### Recipe syntax — human-readable AND machine-readable",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "41dc7d61b19fca88372170864f1f3b6af59d7297ffe50154ebe092ac6f4cfa02",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 800,
+      "line_end": 857,
+      "heading": "### Recipe Tier Lifecycle — LLM as One-Time Cost",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "7adb958a0941472281de8d053f8ad909e256ec9a5b5cf5fc362801d60bd018bb",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 858,
+      "line_end": 861,
+      "heading": "### Consumer-Tag Gating (§3.9)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "658fe1ecfcb5561c5bab8ec3b53b34734320cc5ee3eaf9e6f30bae3fe6dd2a47",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 862,
+      "line_end": 880,
+      "heading": "### 4-Queue Validation Lifecycle (§3.5.1)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "a104781eefa167acd87b8f8ce2b05be722ba679e1af04f46adb7351f86335cc1",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 881,
+      "line_end": 889,
+      "heading": "### Intent System (§3.12)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "bc556c93444b30fa33d052955f1f8a3833fbe61c8d37bd1df9a9e9db7ed98a12",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 890,
+      "line_end": 897,
+      "heading": "### Intent-Driven Retrieval (`fetch_for_turn`)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "70425345808ab732ac0fbf893a65d93018548a6becdf3a490dce147828819ca9",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 898,
+      "line_end": 909,
+      "heading": "### Monty VM Settings (§3.10)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "7655c255493b0d5642b4a91d9b27ffeb1ce335bfd0efc0e7c074e2699eec0f52",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 910,
+      "line_end": 915,
+      "heading": "### Orchestrator Code Load Path",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "dd7611b55cafda60b121926e5937498e7ec9ba7d3b1ac95f71b5b56eaf213b1f",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 916,
+      "line_end": 939,
+      "heading": "### Boot Sequence (seeding + integrity)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "33883b6da4578f7e291ba69e5dcd75b934b85b5a516c7a1c16fef6bd38a63a0b",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 940,
+      "line_end": 943,
+      "heading": "### `brassclaw repair` Command",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "1a57987776a1b6f631af87bd0605c7d4badae0e9265ed17bd83fc1e183a2d2b2",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 944,
+      "line_end": 947,
+      "heading": "### PKC Formatting Split (§3.13/§3.14)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "126f78d867926380d8839174d19186e1a2dd5871d4474c6fdd429451403b9653",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 948,
+      "line_end": 955,
+      "heading": "### Interceptor Architecture (§3.15)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "7e4fa77369e2776a8daf827e22d82c894ca00b7b2f6b7a832d5bc110c454571d",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 956,
+      "line_end": 959,
+      "heading": "### AI Before User Preference (§7 Q18)",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "359955c64687976f8d8780c9a88f83689ca927c77518c72769cdb8256cc2aaf2",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 960,
+      "line_end": 976,
+      "heading": "### Key Traits",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "82e04a06ac70e6abacb88b44fe636e27b4b063ba9465fa5049c572e47d5e5bc2",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 977,
+      "line_end": 991,
+      "heading": "### Extension and Auth Invariants",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "74c10b1aea3683f56293c844810e1bd5ee538fed6e12261f4c1ae1fe661fe4c8",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 992,
+      "line_end": 1029,
+      "heading": "## Build and Test",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "f9bfdd42ef645727f2c76f7f24924802f6fc549084540c11d45fdb0c1363787c",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1030,
+      "line_end": 1051,
+      "heading": "### Avoid redundant rebuilds",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "4a30baac8c4620685e238482cda8038b57be53c42f6a8d17b8a2ffc522da0ebb",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1052,
+      "line_end": 1053,
+      "heading": "## Creating Releases",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "6739fd916ea9ca50027f49cf935c22583227ce8c7e412a9baf147d5e2aeae6ba",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1054,
+      "line_end": 1057,
+      "heading": "### Automated Release Process",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "384e695b2a051b3d19f99697543be18eaf5873e06cfbe5d7ccca4e41f439ceef",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1058,
+      "line_end": 1072,
+      "heading": "### How to Create a Release",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "114a22bc1b3ca6f7bf24b6338d205777414c241aef6b51de86d0db5756c42274",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1073,
+      "line_end": 1077,
+      "heading": "### Monitoring Builds",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "7418793c98b9157e55ddafef22a2fdfb049d8d8f16df21f42734b98b4caa7998",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1078,
+      "line_end": 1083,
+      "heading": "### Supported Platforms",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "e9cb29514c73a17e6e6226e8f30575e2888177352d1ce7a3a9ff1fca520c0b0e",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1084,
+      "line_end": 1092,
+      "heading": "### Release Workflow Details",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "08d50f3451a101424abae93bdd44f27a6491078b4f8834cf52758f3cc6f3ad02",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1093,
+      "line_end": 1099,
+      "heading": "### Important Notes",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "348007c31474af38a50183640f56dbe7a13d4286a2e7c18b433f919f8ae95f4b",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1100,
+      "line_end": 1161,
+      "heading": "## Project Structure",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "715fca1feab65ca018e251e15d2c901f8099eadd17c6869d64d756fca498be6e",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1162,
+      "line_end": 1179,
+      "heading": "## Module Specs",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "fca2d0fca272bc8e287f54a28dae6043ff80fe73f5150cd24559a9b44622ea27",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1180,
+      "line_end": 1191,
+      "heading": "## Token Budget",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "e0849212206fc6608de28f599397440e1ebab3df57a6516741592403ac4a7288",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1192,
+      "line_end": 1216,
+      "heading": "## Skills",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "80d0ff1fccd843d3e74cf91a054a5f3d8158500b4df0e021e638458c38b61e55",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1217,
+      "line_end": 1244,
+      "heading": "### brassclaw_skills crate — feature gates",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "462ae0166318ec21d132421546edbdca628cb7e4528c70572deda6878bae4343",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1245,
+      "line_end": 1248,
+      "heading": "## Configuration",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "d5f48ca27d035657f63663f33576759b251dfa306e7fae69458b9af5d5d61555",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1249,
+      "line_end": 1268,
+      "heading": "### Key Reborn Variables",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "3036df2291a9ca70556b40db4a75b75869324632795ae301cfde389579fed237",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1269,
+      "line_end": 1282,
+      "heading": "## Database",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "f95d90c7ff3d746b5d7b74fc58d11d308b53a1c9e4ef1dbf4c09e956ddae1cba",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1283,
+      "line_end": 1293,
+      "heading": "## WebUI v2",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "34b1f86f444607ab20d0d8a367a7d8543d25d25c67b38651268eb82231827d52",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1294,
+      "line_end": 1302,
+      "heading": "## Job State Machine",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "ad0a2a4c57a452ac6ea7605ebd98ab35b1a66fd57741e1dd0b8173451b344abc",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1303,
+      "line_end": 1310,
+      "heading": "## Debugging",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "109291914dded8c5b256d00ab2f447d2fe52396042eaf899aec546172af19bb7",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "CLAUDE.md",
+      "line_start": 1311,
+      "line_end": 1319,
+      "heading": "## Current Limitations",
+      "document_sha256": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+      "excerpt_sha256": "c1c687fc1559598c8b307828ef8b73db06aa8aeb43e835dafa8876c8116493ad",
+      "selected": false,
+      "reason": "Exclude broad implementation/build/release tour, duplicate contract or unrelated limitation; retained authoring guides and actual class map cover reviewer role"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 1,
+      "line_end": 2,
+      "heading": "# Simplified v3: Plan zur Vereinfachung von Sicherheitsmodell, Runtime und WebUI",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "821d444e28a5720bc733e368763250de513cf8c45088537039b1aa8b07ff97e0",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 3,
+      "line_end": 58,
+      "heading": "## Binding Recipe architecture (v3)",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "72ae537f493a781fcd1c97980071963a5f05efe830b09e8949eb766a5f3c3ef9",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 59,
+      "line_end": 110,
+      "heading": "## Verbindliche Skill-Architektur",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "1b038f346c02863f242830951eeb37d057be7f0d2609f189e338d1d11b213641",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 111,
+      "line_end": 122,
+      "heading": "## 1. Zielbild",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "8bafaf0c786afd66ad5122ab22d9bb63dbb5d3837b3d52840544828d87932d96",
+      "selected": true,
+      "reason": "Retain target Recipe contract, Phase 0a release prerequisites, global policy and DB-only provider contract"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 123,
+      "line_end": 147,
+      "heading": "### 1.1 Verbindlicher Recipe-Vertrag",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "3d754123eda4bdc91a9491cb760b4f15d633ae43f0628431e3ac95e81a50ffde",
+      "selected": true,
+      "reason": "Retain target Recipe contract, Phase 0a release prerequisites, global policy and DB-only provider contract"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 148,
+      "line_end": 151,
+      "heading": "## 2. Auditumfang und aktuelle Architektur",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "2580bc71fb89e488e60f0bed84b91afbca587490210288b066d17aff1d3009d5",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 152,
+      "line_end": 161,
+      "heading": "### 2.1 Aktuelle Pfade",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "4e8bce2a2b86e823efc6a7bfda883edd1ca8f69e70886c814102b1f7a6d6cc6a",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 162,
+      "line_end": 174,
+      "heading": "### 2.2 Erkannte Komplexitätsquellen",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "01428d6b47acc58c9d952343f1f29d2b6da9463bfb53b8981129ff3a819ee4a7",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 175,
+      "line_end": 184,
+      "heading": "### 2.3 Dateien und Crates mit hoher Änderungswahrscheinlichkeit",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "625d9064568768092e862fbc4821e7495bb6c5226d54509c8880872905753876",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 185,
+      "line_end": 197,
+      "heading": "## 3. Sicherheitsentscheidungen vor Implementierung",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "7f6b91069832a08afb1ca734254e6d2c2974dca11e676eb2ab489e57e014d0ea",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 198,
+      "line_end": 203,
+      "heading": "## 4. Umsetzungsplan",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "c9fdf5ce29684385a00e20f568b9fd4428203263d9cc6ac81273355a8a2e03b9",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 204,
+      "line_end": 216,
+      "heading": "### Phase 0 — Inventar, Bedrohungsmodell und Baseline",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "47890a6f94c1eef7135a480b96a409ea1aae0ff3f17a8f6a32bc4dd96dd50a7c",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 217,
+      "line_end": 361,
+      "heading": "### Phase 0a — Ground-truth-Komponentenverträge implementieren",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "975d2579fc48329ce464b92189be096ff861e9e186666cf85099d58b33ebb59e",
+      "selected": true,
+      "reason": "Retain target Recipe contract, Phase 0a release prerequisites, global policy and DB-only provider contract"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 362,
+      "line_end": 370,
+      "heading": "### Phase 1 — Einzige Instanz- und Betreiberidentität",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "2c406e854414404398719b3bf0499dff5e1fc05fef6ef1624591f6edd38d25e2",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 371,
+      "line_end": 382,
+      "heading": "### Phase 2 — Autorisierungsscopes entfernen, Daten-IDs entkoppeln",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "c004749f21ba893aa2e390ae69ee10d074721666bd97274c6a87b8bfd354d1a3",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 383,
+      "line_end": 410,
+      "heading": "### Phase 3 — Eine feste Runtime- und Sicherheitsrichtlinie",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "628c1bfe16e7bec2993a208b7ad505cc3ad94ce38cadb9ca5453cfdfbb3314e2",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 411,
+      "line_end": 543,
+      "heading": "### Phase 3a — Globalen Monty beim Boot starten und dauerhaft betreiben",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "3d3fe77d53d63c914b49aad52bc7a3f242e0d7b4d1cfbc70439362aa2f33df1f",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 544,
+      "line_end": 552,
+      "heading": "### Phase 4 — Vollversion als einziger Produkt-Build",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "8924d6ecbd2a9a7d7bb89c50a9c030a20caeb9c078a25438c931c410220c08c5",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 553,
+      "line_end": 584,
+      "heading": "### Phase 5 — WebUI auf eine Betreiberoberfläche reduzieren",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "5469cd7bdc79456a900b233fbf874e7199385e0bf43211ee5471b0d090936274",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 585,
+      "line_end": 608,
+      "heading": "### Phase 6 — Datenbank-, Dateisystem- und Secret-Migration",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "f7b4cf70f3b65dd9d8bd231b7ef058572934497a21f3ab8c80d581f8ed0432c0",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 609,
+      "line_end": 657,
+      "heading": "### Phase 7 — Tests, Architekturverträge und Dokumentation bereinigen",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "477bbc67e1814edfa2846f276a61d957670bee2263eccc69e2be7f566769ff9a",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 658,
+      "line_end": 675,
+      "heading": "### Phase 8 — Cutover und Entfernung des Legacy-Modells",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "86e97bb4745cf6251f0a197c55040ccd58cb7d986362261b7fae3299bcf9e843",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 676,
+      "line_end": 706,
+      "heading": "## 5. Globale Abnahmekriterien",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "df2c5dca3d8eef63e31640f29850933d6b0ac6cddba24f5be3c59087b14a8747",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 707,
+      "line_end": 723,
+      "heading": "### 5.1 Leistungsabnahme",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "7d8437ebadbe39ae61d4531301841834a9924f036f67f7cb07217ee46b925342",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 724,
+      "line_end": 733,
+      "heading": "## 6. Risiken und bewusste Grenzen",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "5c31571bd84610dccfab49fb239cc12c684f6536a24e1266396879a12c198c0b",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 734,
+      "line_end": 745,
+      "heading": "## 7. Geprüfte Orientierung",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "441e060e1c25cde9d688d71d35cc2a91e7e53cd03754127c441124b544e582e5",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 746,
+      "line_end": 749,
+      "heading": "## 8. Ergänzung — Intents im WebUI verwalten und Matching nachvollziehbar machen",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "450fde9ad9ff480ee071e6a02e08d9d7db2cf915a4e4aba2eac8dec86c4fca4a",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 750,
+      "line_end": 769,
+      "heading": "### 8.1 Vorhandene Funktionen und offene Lücken",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "390a39dfee50caeb4f2527141b1c7dd2633d6ae15b9443c555e7920738552375",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 770,
+      "line_end": 781,
+      "heading": "### 8.2 Vorgeschlagene WebUI-Funktionen",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "184ad392489b2d49c9fe6950f154217dcbc0078e0f1f59c4e3b6bf6fe168052b",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 782,
+      "line_end": 792,
+      "heading": "### 8.3 Abnahme",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "e517bd74207fa377431e8ccaa11664ca0af5bea1aa7f8b67c7435825d2c2caf3",
+      "selected": false,
+      "reason": "Exclude duplicate definitions or migration/UI/performance inventories; full authoring guides, Phase 0a and selected current target contracts retained"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 793,
+      "line_end": 807,
+      "heading": "## 9. Verbindliche Klarstellung — Vollständige Betreiberverwaltung und globale Tool-Berechtigungen",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "d1d67357cb03ef9dfeaff2e4ec25ab765a2464bb9743d5d0ed2e497705709d29",
+      "selected": true,
+      "reason": "Retain target Recipe contract, Phase 0a release prerequisites, global policy and DB-only provider contract"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 808,
+      "line_end": 819,
+      "heading": "## 10. Ergänzung — Provider ausschließlich in PostgreSQL",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "73a309fa8fda559996cdb84e6f06ad8d0d9de3f7d7b040335597d0c722981fc3",
+      "selected": true,
+      "reason": "Retain target Recipe contract, Phase 0a release prerequisites, global policy and DB-only provider contract"
+    },
+    {
+      "path": "simplified_v3.md",
+      "line_start": 820,
+      "line_end": 829,
+      "heading": "### 10.1 Umsetzung und Entfernung",
+      "document_sha256": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+      "excerpt_sha256": "bd811228640e7f9166aa424a40df25d023ee70413a06db52b515458d3648a6c3",
+      "selected": true,
+      "reason": "Retain target Recipe contract, Phase 0a release prerequisites, global policy and DB-only provider contract"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 1,
+      "line_end": 2,
+      "heading": "# 14 — Validation Queue System",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "40b90a55825887dce16731110f667964d9fe7489ac49b8d70161bc2fa0400473",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 3,
+      "line_end": 64,
+      "heading": "## Binding Recipe architecture (v3)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "560c9e968c99686e96fd65f08dec95dd4eecc6b873021e8bad18e4fc32751872",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 65,
+      "line_end": 106,
+      "heading": "## 1. Purpose",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "05d39cc1419486b65322afcd09b6d6b6e1668432c675cb45c9e765e951fa3e77",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 107,
+      "line_end": 108,
+      "heading": "## 2. Location",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "2e88aa874de0f093386a3ecfb7ee3ff5228e9f8286ed933a8e7ddc4e3c00d1d6",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 109,
+      "line_end": 159,
+      "heading": "### Shipped",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "9a98ff6f89579e910ddd275c5f317542ed1f522c24e04dd29b46b8ec46f506d0",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 160,
+      "line_end": 168,
+      "heading": "### Pending (Phase N)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "e61009d21c015569e4c15053cf133c04203b6f5ec4d9007d50adf6092a18383d",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 169,
+      "line_end": 170,
+      "heading": "## 3. Data Model",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "c9552765f2f0b55410cf9eb2b4e96f9da0c4871ef912676de5a6da673de83528",
+      "selected": true,
+      "reason": "Retain observed queue schema/states; current guides govern authoring and approval semantics"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 171,
+      "line_end": 209,
+      "heading": "### `reborn_validation_queue` (V051 — shipped)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "2b98f7f154d085c339ec18d4b5e420f0dbd59ae12c5a0ace56483b9be7f1eaed",
+      "selected": true,
+      "reason": "Retain observed queue schema/states; current guides govern authoring and approval semantics"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 210,
+      "line_end": 217,
+      "heading": "### `validation_status` on component tables (unchanged, stays)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "7b52e59506f69572388353f81f3e5f031d2d39d9e24d565146c10ce941a798c5",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 218,
+      "line_end": 230,
+      "heading": "### Columns that moved to the queue (shipped across V072–V075)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "d1825b2f05f1e3b0d17d4e5713e387b48ef3a1671e49d4a002ead47368de3802",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 231,
+      "line_end": 232,
+      "heading": "## 4. Behavior",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "dce2fc0c0b2b5dd3ed927efd836167ec5251a2449d87dcb832a57ac8868965b8",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 233,
+      "line_end": 256,
+      "heading": "### Q1 (Gate 1 — automatic)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "866ba176bfdd7704003990b7ca13e6394cff1ebdcb63a96687fc2cbda0efd885",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 257,
+      "line_end": 280,
+      "heading": "### Q2 (manual review)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "97006ab87655d20d50c68be3d3353ebdd5e7e3c2e404a57ddd16483e065ba1a6",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 281,
+      "line_end": 314,
+      "heading": "### Graduation cache invalidation (Phase N.3 — planned)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "ec417ccee14849a115f5567a1281df786c5173a2c0eaabeae2340490969f24ed",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 315,
+      "line_end": 340,
+      "heading": "### Wilson scoring (live today, on `reborn_recipes`)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "6bb342afc3aef0ac2b91dbbff1c497f52aa301cc3487ef0439156c6011fc4fd2",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 341,
+      "line_end": 376,
+      "heading": "## 4b. Per-class Q1 validation criteria (f8 — new-component-creation)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "161a1a112f356380f39c1695dedfd2224ffc303e9227856da3664435ceca5967",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 377,
+      "line_end": 403,
+      "heading": "## 5. Relations",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "95b6d4fde5b27e525cf5b0efb925d277eeaab33b9a41052d0d716c3a057084bf",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 404,
+      "line_end": 423,
+      "heading": "## 6. Shipped vs pending",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "203a9b2b871e0f49c97b96a186e666c05d938da81fa6b7c77e7ed38236e18184",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "line_start": 424,
+      "line_end": 452,
+      "heading": "## 7. LLM Summary (machine-convertible)",
+      "document_sha256": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+      "excerpt_sha256": "e57cf16c2d133043f97cd8c571a943695dc76b96027cb0995405b6fd01be5b6a",
+      "selected": false,
+      "reason": "Exclude superseded validation narrative/criteria or nonessential subsystem details; retain full raw source; see report findings 1-5"
+    },
+    {
+      "path": "crates/brassclaw_interceptor/src/packet.rs",
+      "line_start": 1,
+      "line_end": 400,
+      "heading": "//! `ForensicPacket` — the core data type captured by the interceptor.",
+      "document_sha256": "d1d3c2bc5f37b5848a061e5f40e0ff3dbb8d164ff90830855f8c1aef5b41a923",
+      "excerpt_sha256": "d1d3c2bc5f37b5848a061e5f40e0ff3dbb8d164ff90830855f8c1aef5b41a923",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
+      "line_start": 1,
+      "line_end": 3,
+      "heading": "You are the Sempai — an expert AI systems auditor whose role is to review and",
+      "document_sha256": "420f7d632873baca12120ce36024148c0eb218dda32760d9239e553710abea40",
+      "excerpt_sha256": "43619dc730b795658566e6b2a6c5744abcc9110541982c8a3f6dc10447d391ed",
+      "selected": false,
+      "reason": "Exclude legacy role/output schema; current trusted host persona/schema supplied separately"
+    },
+    {
+      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
+      "line_start": 4,
+      "line_end": 17,
+      "heading": "## Your mission",
+      "document_sha256": "420f7d632873baca12120ce36024148c0eb218dda32760d9239e553710abea40",
+      "excerpt_sha256": "44bde08ba015c169547c2b3832cd52f98fe0a5cb3b1d479cfdc2443edea4f739",
+      "selected": false,
+      "reason": "Exclude legacy role/output schema; current trusted host persona/schema supplied separately"
+    },
+    {
+      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
+      "line_start": 18,
+      "line_end": 45,
+      "heading": "## Output format",
+      "document_sha256": "420f7d632873baca12120ce36024148c0eb218dda32760d9239e553710abea40",
+      "excerpt_sha256": "2bfd388f7ae612b71c990f76d9022aceb58902237a04fe6c3d73c39ab177e436",
+      "selected": false,
+      "reason": "Exclude legacy role/output schema; current trusted host persona/schema supplied separately"
+    },
+    {
+      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
+      "line_start": 46,
+      "line_end": 56,
+      "heading": "## Rules",
+      "document_sha256": "420f7d632873baca12120ce36024148c0eb218dda32760d9239e553710abea40",
+      "excerpt_sha256": "83ced63e094839114edfcf5cf4f7adcaeeb285a44572bc8b17d55eb2850d048f",
+      "selected": false,
+      "reason": "Exclude legacy role/output schema; current trusted host persona/schema supplied separately"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 1,
+      "line_end": 8,
+      "heading": "# Sempai prompt review and component authoring procedure",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "1160dcc187e0f534ddd17ad2b4abbeb49a4ca249207836ad231270b5ba82354e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 9,
+      "line_end": 35,
+      "heading": "## 1. Inputs and evidence boundaries",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "964f1abca2056064c0b0044006afa08e4176cf9af695a744c2aff95d037df07f",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 36,
+      "line_end": 72,
+      "heading": "## 2. Diagnose the prompt for the actual provider",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "d0bb5a8879f0e4228e01ea2d51b273950b794efceb5439be4b5602b6b990bd62",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 73,
+      "line_end": 92,
+      "heading": "## 3. Extract a reusable workflow from conversations",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "08cc41e5c3b027af2b131a7bfa814638bd99b4b1638c4e0b8835e5f51fa90c3a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 93,
+      "line_end": 139,
+      "heading": "## 4. Author the Recipe and executable usages",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "ac342c18c9987448b00d9afd1ebf1422f1e7eabfa7abd930b71a4dead577c194",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 140,
+      "line_end": 159,
+      "heading": "## 5. Author the Skill association and failure contract",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "d8dcf0fdea924af2c6f159449f20b6bbe8cc1cf2f61cc868cba2848165206136",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 160,
+      "line_end": 198,
+      "heading": "## 6. Proposal, validation and coherent activation",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "962f0765dcd674957c3954b1af73b3944770b0116b51516e950d083fd4896981",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 199,
+      "line_end": 215,
+      "heading": "## 7. Reviewer output and acceptance",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "39de1307a5ee75d4803fca184f2274a1f6b535196fc54ede92cc106d33ff18bf",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 216,
+      "line_end": 274,
+      "heading": "## 8. Apply the reviewer decision procedure",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "7b6bb2b40b5ce06570414ccf73406eb0921d4e1f90d6e850d8ab29e4e87f5aa0",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 275,
+      "line_end": 319,
+      "heading": "### Raw validation data versus already-validated execution inputs",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "ea7fca793aa30bee4bac6a271e308d6659c79a2bea89d05e0370b1191137f4c0",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 320,
+      "line_end": 366,
+      "heading": "### Small examples of complete programs and blocked output",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "da03d72dba359e8eb3564904bc8e788876579c8522db59ce445e1e0ea1012379",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 367,
+      "line_end": 435,
+      "heading": "### Complete data-decision patterns",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "34154289d7dc7f91cce5326556a1aea0ebc8c0c3a6251bb539966284de03d51e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "line_start": 436,
+      "line_end": 451,
+      "heading": "### Domain-specific nonempty counts example",
+      "document_sha256": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+      "excerpt_sha256": "318e08c1b1d0eecf3a1ad457d585834683223084dbf7baa6c9ee61f8a9e6e359",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1,
+      "line_end": 16,
+      "heading": "# Verified Sempai worked examples and semantic contrasts",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "5f801e4da595f85f1d3ef6e01e36c1151d2e627850511548036d60f33b6dcbdc",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 17,
+      "line_end": 36,
+      "heading": "## Decision map: discriminate before adapting an example",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "4a6b32da29f435d47d2469bae47ff161b582b28f2fe973f75bc9712387999d73",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 37,
+      "line_end": 166,
+      "heading": "## helper-range — Called helper returns its complete object",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "26f4a87125f3ed7b39922d6c4a244204e76dc7372e5e5b7c4ffdc1919b8ab30d",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 167,
+      "line_end": 341,
+      "heading": "## empty-allowed — List empty allowed",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "76a632c0b6c5788df86b236cba8157271e4b4d07cc3628fb562a60ccb87c5002",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 342,
+      "line_end": 516,
+      "heading": "## nonempty-required — List nonempty required",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "4f0e518228f376d4607f3a4e52d3a7987ca89e69aaf479afa6b72a3eb07c12ce",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 517,
+      "line_end": 721,
+      "heading": "## recursive-shape — List cardinality and nested object validation",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "1f92ba38c5dd5cd36c038a967b9014bfda57e6a11be5a9fa3928330f19d5cf71",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 722,
+      "line_end": 848,
+      "heading": "## missing-null — Presence is distinct from null",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "1756b9533fd7c62345b0cf2820abbcc4d3064098e1f502970e9b4a33b7a2e950",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 849,
+      "line_end": 968,
+      "heading": "## default-missing — Apply a default only to missing data",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "7b53e35ff475c954b6493b736b92922e95027125b66c0b25788c94d02f6f9505",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 969,
+      "line_end": 1088,
+      "heading": "## enum-exact — Exact enum matching without normalization",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "43e204ccbf28f51791aeede987842859adf97a907537226511a313c0bc04a66e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1089,
+      "line_end": 1200,
+      "heading": "## flag-both — Both boolean values are valid",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "c14acd98cb63f09f45fb22d31f731d172aba9cae7556ed784be18067068d08a6",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1201,
+      "line_end": 1295,
+      "heading": "## exact-output — Do not append evidence to a typed result",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "79ac8133665ab5fcffcddce6f30ecfe2ced742d8645c4ecb84f7cd333f86ab84",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1296,
+      "line_end": 1496,
+      "heading": "## two-level — Nested lists validate every member",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "cb828319e80f2142308a84dbd91fcf913f6760ee50901eebcfad21d374d18de1",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1497,
+      "line_end": 1616,
+      "heading": "## all-fields — Validate every decision field before shortcuts",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "2d193f533e548f41466ab55b1f11865cdae4027584dd959de6c02459ff821607",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1617,
+      "line_end": 1707,
+      "heading": "## ready-data — Same word, different effect",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "771506fdc8989691ad96adbe5d9186a9018453f31b4504ac75c39304ad8e26a5",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1708,
+      "line_end": 1810,
+      "heading": "## ready-reply — Same word, different effect",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "cd87ea290b422c26a1dbe5571246d6699423250e7938ded9de3fe1f752868e2b",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1811,
+      "line_end": 1901,
+      "heading": "## healthy-data — Same word, different effect",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "ecf4d41966214b440b0982f6c20b653a8f4d8a57f254003aaf849402683437e4",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 1902,
+      "line_end": 2004,
+      "heading": "## healthy-reply — Same word, different effect",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "c0c6c3e3208c93be9b31aade06e62ca8a4b304df540c6b796954a71b51b7b0f8",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2005,
+      "line_end": 2047,
+      "heading": "## repair-english — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "c84661122335622255ddf68799870c8fafc7c48b0184feae95562b99f3295b55",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2048,
+      "line_end": 2090,
+      "heading": "## repair-german — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "b47b30eefa99144afc9853acfbd1ad09ff964a5c71f56862e566422b8a83bffb",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2091,
+      "line_end": 2133,
+      "heading": "## no-edit — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "da0cf59054cfb471d0160c2c35c3e8f4d4dbafbcd7a82e9e752fffef7277ed79",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2134,
+      "line_end": 2168,
+      "heading": "## provider-unknown — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "782906adbdc9718e603e34a4aba5ad8292d56122aa71c0afcdccc4d736c7ad74",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2169,
+      "line_end": 2211,
+      "heading": "## provider-known — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "f00a668dfc934644498476a553453f2528057b3fe839cbcd0748442879fd8a10",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2212,
+      "line_end": 2270,
+      "heading": "## effect-completed — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "99173ca371268a25edfd94d666dd7f7eb2c04fc171b82c53b3c566e85d998a2f",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2271,
+      "line_end": 2321,
+      "heading": "## effect-unknown — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "3163417be40bcc80fceb66d854e1d9f5eb7016a0e1a7ae9fc6af9e885143d265",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2322,
+      "line_end": 2356,
+      "heading": "## blocked-live-recipe — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "77c52e24ac6622ce34a3867eb20425bfe5d252b689ca1cd05c7bd679c233ea8a",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2357,
+      "line_end": 2391,
+      "heading": "## unsupported-skill — Complete review envelope",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "cdb9e6bb1e5b806625f971461cbbed490bc2a96ed17488cc0be70b3e12d94262",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2392,
+      "line_end": 2449,
+      "heading": "## Cross-example discriminators and final artifact audit",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "9f0587b7c75efc3562bc8c98f8b7fcc0947605b1fed080ec1d15b2aa93dd986e",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2450,
+      "line_end": 2591,
+      "heading": "## mapping-presence-helper — Presence-aware helper receives the whole mapping",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "2ee484e47f84f72a308fd48bb97efa0968a7940a9156307bd9025427f0f3d9a4",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2592,
+      "line_end": 2724,
+      "heading": "## parameterized-presence — Parameterized helper binds this contract at its call",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "b584124ab184b2b9b84e568dca71ff3ad83fe1556e75d1d0b2181a105c145dfa",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2725,
+      "line_end": 2965,
+      "heading": "## parameterized-recursive — Every bound and exact False boolean remains independent",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "544caca95cc1e3e0f9401fd41fe8b58ffa0d3c6951328935fbffaea8fd7cdb54",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 2966,
+      "line_end": 3031,
+      "heading": "## duplicate-views — Two input views are one original conversation",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "f4aaa2227373e28f2d39c4841c751fe91c1d0737512c7f2b074acc8b545ae4fe",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    },
+    {
+      "path": "scripts/prefix/sempai-worked-examples.md",
+      "line_start": 3032,
+      "line_end": 3065,
+      "heading": "## Terminal dispatch map — Select semantics before an example",
+      "document_sha256": "6b138978538993279f0adcb0456c02a1f31ded8a0f4dc5cdbd07d176c484bc4c",
+      "excerpt_sha256": "f035c82856e65539e805fe037d93ac27fc5e23f742242ab6eb3ce8cbc93c413f",
+      "selected": true,
+      "reason": "Complete authoritative guide or verified tutorial, source reviewed"
+    }
+  ],
+  "authorization": "Operator requested deployment of audited selection on 2026-10-06; authored components remain subject to Q1 and human Q2.",
+  "review_revision": "2026-10-07-sempai-contract-checkpoint-3",
+  "review_notes": "Complete guides and 28 verified examples retained. Added whole-object and helper-invocation review facts at terminal checkpoint; behavior receipt 121 probes and six rejected mutations. Current host schema remains authoritative; no test solutions or production approval."
+}

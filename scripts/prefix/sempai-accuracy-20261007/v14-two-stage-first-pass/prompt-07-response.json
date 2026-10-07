@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8287ae16d0a91c34",
+  "object": "chat.completion",
+  "created": 1791331633,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"system\",\"Antworte sachlich sachlich.\"],[\"user\",\"Keep my exact request and punctuation: {a:1}.\"]], \"bridge_messages\": [], \"composition_summary\": \"Audit only. No edits authorized; repeated wording does not permit a change. Echoed both messages exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown; no rewrite or inferred capability facts were applied.\", \"proposed_components\": [], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98532,
+    "total_tokens": 98650,
+    "completion_tokens": 118,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,19 @@
+{
+  "approval": "reference snapshot only; not Q1/Q2 or runtime acceptance",
+  "checkout_commit": "2071108060829004a5b944378ab195b5fc50c11a",
+  "documents": {
+    "AGENTS.md": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+    "CLAUDE.md": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+    "crates/brassclaw_engine/prompts/sempai_audit.md": "420f7d632873baca12120ce36024148c0eb218dda32760d9239e553710abea40",
+    "crates/brassclaw_interceptor/src/packet.rs": "d1d3c2bc5f37b5848a061e5f40e0ff3dbb8d164ff90830855f8c1aef5b41a923",
+    "docs/agents-v3/14-validation-queue.md": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+    "recipe.md": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+    "scripts/prefix/sempai-authoring-reference.md": "92e79ad41f2edc00b6270af0f77283150e4affd80823445e1213998a567bf139",
+    "simplified_v3.md": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+    "skills.md": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+    "tools.md": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c",
+    "toolskills.md": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00"
+  },
+  "schema": 1,
+  "snapshot": "3fe0534500ec039306577f31a7c8220090317b7a64cfb5e5ced79c48bec85784"
+}

@@ -1,0 +1,14 @@
+{
+  "composition_summary": "Provider capabilities and catalogue revision are unknown. target_provider_metadata has protocol_capabilities=null and catalogue_revision=null, so no supported roles, Tool encoding, or reasoning syntax can be inferred. The model name 'cyankiwi/Ornith-1.5-9B-AWQ-INT4' is a quantization/size label and does not establish role, tool, or thinking-mode support. Per the instruction, no proposals are emitted and the volatile messages are kept unchanged. The missing facts (protocol_capabilities, catalogue_revision, supported roles, Tool schema, reasoning syntax) must be supplied through the trusted host adapter before any provider-specific prompt repair can be proposed.",
+  "settings_adjustments": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ],
+  "proposed_components": []
+}

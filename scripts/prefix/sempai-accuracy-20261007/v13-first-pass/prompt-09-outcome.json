@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Preserve evidence evidence."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edit authorized. The system text contains a repeated word (evidence evidence) but no edit was authorized, so it is preserved verbatim. The user request is preserved exactly, including its braces and punctuation. Target provider protocol, roles, tool and reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no rewrite or inferred capability facts were applied. No components were proposed.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

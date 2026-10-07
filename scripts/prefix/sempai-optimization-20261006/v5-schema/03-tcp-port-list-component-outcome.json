@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-tcp-port-list",
+        "description": "Pure-logic guard that validates a raw candidate TCP-port list before any network action. Reads the raw candidate from inputs.get('ports') so that missing, null, empty, scalar, boolean, non-list or out-of-range values are returned as an invalid result rather than raising. Accepts only a nonempty list of exact integers, each in 1..65535 inclusive; booleans are not integers and are rejected. Missing and null remain distinct: a missing key yields valid=false with ports=[]; an explicit null also yields valid=false with ports=[]. No imports, no I/O, no host calls and no UUIDs. Typed inputs are a target interface; the selected Monty runner must supply the inputs mapping and execute this body. Target input contract: inputs.get('ports') is the raw candidate. Target result contract: {valid: boolean, ports: original list if valid else []}. Missing typed-runner support is a prerequisite, not a runtime guarantee.",
+        "content": "def check_tcp_port_list(candidate):\n    if not isinstance(candidate, list) or len(candidate) == 0:\n        return {'valid': False, 'ports': []}\n    valid = True\n    for port in candidate:\n        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:\n            valid = False\n            break\n    result = {'valid': valid, 'ports': candidate if valid else []}\n    return result\nresult = check_tcp_port_list(inputs.get('ports'))"
+      }
+    }
+  ],
+  "composition_summary": "Proposed one class-22 pure-logic component pc-check-tcp-port-list. The body reads the raw candidate with inputs.get('ports') so missing/null/empty/scalar/bool/non-list and out-of-range values all return valid=false with ports=[] without raising; booleans are rejected via an explicit isinstance(port, bool) check before the integer test. result is assigned on every path (missing/null/empty, invalid element, valid). No imports, I/O, host calls or UUIDs. Description carries the target input/result contract and the missing typed-runner prerequisite; no approval claims. The host sink supports class 22 name/description/content, so the payload is a supported constructor draft. The host must still run Q1, observed behavior and human Q2 before activation.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": []
+}

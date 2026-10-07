@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8e798e9ddad73fa5",
+  "object": "chat.completion",
+  "created": 1791320325,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-classify-value\",\n        \"description\": \"Classify an optional raw value while preserving the distinction between missing and null. Reads a raw candidate from inputs.get('value'). Returns {state:'missing',value:null} when the key is absent; {state:'null',value:null} when the value is present but null; {state:'value',value:<original>} when the value is an exact integer in 0..10 inclusive (booleans and floats are rejected); and {state:'invalid',value:null} for any other value. No defaults, no coercion, no exceptions, no imports, no host calls and no I/O. Pure logic; assigns result on every outcome.\",\n        \"content\": \"value = inputs.get('value')\\nif value is None:\\n    result = {'state': 'null' if isinstance(value, type(None)) else 'missing', 'value': None}\\nelse:\\n    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10:\\n        result = {'state': 'invalid', 'value': None}\\n    else:\\n        result = {'state': 'value', 'value': value}\"\n      }\n    }\n  ],\n  \"composition_summary\": \"Offline-design mode: no host sink or catalogue identity was supplied, so no component was inserted or activated. The class-22 draft is a pure-logic guard only. It reads the raw candidate with inputs.get('value') so absent and null remain distinct (absent -> state 'missing', present-but-null -> state 'null'). It rejects booleans and floats before the integer range check, then returns state 'value' with the original for an exact integer in 0..10 inclusive and state 'invalid' otherwise. No defaults, coercion, exceptions, imports, host calls or I/O. The body assigns result on every outcome. This is an unapproved target-interface draft; Q1, observed behavior and human Q2 precede activation.\",\n  \"proposed_intent_examples\": [],\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Classify an optional raw value while preserving the distinction between missing and null.\"]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 74015,
+    "total_tokens": 74540,
+    "completion_tokens": 525,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

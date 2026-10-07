@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-97864cbeb4fe3103",
+  "object": "chat.completion",
+  "created": 1791359389,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Make a reusable Sent workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Created one class-21 recipe-fresh-sent-reply with trigger=null, steps=[], dependency_registry=null, one desc_idx=0 containing two component steps in supplied order (rust ToolSkill ed366513-fe34-5022-9c90-daa6ab946493 then orchestrator PythonCode 20ffa6ad-e015-54c6-8f29-ffe72d40f365), one variant step_link 0:1-0:E, variable_patterns=[], and ten unique matching intents in both lists. The workflow posts the fixed word 'Sent' once as a reply via host.post_reply(answer='Sent'); this is an actual message effect, not returned data. Prior knowledge retains Q1, human Q2, unapproved dependencies and the current sink gap. No version/approval/runtime claims. Messages preserved; root compatibility arrays empty.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-fresh-sent-reply\", \"description\": \"Offline full-v3 export only; unapproved documentation fixture. Posts the fixed word 'Sent' once as a reply via host.post_reply(answer='Sent'). Requires Q1, human Q2 and exact-combination approval before activation. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry; export only, no submission or activation.\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply. Requires Q1 and human Q2. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\", \"intent_examples\": [\"say sent\", \"reply sent\", \"post sent\", \"send the sent reply\", \"respond with sent\", \"tell me sent\", \"please say sent\", \"please reply sent\", \"post the fixed sent message\", \"send the fixed sent message\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"rust\", \"goal\": \"Bind reply Tool\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"ed366513-fe34-5022-9c90-daa6ab946493\"], \"tool_bindings\": [], \"dependencies\": null}, {\"stepnumber\": 2, \"knowledge\": \"orchestrator\", \"goal\": \"Post fixed reply\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"20ffa6ad-e015-54c6-8f29-ffe72d40f365\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"fresh-sent-reply\", \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"say sent\", \"reply sent\", \"post sent\", \"send the sent reply\", \"respond with sent\", \"tell me sent\", \"please say sent\", \"please reply sent\", \"post the fixed sent message\", \"send the fixed sent message\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 99305,
+    "total_tokens": 100136,
+    "completion_tokens": 831,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

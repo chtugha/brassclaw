@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-tcp-port-list",
+    "description": "Pure-logic validation of a TCP-port list. Accepts a nonempty list of exact integers, each in 1..65535 inclusive. Booleans are invalid; missing, null, scalar, empty, bool elements and out-of-range values fail closed without raising an exception. Returns {valid: boolean, ports: original list if valid else []}. Typed-input contract: the consuming step supplies `ports` via the step-local `inputs` mapping (recipe.md target interface, not guaranteed deployed runtime support). Missing/null/wrong-type inputs stop binding before dispatch. This is deterministic pure logic with zero host calls and zero LLM calls; a Tier-0 Recipe can consume it once the typed runner and integer transport are implemented. No imports, I/O, host calls or UUIDs.",
+    "content": "ports = inputs[\"ports\"]\nif not isinstance(ports, list) or len(ports) == 0:\n    result = {\"valid\": False, \"ports\": []}\nelse:\n    valid = True\n    for p in ports:\n        if isinstance(p, bool) or not isinstance(p, int) or not (1 <= p <= 65535):\n            valid = False\n            break\n    result = {\"valid\": valid, \"ports\": ports if valid else []}"
+  }
+}

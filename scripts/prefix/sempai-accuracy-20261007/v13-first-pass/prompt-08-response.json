@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b73b31a739d84451",
+  "object": "chat.completion",
+  "created": 1791329723,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Return JSON JSON.\"],\n    [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Audit only; no edit authorized. The system text is quoted user-selected content with a repeated word, but no edit was authorized, so it is preserved verbatim. The user request is preserved exactly, including its punctuation. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no provider-specific rewrite or capability inference was applied. No components, intents, settings or recipe updates were proposed.\",\n  \"proposed_components\": [],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 96964,
+    "total_tokens": 97147,
+    "completion_tokens": 183,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

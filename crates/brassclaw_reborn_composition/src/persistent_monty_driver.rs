@@ -65,7 +65,7 @@ use std::sync::Arc;
 #[cfg(feature = "skills-db")]
 use async_trait::async_trait;
 #[cfg(feature = "skills-db")]
-use monty::MontyObject;
+use monty_types::MontyObject;
 #[cfg(feature = "skills-db")]
 use std::sync::Mutex;
 #[cfg(feature = "skills-db")]
@@ -422,7 +422,7 @@ impl PersistentMontyDriver {
         effects: &Arc<dyn EffectExecutor>,
         user_input: Option<&str>,
     ) -> Result<OrchestratorYield, AgentLoopDriverError> {
-        let new_input = user_input.map(|s| MontyObject::String(s.to_string()));
+        let new_input = user_input.map(|s| MontyObject::string(s.to_string()));
         session
             .drive_to_yield(
                 thread,

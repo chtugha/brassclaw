@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8469f107c9e77b24",
+  "object": "chat.completion",
+  "created": 1791324256,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Drafted one unapproved pure-logic class-22 component. Raw slots must be a list with length 1..3 inclusive, all items exact integers 1..5 inclusive. Empty is invalid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-01\",\n        \"description\": \"Raw slots must be a list with length 1..3 inclusive, all items exact integers 1..5 inclusive. Empty is invalid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"slots = inputs.get('slots')\\nok = type(slots) is list and 1 <= len(slots) <= 3\\nif ok:\\n    for slot in slots:\\n        if not (type(slot) is int and 1 <= slot <= 5):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'slots': slots if ok else []}\"\n      }\n    }\n  ],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97408,
+    "total_tokens": 97813,
+    "completion_tokens": 405,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

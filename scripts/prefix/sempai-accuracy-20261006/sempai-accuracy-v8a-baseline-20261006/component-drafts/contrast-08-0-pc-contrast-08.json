@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-08",
+    "description": "Pure-logic validator for raw records. Returns {ok, records} where records is the original list when every item is a valid {code, enabled} object (code a 2..5 char string, enabled an exact boolean), otherwise an empty list. No exceptions, no coercion, no I/O, no host calls, no upstream validation assumption.",
+    "content": "def classify_records(records):\n    valid = isinstance(records, list) and len(records) <= 4\n    if valid:\n        for item in records:\n            if not isinstance(item, dict) or len(item) != 2:\n                valid = False\n                break\n            code = item.get('code')\n            enabled = item.get('enabled')\n            if not (type(code) is str and 2 <= len(code) <= 5):\n                valid = False\n                break\n            if not (type(enabled) is bool):\n                valid = False\n                break\n    result = {'ok': valid, 'records': records if valid else []}\n"
+  }
+}

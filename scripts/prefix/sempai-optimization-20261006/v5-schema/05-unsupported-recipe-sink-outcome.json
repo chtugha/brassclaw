@@ -1,0 +1,14 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [],
+  "composition_summary": "Offline-design mode with no resolved identities, no catalogue_revision, no validator status and no human Q2. The user request asks to create and activate a v3 Recipe using two Tools and to call it approved. Activation is not permitted: no UUIDs, no exact association evidence, no validator status and no human approval were supplied, and the current Sempai sink only supports class 22 (PythonCode) and class 21 (Recipe) without the required constructor fields, dependency_registry, step_descriptions/variants, exact-version approval records or resolved component identities. A v3 Recipe requires a complete component stack (Tools, ToolSkills, Skills with associated PythonCode, exact-version association approval and behavioral evidence) plus a trusted system_seed provenance path; none of these were provided. No proposal was emitted. The user message is preserved as data; no activation or approval was claimed.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved."
+    ]
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one pure-logic class-22 component pc-transfer-11: it classifies a raw rank value into {kind, rank} with the requested missing/null/exact-integer-7..16/other semantics, using inputs.get() so absence is a valid outcome, exact integer type checks (booleans rejected), and no coercion/defaults/exceptions/imports/host calls. The body assigns result on every branch. This is an unapproved draft; typed-input transport and Monty execution are target interfaces requiring runner support, and no observed tests, submission or activation occurred. The host sink supports class-22 name/description/content; activation and reuse require Q1 and human Q2.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-11",
+        "description": "Pure-logic rank classifier. Reads a raw rank candidate and returns {kind, rank}: 'missing' when the key is absent, 'null' when present but null, 'integer' when it is an exact integer in 7..16 (inclusive), otherwise 'invalid'. No coercion, defaults, exceptions, imports, I/O or host calls. Unapproved draft; typed-input transport and Monty execution are target interfaces requiring runner support.",
+        "content": "def classify_rank(inputs):\n    if 'rank' not in inputs:\n        result = {'kind': 'missing', 'rank': None}\n    else:\n        rank = inputs['rank']\n        if rank is None:\n            result = {'kind': 'null', 'rank': None}\n        elif type(rank) is int and not isinstance(rank, bool) and 7 <= rank <= 16:\n            result = {'kind': 'integer', 'rank': rank}\n        else:\n            result = {'kind': 'invalid', 'rank': None}\n    return result\nresult = classify_rank(inputs.get('rank'))"
+      }
+    }
+  ]
+}

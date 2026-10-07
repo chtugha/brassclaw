@@ -1,0 +1,169 @@
+{
+  "manifest_sha256": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b",
+  "accepted": 10,
+  "total": 12,
+  "families": {
+    "contrast": {
+      "accepted": 0,
+      "total": 1,
+      "conversation_passed": 1
+    },
+    "evidence": {
+      "accepted": 2,
+      "total": 2,
+      "conversation_passed": 2
+    },
+    "prompt": {
+      "accepted": 2,
+      "total": 2,
+      "conversation_passed": 2
+    },
+    "python": {
+      "accepted": 2,
+      "total": 3,
+      "conversation_passed": 3
+    },
+    "recipe": {
+      "accepted": 4,
+      "total": 4,
+      "conversation_passed": 4
+    }
+  },
+  "cases": [
+    {
+      "id": "fresh-presence-helper",
+      "family": "python",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 9,
+      "behavior_cases": 9
+    },
+    {
+      "id": "fresh-boolean-helper",
+      "family": "python",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 7,
+      "behavior_cases": 7
+    },
+    {
+      "id": "fresh-nested-bools",
+      "family": "contrast",
+      "response_passed": true,
+      "artifact_passed": false,
+      "accepted": false,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-missing-default",
+      "family": "python",
+      "response_passed": true,
+      "artifact_passed": false,
+      "accepted": false,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 6,
+      "behavior_cases": 7
+    },
+    {
+      "id": "fresh-sent-data",
+      "family": "recipe",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-sent-reply",
+      "family": "recipe",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-discarded-data",
+      "family": "recipe",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-discarded-reply",
+      "family": "recipe",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-evidence-completed",
+      "family": "evidence",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-evidence-unknown",
+      "family": "evidence",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-authorized-0",
+      "family": "prompt",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    },
+    {
+      "id": "fresh-authorized-1",
+      "family": "prompt",
+      "response_passed": true,
+      "artifact_passed": true,
+      "accepted": true,
+      "conversation_preserved": true,
+      "requested_draft_emitted": true,
+      "behavior_passed": 0,
+      "behavior_cases": 0
+    }
+  ],
+  "first_pass_only": true,
+  "production_q1_q2_verified": false,
+  "summary_semantics_fully_verified": false
+}

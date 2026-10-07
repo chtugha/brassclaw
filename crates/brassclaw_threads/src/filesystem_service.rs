@@ -60,12 +60,11 @@ use crate::{
     ContextMessages, ContextWindow, CreateSummaryArtifactRequest, EnsureThreadRequest,
     LatestThreadMessageRequest, ListThreadsForScopeRequest, ListThreadsForScopeResponse,
     LoadContextMessagesRequest, LoadContextWindowRequest, MessageContent, MessageKind,
-    MessageStatus, ProviderToolCallReferenceEnvelope, RedactMessageRequest,
-    ReplayAcceptedInboundMessageRequest, SessionThreadError, SessionThreadRecord,
-    SessionThreadService, SummaryArtifact, SummaryModelContextPolicy, ThreadHistory,
-    ThreadHistoryRequest, ThreadMessageId, ThreadMessageRange, ThreadMessageRangeRequest,
-    ThreadMessageRecord, ThreadScope, ToolResultReferenceEnvelope, UpdateAssistantDraftRequest,
-    UpdateToolResultReferenceRequest,
+    MessageStatus, RedactMessageRequest, ReplayAcceptedInboundMessageRequest, SessionThreadError,
+    SessionThreadRecord, SessionThreadService, SummaryArtifact, SummaryModelContextPolicy,
+    ThreadHistory, ThreadHistoryRequest, ThreadMessageId, ThreadMessageRange,
+    ThreadMessageRangeRequest, ThreadMessageRecord, ThreadScope, ToolResultReferenceEnvelope,
+    UpdateAssistantDraftRequest, UpdateToolResultReferenceRequest,
 };
 use message_sequence_index::MessageSequenceIndexStore;
 
@@ -99,28 +98,7 @@ struct StoredThreadRecord {
     next_sequence: u64,
 }
 
-/// On-disk transcript message record.
-///
-/// `ThreadMessageRecord` deliberately skips provider replay metadata when it is
-/// serialized for product-facing transcript surfaces. The filesystem service is
-/// the private backend for model context, so it stores that metadata explicitly
-/// while history reads continue to scrub it before returning records.
-#[derive(Serialize)]
-struct StoredThreadMessageRecord<'a> {
-    #[serde(flatten)]
-    record: &'a ThreadMessageRecord,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_result_provider_call: &'a Option<ProviderToolCallReferenceEnvelope>,
-}
-
-impl<'a> From<&'a ThreadMessageRecord> for StoredThreadMessageRecord<'a> {
-    fn from(record: &'a ThreadMessageRecord) -> Self {
-        Self {
-            record,
-            tool_result_provider_call: &record.tool_result_provider_call,
-        }
-    }
-}
+use crate::stored_message::StoredThreadMessageRecord;
 
 /// On-disk inbound idempotency record. Includes the originating scope so
 /// the scope-less `replay_accepted_inbound_message` can rehydrate the

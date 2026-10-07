@@ -1,0 +1,11 @@
+{
+  "status": "operator-test-client-interrupted",
+  "completed_cases": 8,
+  "interrupted_case": "09-empty-list-validator-heldout",
+  "unrun_cases": [
+    "10-invoked-helper-heldout",
+    "11-completed-effect-preservation",
+    "12-authorized-prompt-repair"
+  ],
+  "reason": "Cases 04 and 06 exhausted 8192 output tokens; stopped comparison to test canonical serialization prefix. No failed response repaired or erased."
+}

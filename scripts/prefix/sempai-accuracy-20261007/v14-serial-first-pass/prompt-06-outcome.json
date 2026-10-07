@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only. System wording is quoted user-selected content; no edits authorized, even repeated words. Echoed every message exactly with no proposals or new messages. Target provider protocol/roles/tool/reasoning capabilities are unknown; no capabilities were inferred from the model name.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

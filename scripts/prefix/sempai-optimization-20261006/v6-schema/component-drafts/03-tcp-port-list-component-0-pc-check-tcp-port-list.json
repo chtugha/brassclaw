@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-tcp-port-list",
+    "description": "Pure-logic guard that validates a raw candidate TCP-port list before any network action. Target input contract: ports is a nonempty list of exact integers, each in 1..65535 inclusive; booleans are invalid, and missing/null/scalar/empty/wrong-type/out-of-range values fail closed. The outer input contract admits the raw candidate shape while the inner validation implements the rule; this does not relax required-input binding for ordinary Tool usages. Result contract: {valid: boolean, ports: original list if valid else []}. Missing and null remain distinct: a missing key yields an invalid result, not a default. No imports, I/O, host calls or UUIDs. Prerequisite: a typed runner that supplies inputs['ports'] as validated data and executes this body; the target inputs mapping is a target interface, not guaranteed deployed runtime support. This is an offline-design draft; Q1, observed behavior and human Q2 precede activation.",
+    "content": "ports = inputs.get('ports')\nvalid = isinstance(ports, list) and len(ports) > 0\nif valid:\n    for port in ports:\n        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:\n            valid = False\n            break\nresult = {'valid': valid, 'ports': ports if valid else []}"
+  }
+}

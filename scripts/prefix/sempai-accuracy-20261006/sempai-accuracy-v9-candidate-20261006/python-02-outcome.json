@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Drafted one unapproved pure-logic class-22 component pc-transfer-02 using the supplied target inputs contract. Raw inputs may omit quota or contain any JSON value; accepted is an exact integer in -2..7 inclusive (not bool/float); invalid/missing returns {accepted:false,quota:null} without exceptions or coercion. The body uses inputs.get('quota') so absence and null both reach the decision, validates exact integer type and range before computing, and assigns result on every defined outcome. No imports, I/O or host calls. No execution, submission, Q1/Q2 or activation was performed by this reviewer; the target typed-inputs interface requires selected-runner support.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-02",
+        "description": "Raw quota may be omitted or any JSON value. Accept exact integers -2..7 inclusive (not bool/float). Always result={accepted:boolean,quota:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "quota = inputs.get('quota')\naccepted = type(quota) is int and not type(quota) is bool and -2 <= quota <= 7\nresult = {'accepted': accepted, 'quota': quota if accepted else None}"
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "This is a review-test with an explicit instruction to echo the already-clear packet unchanged and to make no proposals or invented deficiencies. The packet is pre-call: a system instruction asking for a brief explanation of a TCP port and a user question about TCP port 443. No prompt repair is justified — the system message is clear, the user question is unambiguous, and there is no malformed provider envelope, context overflow, retrieval error, or injection to address. The target_provider_metadata carries no resolved provider capabilities (protocol_capabilities null, catalogue_revision null), so no provider-specific repair is warranted. Per the reviewer decision procedure, I preserve the volatile message array exactly, make no changes, and emit no proposals. No component draft is requested, and none is appropriate here.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ],
+  "proposed_components": [],
+  "proposed_recipe_updates": []
+}

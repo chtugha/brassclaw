@@ -1,0 +1,32 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "recipe-05-response.json",
+      "name": "recipe-transfer-05",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "one_description": true,
+        "exact_step_sequence": true,
+        "exact_ordinals_and_component_shape": true,
+        "no_additional_dispatch_bindings": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "effect_intents": true,
+        "retains_review_and_sink_gap": true
+      },
+      "offline_acceptance_passed": true,
+      "current_sink_preserves_v3": false
+    }
+  ],
+  "component_activation_performed": false
+}

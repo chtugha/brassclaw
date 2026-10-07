@@ -1,0 +1,14 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. The requested class-21 Recipe payload is not supported by the current sink, which drops step_descriptions, variants and dependency_registry and accepts only name/description/trigger/steps/prior_knowledge_content/intent_examples. A full v3 Recipe (with step_descriptions, variants and dependency_registry) cannot be preserved here, so the proposed_components array is left empty rather than emitting a lossy partial. The accompanying class-22 PythonCode draft (6ca96ef8-0b75-572f-987b-38c88d423828, content: result = {'state': 'Healthy'}) is a valid unapproved pure-logic draft with no dependencies and needs no prior UUID or approval; it is retained as an offline-design artifact. The Recipe transfer is recorded as an offline-design draft only: it returns state DATA and never posts a user message, and its activation requires Q1, human Q2 and coherent versioned activation. The original conversation is preserved unchanged and the compatibility/intent/settings arrays remain empty under the test persona.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable healthy data-result workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

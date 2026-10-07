@@ -111,27 +111,29 @@ impl PgResourceGovernorStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let payload = serde_json::to_value(snapshot).map_err(map_json_r)?;
-                let next_version = expected_version + 1;
+                let next_version = expected_version.checked_add(1).ok_or_else(|| ResourceError::Storage {
+                    reason: "resource governor version exhausted".to_owned(),
+                })?;
                 let client = self.pool.get().await.map_err(map_pool_r)?;
-                let rows = client
-                    .execute(
+                let rows = if expected_version == 0 {
+                    // First writer wins. A stale initial reader must not replace
+                    // another writer's already initialized snapshot.
+                    client.execute(
                         "INSERT INTO brassclaw_resource_accounts \
-                         (id, tenant_id, scope_kind, scope_id, period_key, reserved, consumed, \
-                          version, payload) \
+                         (id, tenant_id, scope_kind, scope_id, period_key, reserved, consumed, version, payload) \
                          VALUES ($1, $2, 'tenant', $2, '__governor__', 0, 0, 1, $3) \
-                         ON CONFLICT (tenant_id, scope_kind, scope_id, period_key) DO UPDATE \
-                         SET payload = excluded.payload, version = $4, updated_at = now() \
-                         WHERE brassclaw_resource_accounts.version = $5",
-                        &[
-                            &format!("governor:{}", self.tenant_id),
-                            &self.tenant_id,
-                            &payload,
-                            &next_version,
-                            &expected_version,
-                        ],
-                    )
-                    .await
-                    .map_err(map_pg_r)?;
+                         ON CONFLICT (tenant_id, scope_kind, scope_id, period_key) DO NOTHING",
+                        &[&format!("governor:{}", self.tenant_id), &self.tenant_id, &payload],
+                    ).await.map_err(map_pg_r)?
+                } else {
+                    // A disappeared row cannot be re-created by a stale writer.
+                    client.execute(
+                        "UPDATE brassclaw_resource_accounts SET payload = $2, version = $3, updated_at = now() \
+                         WHERE tenant_id = $1 AND scope_kind = 'tenant' AND scope_id = $1 \
+                         AND period_key = '__governor__' AND version = $4",
+                        &[&self.tenant_id, &payload, &next_version, &expected_version],
+                    ).await.map_err(map_pg_r)?
+                };
                 Ok(rows > 0)
             })
         })

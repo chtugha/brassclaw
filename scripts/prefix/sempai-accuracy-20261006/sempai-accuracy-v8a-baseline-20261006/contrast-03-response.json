@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-892067dc0f0662e1",
+  "object": "chat.completion",
+  "created": 1791323174,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-03: it reads raw slots via inputs.get('slots') so absence is a valid invalid-result, validates that the list has length 1..2 and every item is an exact integer in 3..7 (rejecting bool, float, non-integer and out-of-range), and returns {ok, slots: original if valid else []} with no I/O, imports, host calls, exceptions or upstream-validation assumption. The body assigns result on every branch and calls the helper, then assigns its return value. This is an unapproved target-interface draft only; activation requires Q1, human Q2 and typed-runner support, which are not claimed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-03\",\n        \"description\": \"Pure-logic guard: validates a raw 'slots' list of length 1..2 whose items are exact integers in 3..7, and returns {ok, slots: original if valid else []}. No I/O, imports, host calls, exceptions or upstream-validation assumption. Typed inputs are a target interface, not deployed runtime support.\",\n        \"content\": \"def classify_slots(raw):\\n    valid = isinstance(raw, list) and 1 <= len(raw) <= 2\\n    if valid:\\n        for item in raw:\\n            if type(item) is bool or not type(item) is int or not 3 <= item <= 7:\\n                valid = False\\n                break\\n    return {'ok': valid, 'slots': raw if valid else []}\\nresult = classify_slots(inputs.get('slots'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76863,
+    "total_tokens": 77320,
+    "completion_tokens": 457,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

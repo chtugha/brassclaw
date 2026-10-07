@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a5b29d0acc81e0e1",
+  "object": "chat.completion",
+  "created": 1791319080,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"composition_summary\": \"Packet is already clear; no prompt repair is justified. Echoed the volatile tail unchanged with no bridge messages, no proposals, and no invented deficiencies. No component, intent, settings or recipe changes were made.\", \"settings_adjustments\": [], \"bridge_messages\": [], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"adjusted_volatile_messages\": [[\"system\", \"Explain a TCP port. Keep the answer brief.\"], [\"user\", \"What is TCP port 443 typically used for?\"]], \"proposed_components\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": "Let me analyze this task carefully.\n\nThe instruction is: \"Audit this already-clear packet. Echo it unchanged, no proposals or invented deficiencies.\"\n\nThis is a review-test mode. The task is essentially asking me to echo the packet unchanged with no proposals.\n\nLet me apply the reviewer decision procedure (7061b1dba494):\n\n1. Copy the supplied volatile message array. Keep roles, order and content exactly unless the host explicitly permits a justified prompt repair. A request to author components is not a request to rewrite the conversation.\n\nThe instruction says \"Echo it unchanged, no proposals or invented deficiencies.\" This is an explicit instruction to echo unchanged with no proposals.\n\n2. Decide whether the task is prompt review, component drafting or offline design.\n\nThis is a prompt review task. The instruction is clear: echo unchanged, no proposals.\n\n3. Draft only the requested number of distinct components.\n\nNo components requested.\n\n4. Check the generated code and its contract together before emitting.\n\nN/A.\n\n5. Check representative valid and invalid outcomes.\n\nN/A.\n\n6. Match the host's exact output schema.\n\nThe output schema is: adjusted_volatile_messages, bridge_messages, composition_summary, proposed_recipe_updates, proposed_intent_examples, settings_adjustments, proposed_components.\n\n7. Keep the summary short and factual.\n\nSo I need to:\n- Echo the volatile messages unchanged\n- No bridge messages\n- Empty proposal arrays\n- A short factual composition_summary explaining that the packet is clear and no changes were made\n\nLet me construct the response.\n\nThe volatile messages are:\n[[\"system\", \"Explain a TCP port. Keep the answer brief.\"], [\"user\", \"What is TCP port 443 typically used for?\"]]\n\nI echo these unchanged.\n\nbridge_messages: []\n\ncomposition_summary: Short factual summary. The packet is already clear; no prompt repair is justified. No proposals.\n\nproposed_recipe_updates: []\nproposed_intent_examples: []\nsettings_adjustments: []\nproposed_components: []\n\nLet me write the JSON object. No Markdown fences.\n\nThe composition_summary should be short and factual, describing the actual edit (none) — the packet was echoed unchanged with no justified repair.\n"
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72431,
+    "total_tokens": 73020,
+    "completion_tokens": 589,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 468
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

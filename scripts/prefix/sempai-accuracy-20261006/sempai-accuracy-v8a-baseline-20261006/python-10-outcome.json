@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). The packet is pre-call with no observed provider capabilities, so no prompt fix is warranted. Drafted one pure-logic class-22 component pc-transfer-10: name/description/content only, no dependencies, no UUID, no prior Q1/Q2 approval. The body is executable Python at module scope: it reads each raw field with inputs.get (distinguishing absent from explicit null), validates exact integer semantics (rejecting bool/float/strings), enforces the 6..15 range, and assigns result on every branch without raise, coercion or defaults. The invalid-result object contains only its declared fields. Typed inputs remain a target interface requiring runner support; this is an unapproved draft, not an activated component. No observed tests, submission or activation occurred.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-10",
+        "description": "Pure-logic raw TTL classifier. Reads a raw candidate with inputs.get('ttl') and returns an advisory decision object only: absent key -> {kind:'missing',ttl:null}; explicit null -> {kind:'null',ttl:null}; exact integer in 6..15 -> {kind:'integer',ttl:original}; anything else -> {kind:'invalid',ttl:null}. No bool/float coercion, no defaults, no exceptions, no imports, no I/O, no host calls. Typed inputs are a target interface requiring runner support; this is an unapproved draft.",
+        "content": "def classify_ttl(raw):\n    ttl = inputs.get('ttl')\n    if 'ttl' not in inputs:\n        result = {'kind': 'missing', 'ttl': None}\n    elif ttl is None:\n        result = {'kind': 'null', 'ttl': None}\n    elif type(ttl) is bool:\n        result = {'kind': 'invalid', 'ttl': None}\n    elif type(ttl) is int and 6 <= ttl <= 15:\n        result = {'kind': 'integer', 'ttl': ttl}\n    else:\n        result = {'kind': 'invalid', 'ttl': None}\n    return result"
+      }
+    }
+  ]
+}

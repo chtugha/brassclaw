@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-90028fbb22d87df1",
+  "object": "chat.completion",
+  "created": 1791324362,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-00. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserved original conversation; root compatibility arrays empty under test persona.\",\n  \"proposed_recipe_updates\": [\n    {\n      \"name\": \"recipe-transfer-00\",\n      \"description\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\",\n      \"trigger\": null,\n      \"steps\": [],\n      \"prior_knowledge_content\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\",\n      \"intent_examples\": [\n        \"compute the ready state data\",\n        \"return the ready state object\",\n        \"produce the fixed ready object\",\n        \"obtain the ready result data\",\n        \"calculate the ready state result\",\n        \"yield the ready state object\",\n        \"get the fixed ready state data\",\n        \"build the ready state object\",\n        \"evaluate the ready data subworkflow\",\n        \"derive the fixed ready state result\"\n      ],\n      \"step_descriptions\": [\n        {\n          \"desc_idx\": 0,\n          \"label\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\",\n          \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n          \"steps\": [\n            {\n              \"stepnumber\": 1,\n              \"knowledge\": \"orchestrator\",\n              \"goal\": \"Return state data\",\n              \"content\": \"Use the supplied offline fixture\",\n              \"type\": \"component\",\n              \"include\": [\n                \"9a047867-22a3-5bcc-8a6b-1b06c20bbeff\"\n              ],\n              \"tool_bindings\": [],\n              \"dependencies\": null\n            }\n          ]\n        }\n      ],\n      \"variants\": [\n        {\n          \"variant_key\": \"recipe-transfer-00\",\n          \"description\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\",\n          \"step_link\": \"0:1-0:E\",\n          \"intent_examples\": [\n            \"compute the ready state data\",\n            \"return the ready state object\",\n            \"produce the fixed ready object\",\n            \"obtain the ready result data\",\n            \"calculate the ready state result\",\n            \"yield the ready state object\",\n            \"get the fixed ready state data\",\n            \"build the ready state object\",\n            \"evaluate the ready data subworkflow\",\n            \"derive the fixed ready state result\"\n          ],\n          \"variable_patterns\": []\n        }\n      ],\n      \"dependency_registry\": null\n    }\n  ],\n  \"proposed_components\": [],\n  \"bridge_messages\": []\n  ,\n  \"proposed_intent_examples\": []\n  ,\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Design a reusable ready data-result workflow.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97537,
+    "total_tokens": 98797,
+    "completion_tokens": 1260,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

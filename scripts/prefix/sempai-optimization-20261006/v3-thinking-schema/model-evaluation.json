@@ -1,0 +1,189 @@
+{
+  "date": "2026-10-06T20:37:58.868193+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "01-unchanged-review",
+      "usage": {
+        "prompt_tokens": 72431,
+        "total_tokens": 73020,
+        "completion_tokens": 589,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 468
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 11.616
+    },
+    {
+      "id": "02-injection-and-unknown-effect",
+      "usage": {
+        "prompt_tokens": 72558,
+        "total_tokens": 74903,
+        "completion_tokens": 2345,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 2015
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 44.069
+    },
+    {
+      "id": "03-tcp-port-list-component",
+      "usage": {
+        "prompt_tokens": 72514,
+        "total_tokens": 74566,
+        "completion_tokens": 2052,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1637
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 38.601
+    },
+    {
+      "id": "04-no-replay-guard-component",
+      "usage": {
+        "prompt_tokens": 72537,
+        "total_tokens": 80729,
+        "completion_tokens": 8192,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 8192
+        }
+      },
+      "finish_reason": "length",
+      "error": "the JSON object must be str, bytes or bytearray, not NoneType",
+      "seconds": 152.664
+    },
+    {
+      "id": "05-unsupported-recipe-sink",
+      "usage": {
+        "prompt_tokens": 72477,
+        "total_tokens": 74636,
+        "completion_tokens": 2159,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1936
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 40.539
+    },
+    {
+      "id": "06-offline-v3-recipe-design",
+      "usage": {
+        "prompt_tokens": 72630,
+        "total_tokens": 80822,
+        "completion_tokens": 8192,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 8166
+        }
+      },
+      "finish_reason": "length",
+      "error": "Unterminated string starting at: line 1 column 25 (char 24)",
+      "seconds": 152.734
+    },
+    {
+      "id": "07-unknown-provider-capabilities",
+      "usage": {
+        "prompt_tokens": 72420,
+        "total_tokens": 73684,
+        "completion_tokens": 1264,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1068
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 24.055
+    },
+    {
+      "id": "08-timeout-validator-heldout",
+      "usage": {
+        "prompt_tokens": 72498,
+        "total_tokens": 75915,
+        "completion_tokens": 3417,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 3090
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 63.816
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": true,
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false
+}

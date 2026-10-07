@@ -1,0 +1,14 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Offline full-v3 export mode. The requested class-21 Recipe payload cannot be emitted: the current Sempai sink drops step_descriptions, variants and dependency_registry, so a full v3 Recipe constructor cannot be preserved. Per the reviewer decision procedure (step 2), the relevant proposal array is kept empty and the blocker is identified in the summary. No submission or activation occurred. The requested class-22 PythonCode draft (c7983481-a51f-5068-ba4a-11220f293cd3) is a pure-logic state guard with no dependencies and no referenced Tool, so it does not require a pre-existing UUID or prior Q1/Q2 approval; insertion allocates its identity and review follows. However, the current sink also does not support class-22 payloads, so that draft is likewise not emitted here. The unapproved draft remains unapproved; Q1 and human Q2 are required before activation/reuse. The original conversation is preserved unchanged and the compatibility/intent/settings arrays are empty under the test persona.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable stable data-result workflow."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

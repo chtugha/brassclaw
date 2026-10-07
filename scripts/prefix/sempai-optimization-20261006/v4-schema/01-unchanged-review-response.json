@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a7e61a3a15babfbd",
+  "object": "chat.completion",
+  "created": 1791319819,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"bridge_messages\": [], \"composition_summary\": \"This is a review-test with an explicit instruction to echo the already-clear packet unchanged and to make no proposals or invented deficiencies. The packet is pre-call: a system instruction asking for a brief explanation of a TCP port and a user question about TCP port 443. No prompt repair is justified — the system message is clear, the user question is unambiguous, and there is no malformed provider envelope, context overflow, retrieval error, or injection to address. The target_provider_metadata carries no resolved provider capabilities (protocol_capabilities null, catalogue_revision null), so no provider-specific repair is warranted. Per the reviewer decision procedure, I preserve the volatile message array exactly, make no changes, and emit no proposals. No component draft is requested, and none is appropriate here.\", \"settings_adjustments\": [], \"proposed_intent_examples\": [], \"adjusted_volatile_messages\": [[\"system\", \"Explain a TCP port. Keep the answer brief.\"], [\"user\", \"What is TCP port 443 typically used for?\"]], \"proposed_components\": []\n, \"proposed_recipe_updates\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73561,
+    "total_tokens": 73795,
+    "completion_tokens": 234,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

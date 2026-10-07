@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Reviewed the volatile tail and preserved it unchanged. The task is a single class-22 pure-logic draft (pc-check-timeout-ms) using the target typed-inputs interface, not a submission or activation. The body validates raw candidate data with inputs.get() (never direct access), treats bool as not-integer, enforces exact integer 0..7500 inclusive, and returns {valid, timeout_ms} with null on invalid/missing/null — no exceptions, no coercion, no imports/host/IO, and a module-level result assignment on every path. Proposed one class-22 payload with only name/description/content. No provider capabilities were observed (target_provider_metadata has no protocol_capabilities), so no prompt repair was justified; the draft is provider-agnostic. Q1, observed behavior and human Q2 precede activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-timeout-ms",
+        "description": "Pure-logic guard: validates a raw candidate timeout_ms as an exact integer in 0..7500 inclusive. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid, else null. No exceptions, no coercion, no imports, host calls or I/O.",
+        "content": "def check_timeout_ms(candidate):\n    raw = inputs.get('timeout_ms')\n    valid = type(raw) is int and not isinstance(raw, bool) and 0 <= raw <= 7500\n    result = {'valid': valid, 'timeout_ms': raw if valid else None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need to validate raw timeout values before configuring a service."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

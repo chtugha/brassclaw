@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-82c8d08a114d6973",
+  "object": "chat.completion",
+  "created": 1791331540,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design\", \"result\": \"Offline full-v3 export ONLY. Create exactly one class21 recipe-transfer-11. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependencyRegistry\"}, {\"guard\": \"offline-design\", \"result\": \"One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in both\"}, {\"guard\": \"offline-design\", \"result\": \"Step 1 rust binds unapproved ToolSkill 6d31defa-e5d3-5103-bd01-49143f9d47f6 for existing host.post_reply(answer:string). Step 2 orchestrator includes unapproved PythonCode 5e27ba17-04a3-5357-bee2-00a87cac9ae1 with result = host.post_reply(answer='Prepared'\"}, {\"guard\": \"offline-design\", \"result\": \"This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserve original conversation;\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"rust\", \"uuid\": \"6d31defa-e5d3-5103-bd01-49143f9d47f6\"}, {\"knowledge\": \"orchestrator\", \"uuid\": \"5e27ba17-04a3-5357-bee2-00a87cac9ae1\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"exact association approval\", \"supported full-v3 sink\"], \"notes\": \"Unapproved draft; no runtime/approval claims. Root compatibility arrays empty under test persona.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98737,
+    "total_tokens": 99227,
+    "completion_tokens": 490,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

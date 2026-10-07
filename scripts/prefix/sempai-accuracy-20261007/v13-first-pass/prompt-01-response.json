@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-99eac366f0a3b90c",
+  "object": "chat.completion",
+  "created": 1791329694,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Antworte sachlich.\"],\n    [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Applied the explicitly authorized edit: replaced the duplicated system content 'Antworte sachlich sachlich.' with exactly 'Antworte sachlich.'. Preserved the user message byte-for-byte, roles, order and count. No other changes, no proposals, no invented provider facts.\",\n  \"proposed_components\": [],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 96966,
+    "total_tokens": 97118,
+    "completion_tokens": 152,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

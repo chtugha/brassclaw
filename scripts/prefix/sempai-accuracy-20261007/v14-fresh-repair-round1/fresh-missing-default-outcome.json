@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class-22 component. The contract says an absent mode defaults to watch, so the empty-input case must return {valid:true,mode:'watch'}; the previous draft returned {valid:false,mode:null}. Fixed the body to default absent to 'watch' while still rejecting explicit null, bool and other types without normalization. No execution, submission, Q1/Q2 or activation performed.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-missing-default",
+        "description": "mode absent defaults to watch. Explicit null, bool or other type invalid. Exact string 'watch' or 'pause' accepted without normalization. Always result={valid:boolean,mode:default/original if valid else null}. No imports/host/exceptions. Unapproved target inputs draft only; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "mode = 'watch' if 'mode' not in inputs else inputs['mode']\nvalid = type(mode) is str and mode in ('watch', 'pause')\nresult = {'valid': valid, 'mode': mode if valid else None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

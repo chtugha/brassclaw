@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Reviewed the request to author one class-22 pure-logic validator pc-check-mode. The task is component drafting, not a conversation rewrite, so the volatile tail is echoed unchanged and no assistant acknowledgement, result or approval is invented. The requested body is a small module-scope guard that must assign result on every outcome without imports/host/I/O, and must not raise for missing/null/invalid input (it returns an explicit invalid-result object). The emitted content is a single if/else result assignment using inputs.get, exact string-enum membership (eco/boost, case-sensitive), and null for the rejected branch. No helper is used, so there is a direct result assignment. The class-22 constructor supports name/description/content; the payload is one supported constructor draft. No submission, validation, activation or approval occurred; Q1/Q2 and host execution remain required. compatibility/intent/settings arrays are empty as instructed.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-mode",
+        "description": "Pure-logic validator that accepts only the exact strings 'eco' or 'boost' (case-sensitive) and returns an invalid-result object otherwise. Module-scope guard; no imports, host calls, I/O or coercion. Missing or non-matching input yields accepted=false and mode=null, not an exception.",
+        "content": "mode = inputs.get(\"mode\")\naccepted = type(mode) is str and mode in (\"eco\", \"boost\")\nresult = {\"accepted\": accepted, \"mode\": mode if accepted else None}"
+      }
+    }
+  ],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate a raw operating mode without changing its spelling."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-abfb82806f4d3f83",
+  "object": "chat.completion",
+  "created": 1791329548,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable available reply workflow.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode ca75d647-4f0e-5a35-abe7-cee7353e03c2 with code result = host.post_reply(answer='Available'); unapproved ToolSkill 9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7 binds existing host.post_reply(answer:string). Zero inputs/dependencies; no version numbers or approval. Created exactly one class 21 recipe-transfer-05 with keys name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow posts exactly the fixed word as a user reply using the bound existing Tool. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Original conversation preserved; root compatibility arrays empty under test persona.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-05\",\n        \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\",\n        \"intent_examples\": [\n          \"say available\",\n          \"reply available\",\n          \"post available\",\n          \"send the available reply\",\n          \"respond with available\",\n          \"tell me available\",\n          \"please say available\",\n          \"please reply available\",\n          \"post the fixed available message\",\n          \"send the fixed available message\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"rust\",\n                \"goal\": \"Bind reply Tool\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              },\n              {\n                \"stepnumber\": 2,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Post fixed reply\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"ca75d647-4f0e-5a35-abe7-cee7353e03c2\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"available-reply\",\n            \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"say available\",\n              \"reply available\",\n              \"post available\",\n              \"send the available reply\",\n              \"respond with available\",\n              \"tell me available\",\n              \"please say available\",\n              \"please reply available\",\n              \"post the fixed available message\",\n              \"send the fixed available message\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97163,
+    "total_tokens": 98206,
+    "completion_tokens": 1043,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate a channel list; no channels is a valid choice."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one class-22 pure-logic candidate pc-check-channel-list (name/description/content only). It accepts an optional channels input that may be absent or any raw JSON, and returns {ok:boolean, channels:original list if valid else []}. Validity requires a list whose every item is an exact integer in 0..255 inclusive; booleans, floats, null, missing and wrong types are rejected. The body uses inputs.get(\"channels\") so absence is a valid choice, treats bool as not an int, validates all items before returning, and assigns result on every path without exceptions, imports, host calls or coercion. This is an unapproved offline-design draft; the host sink supports class 22 name/description/content only, and no submission, activation or human Q2 occurred. No compatibility/intent/settings updates were proposed.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-channel-list",
+        "description": "Pure-logic validator for a channel list. Accepts an optional channels input that may be absent or any raw JSON. A valid value is a list whose every item is an exact integer in 0..255 inclusive. Booleans, floats, null, missing and wrong types are rejected. Returns {ok:boolean, channels:original list if valid else []}. No exceptions, imports, host calls or coercion.",
+        "content": "channels = inputs.get(\"channels\")\nvalid = isinstance(channels, list) and len(channels) > 0\nif valid:\n    for item in channels:\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\n            valid = False\n            break\nresult = {\"ok\": valid, \"channels\": channels if valid else []}"
+      }
+    }
+  ]
+}

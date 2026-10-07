@@ -4,6 +4,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+
+#[path = "common/native_pg.rs"]
+mod native_pg;
 use brassclaw_hooks::{
     HookId, HookLocalId, HookRegistrar, HookRegistry, HookVersion,
     dispatch::HookDispatcherBuilder,
@@ -326,29 +329,46 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
     assert_eq!(task.run_context(), &fixture.context);
     assert_eq!(task.request().run_id, fixture.claimed.state.run_id);
     assert_eq!(task.attempt().lease_token, fixture.claimed.lease_token);
-    let surface = task.visible_capabilities().await.unwrap();
-    let bundle = task
-        .build_prompt_bundle(LoopPromptBundleRequest {
-            mode: PromptMode::TextOnly,
-            context_cursor: None,
-            surface_version: Some(surface.version.clone()),
-            checkpoint_state_ref: None,
-            max_messages: None,
-            inline_messages: Vec::new(),
-            capability_view: None,
-            recipe_hint: None,
-        })
+    let surface: VisibleCapabilitySurface = serde_json::from_value(
+        task.dispatch_port("visible_capabilities", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let bundle: brassclaw_turns::run_profile::LoopPromptBundle = serde_json::from_value(
+        task.dispatch_port(
+            "build_prompt_bundle",
+            serde_json::to_value(LoopPromptBundleRequest {
+                mode: PromptMode::TextOnly,
+                context_cursor: None,
+                surface_version: Some(surface.version.clone()),
+                checkpoint_state_ref: None,
+                max_messages: None,
+                inline_messages: Vec::new(),
+                capability_view: None,
+                recipe_hint: None,
+            })
+            .unwrap(),
+        )
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     assert!(bundle.bundle_ref.is_for_run(&fixture.context));
-    let response = task
-        .stream_model(LoopModelRequest {
-            messages: bundle.messages,
-            surface_version: bundle.surface_version,
-            ..LoopModelRequest::default()
-        })
+    let response: brassclaw_turns::run_profile::LoopModelResponse = serde_json::from_value(
+        task.dispatch_port(
+            "stream_model",
+            serde_json::to_value(LoopModelRequest {
+                messages: bundle.messages,
+                surface_version: bundle.surface_version,
+                ..LoopModelRequest::default()
+            })
+            .unwrap(),
+        )
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     let requests = fixture.gateway.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].run_id, fixture.context.run_id);
@@ -366,10 +386,12 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
     let ParentLoopOutput::AssistantReply(reply) = response.output else {
         panic!("expected the gateway's assistant reply");
     };
-    let reply_ref = task
-        .finalize_assistant_message(FinalizeAssistantMessage { reply })
-        .await
-        .unwrap();
+    let reply_ref: LoopMessageRef = serde_json::from_value(
+        task.dispatch_port("post_reply", json!({"answer": reply.content}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(task.finalized_reply_ref(), Some(reply_ref.clone()));
     assert_eq!(
         task.published_reply_content(&reply_ref).unwrap(),
@@ -478,14 +500,20 @@ async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_for
     // Prompt grants are single-use, including rejected model requests. Issue
     // a new host-built bundle after the cross-run request was rejected.
     let bundle = task.build_prompt_bundle(request).await.unwrap();
-    let response = task
-        .stream_model(LoopModelRequest {
-            messages: bundle.messages,
-            surface_version: bundle.surface_version,
-            ..LoopModelRequest::default()
-        })
+    let response: brassclaw_turns::run_profile::LoopModelResponse = serde_json::from_value(
+        task.dispatch_port(
+            "stream_model",
+            serde_json::to_value(LoopModelRequest {
+                messages: bundle.messages,
+                surface_version: bundle.surface_version,
+                ..LoopModelRequest::default()
+            })
+            .unwrap(),
+        )
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     let ParentLoopOutput::CapabilityCalls(calls) = response.output else {
         panic!("Monty must receive structured tool requests");
     };
@@ -496,11 +524,15 @@ async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_for
     // The empty production capability port denies dispatch. The adapter must
     // neither manufacture a tool success nor bypass its kernel-facing port.
     let outcome = task
-        .invoke_capability(CapabilityInvocation {
-            surface_version: calls[0].surface_version.clone(),
-            capability_id: calls[0].capability_id.clone(),
-            input_ref: calls[0].input_ref.clone(),
-        })
+        .dispatch_port(
+            "invoke_capability",
+            serde_json::to_value(CapabilityInvocation {
+                surface_version: calls[0].surface_version.clone(),
+                capability_id: calls[0].capability_id.clone(),
+                input_ref: calls[0].input_ref.clone(),
+            })
+            .unwrap(),
+        )
         .await
         .unwrap_err();
     assert_eq!(outcome.kind, AgentLoopHostErrorKind::InvalidInvocation);
@@ -1460,7 +1492,7 @@ async fn turn_runner_worker_completes_queued_run_after_turn_store_reopen() {
             heartbeat_interval: std::time::Duration::from_millis(20),
             poll_interval: std::time::Duration::from_millis(10),
             scope_filter: Some(fixture.context.scope.clone()),
-            max_turn_duration: None,
+            max_driver_wall_time: None,
         },
         reopened_turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, reopened_turn_store.clone()),
@@ -1540,7 +1572,7 @@ async fn turn_runner_worker_drives_full_text_only_model_transcript_completion_af
             heartbeat_interval: std::time::Duration::from_millis(20),
             poll_interval: std::time::Duration::from_millis(10),
             scope_filter: Some(fixture.context.scope.clone()),
-            max_turn_duration: None,
+            max_driver_wall_time: None,
         },
         turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
@@ -1646,7 +1678,7 @@ async fn turn_runner_rejects_driver_fabricated_approval_block_without_durable_ga
             heartbeat_interval: std::time::Duration::from_millis(20),
             poll_interval: std::time::Duration::from_millis(10),
             scope_filter: Some(fixture.context.scope.clone()),
-            max_turn_duration: None,
+            max_driver_wall_time: None,
         },
         turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
@@ -1723,7 +1755,7 @@ async fn turn_runner_blocks_on_approval_then_coordinator_resume_completes_same_r
             heartbeat_interval: std::time::Duration::from_millis(20),
             poll_interval: std::time::Duration::from_millis(10),
             scope_filter: Some(fixture.context.scope.clone()),
-            max_turn_duration: None,
+            max_driver_wall_time: None,
         },
         turn_store.clone(),
         Arc::new(LoopExitApplier::new(
@@ -1977,7 +2009,7 @@ async fn turn_runner_worker_fails_when_real_host_factory_rejects_claimed_scope()
             heartbeat_interval: std::time::Duration::from_millis(20),
             poll_interval: std::time::Duration::from_millis(10),
             scope_filter: Some(fixture.context.scope.clone()),
-            max_turn_duration: None,
+            max_driver_wall_time: None,
         },
         turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
@@ -2391,7 +2423,7 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
                 heartbeat_interval: std::time::Duration::from_millis(20),
                 poll_interval: std::time::Duration::from_millis(10),
                 scope_filter: Some(fixture.context.scope.clone()),
-                max_turn_duration: None,
+                max_driver_wall_time: None,
             },
             ..DefaultPlannedRuntimeConfig::default()
         },
@@ -2427,7 +2459,11 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         .submit_turn(SubmitTurnRequest {
             scope: fixture.context.scope.clone(),
             actor: TurnActor::new(UserId::new("user-text-host").unwrap()),
-            accepted_message_ref: AcceptedMessageRef::new("accepted-runtime-planned").unwrap(),
+            accepted_message_ref: AcceptedMessageRef::new(format!(
+                "msg:{}",
+                fixture.accepted_message_id
+            ))
+            .unwrap(),
             source_binding_ref: SourceBindingRef::new("source-web").unwrap(),
             reply_target_binding_ref: ReplyTargetBindingRef::new("reply-web").unwrap(),
             requested_run_profile: None,
@@ -6660,7 +6696,8 @@ async fn queue_fixture_turn(
                 scope: fixture.context.scope.clone(),
                 actor: TurnActor::new(UserId::new("user-text-host").unwrap()),
                 accepted_message_ref: AcceptedMessageRef::new(format!(
-                    "accepted-{idempotency_key}"
+                    "msg:{}",
+                    fixture.accepted_message_id
                 ))
                 .unwrap(),
                 source_binding_ref: SourceBindingRef::new("source-web").unwrap(),
@@ -6789,7 +6826,7 @@ impl HostFixture {
             turn_id,
             run_id,
             status: TurnStatus::Running,
-            accepted_message_ref: AcceptedMessageRef::new(format!("accepted-{thread_name}"))
+            accepted_message_ref: AcceptedMessageRef::new(format!("msg:{}", accepted.message_id))
                 .unwrap(),
             source_binding_ref: SourceBindingRef::new("source-web").unwrap(),
             reply_target_binding_ref: ReplyTargetBindingRef::new("reply-web").unwrap(),
@@ -7170,4 +7207,608 @@ impl LoopModelBudgetAccountant for RejectingSystemInferenceBudgetAccountant {
     ) -> Result<(), LoopModelGatewayError> {
         panic!("post_model_work must not run when pre_model_work rejects")
     }
+}
+
+#[tokio::test]
+async fn monty_model_capture_persists_resolved_prompt_and_structured_response() {
+    use brassclaw_interceptor::{InterceptorStore, PacketStatus, PgInterceptorStore};
+    use brassclaw_reborn::monty_task_host::MontyTaskHost;
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+
+    let database = native_pg::NativePostgres::start().await;
+    let fixture = HostFixture::new(
+        "opaque-capture-conversation",
+        "question with {{vars.literal}} and quotes '",
+    )
+    .await;
+    let store = Arc::new(PgInterceptorStore::new(
+        database.pool.clone(),
+        fixture.thread_scope.tenant_id.to_string(),
+    ));
+    let host = fixture
+        .factory()
+        .with_interceptor_store(store.clone())
+        .build_text_only_host(RebornLoopDriverHostRequest {
+            claimed_run: fixture.claimed.clone(),
+            loop_run_context: fixture.context.clone(),
+        })
+        .await
+        .unwrap();
+    let task = MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            Arc::new(host),
+        )
+        .unwrap(),
+    );
+    let mut expected_outputs = Vec::new();
+    for iteration in 0..2 {
+        if iteration == 1 {
+            fixture.gateway.respond_with_capability_calls();
+        }
+        let bundle = task
+            .build_prompt_bundle(LoopPromptBundleRequest {
+                mode: PromptMode::TextOnly,
+                context_cursor: None,
+                surface_version: None,
+                checkpoint_state_ref: None,
+                max_messages: None,
+                inline_messages: Vec::new(),
+                capability_view: None,
+                recipe_hint: None,
+            })
+            .await
+            .unwrap();
+        let response = task
+            .stream_model(LoopModelRequest {
+                messages: bundle.messages,
+                surface_version: bundle.surface_version,
+                ..LoopModelRequest::default()
+            })
+            .await
+            .unwrap();
+        expected_outputs.push(response.output);
+    }
+    let requests = fixture.gateway.requests();
+    let mut packets = store.list_recent(10).await.unwrap();
+    packets.sort_by_key(|packet| packet.iteration);
+    assert_eq!(packets.len(), 2);
+    for (index, packet) in packets.iter().enumerate() {
+        assert_eq!(packet.run_id, fixture.context.run_id.to_string());
+        assert_eq!(packet.iteration, index as u32);
+        assert_eq!(packet.status, PacketStatus::Complete);
+        assert!(packet.completed_at.is_some());
+        let sent: Vec<_> = requests[index]
+            .messages
+            .iter()
+            .map(|message| {
+                (
+                    match message.role {
+                        HostManagedModelMessageRole::System => "system",
+                        HostManagedModelMessageRole::User => "user",
+                        HostManagedModelMessageRole::Assistant => "assistant",
+                        HostManagedModelMessageRole::ToolResult => "tool_result_reference",
+                    }
+                    .to_owned(),
+                    message.content.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(packet.prompt.messages, sent);
+        assert!(
+            packet
+                .prompt
+                .messages
+                .iter()
+                .any(|(role, content)| role == "user"
+                    && content == "question with {{vars.literal}} and quotes '")
+        );
+        assert_eq!(packet.prompt.segments.len(), sent.len());
+    }
+    assert_eq!(packets[0].kohai_response.as_deref(), Some("model says hi"));
+    assert_eq!(
+        serde_json::from_str::<ParentLoopOutput>(packets[1].kohai_response.as_deref().unwrap())
+            .unwrap(),
+        expected_outputs[1]
+    );
+    assert!(matches!(
+        expected_outputs[1],
+        ParentLoopOutput::CapabilityCalls(_)
+    ));
+    // No tool or reply is dispatched merely because telemetry observes it.
+    assert!(task.finalized_reply_ref().is_none());
+}
+
+#[cfg(feature = "root-llm-provider")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tracing_test::traced_test]
+async fn monty_model_capture_rerouting_keeps_selected_system_prefix_and_records_review() {
+    use brassclaw_interceptor::{
+        InterceptorStore, PacketStatus, PgInterceptorStore, SempaiReviewOutcome,
+        SharedInterceptorMode,
+    };
+    use brassclaw_loop_support::{GovernorBackedAccountant, ModelCost, StaticModelCostTable};
+    use brassclaw_resources::{
+        BudgetPeriod, PersistentResourceGovernor, PgResourceGovernorStore, ResourceAccount,
+        ResourceGovernor, ResourceLimits,
+    };
+    use brassclaw_turns::run_profile::{LoopInterceptorPort, LoopModelUsage, ModelProfileId};
+    use rust_decimal::Decimal;
+    brassclaw_reborn::loop_driver_host::init_sempai_persona("review the resolved prompt".into());
+    let database = native_pg::NativePostgres::start().await;
+    let mut fixture = HostFixture::new(
+        "opaque-rerouting-conversation",
+        "original volatile question",
+    )
+    .await;
+    fixture.context = fixture
+        .context
+        .with_actor(fixture.claimed.state.actor.clone().unwrap());
+    let store = Arc::new(PgInterceptorStore::new(
+        database.pool.clone(),
+        fixture.thread_scope.tenant_id.to_string(),
+    ));
+    let governor = Arc::new(PersistentResourceGovernor::new(
+        PgResourceGovernorStore::new(
+            database.pool.clone(),
+            fixture.thread_scope.tenant_id.to_string(),
+        ),
+    ));
+    let account = ResourceAccount::user(
+        fixture.thread_scope.tenant_id.clone(),
+        fixture.context.actor.as_ref().unwrap().user_id.clone(),
+    );
+    governor
+        .set_limit(
+            account.clone(),
+            ResourceLimits {
+                max_usd: Some(Decimal::new(1000, 0)),
+                period: BudgetPeriod::Rolling24h,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+    let cost = ModelCost {
+        input_per_token: Decimal::new(1, 2),
+        output_per_token: Decimal::new(1, 1),
+        max_output_tokens: 32,
+        cache_write_multiplier_milli: 0,
+        cache_read_multiplier_milli: 0,
+    };
+    let costs = Arc::new(
+        StaticModelCostTable::new()
+            .with_entry(
+                fixture
+                    .context
+                    .resolved_run_profile
+                    .model_profile_id
+                    .clone(),
+                cost,
+            )
+            .with_entry(ModelProfileId::new("sempai_model").unwrap(), cost),
+    );
+    let accountant = Arc::new(GovernorBackedAccountant::new(governor.clone(), costs));
+    fixture
+        .gateway
+        .set_response(Ok(HostManagedModelResponse::assistant_reply(
+            "model says hi",
+        )
+        .with_usage(LoopModelUsage {
+            input_tokens: 3,
+            output_tokens: 2,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+        })));
+    let mut review = SempaiReviewOutcome {
+        adjusted_volatile_messages: Vec::new(),
+        bridge_messages: vec![("system".into(), "reviewed bridge".into())],
+        composition_summary: "retain the selected prefix".into(),
+        proposed_recipe_updates: Vec::new(),
+        proposed_intent_examples: Vec::new(),
+        settings_adjustments: Vec::new(),
+        proposed_components: Vec::new(),
+    };
+    let sempai = Arc::new(RecordingGateway::reply(
+        serde_json::to_string(&review).unwrap(),
+    ));
+    let mode = SharedInterceptorMode::new();
+    let host = fixture
+        .factory()
+        .with_identity_context_source(Arc::new(StaticIdentityContextSource::new(vec![
+            trusted_identity(
+                "AGENTS.md",
+                "selected identity prefix",
+                IdentityApplicability::Always,
+            ),
+        ])))
+        .with_model_budget_accountant(accountant)
+        .with_interceptor_store(store.clone())
+        .with_sempai_gateway(sempai.clone())
+        .with_interceptor_mode(mode.clone())
+        .build_text_only_host(RebornLoopDriverHostRequest {
+            claimed_run: fixture.claimed.clone(),
+            loop_run_context: fixture.context.clone(),
+        })
+        .await
+        .unwrap();
+    let bundle = host
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    host.stream_model(LoopModelRequest {
+        messages: bundle.messages,
+        surface_version: bundle.surface_version,
+        ..LoopModelRequest::default()
+    })
+    .await
+    .unwrap();
+    assert!(sempai.requests().is_empty());
+    let baseline = fixture.gateway.requests().remove(0);
+    let prefix_length = baseline
+        .messages
+        .iter()
+        .take_while(|message| message.role == HostManagedModelMessageRole::System)
+        .count();
+    review.adjusted_volatile_messages = baseline.messages[prefix_length..]
+        .iter()
+        .map(|message| {
+            let role = match message.role {
+                HostManagedModelMessageRole::System => "system",
+                HostManagedModelMessageRole::User => "user",
+                HostManagedModelMessageRole::Assistant => "assistant",
+                HostManagedModelMessageRole::ToolResult => "tool_result_reference",
+            };
+            let content = if message.role == HostManagedModelMessageRole::User {
+                "reviewed volatile question".to_owned()
+            } else {
+                message.content.clone()
+            };
+            (role.to_owned(), content)
+        })
+        .collect();
+    sempai.set_response(Ok(HostManagedModelResponse::assistant_reply(
+        serde_json::to_string(&review).unwrap(),
+    )
+    .with_usage(LoopModelUsage {
+        input_tokens: 7,
+        output_tokens: 3,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+    })));
+    mode.set_rerouting();
+    let bundle = host
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    // The reference-only executor hook no longer creates a competing packet.
+    assert!(
+        host.on_prompt_assembled(
+            &fixture.context.run_id.to_string(),
+            0,
+            json!({"messages": &bundle.messages})
+        )
+        .await
+        .is_none()
+    );
+    host.stream_model(LoopModelRequest {
+        messages: bundle.messages,
+        surface_version: bundle.surface_version,
+        ..LoopModelRequest::default()
+    })
+    .await
+    .unwrap();
+    let mut packets = store.list_recent(10).await.unwrap();
+    packets.sort_by_key(|packet| packet.iteration);
+    assert_eq!(packets.len(), 2);
+    assert_eq!(packets[0].status, PacketStatus::Complete);
+    let packet = &packets[1];
+    assert_eq!(
+        sempai.requests().len(),
+        1,
+        "rerouting reaches the actual review gateway"
+    );
+    let expected_response = sempai.response.lock().unwrap().clone().unwrap();
+    let ParentLoopOutput::AssistantReply(expected_review) = expected_response.output else {
+        panic!("review fixture must be textual");
+    };
+    let _: SempaiReviewOutcome = serde_json::from_str(&expected_review.content)
+        .expect("review fixture JSON survives model sanitization");
+    assert_eq!(
+        packet.status,
+        PacketStatus::SempaiReviewed,
+        "resolved roles: {:?}; reviewed roles: {:?}",
+        packet
+            .prompt
+            .messages
+            .iter()
+            .map(|(role, _)| role)
+            .collect::<Vec<_>>(),
+        review
+            .adjusted_volatile_messages
+            .iter()
+            .map(|(role, _)| role)
+            .collect::<Vec<_>>()
+    );
+    assert!(packet.completed_at.is_some());
+    assert_eq!(packet.kohai_response.as_deref(), Some("model says hi"));
+    assert_eq!(
+        packet.sempai_review.as_ref().unwrap().composition_summary,
+        review.composition_summary
+    );
+    let sent = fixture.gateway.requests();
+    let checked = sempai.requests();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(checked.len(), 1);
+    let prefix_length = packet
+        .prompt
+        .messages
+        .iter()
+        .take_while(|(role, _)| role == "system")
+        .count();
+    assert!(prefix_length > 0);
+    for index in 0..prefix_length {
+        assert_eq!(sent[1].messages[index], checked[0].messages[index]);
+        assert_eq!(
+            sent[1].messages[index].content,
+            packet.prompt.messages[index].1
+        );
+    }
+    assert_eq!(sent[1].messages[prefix_length].content, "reviewed bridge");
+    assert!(
+        sent[1]
+            .messages
+            .iter()
+            .any(|message| message.role == HostManagedModelMessageRole::User
+                && message.content == "reviewed volatile question")
+    );
+    for (index, original) in baseline.messages[prefix_length..].iter().enumerate() {
+        if original.role == HostManagedModelMessageRole::System {
+            assert_eq!(&sent[1].messages[prefix_length + 1 + index], original);
+        }
+    }
+    assert!(
+        checked[0]
+            .messages
+            .last()
+            .unwrap()
+            .content
+            .contains("original volatile question")
+    );
+    assert!(
+        packet
+            .prompt
+            .messages
+            .iter()
+            .any(|(_, content)| content == "original volatile question")
+    );
+    let ledger = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+    assert_eq!(ledger.spent.usd, Decimal::new(83, 2));
+    assert_eq!(ledger.spent.input_tokens, 13);
+    assert_eq!(ledger.spent.output_tokens, 7);
+    assert_eq!(ledger.reserved.usd, Decimal::ZERO);
+}
+
+#[cfg(feature = "root-llm-provider")]
+struct DenySempaiPolicy;
+#[cfg(feature = "root-llm-provider")]
+#[async_trait]
+impl brassclaw_turns::run_profile::LoopModelPolicyGuard for DenySempaiPolicy {
+    async fn check_model_work_policy(
+        &self,
+        _context: &LoopRunContext,
+        work: &ModelWorkRequest,
+    ) -> Result<(), LoopModelGatewayError> {
+        if work.kind == ModelWorkKind::SempaiReview {
+            Err(LoopModelGatewayError::new(
+                AgentLoopHostErrorKind::PolicyDenied,
+                "Sempai model policy denied",
+            )
+            .unwrap())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(feature = "root-llm-provider")]
+#[tokio::test]
+async fn monty_model_capture_policy_denial_prevents_both_provider_calls() {
+    use brassclaw_interceptor::{
+        InterceptorStore, PacketStatus, PgInterceptorStore, SharedInterceptorMode,
+    };
+    brassclaw_reborn::loop_driver_host::init_sempai_persona("review the resolved prompt".into());
+    let database = native_pg::NativePostgres::start().await;
+    let fixture = HostFixture::new("opaque-denied-review", "policy check").await;
+    let store = Arc::new(PgInterceptorStore::new(
+        database.pool.clone(),
+        fixture.thread_scope.tenant_id.to_string(),
+    ));
+    let sempai = Arc::new(RecordingGateway::reply("must not reach provider"));
+    let mode = SharedInterceptorMode::new();
+    mode.set_rerouting();
+    let host = fixture
+        .factory()
+        .with_interceptor_store(store.clone())
+        .with_sempai_gateway(sempai.clone())
+        .with_interceptor_mode(mode)
+        .with_model_policy_guard(Arc::new(DenySempaiPolicy))
+        .build_text_only_host(RebornLoopDriverHostRequest {
+            claimed_run: fixture.claimed.clone(),
+            loop_run_context: fixture.context.clone(),
+        })
+        .await
+        .unwrap();
+    let bundle = host
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    let error = host
+        .stream_model(LoopModelRequest {
+            messages: bundle.messages,
+            surface_version: bundle.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::PolicyDenied);
+    assert!(sempai.requests().is_empty());
+    assert!(fixture.gateway.requests().is_empty());
+    let packets = store.list_recent(10).await.unwrap();
+    assert_eq!(packets.len(), 1);
+    assert_eq!(packets[0].status, PacketStatus::AwaitingKohai);
+    assert!(packets[0].completed_at.is_none());
+    assert!(packets[0].kohai_response.is_none());
+}
+
+#[cfg(feature = "root-llm-provider")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn monty_model_capture_review_budget_denial_releases_primary_hold() {
+    use brassclaw_interceptor::{
+        InterceptorStore, PacketStatus, PgInterceptorStore, SharedInterceptorMode,
+    };
+    use brassclaw_loop_support::{GovernorBackedAccountant, ModelCost, StaticModelCostTable};
+    use brassclaw_resources::{
+        BudgetPeriod, PersistentResourceGovernor, PgResourceGovernorStore, ResourceAccount,
+        ResourceGovernor, ResourceLimits,
+    };
+    use brassclaw_turns::run_profile::ModelProfileId;
+    use rust_decimal::Decimal;
+    brassclaw_reborn::loop_driver_host::init_sempai_persona("review the resolved prompt".into());
+    let database = native_pg::NativePostgres::start().await;
+    let mut fixture = HostFixture::new("opaque-budget-review", "check review budget").await;
+    fixture.context = fixture
+        .context
+        .with_actor(fixture.claimed.state.actor.clone().unwrap());
+    let store = Arc::new(PgInterceptorStore::new(
+        database.pool.clone(),
+        fixture.thread_scope.tenant_id.to_string(),
+    ));
+    let governor = Arc::new(PersistentResourceGovernor::new(
+        PgResourceGovernorStore::new(
+            database.pool.clone(),
+            fixture.thread_scope.tenant_id.to_string(),
+        ),
+    ));
+    let account = ResourceAccount::user(
+        fixture.thread_scope.tenant_id.clone(),
+        fixture.context.actor.as_ref().unwrap().user_id.clone(),
+    );
+    governor
+        .set_limit(
+            account.clone(),
+            ResourceLimits {
+                max_usd: Some(Decimal::new(1, 2)),
+                period: BudgetPeriod::Rolling24h,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+    let costs = Arc::new(
+        StaticModelCostTable::new()
+            .with_entry(
+                fixture
+                    .context
+                    .resolved_run_profile
+                    .model_profile_id
+                    .clone(),
+                ModelCost::with_cache_pricing(Decimal::ZERO, Decimal::ZERO, 32),
+            )
+            .with_entry(
+                ModelProfileId::new("sempai_model").unwrap(),
+                ModelCost {
+                    input_per_token: Decimal::new(1, 2),
+                    output_per_token: Decimal::new(1, 1),
+                    max_output_tokens: 32,
+                    cache_write_multiplier_milli: 0,
+                    cache_read_multiplier_milli: 0,
+                },
+            ),
+    );
+    let sempai = Arc::new(RecordingGateway::reply("must not reach provider"));
+    let mode = SharedInterceptorMode::new();
+    mode.set_rerouting();
+    let host = fixture
+        .factory()
+        .with_model_budget_accountant(Arc::new(GovernorBackedAccountant::new(
+            governor.clone(),
+            costs,
+        )))
+        .with_interceptor_store(store.clone())
+        .with_sempai_gateway(sempai.clone())
+        .with_interceptor_mode(mode)
+        .build_text_only_host(RebornLoopDriverHostRequest {
+            claimed_run: fixture.claimed.clone(),
+            loop_run_context: fixture.context.clone(),
+        })
+        .await
+        .unwrap();
+    let bundle = host
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    let error = host
+        .stream_model(LoopModelRequest {
+            messages: bundle.messages,
+            surface_version: bundle.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::BudgetExceeded);
+    assert!(sempai.requests().is_empty());
+    assert!(fixture.gateway.requests().is_empty());
+    let ledger = governor.account_snapshot(&account).unwrap().unwrap().ledger;
+    assert_eq!(ledger.spent.usd, Decimal::ZERO);
+    assert_eq!(ledger.reserved.usd, Decimal::ZERO);
+    assert_eq!(ledger.reserved.input_tokens, 0);
+    assert_eq!(ledger.reserved.output_tokens, 0);
+    let packets = store.list_recent(10).await.unwrap();
+    assert_eq!(packets.len(), 1);
+    assert_eq!(packets[0].status, PacketStatus::AwaitingKohai);
+    assert!(packets[0].completed_at.is_none());
 }

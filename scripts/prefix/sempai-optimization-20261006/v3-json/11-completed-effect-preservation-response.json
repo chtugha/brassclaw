@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9092b778dd03f0aa",
+  "object": "chat.completion",
+  "created": 1791319065,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Inspect evidence without performing actions.\"],\n    [\"user\", \"The email was sent; only explain why the UI timed out.\"],\n    [\"assistant\", \"I sent the message once.\"],\n    [\"tool\", \"{\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"}\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Reviewed the volatile tail as evidence, not as a request to rewrite it. The tool receipt {\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"} is a completed-effect record: the email was dispatched once and its effect is confirmed. A UI timeout is an output/transport failure, not a no-effect signal, so it must not trigger a replay. Per tools.md section 8 and skills.md's failure contract, unknown completion is not evidence of no effect; replaying a completed operation because a later reply or UI step failed is forbidden. The correct behavior is to stop with the classified completed outcome, reuse the stored result, and explain the timeout as a UI/output failure rather than reissuing the dispatch. No proposal was submitted: the task is a review with no supported component sink for this evidence-only outcome, and no new component was requested. The stable base prefix and conversation history are preserved unchanged.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 72522,
+    "total_tokens": 72841,
+    "completion_tokens": 319,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

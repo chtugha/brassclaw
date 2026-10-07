@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Authorized only the removal of the duplicated 'sachlich' in the system message. Preserved the user message byte-for-byte, roles, order and count. No provider facts were inferred; catalogue_revision and protocol_capabilities are null and no rewrite was applied.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Antworte sachlich."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

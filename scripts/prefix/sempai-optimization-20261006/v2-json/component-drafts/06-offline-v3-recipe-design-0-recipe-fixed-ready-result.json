@@ -1,0 +1,63 @@
+{
+  "class_code": 21,
+  "payload": {
+    "name": "recipe-fixed-ready-result",
+    "description": "Deterministic subworkflow that returns a fixed readiness result. Tier 0: zero LLM calls, one orchestrator PythonCode step referencing the unapproved draft PythonCode component 84313e5b-c871-4f9e-9623-3986db9c5b2a. Returns a result object only; it does not post a user reply. Unapproved draft; requires Q1 and human Q2 before activation.",
+    "trigger": null,
+    "steps": [],
+    "prior_knowledge_content": "Unapproved draft dependency: the single orchestrator component step references the host-allocated unapproved draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), which has not passed Q1 or human Q2 and is not an activated component. This draft requires Q1 and human Q2 before activation. The subworkflow returns a result object only; it does not post a user reply. The current Sempai sink cannot preserve this full v3 Recipe draft (it drops step_descriptions, variants and dependency_registry), so this export is an offline-design constructor draft, not a submitted or activated component.",
+    "intent_examples": [
+      "return ready",
+      "give me a readiness result",
+      "post ready",
+      "tell me you are ready",
+      "please say ready",
+      "respond with ready",
+      "send a readiness reply",
+      "give me a readiness response",
+      "answer with ready",
+      "please post the word ready"
+    ],
+    "step_descriptions": [
+      {
+        "desc_idx": 0,
+        "label": "Return a fixed readiness result",
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "orchestrator",
+            "goal": "Return the fixed readiness result",
+            "content": "Run the fixed-readiness-result PythonCode",
+            "type": "component",
+            "include": [
+              "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "variant_key": "fixed-readiness-result",
+        "description": "Return exactly a fixed readiness result with no input slots",
+        "step_link": "0:1-0:E",
+        "intent_examples": [
+          "return ready",
+          "give me a readiness result",
+          "post ready",
+          "tell me you are ready",
+          "please say ready",
+          "respond with ready",
+          "send a readiness reply",
+          "give me a readiness response",
+          "answer with ready",
+          "please post the word ready"
+        ],
+        "variable_patterns": []
+      }
+    ],
+    "dependency_registry": null
+  }
+}

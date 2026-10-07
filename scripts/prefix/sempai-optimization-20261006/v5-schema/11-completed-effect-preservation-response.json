@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a3ba6ae46bfb3610",
+  "object": "chat.completion",
+  "created": 1791320302,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"proposed_components\": [],\n  \"composition_summary\": \"Reviewed the packet as data without proposing components, intents, settings or recipe updates. The volatile tail is preserved exactly: system, user, assistant and tool messages keep their roles, order and content, including the tool receipt {\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"}. No prompt repair was justified, so adjusted_volatile_messages and bridge_messages are empty and the original messages are echoed unchanged. The task is an offline-design review, not a component draft, so proposed_components is empty. The explanation is in composition_summary: the tool receipt is trusted evidence that the email was sent once and completed, so the UI timeout is a display/transport failure, not a missing effect. Because the effect already completed, the operation must not be replayed; a timeout or lost completion record is unknown completion, not confirmed no effect, and replaying a completed effect is forbidden. The assistant must not claim it sent another message. This is a separate usage/step (reconciliation or a display-only reply), not an implicit extra dispatch. The kernel still enforces current global Tool policy before any future dispatch, and the completed effect is retained without reissue. No provider capabilities were claimed; target_provider_metadata is null and no runtime facts were inferred.\",\n  \"proposed_intent_examples\": [],\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Inspect evidence without performing actions.\"],\n    [\"user\", \"The email was sent; only explain why the UI timed out.\"],\n    [\"assistant\", \"I sent the message once.\"],\n    [\"tool\", \"{\\\"status\\\":\\\"completed\\\",\\\"receipt\\\":\\\"test-fixture-effect-42\\\"}\"]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 74043,
+    "total_tokens": 74432,
+    "completion_tokens": 389,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

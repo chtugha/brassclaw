@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-be8f68f2086488d5",
+  "object": "chat.completion",
+  "created": 1791358011,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"rank not in inputs\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"rank is None\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"type(rank) is not int\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"type(rank) is bool\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"not 1 <= rank <= 10\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"1 <= rank <= 10\", \"result\": \"{'accepted': True, 'rank': rank}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; no provider facts available\", \"target typed inputs runner support is a prerequisite, not observed\", \"Q1 and human Q2 precede activation; no self-approval or replay of completed effects\"], \"notes\": \"Draft is a pure-logic class22 with no Tool calls, inputs or dependencies. The contract distinguishes absent key, explicit null, non-int, bool, and out-of-range \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98381,
+    "total_tokens": 98666,
+    "completion_tokens": 285,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

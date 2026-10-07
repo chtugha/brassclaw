@@ -980,7 +980,7 @@ impl RebornBinaryE2EHarness {
                     heartbeat_interval: Duration::from_millis(20),
                     poll_interval: Duration::from_millis(10),
                     scope_filter: restrict_worker_to_initial_scope.then(|| turn_scope.clone()),
-                    max_turn_duration: None,
+                    max_driver_wall_time: None,
                 },
                 ..DefaultPlannedRuntimeConfig::default()
             },

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-967231ca06a78c9c",
+  "object": "chat.completion",
+  "created": 1791329164,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Prepare the requested reusable draft without executing any operation.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Drafted one unapproved pure-logic class22 component. Raw window: missing -> {kind:\\\"missing\\\",window:null}; explicit null -> {kind:\\\"null\\\",window:null}; exact integer 3..12 -> {kind:\\\"integer\\\",window:original}; other -> {kind:\\\"invalid\\\",window:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-transfer-07\",\n        \"description\": \"Classify raw window: missing -> {kind:\\\"missing\\\",window:null}; explicit null -> {kind:\\\"null\\\",window:null}; exact integer 3..12 -> {kind:\\\"integer\\\",window:original}; other -> {kind:\\\"invalid\\\",window:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"window = inputs.get('window')\\nif window is None:\\n    result = {'kind': 'null', 'window': None}\\nelif type(window) is int and 3 <= window <= 12:\\n    result = {'kind': 'integer', 'window': window}\\nelse:\\n    result = {'kind': 'invalid', 'window': None}\\nif 'window' not in inputs:\\n    result = {'kind': 'missing', 'window': None}\"\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97001,
+    "total_tokens": 97445,
+    "completion_tokens": 444,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-885a6bfc75fcfeba",
+  "object": "chat.completion",
+  "created": 1791321485,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Reviewed the single requested class-22 draft pc-classify-value. The body is a valid module-scope pure-logic guard: it reads raw candidates with inputs.get, validates presence separately from null, enforces exact integer semantics (rejecting bool and float), checks the 0..10 inclusive range, and assigns result on every branch without coercion, exceptions, imports, host calls or I/O. The four requested outcomes (missing/null/value/invalid) are produced as the requested invalid-result objects, not exceptions or success objects. The draft is an unapproved offline-design candidate; it carries no UUID, version, association or approval, and no submission/activation occurred. No other proposal arrays are applicable in this test.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-classify-value\",\n        \"description\": \"Classify an optional raw value while preserving the distinction between missing and null. Returns {state:\\\"missing\\\",value:null} for absent inputs, {state:\\\"null\\\",value:null} for an explicit null, {state:\\\"value\\\",value:original} for an exact integer in 0..10 inclusive (not bool/float), and {state:\\\"invalid\\\",value:null} for any other value. No defaults, coercion, exceptions, imports, host or I/O. Unapproved offline-design draft; no UUID, version, association or approval.\",\n        \"content\": \"value = inputs.get(\\\"value\\\")\\nif value is None:\\n    result = {\\\"state\\\": \\\"null\\\", \\\"value\\\": None}\\nelse:\\n    if type(value) is int and 0 <= value <= 10:\\n        result = {\\\"state\\\": \\\"value\\\", \\\"value\\\": value}\\n    else:\\n        result = {\\\"state\\\": \\\"invalid\\\", \\\"value\\\": None}\\nif \\\"value\\\" not in inputs:\\n    result = {\\\"state\\\": \\\"missing\\\", \\\"value\\\": None}\"\n      }\n    }\n  ],\n  \"settings_adjustments\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Classify an optional raw value while preserving the distinction between missing and null.\"]\n  ]\n,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76464,
+    "total_tokens": 76971,
+    "completion_tokens": 507,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

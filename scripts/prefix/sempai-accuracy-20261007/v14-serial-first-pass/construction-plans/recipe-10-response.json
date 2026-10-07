@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-aa0a5478cdecb7b8",
+  "object": "chat.completion",
+  "created": 1791358521,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"orchestrator\", \"uuid\": \"a059d0bb-4a87-5eba-b029-93581dd81b54\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\"], \"notes\": \"Offline full-v3 export only. Draft PythonCode a059d0bb-4a87-5eba-b029-93581dd81b54 returns state DATA ('Prepared'); no Tool calls, no posted message. Intents in\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98641,
+    "total_tokens": 98801,
+    "completion_tokens": 160,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

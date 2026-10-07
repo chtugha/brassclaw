@@ -1,0 +1,76 @@
+{
+  "class_code": 21,
+  "payload": {
+    "name": "recipe-transfer-03",
+    "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+    "trigger": null,
+    "steps": [],
+    "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+    "intent_examples": [
+      "say healthy",
+      "reply healthy",
+      "post healthy",
+      "send the healthy reply",
+      "respond with healthy",
+      "tell me healthy",
+      "please say healthy",
+      "please reply healthy",
+      "post the fixed healthy message",
+      "send the fixed healthy message"
+    ],
+    "step_descriptions": [
+      {
+        "desc_idx": 0,
+        "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+        "yaml_source": "Documentation of supplied offline fixture steps",
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "rust",
+            "goal": "Bind reply Tool",
+            "content": "Use the supplied offline fixture",
+            "type": "component",
+            "include": [
+              "95a56828-1af9-58d3-8b46-107c7a1fb548"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          },
+          {
+            "stepnumber": 2,
+            "knowledge": "orchestrator",
+            "goal": "Post fixed reply",
+            "content": "Use the supplied offline fixture",
+            "type": "component",
+            "include": [
+              "52840069-3cd9-5ba7-bfe2-e160739911b3"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "variant_key": "healthy-reply",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+        "step_link": "0:1-0:E",
+        "intent_examples": [
+          "say healthy",
+          "reply healthy",
+          "post healthy",
+          "send the healthy reply",
+          "respond with healthy",
+          "tell me healthy",
+          "please say healthy",
+          "please reply healthy",
+          "post the fixed healthy message",
+          "send the fixed healthy message"
+        ],
+        "variable_patterns": []
+      }
+    ],
+    "dependency_registry": null
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8f92692dc0f7fc6b",
+  "object": "chat.completion",
+  "created": 1791331306,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Design a reusable ready reply workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Created one class-21 Recipe recipe-transfer-01 that posts exactly the fixed word 'Ready' as a user reply using the bound existing host.post_reply Tool. The single desc_idx=0 step references the supplied ToolSkill UUID a6ed3264-13bc-56ae-9de7-064df4b3d2ce (rust binding) followed by the supplied PythonCode UUID d0a73787-74ae-55cb-b6a0-25131936e06d (orchestrator execution). trigger=null, steps=[], dependency_registry=null. One variant with step_link=0:1-0:E and ten distinct reply intents. These are unapproved draft identities with no version numbers or approval; Q1 and human Q2 are required before activation. The current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry fields; this is an export-only draft, not a submission or activation.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-transfer-01\", \"description\": \"Offline unapproved fixed-reply subworkflow; binds existing host.post_reply and posts exactly the fixed word as a user reply\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.\", \"intent_examples\": [\"say ready\", \"reply ready\", \"post ready\", \"send the ready reply\", \"respond with ready\", \"tell me ready\", \"please say ready\", \"please reply ready\", \"post the fixed ready message\", \"send the fixed ready message\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"rust\", \"goal\": \"Bind reply Tool\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"a6ed3264-13bc-56ae-9de7-064df4b3d2ce\"], \"tool_bindings\": [], \"dependencies\": null}, {\"stepnumber\": 2, \"knowledge\": \"orchestrator\", \"goal\": \"Post fixed reply\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"d0a73787-74ae-55cb-b6a0-25131936e06d\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"ready-reply\", \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"say ready\", \"reply ready\", \"post ready\", \"send the ready reply\", \"respond with ready\", \"tell me ready\", \"please say ready\", \"please reply ready\", \"post the fixed ready message\", \"send the fixed ready message\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 99059,
+    "total_tokens": 99847,
+    "completion_tokens": 788,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

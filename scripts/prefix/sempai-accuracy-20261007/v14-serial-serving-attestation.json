@@ -1,0 +1,11 @@
+{
+  "generation": "3c6b8ac31b98e5b0c418befd071efb0fd5ded723613aa6f70aec8cfcae2dea1f",
+  "template_sha256": "7ce557c5e2e94489f5ac1c91bfb6077666eaad88bb727db6ad0b431a9cc71de0",
+  "base_unit_sha256": "0a61271c8e7901796101d2a2ca8abcb97bb06e8ffb18168bbbb89da826101192",
+  "base_unit_unchanged": true,
+  "request_local_native_reuse_verified_calls": 120,
+  "extra_external_restores": 0,
+  "root_priming_receipt_sha256": "2eedeeac7cd30f1301f2ca60a72098e8456d98d33b461f53612b81f6c1c1e79e",
+  "model_evaluation_sha256": "4a7e3e30b2936fa0ffdd380ce20e9d0bc04b2f69ab4c194b174c471c4dbcd3f4",
+  "external_recurrent_persistence_verified": false
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-984d43a7cc6b163f",
+  "object": "chat.completion",
+  "created": 1791319867,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline-design export only; no submission or activation occurred. The requested class-21 Recipe draft is emitted as a constructor fragment using the actual persisted IBS schema (knowledge/stepnumber/desc_idx, one type:component step with a single include UUID, step_link 0:1-0:E, one variant, variable_patterns []). The draft references the host-allocated unapproved PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a exactly once. The current Sempai sink cannot preserve this v3 Recipe constructor draft (class 21 drops step_descriptions/variants/dependency_registry), so this is a design artifact, not a stored component; it remains unapproved and requires Q1 and human Q2 before any activation. No provider capabilities were invented; catalogue_revision and protocol_capabilities are null. No other proposal arrays were populated.\",\n  \"settings_adjustments\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable subworkflow that returns a fixed readiness result.\"]\n  ],\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-fixed-ready-result\",\n        \"description\": \"Deterministic Tier-0 subworkflow that returns a fixed readiness result object. It posts no user reply; it only returns the result. Unapproved draft dependency; requires Q1 and human Q2 before activation. The current Sempai sink cannot preserve this v3 Recipe constructor draft.\",\n        \"trigger\": null,\n        \"steps\": [\n          {\n            \"stepnumber\": 1,\n            \"knowledge\": \"orchestrator\",\n            \"goal\": \"Return the fixed readiness result\",\n            \"content\": \"Run the fixed-readiness-result PythonCode\",\n            \"type\": \"component\",\n            \"include\": [\"84313e5b-c871-4f9e-9623-3986db9c5b2a\"],\n            \"tool_bindings\": [],\n            \"dependencies\": null\n          }\n        ],\n        \"prior_knowledge_content\": \"Unapproved draft dependency: PythonCode 84313e5b-c871-4f9e-9623-3986db9c5b2a (result = {\\\"status\\\": \\\"Ready\\\"}). This draft requires Q1 and human Q2 before activation. The subworkflow returns a result object only; it does not post a user reply. The current Sempai sink cannot preserve this v3 Recipe constructor draft (class 21 drops step_descriptions, variants and dependency_registry).\",\n        \"intent_examples\": [\n          \"return a fixed readiness result\",\n          \"give me a ready result\",\n          \"produce a readiness result\",\n          \"output a ready status\",\n          \"return ready\",\n          \"give me a ready response\",\n          \"send a readiness result\",\n          \"provide a ready result\",\n          \"answer with ready\",\n          \"please return the readiness result\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Return the fixed readiness result\",\n            \"yaml_source\": \"Human-readable documentation of the same single step\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Return the fixed readiness result\",\n                \"content\": \"Run the fixed-readiness-result PythonCode\",\n                \"type\": \"component\",\n                \"include\": [\"84313e5b-c871-4f9e-9623-3986db9c5b2a\"],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"fixed-readiness-result\",\n            \"description\": \"Return exactly a fixed readiness result with no input slots\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"return a fixed readiness result\",\n              \"give me a ready result\",\n              \"produce a readiness result\",\n              \"output a ready status\",\n              \"return ready\",\n              \"give me a ready response\",\n              \"send a readiness result\",\n              \"provide a ready result\",\n              \"answer with ready\",\n              \"please return the readiness result\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ]\n  ,\n  \"proposed_recipe_updates\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73760,
+    "total_tokens": 74825,
+    "completion_tokens": 1065,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

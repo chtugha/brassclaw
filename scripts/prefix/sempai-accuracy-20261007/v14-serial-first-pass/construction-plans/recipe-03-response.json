@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b3ca8d6179d13e66",
+  "object": "chat.completion",
+  "created": 1791358361,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"post_reply is globally allowed\", \"result\": \"recipe-transfer-03\"}, {\"guard\": \"post_reply is globally blocked\", \"result\": \"recipe-transfer-03-blocked\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 validation\", \"human Q2 approval\", \"host.post_reply globally allowed\", \"host.post_reply adapter registered\"], \"notes\": \"Offline full-v3 export only. Draft PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3 and ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548 are unapproved; Q1 and Q2,\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98741,
+    "total_tokens": 98946,
+    "completion_tokens": 205,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-02",
+    "description": "Raw quota may omit or contain any JSON value. Accept exact integers -2..7 inclusive (not bool/float). Always result={accepted:boolean,quota:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "quota = inputs.get('quota')\naccepted = type(quota) is int and not type(quota) is bool and -2 <= quota <= 7\nresult = {'accepted': accepted, 'quota': quota if accepted else None}"
+  }
+}

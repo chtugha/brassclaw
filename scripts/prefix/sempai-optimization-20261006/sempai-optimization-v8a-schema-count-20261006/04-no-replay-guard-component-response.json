@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-817a3168de5d46e0",
+  "object": "chat.completion",
+  "created": 1791322162,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Preserved the supplied volatile message unchanged. Proposed exactly one class-22 pure-logic component pc-check-retry-eligibility. The body reads every required field via inputs.get (missing and null stay distinct), validates types and bounds before computing eligibility, and returns a boolean result with no I/O, imports or host calls. Eligibility is true only when outcome is retryable, attempt < max_attempts, state is not completed, and read_only or dedup_verified is true; completed effects never replay. The description retains the live policy/cancellation/resource checks and the typed-runner gap as required. This is an evidence-conditioned guard, not dispatch permission. Note: the host sink supports class 22 (name/description/content); compatibility/intent/settings arrays are empty per test scope.\",\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need a reusable deterministic guard before considering a retry.\"]\n  ],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-retry-eligibility\",\n        \"description\": \"Deterministic pure-logic guard that decides whether a retry is eligible before any retry is considered. It is evidence-conditioned, not dispatch permission: it does not grant dispatch, override live policy, bypass cancellation, or replace actual deduplication evidence. Eligibility is true only when outcome is retryable, attempt < max_attempts, operation_state is not completed, and read_only or dedup_verified is true. Completed effects never replay even when read_only or dedup_verified is true. Missing, null or invalid data fails closed. This guard is a logical eligibility result; it does not grant dispatch permission or replace live policy, cancellation and actual deduplication evidence. The typed-runner interface (inputs mapping) is a target contract and requires actual runner support before execution.\",\n        \"content\": \"def classify_state(state):\\n    return type(state) is str and state in ('completed', 'unknown', 'not_started')\\n\\ndef classify_outcome(outcome):\\n    return type(outcome) is str and outcome in ('retryable', 'terminal')\\n\\ndef classify_attempt(attempt):\\n    return type(attempt) is int and not isinstance(attempt, bool) and attempt >= 1\\n\\ndef classify_max(max_attempts):\\n    return type(max_attempts) is int and not isinstance(max_attempts, bool) and max_attempts >= 1\\n\\ndef classify_read_only(flag):\\n    return type(flag) is bool\\n\\ndef classify_dedup(flag):\\n    return type(flag) is bool\\n\\ndef check_retry_eligibility(operation_state, outcome, attempt, max_attempts, read_only, dedup_verified):\\n    state_ok = classify_state(operation_state)\\n    outcome_ok = classify_outcome(outcome)\\n    attempt_ok = classify_attempt(attempt)\\n    max_ok = classify_max(max_attempts)\\n    read_only_ok = classify_read_only(read_only)\\n    dedup_ok = classify_dedup(dedup_verified)\\n    valid = state_ok and outcome_ok and attempt_ok and max_ok and read_only_ok and dedup_ok\\n    if not valid:\\n        return {'retry': False}\\n    eligible = (outcome == 'retryable' and attempt < max_attempts and operation_state != 'completed' and (read_only or dedup_verified))\\n    return {'retry': eligible}\\n\\nstate = inputs.get('operation_state')\\noutcome = inputs.get('outcome')\\nattempt = inputs.get('attempt')\\nmax_attempts = inputs.get('max_attempts')\\nread_only = inputs.get('read_only')\\ndedup_verified = inputs.get('dedup_verified')\\nresult = check_retry_eligibility(state, outcome, attempt, max_attempts, read_only, dedup_verified)\"\n      }\n    }\n  ],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76923,
+    "total_tokens": 77779,
+    "completion_tokens": 856,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

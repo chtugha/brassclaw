@@ -18,7 +18,7 @@ class SempaiCompilerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
             compiler.SOURCE_ROOT = (temporary / 'sources').resolve()
-            for relative in compiler.SOURCE_DOCUMENTS:
+            for relative in (*compiler.SOURCE_DOCUMENTS, *compiler.TEACHING_SIDECARS):
                 target = compiler.SOURCE_ROOT / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(checkout / relative, target)
@@ -33,6 +33,15 @@ class SempaiCompilerTests(unittest.TestCase):
                     compiler.distill_lane(lane)
                 cards = compiler.accepted_cards()
                 selected = compiler.required_reference_cards(cards)
+                checkpoint = ''.join(c['excerpt'] for c in selected
+                    if c['path'] == 'scripts/prefix/sempai-authoring-reference.md')
+                self.assertIn('inputs.get("candidate")', checkpoint)
+                self.assertIn('result = format_status("Waiting")', checkpoint)
+                self.assertIn('Returning status data', checkpoint)
+                decision_card = next(c for c in selected if c['excerpt'].startswith(
+                    '## Terminal dispatch map — Select semantics before an example\n'))
+                with self.assertRaisesRegex(ValueError, 'Missing exact'):
+                    compiler.reviewer_decision_checkpoint([c for c in selected if c is not decision_card])
                 for relative in compiler.SOURCE_DOCUMENTS:
                     excerpts = sorted((c for c in selected if c['path'] == relative),
                                       key=lambda c: c['line_start'])
@@ -89,6 +98,14 @@ class SempaiCompilerTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'fingerprints drifted'):
                         compiler.required_reference_cards(cards)
                 inventory = (compiler.RAW / 'source_manifest.json').read_bytes()
+                teaching = compiler.SOURCE_ROOT / 'scripts/prefix/sempai-worked-examples.md'
+                teaching_original = teaching.read_bytes()
+                teaching.write_bytes(teaching_original + b'\nUnverified change.\n')
+                with self.assertRaisesRegex(ValueError, 'Teaching source'):
+                    compiler.collect()
+                self.assertEqual((compiler.RAW / 'source_manifest.json').read_bytes(), inventory)
+                self.assertEqual(compiler.accepted_cards(), cards)
+                teaching.write_bytes(teaching_original)
                 (compiler.SOURCE_ROOT / 'recipe.md').unlink()
                 with self.assertRaisesRegex(ValueError, 'Required local source missing'):
                     compiler.collect()

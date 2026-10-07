@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b5a0b7253c0bdfff",
+  "object": "chat.completion",
+  "created": 1791331004,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'quota' not in inputs:\", \"result\": \"{'accepted': False, 'quota': None}\"}, {\"guard\": \"else:\", \"result\": \"value = inputs['quota']; if type(value) is int and -2 <= value <= 7: result = {'accepted': True, 'quota': value} else: result = {'accepted': False, 'quota': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata\", \"catalogue_revision\"], \"notes\": \"target_provider_metadata and catalogue_revision are null; provider facts and catalogue identities are unknown. The requested class22 pure-logic draft is a self-\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98379,
+    "total_tokens": 98546,
+    "completion_tokens": 167,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

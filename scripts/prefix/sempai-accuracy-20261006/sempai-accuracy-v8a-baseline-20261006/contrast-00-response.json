@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-9361ca2916a39c08",
+  "object": "chat.completion",
+  "created": 1791323145,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-00: it reads raw slots via inputs.get('slots') so absence is a valid outcome, validates that slots is a list of length 0..2 with every item an exact integer in 0..4 (rejecting bool, float, non-integers and out-of-range values), and returns {ok, slots: original if valid else []} with no I/O, imports, host calls or upstream-validation assumption. The body assigns result on every branch and defines its helper before use. This is an unapproved target-interface draft; activation requires Q1, human Q2 and typed-runner support, which are not claimed.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Prepare the requested reusable draft without executing any operation.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-00\",\n        \"description\": \"Pure-logic guard: validates a raw 'slots' list of length 0..2 whose items are exact integers 0..4, and returns {ok, slots: original if valid else []}. No I/O, imports, host calls or upstream-validation assumption. Empty list is valid.\",\n        \"content\": \"def classify_slots(raw):\\n    if not isinstance(raw, list) or not 0 <= len(raw) <= 2:\\n        return {'ok': False, 'slots': []}\\n    for item in raw:\\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 4:\\n            return {'ok': False, 'slots': []}\\n    return {'ok': True, 'slots': raw}\\nresult = classify_slots(inputs.get('slots'))\"\n      }\n    }\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76863,
+    "total_tokens": 77315,
+    "completion_tokens": 452,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-835a9e89e7101814",
+  "object": "chat.completion",
+  "created": 1791322349,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Preserved the volatile tail unchanged (one user message, no assistant action invented). Drafted exactly one class-22 pure-logic component pc-check-timeout-ms with only name/description/content, per the target constructor. The body is a module-scope if/else result assignment: it reads timeout_ms via inputs.get so missing and null stay distinct, validates exact integer type with 0..7500 inclusive bounds (rejecting bool and float), and assigns result to the module scope on every path — {valid, timeout_ms} with the original integer when valid or null otherwise. No imports, host calls, I/O, exceptions or coercion; no Markdown in content. This is an unapproved draft using the target typed-inputs interface; typed-runner support and Q1/Q2 approval precede activation. No other component classes are supported by the sink, so proposed_recipe_updates, proposed_intent_examples, settings_adjustments and adjusted_volatile_messages remain empty.\",\n  \"proposed_recipe_updates\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need to validate raw timeout values before configuring a service.\"]\n  ],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-timeout-ms\",\n        \"description\": \"Pure-logic guard: returns whether a raw timeout value is an exact integer in 0..7500 inclusive. Reads timeout_ms from the step-local inputs mapping via inputs.get so missing and null remain distinct. Returns {valid, timeout_ms} where timeout_ms is the original integer when valid or null otherwise. No imports, host calls, I/O, exceptions or coercion.\",\n        \"content\": \"def check_timeout_ms(inputs):\\n    timeout_ms = inputs.get('timeout_ms')\\n    valid = type(timeout_ms) is int and not isinstance(timeout_ms, bool) and 0 <= timeout_ms <= 7500\\n    if valid:\\n        result = {'valid': True, 'timeout_ms': timeout_ms}\\n    else:\\n        result = {'valid': False, 'timeout_ms': None}\\n    return result\\nresult = check_timeout_ms(inputs)\"\n      }\n    }\n  ],\n  \"settings_adjustments\": []\n  ,\n  \"bridge_messages\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 77503,
+    "total_tokens": 78012,
+    "completion_tokens": 509,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

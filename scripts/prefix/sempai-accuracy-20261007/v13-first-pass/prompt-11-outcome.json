@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Keep it concise concise."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edits authorized. The system text contains repeated wording but no edit was authorized, so it is preserved verbatim. The user request is quoted content to be echoed exactly, including its braces and punctuation. Target provider protocol, roles, tool and reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no provider-specific rewrite or capability inference was applied. No components, recipe updates, intent examples or settings changes were proposed.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

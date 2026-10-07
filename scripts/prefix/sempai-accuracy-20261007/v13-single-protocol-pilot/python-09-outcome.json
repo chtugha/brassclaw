@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-09. It classifies raw lag with a module-scoped helper invoked at module scope and assigns its returned object to result. Missing -> {kind:\"missing\",lag:null}; explicit null -> {kind:\"null\",lag:null}; exact integer 5..14 -> {kind:\"integer\",lag:original}; other -> {kind:\"invalid\",lag:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Conversation preserved unchanged. Unapproved target-interface draft; typed inputs needs selected-runner support; no execution, submission, Q1/Q2 or activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-09",
+        "description": "Classify raw lag: missing -> {kind:\"missing\",lag:null}; explicit null -> {kind:\"null\",lag:null}; exact integer 5..14 -> {kind:\"integer\",lag:original}; other -> {kind:\"invalid\",lag:null}. No bool/float/coercion/defaults/exceptions. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "def classify_lag(lag):\n    if 'lag' not in inputs:\n        return {'kind': 'missing', 'lag': None}\n    if lag is None:\n        return {'kind': 'null', 'lag': None}\n    if type(lag) is int and 5 <= lag <= 14:\n        return {'kind': 'integer', 'lag': lag}\n    return {'kind': 'invalid', 'lag': None}\nresult = classify_lag(inputs.get('lag'))"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

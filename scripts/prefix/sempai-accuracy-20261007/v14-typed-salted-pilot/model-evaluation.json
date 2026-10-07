@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-07T07:12:32.688249+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "python-08",
+      "construction_plan": {
+        "seconds": 52.63,
+        "usage": {
+          "prompt_tokens": 98409,
+          "total_tokens": 98589,
+          "completion_tokens": 180,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback",
+        "kv_transfer_params": {
+          "cached_token_stats": {
+            "num_vllm_cached_tokens": 0,
+            "num_lmcache_cached_tokens": 0,
+            "num_lmcache_extra_cached_tokens": 0
+          }
+        }
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 55.137
+    },
+    {
+      "id": "python-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 1.544
+    },
+    {
+      "id": "recipe-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 1.698
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "single_layout_requested": true,
+  "cache_salt": "sempai-v14-typed-pilot-20261007-0711",
+  "evaluator_sha256": "075a854570b82ab53e506ce1b58821ae34e2f045238c2960c37a304e89c4b310",
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20",
+  "aborted_reason": "Three consecutive provider errors; serving must recover before accuracy evaluation."
+}

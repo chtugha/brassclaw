@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bb2e7bb110446138",
+  "object": "chat.completion",
+  "created": 1791325708,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"composition_summary\": \"Preserved the user message byte-for-byte and both roles. The only authorized edit was replacing the duplicated system content with exactly \\\"Use metric units.\\\". No provider facts, components, or other changes were inferred.\", \"proposed_recipe_updates\": [], \"proposed_components\": [], \"settings_adjustments\": [], \"adjusted_volatile_messages\": [[\"system\", \"Use metric units.\"], [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]], \"proposed_intent_examples\": []\n  \t\t, \"bridge_messages\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98238,
+    "total_tokens": 98357,
+    "completion_tokens": 119,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

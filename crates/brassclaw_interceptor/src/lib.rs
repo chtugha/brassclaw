@@ -2,12 +2,11 @@
 //!
 //! # What the Interceptor Does
 //!
-//! The interceptor sits between `PromptStage` and `ModelStage` in the
-//! agent-loop executor pipeline.  It captures a complete telemetry snapshot
-//! (the assembled prompt, all logical segments with their inclusion decisions,
-//! token accounting, capability surface) **before** the Kohai provider sees
-//! the prompt.  After the Kohai responds, the interceptor closes the packet
-//! with the response + actual token usage.
+//! Reborn captures the authorized, resolved host request immediately before
+//! provider dispatch. Its reference-only executor hook cannot supply prompt
+//! text. Packets contain the actual messages and available segment/accounting
+//! metadata; unknown provider limits remain unknown. After a real response,
+//! the packet records its structured output and reported usage.
 //!
 //! ## Routing state (no Sempai connected)
 //!
@@ -24,13 +23,16 @@
 //! 4. Constructs a rich Sempai audit prompt containing the Kohai prompt,
 //!    all segment metadata, token accounting, recipe/skill/tool context,
 //!    and orchestrator design information.
-//! 5. Sends the audit prompt to the Sempai provider.
+//! 5. Checks current model policy, reserves budget in an isolated namespace
+//!    sharing the task governor, and sends the audit to the Sempai provider.
 //! 6. Receives [`SempaiReviewOutcome`] which contains:
 //!    - An adjusted Kohai prompt (forwarded to Kohai instead of the original)
 //!    - A composition summary (persisted with the packet)
 //!    - Optional recipe/skill/tool updates (sent to the validation queue)
 //!    - Optional agent settings adjustments
-//! 7. Closes the packet as `status = SempaiReviewed` and saves.
+//! 7. Records the review, forwards the validated prompt, then closes the packet
+//!    as `status = SempaiReviewed` after the actual Kohai response. Review errors
+//!    stop dispatch; selected System messages and typed tool replay are preserved.
 //!
 //! # Crate layout
 //!

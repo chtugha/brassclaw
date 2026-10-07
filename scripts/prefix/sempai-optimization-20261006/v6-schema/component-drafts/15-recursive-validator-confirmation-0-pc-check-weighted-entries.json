@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-weighted-entries",
+    "description": "Pure-logic guard validating a raw list of weighted entries. Returns {ok, entries} where entries is the original list only when every item is a JSON object with exactly label (string length 1..8) and weight (exact integer 0..1); otherwise ok is false and entries is an empty list. No imports, host calls, I/O or type coercion. Missing and null entries are distinct invalid outcomes.",
+    "content": "entries = inputs.get('entries')\nvalid = isinstance(entries, list) and 0 <= len(entries) <= 3\nif valid:\n    for item in entries:\n        if not isinstance(item, dict) or set(item.keys()) != {'label', 'weight'}:\n            valid = False\n            break\n        label = item.get('label')\n        weight = item.get('weight')\n        if not (type(label) is str and 1 <= len(label) <= 8):\n            valid = False\n            break\n        if not (type(weight) is int and not isinstance(weight, bool) and 0 <= weight <= 1):\n            valid = False\n            break\nresult = {'ok': valid, 'entries': entries if valid else []}"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b44ebc7294ec20d3",
+  "object": "chat.completion",
+  "created": 1791358026,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"offset not in inputs\", \"result\": \"{'kind': 'missing', 'offset': None}\"}, {\"guard\": \"inputs['offset'] is None\", \"result\": \"{'kind': 'null', 'offset': None}\"}, {\"guard\": \"type(inputs['offset']) is int and 2 <= inputs['offset'] <= 11\", \"result\": \"{'kind': 'integer', 'offset': inputs['offset']}\"}, {\"guard\": \"else\", \"result\": \"{'kind': 'invalid', 'offset': None}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"exact association approval\", \"selected-runner support\"], \"notes\": \"Class 22 pure-logic draft. Distinguishes missing (key absent) from explicit null before reading the value. Exact integer 2..11 inclusive; bool/float/strings/wr错\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98443,
+    "total_tokens": 98665,
+    "completion_tokens": 222,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

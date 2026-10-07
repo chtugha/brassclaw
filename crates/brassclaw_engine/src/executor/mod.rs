@@ -11,9 +11,7 @@ pub mod kohai_port;
 pub mod orchestrator;
 pub mod orchestrator_code_port;
 pub mod prompt;
-// Historical v0.0.16 compatibility proof; not the Monty 1.0 hosting API.
-#[cfg(test)]
-mod legacy_resource_tracker;
+// The historical generic-tracker proof lives in tests/monty_legacy_tracker.
 pub mod scripting;
 pub mod structured;
 pub(crate) mod thread_context;

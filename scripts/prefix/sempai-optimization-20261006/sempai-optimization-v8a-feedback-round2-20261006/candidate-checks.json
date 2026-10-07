@@ -1,0 +1,33 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "06-offline-v3-recipe-design-response.json",
+      "name": "recipe-fixed-ready-result",
+      "class_code": 21,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "single_description_single_step": true,
+        "single_exact_unapproved_draft_reference": true,
+        "persisted_ibs_layout": true,
+        "variant_selection": true,
+        "ten_distinct_intents": false,
+        "constructor_intents_match_variant": true,
+        "no_tool_dispatch_or_dependencies": true,
+        "intent_does_not_promise_post_reply": true,
+        "retains_q1_human_q2_and_sink_gap": true,
+        "no_version_number_in_component_ref": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    }
+  ],
+  "component_activation_performed": false
+}

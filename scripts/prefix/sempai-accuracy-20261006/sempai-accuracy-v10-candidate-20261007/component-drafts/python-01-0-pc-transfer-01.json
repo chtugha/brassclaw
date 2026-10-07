@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-01",
+    "description": "Raw window must be an exact integer in -3..6 inclusive. Missing or null window is invalid. Accepts only exact integers (not bool/float/strings). Always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "window = inputs.get('window')\naccepted = type(window) is int and not isinstance(window, bool) and -3 <= window <= 6\nresult = {'accepted': accepted, 'window': window if accepted else None}"
+  }
+}

@@ -5658,3 +5658,26 @@ async fn update_token_settings_invokes_all_live_setters() {
         "live_inline_control_setter must be invoked with inline_control value"
     );
 }
+
+#[tokio::test]
+async fn unwired_monty_lifecycle_never_fabricates_running_or_restart_acknowledgement() {
+    let coordinator = Arc::new(DefaultTurnCoordinator::new(Arc::new(
+        InMemoryTurnStateStore::default(),
+    )));
+    let services = RebornServices::new(
+        Arc::new(InMemorySessionThreadService::default()),
+        coordinator,
+    );
+    let error = services.get_monty_vm_status(caller()).await.unwrap_err();
+    assert_eq!(error.status_code, 503);
+    for force in [false, true] {
+        let error = services
+            .restart_monty_vm(
+                caller(),
+                brassclaw_product_workflow::MontyVmRestartRequest { force },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.status_code, 503);
+    }
+}

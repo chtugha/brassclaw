@@ -1962,40 +1962,27 @@ pub async fn build_reborn_runtime(
     // Extract broadcast_budget_event_sink for the budget projection task.
     // Uses the substrate variable already extracted above (broadcast_budget_event_sink_for_accountant).
 
-    // Load max_duration_secs and token_budgets_enabled from reborn_monty_vm_settings
-    // (Step 6.3 live wiring). Uses the system-scope row ("default" / "default") which
-    // holds the global wall-clock budget for all turns. Non-fatal: falls back to
-    // None/false when no pool, no DB row, or query unavailable — the compiled-in
-    // env-var fallback in orchestrator.rs still applies at the orchestrator level.
-    let (resolved_max_turn_duration, resolved_token_budgets_enabled): (
-        Option<std::time::Duration>,
-        bool,
-    ) = {
+    // Read the legacy startup VM settings. Missing rows use the store's explicit
+    // defaults; read failures must not silently disable limits. The duration is
+    // an executing-VM/task budget, never a Rust wall-clock limit over provider
+    // waits. Shared live revision uptake remains part of the global cutover.
+    let startup_monty_settings: Option<brassclaw_product_workflow::MontyVmSettings> = {
         #[cfg(feature = "postgres")]
         {
-            use brassclaw_product_workflow::MontyVmSettingsStore as _;
             if let Some(pool) = services.pg_pool.as_ref() {
-                let store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
-                    Arc::clone(pool),
-                    "default",
-                    "default",
-                );
-                match store.get("default", "default").await {
-                    Ok(settings) => (
-                        Some(std::time::Duration::from_secs(settings.max_duration_secs)),
-                        settings.token_budgets_enabled,
-                    ),
-                    Err(_) => (None, false),
-                }
+                Some(read_startup_monty_settings(pool).await?)
             } else {
-                (None, false)
+                None
             }
         }
         #[cfg(not(feature = "postgres"))]
         {
-            (None, false)
+            None
         }
     };
+    let resolved_token_budgets_enabled = startup_monty_settings
+        .as_ref()
+        .is_some_and(|settings| settings.token_budgets_enabled);
 
     let resolved_max_output_tokens: Option<u32> = None;
     let resolved_inline_control_tokens: Option<usize> = None;
@@ -2755,7 +2742,9 @@ pub async fn build_reborn_runtime(
             component_port,
             kohai_port,
             orchestrator_code_port,
-            resolved_max_turn_duration.map(|d| d.as_secs()),
+            startup_monty_settings
+                .as_ref()
+                .map(|settings| settings.max_duration_secs),
             Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
         );
         Some(Arc::new(driver) as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>)
@@ -2855,9 +2844,8 @@ pub async fn build_reborn_runtime(
                 heartbeat_interval: runner.heartbeat_interval,
                 poll_interval: runner.poll_interval,
                 scope_filter: None,
-                max_turn_duration: resolved_max_turn_duration,
+                max_driver_wall_time: None,
             },
-            max_turn_duration: resolved_max_turn_duration,
             context_token_budget: live_context_budget.clone(),
             identity_token_ceiling,
             capability_surface_tokens,
@@ -3162,6 +3150,22 @@ pub async fn build_reborn_runtime(
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         interceptor_mode,
     })
+}
+
+/// Legacy settings lookup shared with startup failure acceptance. The global
+/// revision cutover must replace this startup snapshot, not reuse it as a wall
+/// timer. A missing row is the store's explicit default; a failed read is fatal.
+#[cfg(feature = "postgres")]
+async fn read_startup_monty_settings(
+    pool: &Arc<brassclaw_pg::PgPool>,
+) -> Result<brassclaw_product_workflow::MontyVmSettings, RebornRuntimeError> {
+    use brassclaw_product_workflow::MontyVmSettingsStore as _;
+    crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(Arc::clone(pool), "default", "default")
+        .get("default", "default")
+        .await
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: format!("cannot load Monty VM settings at startup: {error}"),
+        })
 }
 
 fn build_webui_auth_interaction_service(
@@ -3647,6 +3651,36 @@ mod tests {
     };
 
     const RUNTIME_SEND_TIMEOUT: Duration = Duration::from_secs(10);
+
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    async fn native_startup_monty_settings_read_failure_never_disables_limits() {
+        let database = super::test_pg::native_pg::NativePostgres::start().await;
+        let booted =
+            crate::booted_db::run_migrations_and_return_booted_db(Arc::clone(&database.pool))
+                .await
+                .unwrap();
+        let pool = Arc::clone(booted.pool());
+        let defaults = super::read_startup_monty_settings(&pool).await.unwrap();
+        assert_eq!(defaults.max_duration_secs, 600);
+        assert!(!defaults.token_budgets_enabled);
+        // Only this test's private, real PostgreSQL instance is modified.
+        let client = pool.get().await.unwrap();
+        client
+            .execute("DROP TABLE reborn_monty_vm_settings", &[])
+            .await
+            .unwrap();
+        drop(client);
+        let error = super::read_startup_monty_settings(&pool).await.unwrap_err();
+        assert!(
+            matches!(error, super::RebornRuntimeError::InvalidArgument { reason }
+            if reason.contains("cannot load Monty VM settings at startup"))
+        );
+        pool.close();
+        drop(pool);
+        drop(booted);
+        drop(database);
+    }
 
     async fn shutdown_shared_runtime(
         runtime: Arc<super::RebornRuntime>,

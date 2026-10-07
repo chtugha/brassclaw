@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Drafted one unapproved pure-logic class-22 component pc-transfer-09 using the supplied target inputs contract. It classifies raw lag with a helper invoked at module scope and assigns its returned object to result. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-09",
+        "description": "Classify raw lag: missing -> {kind:\"missing\",lag:null}; explicit null -> {kind:\"null\",lag:null}; exact integer 5..14 -> {kind:\"integer\",lag:original}; other -> {kind:\"invalid\",lag:null}. No bool/float/coercion/defaults/exceptions. Helper invoked at module scope and its returned object assigned to result. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "def classify_lag(lag):\n    valid = type(lag) is int and 5 <= lag <= 14\n    return {'kind': 'integer' if valid else 'invalid', 'lag': lag if valid else None}\nif 'lag' in inputs:\n    result = classify_lag(inputs['lag'])\nelse:\n    result = {'kind': 'missing', 'lag': None}"
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ]
+}

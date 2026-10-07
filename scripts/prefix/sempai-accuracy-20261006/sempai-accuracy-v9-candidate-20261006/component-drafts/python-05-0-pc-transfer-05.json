@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-05",
+    "description": "Raw rank may omit or hold any JSON value. Accept exact integers 1..10 inclusive (not bool/float). Always result={accepted:boolean,rank:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed-inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+    "content": "rank = inputs.get('rank')\naccepted = type(rank) is int and not type(rank) is bool and 1 <= rank <= 10\nresult = {'accepted': accepted, 'rank': rank if accepted else None}"
+  }
+}

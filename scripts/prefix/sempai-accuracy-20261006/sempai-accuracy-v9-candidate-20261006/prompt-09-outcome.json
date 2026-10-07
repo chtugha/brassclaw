@@ -1,0 +1,18 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Audit only; no edit authorized. The system text contains a repeated word (evidence evidence) but the instruction explicitly forbids any edit, so it is preserved verbatim. The user message is quoted user-selected content and is also preserved exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null), so no provider-specific rewrite was applied. No proposals, new messages, components or settings changes were made.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Preserve evidence evidence."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ]
+}

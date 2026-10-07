@@ -1,0 +1,23 @@
+{
+  "composition_summary": "Preserved the supplied volatile message exactly (one user turn, unchanged). Drafted one class-22 pure-logic component pc-check-mode: it reads the raw candidate with inputs.get('mode') so absent and null are both handled without raising, accepts only the exact case-sensitive strings 'eco' or 'boost', and returns {accepted:boolean, mode:original-or-null} with no exceptions, imports, host calls or coercion. The body assigns result on every path (invalid/absent/null both yield accepted:false with mode=null). This is an unapproved draft; activation/reuse needs Q1 and human Q2, and typed-input transport is a target interface, not deployed runtime support. No tests, submission or approval occurred.",
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Validate a raw operating mode without changing its spelling."
+    ]
+  ],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-mode",
+        "description": "Pure-logic guard that validates a raw operating mode string without changing its spelling. Accepts only the exact case-sensitive strings 'eco' or 'boost'. Returns {accepted:boolean, mode:original string if accepted else null}. No exceptions, imports, host calls or type coercion; absent and null inputs are both reported as not accepted with mode=null.",
+        "content": "def check_mode(mode):\n    accepted = type(mode) is str and mode in ('eco', 'boost')\n    return {'accepted': accepted, 'mode': mode if accepted else None}\nresult = check_mode(inputs.get('mode'))"
+      }
+    }
+  ],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "settings_adjustments": []
+}

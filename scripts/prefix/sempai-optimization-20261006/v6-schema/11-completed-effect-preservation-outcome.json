@@ -1,0 +1,26 @@
+{
+  "settings_adjustments": [],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Reviewed the packet as data. The volatile tail is preserved exactly: system, user, assistant, tool in the given order and content. The tool receipt {\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"} is evidence of a completed effect; the UI timeout is a separate presentation failure and must not replay the send. No proposals were made because the host sink does not support class 22 (only class 21 with the reduced schema), so no component draft could be emitted. The explanation is in composition_summary only; no message was re-sent or any effect replayed.",
+  "proposed_components": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Inspect evidence without performing actions."
+    ],
+    [
+      "user",
+      "The email was sent; only explain why the UI timed out."
+    ],
+    [
+      "assistant",
+      "I sent the message once."
+    ],
+    [
+      "tool",
+      "{\"status\":\"completed\",\"receipt\":\"test-fixture-effect-42\"}"
+    ]
+  ],
+  "proposed_recipe_updates": []
+}

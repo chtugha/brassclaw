@@ -20,7 +20,12 @@ use std::{
 
 use brassclaw_resources::{MontyTaskBudgetError, MontyTaskClock, SharedMontyTaskBudget};
 pub mod global;
+pub mod heap;
+pub mod service;
 pub mod process;
+mod process_recipe;
+pub mod transport_actor;
+pub mod utility;
 
 use monty::{MontyRepl, MontyRun, ReplProgress, ReplStartError};
 use monty_types::{
@@ -114,7 +119,7 @@ impl PythonArtifact {
         Ok(Self {
             body,
             checksum: expected_checksum,
-            bindings,
+            bindings: bindings.clone(),
         })
     }
 }
@@ -169,6 +174,8 @@ impl fmt::Debug for VmBoundary {
 
 /// The trusted port classifies catchable domain failures separately from
 /// terminal cancellation, denial and unresolved effects. No implicit retry.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
 pub enum HostAnswer {
     Return(serde_json::Value),
     Raise(MontyException),
@@ -177,6 +184,9 @@ pub enum HostAnswer {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VmFailure {
+    UnsafeHeapReduction,
+    HeapBackpressure,
+    SettingsRevisionConflict,
     InvalidBounds,
     InvalidInputs,
     Integrity,

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8608eb71b04a1157",
+  "object": "chat.completion",
+  "created": 1791331571,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"system content contains the exact authorized edit\", \"result\": \"Replace system content with exactly 'Answer accurately.'; preserve user byte-for-byte, roles/order/count; report only this real edit.\"}, {\"guard\": \"system content does not contain the exact authorized edit\", \"result\": \"No edit authorized; preserve all messages unchanged; report that no authorized edit was found.\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"Replace system content with exactly 'Answer accurately.'\"], \"prerequisites\": [\"system content contains the exact authorized edit\"], \"notes\": \"No proposals/other changes. Report only the real edit. No invented provider facts.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98292,
+    "total_tokens": 98452,
+    "completion_tokens": 160,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

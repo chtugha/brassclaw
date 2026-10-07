@@ -1,0 +1,23 @@
+{
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-classify-value",
+        "description": "Classify an optional raw value while preserving the distinction between missing and null. Reads a raw candidate from inputs.get('value'). Returns {state:'missing',value:null} when the key is absent; {state:'null',value:null} when the value is present but null; {state:'value',value:<original>} when the value is an exact integer in 0..10 inclusive (booleans and floats are rejected); and {state:'invalid',value:null} for any other value. No defaults, no coercion, no exceptions, no imports, no host calls and no I/O. Pure logic; assigns result on every outcome.",
+        "content": "value = inputs.get('value')\nif value is None:\n    result = {'state': 'null' if isinstance(value, type(None)) else 'missing', 'value': None}\nelse:\n    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10:\n        result = {'state': 'invalid', 'value': None}\n    else:\n        result = {'state': 'value', 'value': value}"
+      }
+    }
+  ],
+  "composition_summary": "Offline-design mode: no host sink or catalogue identity was supplied, so no component was inserted or activated. The class-22 draft is a pure-logic guard only. It reads the raw candidate with inputs.get('value') so absent and null remain distinct (absent -> state 'missing', present-but-null -> state 'null'). It rejects booleans and floats before the integer range check, then returns state 'value' with the original for an exact integer in 0..10 inclusive and state 'invalid' otherwise. No defaults, coercion, exceptions, imports, host calls or I/O. The body assigns result on every outcome. This is an unapproved target-interface draft; Q1, observed behavior and human Q2 precede activation.",
+  "proposed_intent_examples": [],
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Classify an optional raw value while preserving the distinction between missing and null."
+    ]
+  ]
+}

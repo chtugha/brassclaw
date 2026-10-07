@@ -1,0 +1,106 @@
+{
+  "generation": "1b7c3c117e57e5c0efb3355afcc7b40ff73a07251677af8235494908771881b3",
+  "validation": "isolated Linux CPython and offline Recipe design checks",
+  "first_pass_accepted": 6,
+  "feedback_repaired": 3,
+  "q1_completed": false,
+  "q2_completed": false,
+  "database_submitted": false,
+  "activated": false,
+  "candidates": [
+    {
+      "name": "pc-check-tcp-port-list",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-schema-count-20261006/03-tcp-port-list-component-response.json",
+      "stage": "first-pass",
+      "content_sha256": "f41b9386415f178d14ee8e848efee0447fa5c9e3aa3977b84c378db1e7975774",
+      "behavior_passed": 13,
+      "design_checks": null
+    },
+    {
+      "name": "pc-check-retry-eligibility",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-schema-count-20261006/04-no-replay-guard-component-response.json",
+      "stage": "first-pass",
+      "content_sha256": "b920f2854969810a7a24f4d9b3a4409890ba1b8f2abec4ec02552df66e42a7c3",
+      "behavior_passed": 39,
+      "design_checks": null
+    },
+    {
+      "name": "pc-check-channel-list",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-schema-count-20261006/09-empty-list-validator-heldout-response.json",
+      "stage": "first-pass",
+      "content_sha256": "bc8f5f6160809fe1fff002e1ae2122f4dad07fdba8fb3e12feca727cea1b57a0",
+      "behavior_passed": 16,
+      "design_checks": null
+    },
+    {
+      "name": "pc-check-flag",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-schema-count-20261006/10-invoked-helper-heldout-response.json",
+      "stage": "first-pass",
+      "content_sha256": "63711cf1f5eb7afa581276252437bc13e94cfe0b9d8f2674f4b424001c3279d3",
+      "behavior_passed": 11,
+      "design_checks": null
+    },
+    {
+      "name": "pc-check-mode",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-schema-count-20261006/13-enum-validator-confirmation-response.json",
+      "stage": "first-pass",
+      "content_sha256": "68c05f912e841140b18ba415d9059e3f6358061cc6c06e0f8980497b309aa233",
+      "behavior_passed": 14,
+      "design_checks": null
+    },
+    {
+      "name": "pc-classify-value",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-schema-count-20261006/14-missing-null-confirmation-response.json",
+      "stage": "first-pass",
+      "content_sha256": "f0ec92378040e04bc566d5c3178e7ba264ab72719b8207f26ce94987793cbb29",
+      "behavior_passed": 13,
+      "design_checks": null
+    },
+    {
+      "name": "pc-check-timeout-ms",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-feedback-20261006/08-timeout-validator-heldout-response.json",
+      "stage": "feedback-round-1",
+      "content_sha256": "37563f396354bfab299e9fbc72a707f81a789776665c195907e39dc90bb454e7",
+      "behavior_passed": 14,
+      "design_checks": null
+    },
+    {
+      "name": "pc-check-weighted-entries",
+      "class_code": 22,
+      "response": "sempai-optimization-v8a-feedback-20261006/15-recursive-validator-confirmation-response.json",
+      "stage": "feedback-round-1",
+      "content_sha256": "7e29d6045e6ba924bf6b3df13309b58e4c5429ae341f686b8b3468de1e1a3142",
+      "behavior_passed": 24,
+      "design_checks": null
+    },
+    {
+      "name": "recipe-fixed-ready-result",
+      "class_code": 21,
+      "response": "sempai-optimization-v8a-feedback-round3-20261006/06-offline-v3-recipe-design-response.json",
+      "stage": "feedback-round-3",
+      "content_sha256": null,
+      "behavior_passed": null,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "constructor_defaults": true,
+        "single_description_single_step": true,
+        "single_exact_unapproved_draft_reference": true,
+        "persisted_ibs_layout": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "constructor_intents_match_variant": true,
+        "no_tool_dispatch_or_dependencies": true,
+        "intent_does_not_promise_post_reply": true,
+        "retains_q1_human_q2_and_sink_gap": true,
+        "no_version_number_in_component_ref": true
+      }
+    }
+  ]
+}

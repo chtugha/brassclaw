@@ -1,0 +1,333 @@
+{
+  "schema": 1,
+  "manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20",
+  "first_pass_accepted": 55,
+  "total": 60,
+  "accepted_after_bounded_repairs": 59,
+  "repair_rounds": 1,
+  "remaining_rejected": [
+    "recipe-05"
+  ],
+  "stages": [
+    {
+      "stage": 0,
+      "accepted": 55,
+      "total": 60,
+      "model_evaluation_sha256": "4a7e3e30b2936fa0ffdd380ce20e9d0bc04b2f69ab4c194b174c471c4dbcd3f4",
+      "candidate_checks_sha256": "819fd52f0661578e2de86f3e1d7dac47262159069251d90b7ede04a2dab8e304"
+    },
+    {
+      "stage": 1,
+      "attempted": 5,
+      "newly_accepted": [
+        "python-10",
+        "contrast-01",
+        "contrast-02",
+        "contrast-07"
+      ],
+      "accepted_after_stage": 59,
+      "model_evaluation_sha256": "76cb176a0cdf9b28601c2ebb7570802d1e570522b033d373c617632caee057a7",
+      "candidate_checks_sha256": "8353cbe016274b40bb970cc6e41d880e7d8e00fc48b27dc3b4d43a9170b0e8f8"
+    }
+  ],
+  "accepted_sources": {
+    "python-00": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "1860a1b231ab0ecfba6e5157462404cf482932775fa2cbf88405383b18d73883"
+    },
+    "python-01": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "ecaf92f82e4b3986037e50293811abc14f6b5b7f195f6a37a3f9582deeea13bb"
+    },
+    "python-02": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "acd9f35b546dfd62fd85c9f8855523ef5b6b2c316330eda42fda6f1715f9f298"
+    },
+    "python-03": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "c2c77b4cb0aeaccdc0eb163c3fd14b3acad7f9529757d6995e46338abd326997"
+    },
+    "python-04": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "2d7778a5b6c0b72ad60f49401c0c4ca2c92b97d1f5187f5412887c1f1f892e81"
+    },
+    "python-05": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "0f7912b946cf7c009d9c938c645eba610c2525275fe1c9cd388f0356c8725d70"
+    },
+    "python-06": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "2c2f6c04d371a56658525583396193825b75db3b343ed9c8dd3dcc5006189704"
+    },
+    "python-07": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "44ba9973cc3d7d4621ba82c5e54db9e7d4cae806dc6c04ebec1cf9e21cb1e983"
+    },
+    "python-08": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "64ccd21d2ffe03d813c8d22dd6e4630dfb61c96a2b2c9269bb978d5e6bf058df"
+    },
+    "python-09": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "6dd82e7d492409e9fc49a117e74b6e642ea1c3638b48b8a22e367195a8be0c7d"
+    },
+    "python-11": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "1e8d1871712a20c603f41b6ae5ca883e392fafae689ff6aaef5d1f970437f5df"
+    },
+    "contrast-00": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "c80f52ec9db6cf8717771c871eca1421cf757e2558a38a75c20eab02dbba033f"
+    },
+    "contrast-03": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "89d34e848edb0f966d7c609042af6ea4c915f9c0028937fb3a777fae21bdbf11"
+    },
+    "contrast-04": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "b743694679b1d2e3701ee306d1fb023eaff2481fbe5fd73984c54b42e2bb94d2"
+    },
+    "contrast-05": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "855540d3458dc081c45df6d502799edc252841d53a39e47032762b6b0d9bf289"
+    },
+    "contrast-06": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "d2d5d4ec9b51ccaa981cc67f8cfbcbd30bc5719f250fd4a2ca0c350fb7fc9528"
+    },
+    "contrast-08": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "897f3bb7debb7c376c801af8eb8f4e9c11e32e2d94edd1c5e0c78bef47479d91"
+    },
+    "contrast-09": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "22e31e640def0faf01e34649afd13f21ce4261e52d56cf90d5e3227b610e8172"
+    },
+    "contrast-10": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "8f4493958976fc7b525f9cf0470b521bf767da5af19cc68b23a67703c9c4f770"
+    },
+    "contrast-11": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "d72224ee648dff764795379c17ddc6bbc55110ce148872c920b035003c39637d"
+    },
+    "recipe-00": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "3dc3b8301c9f03544a7efba2f0027f5f3ab9403314769f07924e2d00beec798d"
+    },
+    "recipe-01": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "b429f3fd9ef671dcc7383c943b1145eefde1fa890dba4f23a163d95167015955"
+    },
+    "recipe-02": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "253cefd5d5e899041ba8d47fba46c65757794c9adb083a33be7cf64c3eeb4829"
+    },
+    "recipe-03": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "6ba644317a84396260f7d1eb9dd0fa5d6c5e7e152fdcbc096ec9aad2b6874143"
+    },
+    "recipe-04": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "ba03a164c917ec4b8b0536d4de2bd3ff884e640fdad78947efb2e187f81dcc14"
+    },
+    "recipe-06": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "861bf8d4281ca938a3c2755b7b63791359397e7fdfedba1465a2c036e029ba90"
+    },
+    "recipe-07": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "64cc32e6c387f92808669090bb845266ffae5219abc31b36dae897279c8d74c9"
+    },
+    "recipe-08": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "9301ddeca43970243d3f4ff15f7a471a13a3472c641bc3181b0355d56c02ceee"
+    },
+    "recipe-09": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "6ecfa27b334337bee8e8600189dd8b27ce2f03da36aaa6fa44fd4853040fd218"
+    },
+    "recipe-10": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "d05807045f15bab8f9aa1a72d263f5dbd0d14711ceac0a270ac7e4f4e9045a25"
+    },
+    "recipe-11": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "43880d01f966b57a7d31479fe8b94fb69bfb824a0ca634f34e213ce160dd4077"
+    },
+    "prompt-00": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "51a24efdce3fa002de2b100e12c521ee69fca9b38c42ac1bcce36678bf278cfa"
+    },
+    "prompt-01": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "dee7851270d9629731bc2ddaa71fdaf8678580464b69ae5f7b3031f5da4f3b82"
+    },
+    "prompt-02": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "d3cd11de99979f11b88e1d9948dc7c625233c7f23ddbebc140128a3e0e75b62a"
+    },
+    "prompt-03": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "127248a8f0fdd1f25aa0e82a18109355d90968f736aefcd24644c054df304b89"
+    },
+    "prompt-04": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "0a20dbf86ad5428082e130f7b04a0ff15e4d76a20c844524e054321097e5b7d3"
+    },
+    "prompt-05": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "d5e6b876f675c2902903433c48c5ddf3e13ac4b1615ecfc226ca5a3cdd361a28"
+    },
+    "prompt-06": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "f1696ca3f2201a44070ae5f9d17985c1e2c465d398f871820272225ae8076160"
+    },
+    "prompt-07": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "ea9a421422d9c75d5372aca7642a3237137403a159e8e3e79bd1f32ac7291bb3"
+    },
+    "prompt-08": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "22749c4f1b2198b7739367dbd77844efe0b77799934bb8ad32b041ad9326b1ae"
+    },
+    "prompt-09": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "bf4def3bfe12df0b6a12d7e18a7d7e398290e5c6b530107f45ef4951564a50fa"
+    },
+    "prompt-10": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "3c8090fe5ef563d8b91c46bc89a6f0ab7b921fc1f14a50784bd6de31970f74e3"
+    },
+    "prompt-11": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "7540f978577038c88298bbf7a80b396e8f517518614cca57a77d6339709fbb18"
+    },
+    "evidence-00": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "7401209cfa2112c592a7005cc6f13d601aa40b184423fc8208d38e093ab26835"
+    },
+    "evidence-01": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "a724027787a5a69886e8fe138ca3995cb03f108ae21e503b774e54bd03e99f78"
+    },
+    "evidence-02": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "6554d96172053ee6945b4d5fee7d97cd0a03fb553b78c371d91d3a3beeaa7765"
+    },
+    "evidence-03": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "4ce8d2e97235b8061019b79cfd76814bce0450c12623a5ee1a96b72c3b060a94"
+    },
+    "evidence-04": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "a6d4c4f0aa5a06f36d854a72ef20dcb623a52e91e22a7439d1ffb42981602f2e"
+    },
+    "evidence-05": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "9eb69248c8d7a403965913bde1a8ab38dd9ec74552c50b4e147ab9b5a31745b4"
+    },
+    "evidence-06": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "5a81e9a36bcc508d71925938e1e80b4c45d7efae47018b46b01946fc1e4b5114"
+    },
+    "evidence-07": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "beb1ad846d101e9ebaf4e8fe70c52979ea1fa8fbdcdf7b28ed71b36c44e2fc79"
+    },
+    "evidence-08": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "9fd0d453dfb825b36c4e7e55b1af35a90d54909507ce022eba2c71ce424a59d3"
+    },
+    "evidence-09": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "292660bb3c30a5c9f85a0c269af886158bb097c1a3ea975881fc606f2d06e05d"
+    },
+    "evidence-10": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "c1e31f50e81b48e75ef4a6580dcfd4ac72f4eaca4a58eb1935816cbea7d76f50"
+    },
+    "evidence-11": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-serial-first-pass",
+      "response_sha256": "1747c26626b59de70e229bafe68943bf7dd8ccc57ae7a9fc848595a19d62a81c"
+    },
+    "python-10": {
+      "stage": 1,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-repair-round1",
+      "response_sha256": "e5a67c83a3cfa00b116aac7ce7b9a77f12781c2b6ab52741447d786e649cfaae"
+    },
+    "contrast-01": {
+      "stage": 1,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-repair-round1",
+      "response_sha256": "d7405b285f657d42c64945fa9dbddd63a62aa38050c019e9ed6b4d4a13078063"
+    },
+    "contrast-02": {
+      "stage": 1,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-repair-round1",
+      "response_sha256": "f0be5a7a5b47c3daae7b16812810083c32e644073bce1edf4948b4a89433d3e7"
+    },
+    "contrast-07": {
+      "stage": 1,
+      "directory": "scripts/prefix/sempai-accuracy-20261007/v14-repair-round1",
+      "response_sha256": "771d32ca7172f70fa8689bebc489c820c818fea1e351db9f5a8e6bd80960737f"
+    }
+  },
+  "first_pass_score_includes_repairs": false,
+  "production_q1_q2_verified": false,
+  "summary_semantics_fully_verified": false
+}

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8b1be0a531b74a3b",
+  "object": "chat.completion",
+  "created": 1791358859,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"class_code == 21\", \"result\": \"recipe-fresh-discarded-data\"}, {\"guard\": \"class_code == 22\", \"result\": \"pc-fresh-discarded-data\"}, {\"guard\": \"else\", \"result\": \"no-op\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"offline-design\", \"class21-recipe\", \"class22-pythoncode\", \"host-allocated-fixtures\", \"unapproved-export\", \"no-submission\", \"no-activation\", \"no-approval\"], \"notes\": \"Offline full-v3 export only. All supplied UUIDs are host-allocated unapproved documentation fixtures. PythonCode 5a261cd4-ea35-5517-b971-71565df9386a returns {'\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98623,
+    "total_tokens": 98829,
+    "completion_tokens": 206,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 97152,
+      "num_lmcache_cached_tokens": 97152,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

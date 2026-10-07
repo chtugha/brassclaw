@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-a80abc77ba78f730",
+  "object": "chat.completion",
+  "created": 1791322137,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Packet is already clear and internally consistent: a single system instruction and one user question, no tool calls, no malformed provider envelope, no context overflow, no injection, no private-data leakage. No justified prompt repair is warranted, so volatile messages are echoed unchanged. No component was requested, and no reusable workflow was extracted from this one-shot factual question, so proposed_components is empty. No settings, intent or compatibility updates are proposed. The packet is not a pre-call packet that can prove a response or recurring failure, and no provider capability is missing or malformed to propose. This is a deterministic Tier-0 exchange; no Sempai call is required.\",\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Explain a TCP port. Keep the answer brief.\"],\n    [\"user\", \"What is TCP port 443 typically used for?\"]\n  ],\n  \"proposed_components\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76817,
+    "total_tokens": 77049,
+    "completion_tokens": 232,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

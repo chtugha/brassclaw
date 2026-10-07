@@ -1,0 +1,91 @@
+{
+  "settings_adjustments": [],
+  "composition_summary": "Offline full-v3 export only. Drafted one unapproved class-21 Recipe recipe-transfer-09 that posts exactly the fixed word as a user reply using the bound existing host.post_reply Tool. The constructor preserves full v3 fields: trigger=null, steps=[] and dependency_registry=null, with the executable references recorded in step_descriptions using the persisted knowledge/stepnumber/type=component/include schema. The two ordered steps are the rust binding step (ToolSkill 2e335c7f-8081-53a6-aa2d-2aede7926726) immediately followed by the orchestrator PythonCode step (cc52df93-9358-5238-9317-23fea95aa6ef), each including exactly one supplied UUID in order with empty tool_bindings and null dependencies. One variant with step_link=0:1-0:E, variable_patterns=[] and ten distinct reply intents. Posting a reply is an effect, not returned data; actual dispatch requires current global Tool policy and technical checks. No runtime/approval claims. No execution, submission, Q1/Q2 or activation was performed by this offline reviewer.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-09",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "say idle",
+          "reply idle",
+          "post idle",
+          "send the idle reply",
+          "respond with idle",
+          "tell me idle",
+          "please say idle",
+          "please reply idle",
+          "post the fixed idle message",
+          "send the fixed idle message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "2e335c7f-8081-53a6-aa2d-2aede7926726"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "cc52df93-9358-5238-9317-23fea95aa6ef"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "recipe-transfer-09",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say idle",
+              "reply idle",
+              "post idle",
+              "send the idle reply",
+              "respond with idle",
+              "tell me idle",
+              "please say idle",
+              "please reply idle",
+              "post the fixed idle message",
+              "send the fixed idle message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "bridge_messages": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable idle reply workflow."
+    ]
+  ]
+}

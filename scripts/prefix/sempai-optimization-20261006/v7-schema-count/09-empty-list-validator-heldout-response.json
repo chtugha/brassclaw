@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b5400d08d4983c83",
+  "object": "chat.completion",
+  "created": 1791321446,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"composition_summary\": \"Reviewed the volatile tail and preserved it exactly. The request is a pure-logic class-22 draft (pc-check-channel-list) that validates a raw channel list and returns an advisory ok/empty result — no Tool dispatch, no reply, no effect. The host sink supports class 22 (name/description/content) and drops class 21, so no recipe_update is proposed. The draft is an unapproved target-interface candidate: it does not claim runtime support for the inputs mapping, and it does not relax required-input binding for ordinary Tool usages. The body uses inputs.get for the raw candidate so absence is a valid outcome, validates every element's exact integer type (bool is not an int) and range 0..255 before deciding, and returns the requested invalid-result object (ok=false, channels=[]) for malformed data rather than raising. It assigns result on every branch and contains only declared fields. No UUIDs, versions or approval were invented; activation requires Q1, human Q2 and behavioral validation.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-channel-list\",\n        \"description\": \"Pure-logic validator for a raw channel list. Accepts a list (including an empty list) whose items are exact integers 0..255 inclusive; rejects bool, float, null, missing and wrong types. Returns an advisory object only; it performs no Tool dispatch, reply or effect. Unapproved target-interface draft; the inputs mapping and Monty execution are runtime prerequisites, not established support.\",\n        \"content\": \"channels = inputs.get(\\\"channels\\\")\\nvalid = isinstance(channels, list) and len(channels) > 0\\nif valid:\\n    for item in channels:\\n        if isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 255:\\n            valid = False\\n            break\\nresult = {\\\"ok\\\": valid, \\\"channels\\\": channels if valid else []}\"\n      }\n    }\n  ],\n  \"settings_adjustments\": [],\n  \"proposed_recipe_updates\": [],\n  \"bridge_messages\": [],\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Validate a channel list; no channels is a valid choice.\"]\n  ]\n,\n  \"proposed_intent_examples\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76473,
+    "total_tokens": 76990,
+    "completion_tokens": 517,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

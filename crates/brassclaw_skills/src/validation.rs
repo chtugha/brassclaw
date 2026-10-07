@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 
 use regex::Regex;
 
+#[cfg(feature = "v1-types")]
 use crate::types::{SkillCredentialSpec, SkillOAuthConfig};
 
 /// Regex for validating skill names: alphanumeric, hyphens, underscores, dots.
@@ -174,6 +175,7 @@ pub fn validate_credential_name(name: &str) -> bool {
 }
 
 /// Validate a URL is HTTPS.
+#[cfg(feature = "v1-types")]
 fn is_https_url(url: &str) -> bool {
     url.starts_with("https://")
 }
@@ -181,6 +183,7 @@ fn is_https_url(url: &str) -> bool {
 /// Validate a single credential spec from a skill's frontmatter.
 ///
 /// Returns a list of validation errors (empty = valid).
+#[cfg(feature = "v1-types")]
 pub fn validate_credential_spec(spec: &SkillCredentialSpec) -> Vec<String> {
     let mut errors = Vec::new();
 
@@ -260,6 +263,7 @@ pub fn validate_path_pattern(credential_name: &str, pattern: &str) -> Vec<String
 }
 
 /// Validate the OAuth configuration within a credential spec.
+#[cfg(feature = "v1-types")]
 fn validate_oauth_config(credential_name: &str, oauth: &SkillOAuthConfig) -> Vec<String> {
     let mut errors = Vec::new();
 
@@ -426,6 +430,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_valid() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -441,6 +446,7 @@ mod tests {
         assert!(validate_credential_spec(&spec).is_empty());
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_empty_hosts() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -458,6 +464,7 @@ mod tests {
         assert!(errors[0].contains("at least one host"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_empty_provider() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -475,6 +482,7 @@ mod tests {
         assert!(errors[0].contains("provider must not be empty"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_bad_name() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -492,6 +500,7 @@ mod tests {
         assert!(errors[0].contains("lowercase alphanumeric"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_http_oauth_url_rejected() {
         use crate::types::{
@@ -525,6 +534,7 @@ mod tests {
         assert!(errors[2].contains("test_url must be HTTPS"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_https_oauth_ok() {
         use crate::types::{
@@ -554,6 +564,7 @@ mod tests {
         assert!(validate_credential_spec(&spec).is_empty());
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_multiple_errors() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -570,6 +581,7 @@ mod tests {
         assert_eq!(errors.len(), 3); // bad name + empty provider + empty hosts
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_missing_leading_slash() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -587,6 +599,7 @@ mod tests {
         assert!(errors[0].contains("must start with '/'"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_empty() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -604,6 +617,7 @@ mod tests {
         assert!(errors[0].contains("empty path pattern"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_traversal_segment() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -621,6 +635,7 @@ mod tests {
         assert!(errors[0].contains("must not contain '..'"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_dot_dot_in_segment_ok() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -637,6 +652,7 @@ mod tests {
         assert!(validate_credential_spec(&spec).is_empty());
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_rejects_query_string() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -654,6 +670,7 @@ mod tests {
         assert!(errors[0].contains("must not contain '?' or '#'"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_rejects_fragment() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};
@@ -671,6 +688,7 @@ mod tests {
         assert!(errors[0].contains("must not contain '?' or '#'"));
     }
 
+    #[cfg(feature = "v1-types")]
     #[test]
     fn test_validate_credential_spec_path_pattern_valid() {
         use crate::types::{SkillCredentialLocation, SkillCredentialSpec};

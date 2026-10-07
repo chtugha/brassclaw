@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-mode",
+    "description": "Pure-logic validator that accepts only the exact strings 'eco' or 'boost' (case-sensitive) and returns an invalid-result object otherwise. Module-scope guard; no imports, host calls, I/O or coercion. Missing or non-matching input yields accepted=false and mode=null, not an exception.",
+    "content": "mode = inputs.get(\"mode\")\naccepted = type(mode) is str and mode in (\"eco\", \"boost\")\nresult = {\"accepted\": accepted, \"mode\": mode if accepted else None}"
+  }
+}

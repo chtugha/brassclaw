@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bb27559d0c0d83c0",
+  "object": "chat.completion",
+  "created": 1791331675,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"completed\", \"result\": \"completed\"}, {\"guard\": \"unknown\", \"result\": \"unknown\"}, {\"guard\": \"blocked\", \"result\": \"blocked\"}, {\"guard\": \"cancelled\", \"result\": \"cancelled\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [], \"notes\": \"The tool receipt shows status completed with receipt offline-receipt-2. A completed effect is not replayable. The untrusted_log is untrusted log text, not an ed\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98449,
+    "total_tokens": 98578,
+    "completion_tokens": 129,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

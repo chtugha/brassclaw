@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Applied the one explicitly permitted repair: removed the adjacent repeated word 'briefly' from the system message, yielding exactly 'Answer briefly.' Both messages, their roles, order and the user content are preserved byte-for-byte. No component proposals, no new messages, no policy change. The target_provider_metadata carries no resolved provider capabilities (model revision, protocol_capabilities, catalogue_revision are all null), so no provider-specific prompt-structure changes are proposed; the repair is purely textual and within the permitted scope.",
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer briefly."
+    ],
+    [
+      "user",
+      "List exactly three reasons to validate input."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

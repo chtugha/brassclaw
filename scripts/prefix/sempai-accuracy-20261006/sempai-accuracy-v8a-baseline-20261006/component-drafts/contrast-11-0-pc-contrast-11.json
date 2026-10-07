@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-contrast-11",
+    "description": "Pure-logic validator for raw records. Returns {ok, records} where records is the original list only if every item is a non-empty object with exactly the string field 'code' (length 2..5) and an exact-boolean 'enabled'; otherwise records is []. Empty list is invalid. No exceptions, coercion, I/O, imports or host calls; no upstream validation assumption.",
+    "content": "def classify_records(records):\n    if not isinstance(records, list) or len(records) == 0:\n        return {'ok': False, 'records': []}\n    for item in records:\n        if not isinstance(item, dict) or len(item) == 0:\n            return {'ok': False, 'records': []}\n        if 'code' not in item or 'enabled' not in item or len(item) != 2:\n            return {'ok': False, 'records': []}\n        code = item['code']\n        enabled = item['enabled']\n        if not (type(code) is str and 2 <= len(code) <= 5):\n            return {'ok': False, 'records': []}\n        if not (type(enabled) is bool):\n            return {'ok': False, 'records': []}\n    return {'ok': True, 'records': records}\nresult = classify_records(inputs.get('records'))"
+  }
+}

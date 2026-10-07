@@ -1,0 +1,2006 @@
+{
+  "date": "2026-10-06T23:56:14.751501+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "python-00",
+      "construction_plan": {
+        "seconds": 5.456,
+        "usage": {
+          "prompt_tokens": 98413,
+          "total_tokens": 98619,
+          "completion_tokens": 206,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98742,
+        "total_tokens": 99066,
+        "completion_tokens": 324,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 13.443
+    },
+    {
+      "id": "python-01",
+      "construction_plan": {
+        "seconds": 5.78,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98601,
+          "completion_tokens": 222,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98724,
+        "total_tokens": 99015,
+        "completion_tokens": 291,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 13.045
+    },
+    {
+      "id": "python-02",
+      "construction_plan": {
+        "seconds": 4.805,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98546,
+          "completion_tokens": 167,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98671,
+        "total_tokens": 99031,
+        "completion_tokens": 360,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 13.404
+    },
+    {
+      "id": "python-03",
+      "construction_plan": {
+        "seconds": 5.017,
+        "usage": {
+          "prompt_tokens": 98413,
+          "total_tokens": 98598,
+          "completion_tokens": 185,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98720,
+        "total_tokens": 99118,
+        "completion_tokens": 398,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.359
+    },
+    {
+      "id": "python-04",
+      "construction_plan": {
+        "seconds": 5.867,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98605,
+          "completion_tokens": 226,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98729,
+        "total_tokens": 99040,
+        "completion_tokens": 311,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 13.532
+    },
+    {
+      "id": "python-05",
+      "construction_plan": {
+        "seconds": 7.025,
+        "usage": {
+          "prompt_tokens": 98381,
+          "total_tokens": 98666,
+          "completion_tokens": 285,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98789,
+        "total_tokens": 99096,
+        "completion_tokens": 307,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.671
+    },
+    {
+      "id": "python-06",
+      "construction_plan": {
+        "seconds": 5.813,
+        "usage": {
+          "prompt_tokens": 98443,
+          "total_tokens": 98665,
+          "completion_tokens": 222,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98788,
+        "total_tokens": 99146,
+        "completion_tokens": 358,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.486
+    },
+    {
+      "id": "python-07",
+      "construction_plan": {
+        "seconds": 5.458,
+        "usage": {
+          "prompt_tokens": 98409,
+          "total_tokens": 98609,
+          "completion_tokens": 200,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98729,
+        "total_tokens": 99092,
+        "completion_tokens": 363,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.153
+    },
+    {
+      "id": "python-08",
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 0.893
+    },
+    {
+      "id": "python-09",
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 0.915
+    },
+    {
+      "id": "python-10",
+      "construction_plan": {
+        "seconds": 3.75,
+        "usage": {
+          "prompt_tokens": 98409,
+          "total_tokens": 98524,
+          "completion_tokens": 115,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98640,
+        "total_tokens": 99001,
+        "completion_tokens": 361,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 12.349
+    },
+    {
+      "id": "python-11",
+      "construction_plan": {
+        "seconds": 3.666,
+        "usage": {
+          "prompt_tokens": 98409,
+          "total_tokens": 98519,
+          "completion_tokens": 110,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98636,
+        "total_tokens": 98999,
+        "completion_tokens": 363,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 12.339
+    },
+    {
+      "id": "contrast-00",
+      "construction_plan": {
+        "seconds": 4.182,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98518,
+          "completion_tokens": 139,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98638,
+        "total_tokens": 98948,
+        "completion_tokens": 310,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 11.756
+    },
+    {
+      "id": "contrast-01",
+      "construction_plan": {
+        "seconds": 3.519,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98484,
+          "completion_tokens": 105,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98604,
+        "total_tokens": 98969,
+        "completion_tokens": 365,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 12.162
+    },
+    {
+      "id": "contrast-02",
+      "construction_plan": {
+        "seconds": 4.024,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98508,
+          "completion_tokens": 129,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98629,
+        "total_tokens": 98993,
+        "completion_tokens": 364,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 12.696
+    },
+    {
+      "id": "contrast-03",
+      "construction_plan": {
+        "seconds": 3.386,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98475,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98596,
+        "total_tokens": 98949,
+        "completion_tokens": 353,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 11.792
+    },
+    {
+      "id": "contrast-04",
+      "construction_plan": {
+        "seconds": 4.08,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98508,
+          "completion_tokens": 129,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98628,
+        "total_tokens": 98983,
+        "completion_tokens": 355,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 12.592
+    },
+    {
+      "id": "contrast-05",
+      "construction_plan": {
+        "seconds": 3.62,
+        "usage": {
+          "prompt_tokens": 98379,
+          "total_tokens": 98484,
+          "completion_tokens": 105,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98604,
+        "total_tokens": 98951,
+        "completion_tokens": 347,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 11.911
+    },
+    {
+      "id": "contrast-06",
+      "construction_plan": {
+        "seconds": 4.233,
+        "usage": {
+          "prompt_tokens": 98415,
+          "total_tokens": 98553,
+          "completion_tokens": 138,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98673,
+        "total_tokens": 99094,
+        "completion_tokens": 421,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.044
+    },
+    {
+      "id": "contrast-07",
+      "construction_plan": {
+        "seconds": 4.594,
+        "usage": {
+          "prompt_tokens": 98415,
+          "total_tokens": 98567,
+          "completion_tokens": 152,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98686,
+        "total_tokens": 99108,
+        "completion_tokens": 422,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.459
+    },
+    {
+      "id": "contrast-08",
+      "construction_plan": {
+        "seconds": 4.364,
+        "usage": {
+          "prompt_tokens": 98415,
+          "total_tokens": 98563,
+          "completion_tokens": 148,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98682,
+        "total_tokens": 99143,
+        "completion_tokens": 461,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.995
+    },
+    {
+      "id": "contrast-09",
+      "construction_plan": {
+        "seconds": 4.392,
+        "usage": {
+          "prompt_tokens": 98415,
+          "total_tokens": 98561,
+          "completion_tokens": 146,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98680,
+        "total_tokens": 99105,
+        "completion_tokens": 425,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.306
+    },
+    {
+      "id": "contrast-10",
+      "construction_plan": {
+        "seconds": 4.496,
+        "usage": {
+          "prompt_tokens": 98415,
+          "total_tokens": 98568,
+          "completion_tokens": 153,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98687,
+        "total_tokens": 99128,
+        "completion_tokens": 441,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.683
+    },
+    {
+      "id": "contrast-11",
+      "construction_plan": {
+        "seconds": 4.314,
+        "usage": {
+          "prompt_tokens": 98415,
+          "total_tokens": 98558,
+          "completion_tokens": 143,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98677,
+        "total_tokens": 99102,
+        "completion_tokens": 425,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 14.204
+    },
+    {
+      "id": "recipe-00",
+      "construction_plan": {
+        "seconds": 5.843,
+        "usage": {
+          "prompt_tokens": 98641,
+          "total_tokens": 98854,
+          "completion_tokens": 213,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98971,
+        "total_tokens": 99902,
+        "completion_tokens": 931,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 25.793
+    },
+    {
+      "id": "recipe-01",
+      "construction_plan": {
+        "seconds": 5.768,
+        "usage": {
+          "prompt_tokens": 98733,
+          "total_tokens": 98942,
+          "completion_tokens": 209,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 99059,
+        "total_tokens": 99847,
+        "completion_tokens": 788,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 23.049
+    },
+    {
+      "id": "recipe-02",
+      "construction_plan": {
+        "seconds": 5.477,
+        "usage": {
+          "prompt_tokens": 98647,
+          "total_tokens": 98844,
+          "completion_tokens": 197,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98963,
+        "total_tokens": 99875,
+        "completion_tokens": 912,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 25.046
+    },
+    {
+      "id": "recipe-03",
+      "construction_plan": {
+        "seconds": 9.349,
+        "usage": {
+          "prompt_tokens": 98741,
+          "total_tokens": 99134,
+          "completion_tokens": 393,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 99252,
+        "total_tokens": 100462,
+        "completion_tokens": 1210,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 34.971
+    },
+    {
+      "id": "recipe-04",
+      "construction_plan": {
+        "seconds": 4.517,
+        "usage": {
+          "prompt_tokens": 98641,
+          "total_tokens": 98789,
+          "completion_tokens": 148,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98909,
+        "total_tokens": 99786,
+        "completion_tokens": 877,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 23.419
+    },
+    {
+      "id": "recipe-05",
+      "construction_plan": {
+        "seconds": 4.58,
+        "usage": {
+          "prompt_tokens": 98739,
+          "total_tokens": 98888,
+          "completion_tokens": 149,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 99004,
+        "total_tokens": 100068,
+        "completion_tokens": 1064,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 27.153
+    },
+    {
+      "id": "recipe-06",
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 1.074
+    },
+    {
+      "id": "recipe-07",
+      "construction_plan": {
+        "seconds": 9.279,
+        "usage": {
+          "prompt_tokens": 98745,
+          "total_tokens": 99135,
+          "completion_tokens": 390,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 99252,
+        "total_tokens": 100253,
+        "completion_tokens": 1001,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 30.814
+    },
+    {
+      "id": "recipe-08",
+      "construction_plan": {
+        "seconds": 5.448,
+        "usage": {
+          "prompt_tokens": 98647,
+          "total_tokens": 98840,
+          "completion_tokens": 193,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98957,
+        "total_tokens": 99811,
+        "completion_tokens": 854,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 23.951
+    },
+    {
+      "id": "recipe-09",
+      "construction_plan": {
+        "seconds": 4.549,
+        "usage": {
+          "prompt_tokens": 98735,
+          "total_tokens": 98877,
+          "completion_tokens": 142,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98998,
+        "total_tokens": 100009,
+        "completion_tokens": 1011,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 26.081
+    },
+    {
+      "id": "recipe-10",
+      "construction_plan": {
+        "seconds": 5.082,
+        "usage": {
+          "prompt_tokens": 98641,
+          "total_tokens": 98818,
+          "completion_tokens": 177,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98936,
+        "total_tokens": 99803,
+        "completion_tokens": 867,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 23.789
+    },
+    {
+      "id": "recipe-11",
+      "construction_plan": {
+        "seconds": 11.227,
+        "usage": {
+          "prompt_tokens": 98737,
+          "total_tokens": 99227,
+          "completion_tokens": 490,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 99341,
+        "total_tokens": 100255,
+        "completion_tokens": 914,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "seconds": 31.137
+    },
+    {
+      "id": "prompt-00",
+      "construction_plan": {
+        "seconds": 4.443,
+        "usage": {
+          "prompt_tokens": 98292,
+          "total_tokens": 98452,
+          "completion_tokens": 160,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98573,
+        "total_tokens": 98679,
+        "completion_tokens": 106,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 8.044
+    },
+    {
+      "id": "prompt-01",
+      "construction_plan": {
+        "seconds": 6.798,
+        "usage": {
+          "prompt_tokens": 98306,
+          "total_tokens": 98583,
+          "completion_tokens": 277,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98705,
+        "total_tokens": 98828,
+        "completion_tokens": 123,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 10.85
+    },
+    {
+      "id": "prompt-02",
+      "construction_plan": {
+        "seconds": 3.721,
+        "usage": {
+          "prompt_tokens": 98292,
+          "total_tokens": 98411,
+          "completion_tokens": 119,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98535,
+        "total_tokens": 98648,
+        "completion_tokens": 113,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.427
+    },
+    {
+      "id": "prompt-03",
+      "construction_plan": {
+        "seconds": 4.153,
+        "usage": {
+          "prompt_tokens": 98296,
+          "total_tokens": 98441,
+          "completion_tokens": 145,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98561,
+        "total_tokens": 98664,
+        "completion_tokens": 103,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 7.699
+    },
+    {
+      "id": "prompt-04",
+      "construction_plan": {
+        "seconds": 4.997,
+        "usage": {
+          "prompt_tokens": 98296,
+          "total_tokens": 98484,
+          "completion_tokens": 188,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98602,
+        "total_tokens": 98733,
+        "completion_tokens": 131,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": false,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": false,
+      "no_proposals": true,
+      "seconds": 9.186
+    },
+    {
+      "id": "prompt-05",
+      "construction_plan": {
+        "seconds": 4.992,
+        "usage": {
+          "prompt_tokens": 98296,
+          "total_tokens": 98479,
+          "completion_tokens": 183,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98601,
+        "total_tokens": 98715,
+        "completion_tokens": 114,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": false,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 8.774
+    },
+    {
+      "id": "prompt-06",
+      "construction_plan": {
+        "seconds": 3.286,
+        "usage": {
+          "prompt_tokens": 98311,
+          "total_tokens": 98407,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98523,
+        "total_tokens": 98625,
+        "completion_tokens": 102,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.737
+    },
+    {
+      "id": "prompt-07",
+      "construction_plan": {
+        "seconds": 3.211,
+        "usage": {
+          "prompt_tokens": 98319,
+          "total_tokens": 98411,
+          "completion_tokens": 92,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98532,
+        "total_tokens": 98650,
+        "completion_tokens": 118,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.314
+    },
+    {
+      "id": "prompt-08",
+      "construction_plan": {
+        "seconds": 3.206,
+        "usage": {
+          "prompt_tokens": 98311,
+          "total_tokens": 98403,
+          "completion_tokens": 92,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98524,
+        "total_tokens": 98627,
+        "completion_tokens": 103,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.033
+    },
+    {
+      "id": "prompt-09",
+      "construction_plan": {
+        "seconds": 3.282,
+        "usage": {
+          "prompt_tokens": 98313,
+          "total_tokens": 98410,
+          "completion_tokens": 97,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98525,
+        "total_tokens": 98656,
+        "completion_tokens": 131,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.595
+    },
+    {
+      "id": "prompt-10",
+      "construction_plan": {
+        "seconds": 3.252,
+        "usage": {
+          "prompt_tokens": 98313,
+          "total_tokens": 98408,
+          "completion_tokens": 95,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98526,
+        "total_tokens": 98630,
+        "completion_tokens": 104,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.031
+    },
+    {
+      "id": "prompt-11",
+      "construction_plan": {
+        "seconds": 3.275,
+        "usage": {
+          "prompt_tokens": 98313,
+          "total_tokens": 98407,
+          "completion_tokens": 94,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98530,
+        "total_tokens": 98643,
+        "completion_tokens": 113,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 6.242
+    },
+    {
+      "id": "evidence-00",
+      "construction_plan": {
+        "seconds": 4.07,
+        "usage": {
+          "prompt_tokens": 98449,
+          "total_tokens": 98580,
+          "completion_tokens": 131,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98700,
+        "total_tokens": 98907,
+        "completion_tokens": 207,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 9.707
+    },
+    {
+      "id": "evidence-01",
+      "construction_plan": {
+        "seconds": 3.35,
+        "usage": {
+          "prompt_tokens": 98455,
+          "total_tokens": 98551,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 4.448
+    },
+    {
+      "id": "evidence-02",
+      "construction_plan": {
+        "seconds": 4.038,
+        "usage": {
+          "prompt_tokens": 98449,
+          "total_tokens": 98578,
+          "completion_tokens": 129,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98700,
+        "total_tokens": 98913,
+        "completion_tokens": 213,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 9.044
+    },
+    {
+      "id": "evidence-03",
+      "construction_plan": {
+        "seconds": 3.418,
+        "usage": {
+          "prompt_tokens": 98455,
+          "total_tokens": 98551,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 4.42
+    },
+    {
+      "id": "evidence-04",
+      "construction_plan": {
+        "seconds": 4.039,
+        "usage": {
+          "prompt_tokens": 98449,
+          "total_tokens": 98578,
+          "completion_tokens": 129,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98699,
+        "total_tokens": 98923,
+        "completion_tokens": 224,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 9.23
+    },
+    {
+      "id": "evidence-05",
+      "construction_plan": {
+        "seconds": 3.374,
+        "usage": {
+          "prompt_tokens": 98455,
+          "total_tokens": 98549,
+          "completion_tokens": 94,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 4.346
+    },
+    {
+      "id": "evidence-06",
+      "construction_plan": {
+        "seconds": 4.04,
+        "usage": {
+          "prompt_tokens": 98449,
+          "total_tokens": 98578,
+          "completion_tokens": 129,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98699,
+        "total_tokens": 98916,
+        "completion_tokens": 217,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 9.11
+    },
+    {
+      "id": "evidence-07",
+      "construction_plan": {
+        "seconds": 3.611,
+        "usage": {
+          "prompt_tokens": 98455,
+          "total_tokens": 98563,
+          "completion_tokens": 108,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 4.656
+    },
+    {
+      "id": "evidence-08",
+      "construction_plan": {
+        "seconds": 3.248,
+        "usage": {
+          "prompt_tokens": 98449,
+          "total_tokens": 98539,
+          "completion_tokens": 90,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98660,
+        "total_tokens": 98882,
+        "completion_tokens": 222,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 8.41
+    },
+    {
+      "id": "evidence-09",
+      "construction_plan": {
+        "seconds": 3.384,
+        "usage": {
+          "prompt_tokens": 98455,
+          "total_tokens": 98549,
+          "completion_tokens": 94,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 4.373
+    },
+    {
+      "id": "evidence-10",
+      "construction_plan": {
+        "seconds": 4.093,
+        "usage": {
+          "prompt_tokens": 98455,
+          "total_tokens": 98587,
+          "completion_tokens": 132,
+          "prompt_tokens_details": null,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "provenance": "unverified model analysis from current contract, no oracle or feedback"
+      },
+      "usage": {
+        "prompt_tokens": 98707,
+        "total_tokens": 98925,
+        "completion_tokens": 218,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "conversation_contract_passed": true,
+      "compatibility_arrays_empty": true,
+      "proposal_contract_passed": true,
+      "response_contract_passed": true,
+      "no_proposals": true,
+      "seconds": 9.199
+    },
+    {
+      "id": "evidence-11",
+      "error": "HTTP Error 500: Internal Server Error",
+      "http_status": 500,
+      "seconds": 1.476
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": false,
+  "repair_from": null,
+  "schema_response_mode_requested": true,
+  "thinking_requested": false,
+  "message_count_constrained": true,
+  "compact_grammar_requested": true,
+  "strict_draft_schema_requested": true,
+  "message_content_protected": true,
+  "editable_message_cases": [
+    "prompt-00",
+    "prompt-01",
+    "prompt-02",
+    "prompt-03",
+    "prompt-04",
+    "prompt-05"
+  ],
+  "direct_contract_requested": true,
+  "at_most_one_proposal_requested": true,
+  "model_derived_construction_plan_requested": true,
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20"
+}

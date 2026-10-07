@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Drafted one class-22 pure-logic component pc-contrast-04: it reads raw slots via inputs.get('slots') so absence is a valid outcome, validates that slots is a list of length 0..3 with every item an exact integer in 4..8 (rejecting bool, float, non-integers and out-of-range values), and assigns result = {'ok': valid, 'slots': original if valid else []} at module scope with no I/O, imports, host calls or exceptions. The draft is an unapproved target-interface component only; activation requires Q1/human Q2 and typed-runner support, which remain separate prerequisites.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-04",
+        "description": "Pure-logic guard: validates raw slots as a list of length 0..3 with every item an exact integer in 4..8 inclusive, and returns {'ok': boolean, 'slots': original if valid else []}. No I/O, imports, host calls or exceptions; absence of the key is a valid empty result. Typed inputs are a target interface, not deployed runtime support.",
+        "content": "def classify_slots(raw):\n    if 'slots' not in raw:\n        return {'ok': True, 'slots': []}\n    slots = raw['slots']\n    if not isinstance(slots, list) or not 0 <= len(slots) <= 3:\n        return {'ok': False, 'slots': []}\n    valid = True\n    for item in slots:\n        if isinstance(item, bool) or not isinstance(item, int) or not 4 <= item <= 8:\n            valid = False\n            break\n    return {'ok': valid, 'slots': slots if valid else []}\nresult = classify_slots(inputs.get('slots'))"
+      }
+    }
+  ]
+}

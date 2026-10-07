@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8e9c45126bbb1662",
+  "object": "chat.completion",
+  "created": 1791329647,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"Design a reusable prepared data-result workflow.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode a059d0bb-4a87-5eba-b029-93581dd81b54 with content result = {'state': 'Prepared'}. Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-10. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserved original conversation; root compatibility arrays empty under test persona.\",\n  \"proposed_components\": [\n    {\n      \"class_code\": 21,\n      \"payload\": {\n        \"name\": \"recipe-transfer-10\",\n        \"description\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\",\n        \"trigger\": null,\n        \"steps\": [],\n        \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.\",\n        \"intent_examples\": [\n          \"compute the prepared state data\",\n          \"return the prepared state object\",\n          \"produce the fixed prepared object\",\n          \"obtain the prepared result data\",\n          \"calculate the prepared state result\",\n          \"yield the prepared state object\",\n          \"get the fixed prepared state data\",\n          \"build the prepared state object\",\n          \"evaluate the prepared data subworkflow\",\n          \"derive the fixed prepared state result\"\n        ],\n        \"step_descriptions\": [\n          {\n            \"desc_idx\": 0,\n            \"label\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\",\n            \"yaml_source\": \"Documentation of supplied offline fixture steps\",\n            \"steps\": [\n              {\n                \"stepnumber\": 1,\n                \"knowledge\": \"orchestrator\",\n                \"goal\": \"Return state data\",\n                \"content\": \"Use the supplied offline fixture\",\n                \"type\": \"component\",\n                \"include\": [\n                  \"a059d0bb-4a87-5eba-b029-93581dd81b54\"\n                ],\n                \"tool_bindings\": [],\n                \"dependencies\": null\n              }\n            ]\n          }\n        ],\n        \"variants\": [\n          {\n            \"variant_key\": \"prepared-data\",\n            \"description\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\",\n            \"step_link\": \"0:1-0:E\",\n            \"intent_examples\": [\n              \"compute the prepared state data\",\n              \"return the prepared state object\",\n              \"produce the fixed prepared object\",\n              \"obtain the prepared result data\",\n              \"calculate the prepared state result\",\n              \"yield the prepared state object\",\n              \"get the fixed prepared state data\",\n              \"build the prepared state object\",\n              \"evaluate the prepared data subworkflow\",\n              \"derive the fixed prepared state result\"\n            ],\n            \"variable_patterns\": []\n          }\n        ],\n        \"dependency_registry\": null\n      }\n    }\n  ],\n  \"proposed_intent_examples\": [],\n  \"proposed_recipe_updates\": [],\n  \"settings_adjustments\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97115,
+    "total_tokens": 98026,
+    "completion_tokens": 911,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

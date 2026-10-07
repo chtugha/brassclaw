@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-check-flag",
+    "description": "Pure-logic validator that returns whether a raw candidate value is exactly a boolean. Raw inputs may omit flag or hold any JSON value. Only the exact booleans True and False are valid; any other value, a missing flag, or null is invalid. Returns {valid: boolean, flag: original value if valid else null}. No imports, I/O, host calls, exceptions or type coercion. The helper is defined and invoked at module scope to assign result.",
+    "content": "def is_exact_flag(value):\n    return isinstance(value, bool)\nresult = {\"valid\": is_exact_flag(inputs.get(\"flag\")), \"flag\": inputs.get(\"flag\") if is_exact_flag(inputs.get(\"flag\")) else None}"
+  }
+}

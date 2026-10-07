@@ -1,0 +1,8 @@
+{
+  "class_code": 22,
+  "payload": {
+    "name": "pc-transfer-05",
+    "description": "Pure-logic guard: accept an exact integer rank in 1..10 inclusive (not bool/float/string) and return {accepted, rank}; missing or invalid rank returns accepted=false and rank=null without exceptions or coercion.",
+    "content": "rank = inputs.get('rank')\naccepted = type(rank) is int and not isinstance(rank, bool) and 1 <= rank <= 10\nresult = {'accepted': accepted, 'rank': rank if accepted else None}"
+  }
+}

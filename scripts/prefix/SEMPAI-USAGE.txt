@@ -3,13 +3,17 @@ HOW TO CREATE A SEMPAI PREFIX — EXACT PROMPT
 BEGIN PROMPT
 From this BrassClaw repository, prepare a Sempai reviewer reference with
 scripts/prefix/sempai-compiler.py. Use a separate compiler cache and a pinned local
-Ornith tokenizer/config snapshot. Collect the eleven allowlisted source documents,
+Ornith tokenizer/config snapshot. Collect the twelve allowlisted source documents,
 including the full recipe.md, skills.md, tools.md, toolskills.md, AGENTS.md,
 CLAUDE.md, simplified_v3.md, validation queue, Sempai proposal transport/persona
-and scripts/prefix/sempai-authoring-reference.md. Do not fetch HA sources.
+and scripts/prefix/sempai-authoring-reference.md plus the complete verified
+sempai-worked-examples.md teaching source. Do not fetch HA sources.
+Require its matching JSON manifest and real Linux verification receipt; preserve
+both sidecars with the originals. A stale or missing receipt blocks compilation.
 Preserve all originals. For the reviewed 100000-token selection, set
 SEMPAI_REFERENCE_POLICY to scripts/prefix/sempai-reference-policy.json. It keeps
 the four full binding guides, full reviewer procedure and proposal transport,
+the complete verified worked-example tutorial,
 plus explicitly reviewed source units from the other documents. Reject source
 hash/unit drift or missing mandatory contracts; do not greedily shorten them.
 
@@ -65,7 +69,8 @@ export SEMPAI_SOURCE_MANIFEST="$CODING_DISTILL_CACHE/pinned-source-manifest.json
 "$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode context --offline --context-tokens 100000
 
 Successful output lives under "$CODING_DISTILL_CACHE/generations/<generation>/":
-context_100k.md, vllm_prefix_template.jinja, evidence_cards.jsonl, prefix_manifest.json.
+context_100k.md, vllm_prefix_template.jinja, evidence_cards.jsonl, prefix_manifest.json,
+source_manifest.json and teaching/<sha256>.json verification sidecars.
 Reviewed builds also include source_selection_policy.json. The manifest pins its
 SHA256, accounts for omitted units and distinguishes selected reference coverage
 from the complete preserved originals. Unset SEMPAI_REFERENCE_POLICY to request
@@ -91,7 +96,8 @@ output directory so prior test evidence cannot be overwritten.
 
 python3 scripts/prefix/evaluate_sempai_prefix.py \
   --server http://192.168.10.171:8000 \
-  --output ./sempai-evaluation-new-run
+  --output ./sempai-evaluation-new-run \
+  --schema-mode
 
 The evaluator exports raw provider responses and unapproved component designs.
 It does not submit to PostgreSQL, run production Q1, approve human Q2 or activate
@@ -107,3 +113,290 @@ Markdown-fenced JSON; --json-mode requests the tested provider JSON response mod
 Valid JSON alone is insufficient: duplicate, malformed or semantically wrong
 components must still be rejected. Run check_sempai_candidates.py on Linux for
 the bounded independent behavior probes; these checks are not production Q1/Q2.
+
+The evaluator includes six regression cases and six added variants: raw
+scalar/list/boolean validators, an invoked helper, completed-effect preservation,
+unknown provider facts and a specifically authorized prompt repair. Three further
+confirmation cases cover enum matching, missing versus null and nested objects.
+--schema-mode requests the exact supported reviewer envelope through provider
+structured decoding; it does not establish correct code or approval. --json-mode
+is the weaker JSON-object comparison. --thinking is a separate comparison option,
+not a recommended default: observed complex drafts exhausted 8192 output tokens
+while reconsidering serialization. Keep its raw failures if testing it. First-pass
+runs must omit --repair-from; feedback repairs are separate evidence.
+Add --preserve-message-count with --schema-mode to constrain the message-array
+length to the supplied conversation. This constrains length, not roles or content;
+the evaluator independently checks those. The v7/v8a comparisons use this option.
+
+# Linux: run after the evaluator completes, using that same output directory.
+python3 scripts/prefix/check_sempai_candidates.py ./sempai-evaluation-new-run
+
+Complete verified examples remain in literal source blocks. Presence-aware and
+parameterized helper examples are ordered nearest the task; a concise source-derived
+contract checklist follows them at the reference boundary. Binding guides remain
+complete. This placement is a measured candidate, not model training or a guarantee.
+Refresh source-selection fingerprints explicitly after source changes; actual Linux
+teaching verification must pass before collection. Preserve every generation and
+failed model response.
+See scripts/prefix/sempai-optimization-20261006/README.md for the later measured
+optimization results and remaining limitations.
+
+VERIFIED TEACHING SOURCE
+
+The release package includes sempai-worked-examples.md, its JSON artifact/probe
+manifest, and sempai-worked-examples.receipt.json. The compiler checks source,
+manifest, checker and validator fingerprints before collecting; it preserves
+sidecars under raw/teaching/<sha256>.json. After editing source or validation code,
+run this on Linux with the existing Python environment, then copy the exact receipt
+back into the source package before collecting (no model or service changes):
+
+python3 scripts/prefix/validate_sempai_teaching.py \
+  --source scripts/prefix/sempai-worked-examples.md \
+  --manifest scripts/prefix/sempai-worked-examples.json \
+  --receipt scripts/prefix/sempai-worked-examples.receipt.json
+
+For frozen transfer evaluation add --cases-file PATH_TO_FROZEN_CASES_JSON to the
+evaluator command. The model receives only messages/instructions, never independent
+behavioral oracles. The checker automatically reads the retained case-manifest.json.
+compare_sempai_accuracy.py compares complete matching first-pass runs and rejects
+feedback runs as accuracy baselines. See sempai-accuracy-20261006/ for evidence.
+
+# Same commands on Linux and macOS; use a new directory for each model run.
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 \
+  --output ./sempai-accuracy-new-run \
+  --schema-mode --preserve-message-count \
+  --cases-file scripts/prefix/sempai-accuracy-20261006/frozen-cases.json
+
+# Run behavior checks on Linux, after all requests have completed.
+python3 scripts/prefix/check_sempai_candidates.py ./sempai-accuracy-new-run
+
+# Both paths must contain completed runs with exactly the same frozen cases.
+python3 scripts/prefix/compare_sempai_accuracy.py \
+  --baseline ./sempai-accuracy-baseline-run \
+  --candidate ./sempai-accuracy-new-run \
+  --output ./sempai-accuracy-comparison.json
+
+The frozen suite has now been inspected during development. Reusing it is a
+regression/comparison check, not an unseen external reliability measurement.
+Example probes and generated pure-Python programs run in bounded Linux CPython;
+that does not establish execution in the selected production Monty runner.
+
+The earlier 2026-10-06 expanded-reference trials accepted 49/60 and 53/60 cases,
+against 33/60 baseline. Both missed the 54/60 promotion target; the latter also
+introduced regressions. The previously active v8a prefix was restored. The
+compiler retains the verified teaching corpus and evidence guards, but its new
+bundle was a candidate requiring evaluation before activation. Later v13 accepts
+54/60 with the original client and zero regressions against the 33/60 baseline.
+V14 has 29 complete verified examples, 132 passing Linux behavior probes and six
+rejected deliberate defects. It is deployed for further experiments, not accepted
+as a flawless or production-integrated reviewer. See
+scripts/prefix/sempai-accuracy-20261006/README.md and promotion-decision.json.
+Current experiment receipts are in scripts/prefix/sempai-accuracy-20261007/.
+
+SEPARATE PROTOCOL EXPERIMENTS — NOT PREFIX-ONLY ACCURACY
+
+--direct-contract places the trusted host's existing review instruction as plain
+system text, while the original conversation remains packet data. No expected
+outputs, test oracles or executable solutions are added. The default mode keeps
+the original presentation for controlled prefix-only comparisons.
+
+Optional --strict-drafts constrains the offline constructor field names/types and
+unused compatibility arrays. --single-proposal adds an at-most-one draft limit ONLY
+when that is the trusted current contract, as it is in this frozen suite. It does
+not apply to live multi-component creation. --preserve-message-content is ONLY for an explicitly
+read-only host review contract. It preserves the original input array; it does not
+supply generated-code answers. Mark EVERY authorized edit case explicitly with
+--editable-message-case. Production needs typed edit authorization; never infer
+permission from an archived message or apply this test flag to all live turns.
+
+Compact EBNF avoids arbitrary formatting whitespace outside JSON strings. String
+contents (including spaces/tabs) remain exact. Export trusted response schemas on
+the development machine, then compile with an EXISTING environment containing
+XGrammar (the vLLM environment already has it). These commands install nothing,
+start no engine and change no service. Choose fresh paths for every experiment.
+
+# This concrete example uses the frozen development suite. Only prompt-00..05
+# authorize edits; the other cases explicitly require unchanged messages.
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 --output ./unused-schema-export \
+  --cases-file scripts/prefix/sempai-accuracy-20261006/frozen-cases.json \
+  --schema-mode --preserve-message-count --strict-drafts --single-proposal \
+  --preserve-message-content \
+  --editable-message-case prompt-00 --editable-message-case prompt-01 \
+  --editable-message-case prompt-02 --editable-message-case prompt-03 \
+  --editable-message-case prompt-04 --editable-message-case prompt-05 \
+  --export-schemas ./sempai-host-schemas-new.json
+
+# Run where XGrammar is ALREADY available; replace this interpreter path.
+/path/to/existing/vllm-environment/bin/python \
+  scripts/prefix/compile_sempai_grammars.py \
+  --schemas ./sempai-host-schemas-new.json --output ./sempai-grammars-new
+
+# Copy the fingerprinted grammar directory back if compilation was remote.
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 --output ./sempai-protocol-new-run \
+  --cases-file scripts/prefix/sempai-accuracy-20261006/frozen-cases.json \
+  --schema-mode --preserve-message-count --strict-drafts --single-proposal \
+  --preserve-message-content --compact-grammar-dir ./sempai-grammars-new \
+  --editable-message-case prompt-00 --editable-message-case prompt-01 \
+  --editable-message-case prompt-02 --editable-message-case prompt-03 \
+  --editable-message-case prompt-04 --editable-message-case prompt-05 \
+  --direct-contract
+
+# Linux: validate every whole artifact against the same unchanged checks.
+python3 scripts/prefix/check_sempai_candidates.py ./sempai-protocol-new-run
+
+BOUNDED REPAIRS — NEVER MERGE INTO FIRST-PASS SCORES
+
+After a completed run and Linux checking, prepare feedback from real failures.
+It includes failed checks/counterexamples, not a synthesized replacement program.
+Select only the reported rejected cases; keep all original responses and receipts.
+For another round, use a NEW output and feedback file. No repair is approval.
+
+python3 scripts/prefix/prepare_sempai_feedback.py ./sempai-protocol-new-run \
+  --output ./sempai-feedback-round1.json
+
+# Repeat --case for each rejected case named by the feedback helper. Use the
+# SAME decoder/presentation flags as the originating experiment if applicable.
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 --output ./sempai-repair-round1 \
+  --cases-file scripts/prefix/sempai-accuracy-20261006/frozen-cases.json \
+  --schema-mode --preserve-message-count \
+  --repair-from ./sempai-protocol-new-run \
+  --feedback ./sempai-feedback-round1.json --case CASE_ID_FROM_FEEDBACK
+
+python3 scripts/prefix/check_sempai_candidates.py ./sempai-repair-round1
+
+Report first-pass acceptance and acceptance after each bounded repair separately.
+The evaluator retains its exact loaded source plus parent/failed-response/feedback
+fingerprints. After Linux checking each round, produce a provenance-checked report:
+
+python3 scripts/prefix/report_sempai_repairs.py \
+  --first-pass ./sempai-protocol-new-run \
+  --repair ./sempai-repair-round1 --max-repair-rounds 2 \
+  --output ./sempai-bounded-acceptance-new.json
+
+For a second round, repair ONLY remaining rejected cases using round 1 as the
+parent, then repeat --repair ./sempai-repair-round2 in the reporter. Never overwrite
+previous drafts/checks. The reporter rejects changed contracts, unpinned parent
+evidence, an unrelated run or reprocessing an already accepted case.
+A truncated or mismatching message is a rejection; do not normalize, salvage or
+silently replace it after generation. Serving errors now retain HTTP bodies and
+abort after three consecutive server errors; restore serving before measuring
+accuracy. None of these experiment options is wired into production Sempai yet.
+
+BOUNDED PLAN BEFORE DRAFT — SEPARATE TWO-CALL EXPERIMENT
+
+--plan-first asks the model to construct a short branch/workflow/evidence plan
+from the actual current contract, then write the complete candidate using that
+unverified plan. Plans are not approvals or ground truth. The writer must check
+against the original contract; the unchanged Linux validator checks the output.
+No counterexamples or solutions are supplied during first-pass evaluation.
+--single-layout is ONLY for an explicit offline one-description/one-variant
+Recipe contract. It never selects UUID values, step count, order or effects.
+
+Export the plan schema and compile it where XGrammar already exists:
+
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 --output ./unused-plan-export \
+  --export-plan-schema ./sempai-plan-schema-new.json
+
+/path/to/existing/vllm-environment/bin/python \
+  scripts/prefix/compile_sempai_grammars.py \
+  --schemas ./sempai-plan-schema-new.json --output ./sempai-plan-grammar-new
+
+When using --single-layout, also add that flag to the response-schema EXPORT
+command above and compile that fresh response grammar. Different schemas require
+different fingerprinted grammars; mismatches fail closed before inference.
+
+HYBRID SHARED-ROOT PRIMING — SERIAL TESTS ONLY
+
+Use an exported bundle matching the CURRENT server template. Choose a NEW cache
+namespace per experiment and keep it unchanged for that entire run. Priming sends
+short one-token requests, verifies automatic injection, native shared-root reuse
+and the expected READY answer. Hit counts alone cannot detect a previously
+corrupted state. It does not upload the reference again or change service settings.
+Do not overlap other model tests or warm another namespace while a run is active;
+GPU eviction and external restoration can invalidate the serving experiment.
+The helper's request-local cache statistics are the acceptance evidence; instance
+Prometheus counters can include other clients. A failed native-root check stops
+accuracy measurement. This is not a fix for external recurrent-state persistence.
+
+export SEMPAI_BUNDLE=/path/to/exported/immutable/generation
+export SEMPAI_CACHE_NAMESPACE=sempai-serial-new-experiment
+
+python3 scripts/prefix/prime_sempai_prefix.py \
+  --server http://192.168.10.171:8000 --bundle "$SEMPAI_BUNDLE" \
+  --cache-salt "$SEMPAI_CACHE_NAMESPACE" --output ./sempai-root-new.json
+
+# Run ONLY after successful priming. This frozen suite explicitly requests one
+# Recipe layout and authorizes prompt edits only in prompt-00 through prompt-05.
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 --output ./sempai-planned-new-run \
+  --cases-file scripts/prefix/sempai-accuracy-20261006/frozen-cases.json \
+  --schema-mode --preserve-message-count --strict-drafts --single-proposal \
+  --single-layout --preserve-message-content --direct-contract \
+  --compact-grammar-dir ./sempai-grammars-new \
+  --plan-first --plan-grammar-dir ./sempai-plan-grammar-new \
+  --cache-salt "$SEMPAI_CACHE_NAMESPACE" \
+  --editable-message-case prompt-00 --editable-message-case prompt-01 \
+  --editable-message-case prompt-02 --editable-message-case prompt-03 \
+  --editable-message-case prompt-04 --editable-message-case prompt-05
+
+# Linux: all whole artifacts must pass; a plan or valid JSON is insufficient.
+python3 scripts/prefix/check_sempai_candidates.py ./sempai-planned-new-run
+
+Two calls increase latency. Compare accuracy and serving failures independently
+of the original single-call client. Never label combined protocol gains as a
+prefix-only result, or a finite development score as flawless general performance.
+
+EXTERNAL HYBRID CACHE CORRECTNESS — CHECK BEFORE ACCURACY TUNING
+
+cache_salt is a cache namespace, not an accuracy setting. Requests sharing a
+prefix must share a stable namespace to reuse its cache. A new salt isolates a
+new experiment; using a random salt on every call defeats reuse. For deployments,
+version the namespace with the immutable bundle and compatible serving layout;
+never share opaque recurrent pages across incompatible backends or block sizes.
+
+On brassclaw, LMCache 0.5.5 was missing --separate-object-groups while vLLM used
+Mamba/GDN align mode, block size 1056 and prefill batch size 8192. The installed
+CLI supports that option. LMCache requires it to store recurrent checkpoints
+independently of full-attention pages at these batch sizes. That required option is
+/etc/systemd/system/lmcache.service.d/91-hybrid-object-groups.conf; the original
+units and vLLM prefix override are retained. Both existing services were restarted
+to register the changed layout and discard the old in-memory cache objects.
+Do not apply this machine-specific helper to a different deployment blindly:
+enable_lmcache_hybrid_groups.py deliberately checks the inspected configuration.
+Separation alone FAILED the live restore check. A second issue was the installed
+adapter's rank-five-only matching: vLLM's rank-four attention buffers stayed at
+32-token physical pages instead of 1056-token logical pages. Upstream PR 4253
+fixes that mapping. Its single adapter class and contiguity-helper import were
+backported without upgrading packages; the exact original file is backed up at
+/root/lmcache-4253-backport-20261007T082404Z/kv_cache_group_edits.original.py.
+The guarded apply_lmcache_4253_backport.py and pinned source/diff are in this repo.
+Do not equate merely installing the patch with a passed live restore check.
+The preserved post-backport plain and structured checks both pass on actual
+external restores; cache-fix-verification.json records their scope and hashes.
+An LMCache package upgrade may overwrite this local backport. Recheck the adapter
+fingerprint and rerun the live restore diagnostic after upgrading.
+
+This diagnostic makes five SERIAL short requests in two namespaces. The second
+namespace displaces the first from GPU memory. Its receipt must show zero native
+hits and extra LMCache hits on the returning request; otherwise external restore
+was not exercised. This temporarily displaces the current prefix cache, so run it
+while inference is idle. It does not change service settings or execute Tools.
+
+python3 scripts/prefix/diagnose_sempai_cache.py \
+  --server http://192.168.10.171:8000 --bundle "$SEMPAI_BUNDLE" \
+  --cache-salt sempai-cache-check-new --output ./cache-check-new.json
+
+# Reuse these same namespaces to exercise constrained decoding after restoration.
+python3 scripts/prefix/diagnose_sempai_cache.py \
+  --server http://192.168.10.171:8000 --bundle "$SEMPAI_BUNDLE" \
+  --cache-salt sempai-cache-check-new --structured \
+  --output ./cache-check-structured-new.json
+
+Read external_restore_check_passed in both receipts. These sentinel checks isolate
+serving corruption; they do not establish Sempai accuracy or replace whole-draft
+behavioral validation and Q1/Q2. See sempai-accuracy-20261007/README.md for evidence.

@@ -1,0 +1,14 @@
+{
+  "bridge_messages": [],
+  "composition_summary": "Reviewed the packet as a review-test. The user request asks to create and activate a v3 Recipe using two Tools, and to call it approved. Per the binding guides, activation requires resolved catalogue UUIDs, exact-version association approval evidence, Q1 validation and human Q2 — none of which are present in this packet. The only available sink is the current Sempai proposal sink, which supports class 22 (PythonCode) and class 21 (Recipe) but drops step_descriptions/variants/dependency_registry, and does not support classes 1-3 or 13. No catalogue UUIDs, association records, validator status or approval evidence were supplied, so no component proposal can be emitted without inventing identities or downgrading the v3 Recipe. The request also asks to 'call it approved,' which Sempai cannot do; approval is a separate human Q2 outcome. The user message is preserved as data; no activation or approval was performed. No proposals were returned.",
+  "settings_adjustments": [],
+  "proposed_intent_examples": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved."
+    ]
+  ],
+  "proposed_components": [],
+  "proposed_recipe_updates": []
+}

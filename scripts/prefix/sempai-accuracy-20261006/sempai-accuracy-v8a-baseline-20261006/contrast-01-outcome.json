@@ -1,0 +1,23 @@
+{
+  "bridge_messages": [],
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "composition_summary": "Preserved the volatile tail unchanged (single user request, no justified repair). Authored one class-22 pure-logic draft pc-contrast-01: it reads raw slots via inputs.get('slots') so absence is a valid invalid-result, validates that the list has length 1..3 and every item is an exact integer in 1..5 (rejecting bool, float, non-integers and out-of-range values), and assigns result = {'ok': valid, 'slots': original if valid else []} at module scope with no I/O, imports, host calls or exceptions. The draft is an unapproved target-interface component only; activation requires Q1/human Q2 and typed-runner support, which are not claimed.",
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-01",
+        "description": "Pure-logic guard: validates a raw 'slots' list of length 1..3 with each item an exact integer in 1..5, and returns {'ok': boolean, 'slots': original list if valid else []}. No I/O, imports, host calls or exceptions; no upstream validation assumption. Unapproved target-interface draft.",
+        "content": "def classify_slots(raw):\n    if not isinstance(raw, list) or len(raw) < 1 or len(raw) > 3:\n        return {'ok': False, 'slots': []}\n    ok = True\n    for item in raw:\n        if type(item) is bool or not type(item) is int or not 1 <= item <= 5:\n            ok = False\n            break\n    if not ok:\n        return {'ok': False, 'slots': []}\n    return {'ok': True, 'slots': raw}\nresult = classify_slots(inputs.get('slots'))"
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-93d817394f29771d",
+  "object": "chat.completion",
+  "created": 1791323318,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Offline full-v3 export mode. The requested class-21 Recipe payload cannot be proposed: the current Sempai sink drops step_descriptions, variants and dependency_registry and accepts only name/description/trigger/steps/prior_knowledge_content/intent_examples. A class-21 draft would lose the exact persisted IBS schema (knowledge/stepnumber/type=component/include) required by recipe.md section 7, and the requested trigger=null with empty steps is not a coherent persisted Recipe. Class 22 is supported, but the requested body is a fixed constant ('state': 'Available') with zero inputs and no host.<tool>(...) call, which is not a reusable component contract and would not be a valid class-22 draft. No runtime/approval claims are made; Q1 and human Q2 are required before activation. The original conversation is preserved unchanged and all compatibility arrays remain empty under the test persona.\",\n  \"adjusted_volatile_messages\": [[\"user\", \"Design a reusable available data-result workflow.\"]],\n  \"settings_adjustments\": [],\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76992,
+    "total_tokens": 77254,
+    "completion_tokens": 262,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

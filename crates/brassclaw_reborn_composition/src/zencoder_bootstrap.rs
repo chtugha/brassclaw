@@ -99,7 +99,15 @@ impl ZencoderStores {
                 return;
             }
         }
-        if let Err(e) = self.queue.gate1_pass(&scope, id, &[]).await {
+        let review = match self.queue.capture_q1_candidate(&scope, id).await {
+            Ok(review) => review,
+            Err(error) => {
+                tracing::error!(component_id=%id, class_code, name, error=%error,
+                    "trusted seed audit could not capture its actual candidate");
+                return;
+            }
+        };
+        if let Err(e) = self.queue.gate1_pass_reviewed(&scope, &review, &[]).await {
             tracing::debug!(component_id=%id, class_code, name, error=%e,
                 "zencoder audit: gate1_pass failed (non-fatal)");
             return;

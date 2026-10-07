@@ -9,13 +9,13 @@
 # The image includes common development tools so workers can build software,
 # run tests, and execute shell commands.
 
-FROM rust:1.92-bookworm AS builder
+FROM rust:1.96-bookworm AS builder
 
 WORKDIR /build
 COPY . .
 
 # Build only the brassclaw binary (release mode)
-RUN cargo build --release --bin brassclaw
+RUN cargo build --release -p brassclaw -p brassclaw_monty_host --bins
 
 # ---
 
@@ -46,7 +46,7 @@ RUN apt-get update \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.92.0 \
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.96.0 \
     && chmod -R a+r /usr/local/rustup /usr/local/cargo
 
 # Install Claude Code CLI (for claude-bridge mode)
@@ -54,6 +54,7 @@ RUN npm install -g @anthropic-ai/claude-code@latest
 
 # Copy the binary
 COPY --from=builder /build/target/release/brassclaw /usr/local/bin/brassclaw
+COPY --from=builder /build/target/release/monty_worker /usr/local/bin/monty_worker
 
 # Create non-root user (UID 1000 matches the orchestrator's container config)
 RUN useradd -m -u 1000 -s /bin/bash sandbox \

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-ae29cd853f4992e6",
+  "object": "chat.completion",
+  "created": 1791323470,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"bridge_messages\": [],\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"composition_summary\": \"Audit-only request with no edits authorized. Echoed every message exactly. No proposals or new messages. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision and protocol_capabilities are null); did not infer them from the model name. No justified prompt repair was warranted, so adjusted_volatile_messages and bridge_messages remain empty and no components were proposed.\",\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Preserve evidence evidence.\"],\n    [\"user\", \"Keep my exact request and punctuation: {a:1}.\"]\n  ],\n  \"settings_adjustments\": []\n  ,\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 76843,
+    "total_tokens": 77015,
+    "completion_tokens": 172,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

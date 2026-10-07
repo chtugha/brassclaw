@@ -1,0 +1,14 @@
+{
+  "composition_summary": "Offline-design review with no supported provider metadata. The packet carries no protocol_capabilities, no catalogue_revision and no resolved model adapter, so I cannot infer supported roles, Tool-call/result encoding or reasoning syntax. Per the binding guides I preserved the volatile tail exactly, emitted no prompt-repair proposals and no component/recipe updates, and explained the missing capability facts. No submission or activation occurred.",
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "proposed_recipe_updates": [],
+  "bridge_messages": [],
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Review my provider prompt without assuming its tool or thinking syntax."
+    ]
+  ],
+  "proposed_intent_examples": []
+}

@@ -1,0 +1,31 @@
+{
+  "upstream_pr": "https://github.com/LMCache/LMCache/pull/4253",
+  "commit": "1847435fa401330a5cf7caa6e86aaf873b2a043b",
+  "only_changes": [
+    "upstream _SubpagedAttentionViewEdit class",
+    "required existing contiguity helper import"
+  ],
+  "all_other_module_ast_identical": true,
+  "source_hashes": {
+    "backported.py": "bb8d04b6676315ee8253639b702f22dcd259700e340a2e71c1563193ea52f9af",
+    "upstream-1847435.py": "e0ecaf11f6990c7708886d691a78e8e2d52a14c370987f3c06fd68be32846959",
+    "installed-original.py": "909bc3bf5ef87741f623c19aedd12499bea3f399ea79e416911449cbea197b70"
+  },
+  "real_cpu_layout_check": {
+    "passed": true,
+    "command": "ssh brassclaw /opt/vLLM/.venv/bin/python /tmp/check_lmcache_4253_layout.py --original /tmp/installed-original.py --patched /tmp/backported.py",
+    "valid_cases": [
+      "rank4_contiguous",
+      "rank4_permuted",
+      "rank5_legacy"
+    ],
+    "rejected_cases": [
+      "page_count_not_divisible",
+      "noncontiguous_page_bytes"
+    ],
+    "logical_block": 1056,
+    "physical_block": 32,
+    "pages_per_logical_block": 33,
+    "scope": "Actual imported adapter classes and real vLLM spec/torch CPU tensors; no live transfer claim"
+  }
+}

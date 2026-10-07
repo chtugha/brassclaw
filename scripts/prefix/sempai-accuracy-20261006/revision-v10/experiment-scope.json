@@ -1,0 +1,11 @@
+{
+  "kind": "matched development regression comparison",
+  "prefix_revision_responds_to_observed_cases": true,
+  "case_manifest_sha256": "d5481ba359a43b5601b560467ca51f48bec73aaaba31f7364736d8c39c86fd20",
+  "temperature": 0,
+  "repair_feedback_supplied": false,
+  "source_change": "Complete authoring procedure checkpoint: current-host proposal destination plus presence/range discrimination.",
+  "independent_unseen_holdout": false,
+  "batch_setting_changed": false,
+  "production_components_activated": false
+}

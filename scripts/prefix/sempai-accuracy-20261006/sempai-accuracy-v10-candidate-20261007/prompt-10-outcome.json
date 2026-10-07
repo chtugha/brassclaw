@@ -1,0 +1,18 @@
+{
+  "composition_summary": "Audit only; no edit authorized. The system text contains a repeated word (units units) but no edit was permitted, and the user message must be echoed exactly. Target provider protocol/roles/tool/reasoning capabilities are unknown; no rewrite or inferred capability facts were applied.",
+  "proposed_recipe_updates": [],
+  "proposed_components": [],
+  "settings_adjustments": [],
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Use metric units units."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "proposed_intent_examples": [],
+  "bridge_messages": []
+}

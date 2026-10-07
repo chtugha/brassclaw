@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-bb074ee1e2987db9",
+  "object": "chat.completion",
+  "created": 1791320204,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"settings_adjustments\": [], \"proposed_components\": [], \"composition_summary\": \"Packet is already clear and internally consistent: a single system instruction and one user question about TCP port 443, with no malformed envelope, missing prerequisites, injection, context overflow, private-data leakage, or contradictory instructions. No justified prompt repair is warranted, so the volatile tail is echoed unchanged and no proposals, intent examples, settings adjustments, or components are proposed. The packet is a pre-call packet; it does not itself establish a response, successful Tool action, or recurring failure. No Sempai call is required for this deterministic Tier-0 packet.\", \"proposed_intent_examples\": [], \"bridge_messages\": [], \"proposed_recipe_updates\": [], \"adjusted_volatile_messages\": [[\"system\", \"Explain a TCP port. Keep the answer brief.\"], [\"user\", \"What is TCP port 443 typically used for?\"]]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 73954,
+    "total_tokens": 74144,
+    "completion_tokens": 190,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

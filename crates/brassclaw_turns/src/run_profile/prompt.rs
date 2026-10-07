@@ -42,6 +42,7 @@ where
     milestones: LoopHostMilestoneEmitter<S>,
     prompt_authority: LoopPromptBundleAuthority,
     default_message_limit: usize,
+    token_budget_mode: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     current_surface_version: Option<Arc<CurrentSurfaceVersionLookup>>,
     current_surface: Option<Arc<CurrentSurfaceLookup>>,
     safety_context: Option<InstructionSafetyContext>,
@@ -60,6 +61,7 @@ where
             milestones: LoopHostMilestoneEmitter::new(context, milestone_sink),
             prompt_authority: LoopPromptBundleAuthority::shared(),
             default_message_limit: DEFAULT_TEXT_ONLY_MESSAGE_LIMIT,
+            token_budget_mode: None,
             current_surface_version: None,
             current_surface: None,
             safety_context: None,
@@ -69,6 +71,13 @@ where
 
     pub fn with_default_message_limit(mut self, default_message_limit: usize) -> Self {
         self.default_message_limit = default_message_limit.clamp(1, MAX_TEXT_ONLY_MESSAGE_LIMIT);
+        self
+    }
+
+    /// Composition supplies the shared live mode. Disabled artificial budgets
+    /// require complete context; model technical limits remain separate.
+    pub fn with_token_budget_mode(mut self, mode: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        self.token_budget_mode = Some(mode);
         self
     }
 
@@ -210,6 +219,9 @@ where
     }
 
     fn message_limit(&self, request: &LoopPromptBundleRequest) -> usize {
+        if self.token_budget_mode.as_ref().is_some_and(|mode| !mode()) {
+            return usize::MAX;
+        }
         request
             .max_messages
             .map(|messages| messages as usize)

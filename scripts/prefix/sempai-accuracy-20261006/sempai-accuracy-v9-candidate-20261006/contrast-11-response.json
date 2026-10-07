@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-8f47f08c257f37a0",
+  "object": "chat.completion",
+  "created": 1791324352,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"settings_adjustments\": [],\n  \"composition_summary\": \"Drafted one unapproved class-22 pure-logic component per the requested contract. Raw records is a list of 1..4 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list, missing/null/wrong types, extra fields, and non-bool enabled are all invalid. The body uses inputs.get('records') so absence is a valid invalid-outcome, validates outer length before iterating, checks exact bool type (not int subclass), and assigns result on every path. No I/O, imports, host calls, or upstream validation assumption. No execution, submission, Q1/Q2 or activation was performed by this reviewer.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-contrast-11\",\n        \"description\": \"Raw records must be a list of 1..4 items. Every object has exactly code and enabled. code is a string of length 2..5 inclusive; enabled is an exact bool (False valid). Empty list, missing/null/wrong types, extra fields, and non-bool enabled are invalid. Always result={ok:boolean, records:original if valid else []}. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\",\n        \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 1 <= len(records) <= 4\\nif ok:\\n    for rec in records:\\n        if type(rec) is not dict or set(rec) != {'code', 'enabled'}:\\n            ok = False\\n            break\\n        if not (type(rec['code']) is str and 2 <= len(rec['code']) <= 5 and type(rec['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"\n      }\n    }\n  ],\n  \"bridge_messages\": [],\n  \"proposed_intent_examples\": [],\n  \"adjusted_volatile_messages\": [\n    [\n      \"user\",\n      \"Prepare the requested reusable draft without executing any operation.\"\n    ]\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 97426,
+    "total_tokens": 97930,
+    "completion_tokens": 504,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

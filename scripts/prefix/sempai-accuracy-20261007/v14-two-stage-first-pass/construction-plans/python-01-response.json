@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-88e6f6efd65a7842",
+  "object": "chat.completion",
+  "created": 1791330991,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"window not in inputs\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"window is None\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"type(window) is not int\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"not -3 <= window <= 6\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"-3 <= window <= 6\", \"result\": \"{'accepted': True, 'window': window}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; no provider facts available\"], \"notes\": \"window is a required exact-integer input with no default; absence is invalid, not absent-with-default. Exact int -3..6 inclusive; bool/float rejected. result={'\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 98379,
+    "total_tokens": 98601,
+    "completion_tokens": 222,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,76 @@
+{
+  "class_code": 21,
+  "payload": {
+    "name": "recipe-transfer-05",
+    "description": "Posts exactly the fixed word 'Available' as a user reply using the bound existing host.post_reply Tool. Unapproved draft: no version numbers or approval; dependencies (existing post_reply Tool, its ToolSkill binding, and the class-22 PythonCode body) require Q1 and human Q2 before activation. The current offline sink cannot preserve the full v3 field set (step_descriptions, variants, dependency_registry are dropped); this is a design artifact, not a live insert.",
+    "trigger": null,
+    "steps": [],
+    "prior_knowledge_content": null,
+    "intent_examples": [
+      "say available",
+      "reply available",
+      "post available",
+      "tell me you are available",
+      "please say available",
+      "respond with available",
+      "send an availability reply",
+      "give me an availability response",
+      "answer with available",
+      "please post the word available"
+    ],
+    "step_descriptions": [
+      {
+        "desc_idx": 0,
+        "label": "Post the fixed availability reply",
+        "yaml_source": "Human-readable documentation of the same two steps",
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "rust",
+            "goal": "Bind the post_reply Tool",
+            "content": "Bind host.post_reply",
+            "type": "component",
+            "include": [
+              "9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          },
+          {
+            "stepnumber": 2,
+            "knowledge": "orchestrator",
+            "goal": "Post the fixed reply",
+            "content": "Run the fixed-reply PythonCode",
+            "type": "component",
+            "include": [
+              "ca75d647-4f0e-5a35-abe7-cee7353e03c2"
+            ],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "variant_key": "fixed-availability-reply",
+        "description": "Post exactly Available. without input slots",
+        "step_link": "0:1-0:E",
+        "intent_examples": [
+          "say available",
+          "reply available",
+          "post available",
+          "tell me you are available",
+          "please say available",
+          "respond with available",
+          "send an availability reply",
+          "give me an availability response",
+          "answer with available",
+          "please post the word available"
+        ],
+        "variable_patterns": []
+      }
+    ],
+    "dependency_registry": null
+  }
+}

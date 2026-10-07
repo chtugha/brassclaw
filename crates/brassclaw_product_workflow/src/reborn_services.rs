@@ -4297,44 +4297,29 @@ impl RebornServicesApi for RebornServices {
 
     async fn restart_monty_vm(
         &self,
-        caller: WebUiAuthenticatedCaller,
+        _caller: WebUiAuthenticatedCaller,
         _request: crate::settings::MontyVmRestartRequest,
     ) -> Result<crate::settings::MontyVmRestartResponse, RebornServicesError> {
-        // The Monty VM runs per-turn (no persistent process to drain).
-        // Acknowledge the restart request — the next turn will pick up any
-        // updated settings from the DB automatically.
-        let _ = caller; // scope preserved for future auth checks
-        Ok(crate::settings::MontyVmRestartResponse {
-            state: crate::settings::MontyVmState::Restarting,
-        })
+        // A settings store cannot drain/restart a live interpreter. The global
+        // lifecycle facade must be wired before acknowledging this operation.
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            503,
+            false,
+        ))
     }
 
     async fn get_monty_vm_status(
         &self,
-        caller: WebUiAuthenticatedCaller,
+        _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::MontyVmStatusResponse, RebornServicesError> {
-        use sha2::{Digest, Sha256};
-        let user_id = caller.user_id.as_str().to_string();
-        let project_id = caller
-            .project_id
-            .as_ref()
-            .map(|p| p.as_str().to_string())
-            .unwrap_or_else(|| "default".to_string());
-        let settings = if let Some(store) = &self.monty_vm_settings {
-            store
-                .get(&user_id, &project_id)
-                .await
-                .map_err(map_monty_vm_error)?
-        } else {
-            crate::settings::default_monty_vm_settings()
-        };
-        let settings_json = serde_json::to_string(&settings).unwrap_or_default();
-        let hash = format!("{:x}", Sha256::digest(settings_json.as_bytes()));
-        Ok(crate::settings::MontyVmStatusResponse {
-            state: crate::settings::MontyVmState::Running,
-            orchestrator_version: settings.active_orchestrator_id.clone(),
-            settings_hash: Some(hash),
-        })
+        // Persisted desired settings are neither liveness nor effective runtime
+        // configuration. Fail explicitly while the runtime-status port is absent.
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            503,
+            false,
+        ))
     }
 
     async fn update_chat_preference(
