@@ -49,6 +49,8 @@ use brassclaw_turns::{
 use futures::{FutureExt, future::BoxFuture};
 use serde_json::{Value, json};
 
+#[path = "support/admission_integrity.rs"]
+mod admission_integrity;
 #[path = "support/capabilities.rs"]
 mod capabilities;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_monty_driver.rs"]
@@ -1235,6 +1237,7 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
         Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "catalogue_capture_failed"));
     let original = client.query_one("SELECT phase,admission_key,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
     assert_eq!(original.get::<_, &str>(0), "reserved");
+    admission_integrity::reject_reserved_rewrite(&database.pool, host.attempt().run_id).await;
     assert!(factory.take_failed_settlement(host.attempt()).is_err());
     assert!(matches!(factory.build(host.clone(), &input).await,
         Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery"));

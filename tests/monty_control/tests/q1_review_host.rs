@@ -532,18 +532,18 @@ async fn pure_logic_workflow_evidence_observes_values_and_rejects_reordered_step
             ),
             Err(StructuralReviewFailure::Observation)
         ));
-        for step in order {
-            let value = execution
-                .run_step(&transport, step, &expected[step].inputs, None)
-                .await
-                .unwrap();
-            let ExpectedStepResult::Return(wanted) = &expected[step].result else {
-                panic!("expected actual value");
-            };
-            assert_eq!(&value, wanted);
-        }
-        assert!(execution.host_answers().is_empty());
         if order == ["0:1", "0:2"] {
+            for step in order {
+                let value = execution
+                    .run_step(&transport, step, &expected[step].inputs, None)
+                    .await
+                    .unwrap();
+                let ExpectedStepResult::Return(wanted) = &expected[step].result else {
+                    panic!("expected actual value");
+                };
+                assert_eq!(&value, wanted);
+            }
+            assert!(execution.is_complete());
             let review = Arc::new(
                 WorkflowReview::behavior(
                     &execution,
@@ -559,6 +559,23 @@ async fn pure_logic_workflow_evidence_observes_values_and_rejects_reordered_step
             assert!(!review.evidence().contains("host.forbidden"));
             persist_workflow_review(&rig.pool, review).await.unwrap();
         } else {
+            assert!(matches!(
+                execution
+                    .run_step(&transport, order[0], &expected[order[0]].inputs, None)
+                    .await,
+                Err(
+                    brassclaw_engine::executor::retained_recipe::RetainedExecutionError::Invalid(
+                        "step is not the next retained occurrence"
+                    )
+                )
+            ));
+            assert!(
+                execution.latest_snapshot().is_none(),
+                "no child allocation before retained-order verification"
+            );
+            assert!(execution.observations().is_empty());
+            assert!(execution.completed_step_ids().next().is_none());
+            assert!(!execution.is_complete());
             assert!(
                 matches!(
                     WorkflowReview::behavior(
@@ -568,9 +585,10 @@ async fn pure_logic_workflow_evidence_observes_values_and_rejects_reordered_step
                     ),
                     Err(StructuralReviewFailure::Observation)
                 ),
-                "matching outputs cannot certify a reordered workflow"
+                "a rejected reordered request cannot supply passing workflow evidence"
             );
         }
+        assert!(execution.host_answers().is_empty());
         owner.request_termination();
         let exit = owner.join().await.unwrap();
         assert!(exit.exit_status.is_some());

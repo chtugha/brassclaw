@@ -558,6 +558,9 @@ async fn whole_match(block_history: bool, skip_history: bool) {
         .await
         .unwrap();
     assert_eq!(audit.get::<_, &str>(0), "settled");
+    if !block_history {
+        super::admission_integrity::reject_terminal_rewrite(&database.pool, attempt.run_id).await;
+    }
     let report = super::assert_settlement_outcome(
         audit.get(1),
         if block_history {

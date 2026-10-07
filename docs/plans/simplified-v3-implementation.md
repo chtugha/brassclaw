@@ -3049,3 +3049,28 @@ with required disk checks/cleanups. Logs: `/private/tmp/brassclaw-task-completio
 `...-children.log` and `...-lints.log`. This operational completion report is not
 the missing whole-workflow semantic/approval producer, protected-root trust or
 ordinary global factory wiring. The original seven failures remain unresolved.
+
+### Preserve admission identity and terminal settlement in PostgreSQL (2026-10-08)
+
+V107 guards admission identity, monotonic lifecycle and immutable terminal
+outcomes/timestamps. It rejects deletion/truncation and initial fabricated
+completion, preserves exact repeated start checks, and permits actual queued
+cancellation without creating a start time. Application private-key/outcome CAS
+and worker quiescence checks remain independent. No running task, approval or
+legacy component status is promoted by this migration.
+
+Twenty-one native worker/kernel/PostgreSQL cases passed across the focused runs:
+16 model/factory/recovery cases and five review consumers. New probes exercise
+repeated migration against a retained reservation and rejected legacy rewrites,
+terminal reopening, deletion and truncation. Existing real deferred commit
+failure/cancellation recovery still passes. The pure-logic review test now checks
+that reversed requests fail before child allocation and cannot produce passing
+evidence; the runner's earlier order enforcement had invalidated its former
+expectation that reversed steps execute. An incorrect test identifier import
+was corrected to the actual TurnRunId type before execution. Isolated all-target
+strict lint passed without warnings. Checks ran serially in screen with Rust
+1.98, the documented low-debug profiles and required disk checks/cleanups.
+Manifest: `tests/monty_control/Cargo.toml`; logs:
+`/private/tmp/brassclaw-admission-immutability-native.log`,
+`...-review-final.log` and `...-lints.log`. The original seven ordinary runtime
+failures remain open; their unchanged legacy-driver caller was not rerun.

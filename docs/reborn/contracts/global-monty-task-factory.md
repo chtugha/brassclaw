@@ -91,6 +91,14 @@ to false; neither a complete execution nor a failed negative case supplies Q2,
 protected-root trust or association-combination approval. Empty selected-Recipe
 lists on genuine No-Match are distinct from skipped selected workflows.
 
+V107 also protects admission identity and terminal outcome in PostgreSQL.
+Admissions begin reserved, may start once and settle monotonically; queued
+cancellation may settle directly without inventing a start time. Exact repeated
+start checks remain no-ops. Settled outcomes/timestamps cannot be rewritten or
+reopened, and evidence cannot be deleted/truncated. The migration is repeatable
+and preserves existing rows. These guards complement private-address CAS;
+they neither establish worker quiescence nor grant Tool permission.
+
 The ordinary factory still needs the real approved-catalogue and protected-root
 owners, retained implementation identity, shared live resource wiring and durable
 continuation/recovery supervision. The original seven composition failures
