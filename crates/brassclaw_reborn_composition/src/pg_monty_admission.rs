@@ -87,7 +87,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
-        self.verify_claim(&transaction, false).await?;
+        self.verify_claim(&transaction).await?;
         let scope = serde_json::to_value(&self.scope)
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
         let runner = serde_json::to_value(self.attempt.runner_id)
@@ -124,7 +124,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
-        self.verify_claim(&transaction, false).await?;
+        self.verify_claim(&transaction).await?;
         let changed = transaction.execute("UPDATE brassclaw_monty_task_admissions
             SET phase='started', started_at=COALESCE(started_at,clock_timestamp())
             WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3 AND phase IN ('reserved','started')",
@@ -152,7 +152,10 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
-        self.verify_claim(&transaction, true).await?;
+        // Settlement records the original worker's acknowledged outcome; it
+        // grants no dispatch or reply authority. Cancellation, lease expiry or
+        // reclaim must not prevent preserving this original admission's audit
+        // evidence. Its private key/checksum and outcome CAS still fence it.
         let row = transaction
             .query_opt(
                 "SELECT phase, outcome FROM brassclaw_monty_task_admissions
@@ -199,7 +202,6 @@ impl PgMontyAdmission {
     async fn verify_claim(
         &self,
         transaction: &Transaction<'_>,
-        settling: bool,
     ) -> Result<(), AgentLoopDriverError> {
         // Same snapshot key/lock as PgTurnStateStore. The snapshot row lock
         // serializes claim/cancel/reclaim writes with this short admission check;
@@ -239,8 +241,7 @@ impl PgMontyAdmission {
                 .lease_expires_at
                 .as_ref()
                 .is_none_or(|expires| *expires <= now)
-            || !(run.status == TurnStatus::Running
-                || (settling && run.status == TurnStatus::CancelRequested))
+            || run.status != TurnStatus::Running
         {
             return Err(failed("monty_admission_fenced"));
         }

@@ -33,6 +33,23 @@ durable acknowledgement; it does not assert external-effect reconciliation or
 permit retry. Concurrent acknowledgements cannot release a different admission
 registered under the same attempt address. No registry mutex crosses I/O.
 
+The driver retains one shared durable acknowledgement future for each actual
+service receipt. A dropped drive/stop waiter leaves that future available to the
+next addressed stop. Concurrent drive/stop calls cannot duplicate a successful
+acknowledgement after the factory releases a completed task. A persistence
+failure permits only idempotent acknowledgement of the original receipt and
+private admission; it cannot rerun Python, a provider or a Tool. Taking submitted
+settlement requires successful durable acknowledgement and transfers ownership
+once.
+
+The addressed stop deadline covers both real worker settlement and the durable
+acknowledgement. A still-running host future or failed/uncertain database write
+returns an error and retains evidence. The admission audit write remains allowed
+after cancellation, lease expiry or reclaim: its original private key, checksum
+and exact-outcome comparison fence the write. Admission/start/selection/Tool
+intent checks still require the current running claim. Audit persistence does
+not reopen dispatch or publish a late reply.
+
 The ordinary factory still needs the real approved-catalogue and protected-root
 owners, retained implementation identity, shared live resource wiring and durable
 continuation/recovery supervision. The original seven composition failures

@@ -20,6 +20,10 @@ use brassclaw_turns::{
     LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopMessageRef,
     run_profile::{AgentLoopDriverError, MontyTaskAttempt, MontyTaskHandoff, MontyTurnDriverPort},
 };
+use futures::{
+    FutureExt,
+    future::{BoxFuture, Shared},
+};
 use tokio::sync::Notify;
 
 /// Builds the exact admitted ports and catalogue snapshot, without executing a
@@ -56,6 +60,12 @@ struct Attempt {
     host: Arc<MontyTaskHost>,
     state: Mutex<AttemptState>,
     changed: Notify,
+    settlement: Mutex<Option<Settlement>>,
+}
+
+struct Settlement {
+    receipt: Arc<TaskReceipt>,
+    acknowledgement: Shared<BoxFuture<'static, Result<(), AgentLoopDriverError>>>,
 }
 
 /// Retains attempts abandoned by runner waiters until actual service settlement.
@@ -113,6 +123,7 @@ impl GlobalMontyDriver {
                 phase: Phase::Preparing,
             }),
             changed: Notify::new(),
+            settlement: Mutex::new(None),
         });
         attempts.insert(entry.host.attempt(), entry.clone());
         Ok(entry)
@@ -126,6 +137,48 @@ impl GlobalMontyDriver {
         Ok(())
     }
 
+    async fn settle_attempt(
+        &self,
+        entry: &Arc<Attempt>,
+        receipt: Arc<TaskReceipt>,
+    ) -> Result<(), AgentLoopDriverError> {
+        let acknowledgement = {
+            let mut retained = entry
+                .settlement
+                .lock()
+                .map_err(|_| failed("monty_attempt_state_failed"))?;
+            if let Some(previous) = retained.as_ref()
+                && !Arc::ptr_eq(&previous.receipt, &receipt)
+            {
+                return Err(failed("monty_task_settlement_conflict"));
+            }
+            // Concurrent drive/stop waiters share one durable acknowledgement.
+            // Dropping a waiter retains the future; a later stop resumes it.
+            // A completed persistence failure may retry only the same receipt
+            // and private admission, never task execution or external effects.
+            if retained
+                .as_ref()
+                .is_none_or(|previous| previous.acknowledgement.peek().is_some_and(Result::is_err))
+            {
+                let ports = self.ports.clone();
+                let host = entry.host.clone();
+                let original = receipt.clone();
+                *retained = Some(Settlement {
+                    receipt,
+                    acknowledgement: async move { ports.settle(host, original).await }
+                        .boxed()
+                        .shared(),
+                });
+            }
+            retained
+                .as_ref()
+                .ok_or_else(|| failed("monty_attempt_state_failed"))?
+                .acknowledgement
+                .clone()
+        };
+        acknowledgement.await
+    }
+
     /// Trusted supervisor receipt for a dropped turn waiter or failed attempt.
     /// The service's real outcome and late answers stay attached to the host.
     /// Removing this entry transfers reconciliation responsibility to the caller.
@@ -133,12 +186,11 @@ impl GlobalMontyDriver {
         &self,
         attempt: MontyTaskAttempt,
     ) -> Result<Option<MontySettlement>, AgentLoopDriverError> {
-        let entry = self
+        let mut attempts = self
             .attempts
             .lock()
-            .map_err(|_| failed("monty_attempt_registry_failed"))?
-            .get(&attempt)
-            .cloned();
+            .map_err(|_| failed("monty_attempt_registry_failed"))?;
+        let entry = attempts.get(&attempt).cloned();
         let Some(entry) = entry else {
             return Ok(None);
         };
@@ -151,7 +203,7 @@ impl GlobalMontyDriver {
                 Phase::Submitted(control) => control.clone(),
                 Phase::PreparationStopped => {
                     drop(state);
-                    self.remove(attempt)?;
+                    attempts.remove(&attempt);
                     return Ok(None);
                 }
                 Phase::Preparing => {
@@ -167,7 +219,26 @@ impl GlobalMontyDriver {
                 reason: "Monty attempt has not settled".into(),
             })?
             .map_err(|_| failed("monty_service_reconciliation_required"))?;
-        self.remove(attempt)?;
+        {
+            let retained = entry
+                .settlement
+                .lock()
+                .map_err(|_| failed("monty_attempt_state_failed"))?;
+            let acknowledgement = retained
+                .as_ref()
+                .filter(|settlement| Arc::ptr_eq(&settlement.receipt, &receipt))
+                .and_then(|settlement| settlement.acknowledgement.peek());
+            match acknowledgement {
+                Some(Ok(())) => {}
+                Some(Err(error)) => return Err(error.clone()),
+                None => {
+                    return Err(AgentLoopDriverError::Unavailable {
+                        reason: "Monty durable settlement is still pending".into(),
+                    });
+                }
+            }
+        }
+        attempts.remove(&attempt);
         Ok(Some((entry.host.clone(), receipt, control)))
     }
 }
@@ -290,13 +361,13 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 if !receipt.withheld.is_empty() || host.has_withheld_results() {
                     return Err(failed("monty_service_reconciliation_required"));
                 }
-                self.ports.settle(host.clone(), receipt.clone()).await?;
+                self.settle_attempt(&entry, receipt.clone()).await?;
                 drop(guard);
                 self.remove(host.attempt())?;
                 Ok(exit)
             }
             TaskOutcome::Failed { reason_kind } => {
-                self.ports.settle(host.clone(), receipt.clone()).await?;
+                self.settle_attempt(&entry, receipt.clone()).await?;
                 Err(failed(reason_kind))
             }
         }
@@ -332,10 +403,11 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 };
                 if let Some(control) = control {
                     control.cancel();
-                    control
+                    let receipt = control
                         .wait()
                         .await
                         .map_err(|_| failed("monty_service_reconciliation_required"))?;
+                    self.settle_attempt(&entry, receipt).await?;
                     return Ok(());
                 }
                 changed.await;

@@ -2899,3 +2899,29 @@ or a published, settled root task. No activation, protected-root approval,
 production catalogue or ordinary factory cutover is claimed. The original
 seven runtime failures remain open; their unchanged ordinary-driver cause
 was not retested for this review/journal change.
+
+### Dropped global turn waiter and durable cancellation acknowledgement (2026-10-08)
+
+The global-driver candidate now shares one retained acknowledgement future for
+an actual service receipt across drive/stop callers. Dropping a waiter cannot
+lose an in-progress acknowledgement; a failed write can retry only the same
+private admission/outcome. Submitted settlement cannot be transferred before
+durable acknowledgement and is transferred once. The bounded addressed stop
+covers worker quiescence and database acknowledgement. Audit settlement stays
+recordable after the original claim becomes terminal; every new admission,
+selection and Tool dispatch still requires the current running claim.
+
+Native PostgreSQL/actual-worker coverage holds the real recording provider call,
+drops the driver waiter, observes the five-second stop deadline without false
+acknowledgement, then injects a deferred commit failure. It verifies retained
+host/receipt/ports, terminal cancellation after worker acknowledgement, concurrent
+idempotent persistence recovery, no provider replay or late assistant reply, and
+a subsequent task completed by the same global root. The affected 19 native
+cases passed in `/private/tmp/brassclaw-cancel-settlement-native.log`; the refined
+cancellation regression passed in `...-native-final.log`. All-target isolated
+strict lint passed in `/private/tmp/brassclaw-cancel-settlement-lints-final.log`.
+
+This repairs settlement ownership, not ordinary startup. The original seven
+composition failures remain unresolved until the approved catalogue, protected
+root, retained implementation/resource/continuation owners and ordinary global
+factory are connected and their existing acceptance assertions pass.

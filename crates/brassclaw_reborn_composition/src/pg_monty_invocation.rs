@@ -67,7 +67,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))?;
-        self.verify_claim(&tx, false).await?;
+        self.verify_claim(&tx).await?;
         self.retain_selection_in_transaction(&tx, instruction, &selection)
             .await?;
         tx.commit()
@@ -180,7 +180,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))?;
-        self.verify_claim(&tx, false).await?;
+        self.verify_claim(&tx).await?;
         self.retain_selection_in_transaction(&tx, instruction, &workflow)
             .await?;
         let inserted = tx.execute(

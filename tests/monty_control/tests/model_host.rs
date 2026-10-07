@@ -84,6 +84,13 @@ struct RecordingProvider {
     requests: Mutex<Vec<HostManagedModelRequest>>,
     policy_work: Mutex<Vec<ModelWorkRequest>>,
     use_tools: bool,
+    hold: Option<Arc<ProviderHold>>,
+}
+
+#[derive(Default)]
+struct ProviderHold {
+    entered: tokio::sync::Notify,
+    released: tokio::sync::Notify,
 }
 
 // Observe the actual policy envelope while retaining the fixture's default
@@ -110,6 +117,10 @@ impl HostManagedModelGateway for RecordingProvider {
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         self.requests.lock().unwrap().push(request);
+        if let Some(hold) = &self.hold {
+            hold.entered.notify_one();
+            hold.released.notified().await;
+        }
         Ok(HostManagedModelResponse::assistant_reply(
             "actual scoped reply",
         ))
@@ -1940,6 +1951,232 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
         global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
         global_monty_owner::OwnershipSettlement::Quarantined(_) => {
             panic!("actual clean exit required")
+        }
+    }
+}
+
+#[tokio::test]
+async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledgement() {
+    use brassclaw_turns::run_profile::AgentLoopDriverError;
+    use brassclaw_turns::runner::CancelRunCompletionRequest;
+    use brassclaw_turns::{CancelRunRequest, SanitizedCancelReason};
+
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!(
+            "../../../crates/brassclaw_loop_support/prompts/compaction_summarizer_fresh.md"
+        )
+        .to_owned(),
+    );
+    let database = native_pg::NativePostgres::start().await;
+    let hold = Arc::new(ProviderHold::default());
+    let provider = Arc::new(RecordingProvider {
+        hold: Some(hold.clone()),
+        ..Default::default()
+    });
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    let mut owner = global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+        },
+    )
+    .await
+    .unwrap();
+    let factory = Arc::new(NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        None,
+    ));
+    let prefix = Arc::new(SelectedPrefix("cancellation validation prefix".into()));
+    let (_, handoff, threads, scope, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "dropped-waiter",
+        prefix.clone(),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let (request, attempt, host) = handoff.into_parts();
+    let context = host.run_context().clone();
+    let handoff = MontyTaskHandoff::new(request, attempt, host).unwrap();
+    let driver = global_monty_driver::GlobalMontyDriver::new(
+        owner.client(),
+        threads.clone(),
+        factory.clone(),
+        1,
+    )
+    .unwrap();
+    let mut drive = Box::pin(driver.drive_turn(handoff));
+    tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::select! {
+            _ = hold.entered.notified() => {},
+            result = &mut drive => panic!("provider must remain in progress: {result:?}"),
+        }
+    })
+    .await
+    .unwrap();
+    drop(drive);
+    assert!(matches!(
+        driver.stop_attempt(attempt).await,
+        Err(AgentLoopDriverError::Unavailable { .. })
+    ));
+    assert!(driver.take_settlement(attempt).is_err());
+    let client = database.pool.get().await.unwrap();
+    let row = client
+        .query_one(
+            "SELECT phase,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, &str>(0), "started");
+    assert!(row.get::<_, Option<Value>>(1).is_none());
+
+    // Dispatch remains fenced. Recording the original service outcome after a
+    // terminal claim transition is audit persistence, not permission to resume.
+    let state = Arc::new(PgTurnStateStore::new(
+        database.pool.clone(),
+        "native-global-host",
+    ));
+    DefaultTurnCoordinator::new(state.clone())
+        .cancel_run(CancelRunRequest {
+            scope: context.scope.clone(),
+            actor: context.actor.clone().unwrap(),
+            run_id: attempt.run_id,
+            reason: SanitizedCancelReason::Policy,
+            idempotency_key: IdempotencyKey::new("dropped-waiter-cancel").unwrap(),
+        })
+        .await
+        .unwrap();
+    client
+        .batch_execute(&format!(
+            "CREATE FUNCTION reject_settlement_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN IF NEW.run_id = '{}'::uuid AND NEW.phase = 'settled' THEN
+           RAISE EXCEPTION 'test settlement commit failure'; END IF; RETURN NEW; END $$;
+         CREATE CONSTRAINT TRIGGER reject_settlement_commit AFTER UPDATE
+         ON brassclaw_monty_task_admissions DEFERRABLE INITIALLY DEFERRED
+         FOR EACH ROW EXECUTE FUNCTION reject_settlement_commit()",
+            attempt.run_id,
+        ))
+        .await
+        .unwrap();
+    hold.released.notify_one();
+    assert!(matches!(driver.stop_attempt(attempt).await,
+        Err(AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_database_failed"));
+    assert!(driver.take_settlement(attempt).is_err());
+    assert!(factory.inner.take_failed_settlement(attempt).is_err());
+    let phase: String = client
+        .query_one(
+            "SELECT phase FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(phase, "started");
+    // The actual service receipt is now available, even though its audit write
+    // failed. Terminal cancellation releases the claim only after that worker
+    // acknowledgement; the original durable outcome must remain recordable.
+    TurnRunTransitionPort::cancel_run(
+        state.as_ref(),
+        CancelRunCompletionRequest {
+            run_id: attempt.run_id,
+            runner_id: attempt.runner_id,
+            lease_token: attempt.lease_token,
+        },
+    )
+    .await
+    .unwrap();
+    client
+        .batch_execute(
+            "DROP TRIGGER reject_settlement_commit ON brassclaw_monty_task_admissions;
+         DROP FUNCTION reject_settlement_commit()",
+        )
+        .await
+        .unwrap();
+    // Two callers acknowledge one retained receipt. Only the same idempotent
+    // database write is retried; the actual model request is never replayed.
+    let (first, second) = tokio::join!(driver.stop_attempt(attempt), driver.stop_attempt(attempt));
+    first.unwrap();
+    second.unwrap();
+    let (actual_host, receipt, control) = driver.take_settlement(attempt).unwrap().unwrap();
+    assert!(
+        matches!(receipt.outcome, TaskOutcome::Failed { ref reason_kind } if reason_kind == "task_cancelled")
+    );
+    assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
+    assert!(driver.take_settlement(attempt).unwrap().is_none());
+    let (factory_host, admission, ports, factory_receipt) = factory
+        .inner
+        .take_failed_settlement(attempt)
+        .unwrap()
+        .unwrap();
+    assert!(Arc::ptr_eq(&factory_host, &actual_host));
+    assert!(Arc::ptr_eq(&factory_receipt, &receipt));
+    assert!(admission.check_and_start().await.is_err());
+    ports.fence();
+    let outcome: Value = client
+        .query_one(
+            "SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        outcome,
+        json!({"status":"failed", "reason_kind":"task_cancelled"})
+    );
+    assert_eq!(provider.requests.lock().unwrap().len(), 1);
+    let history = threads
+        .list_thread_history(ThreadHistoryRequest {
+            scope,
+            thread_id: context.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(history.messages.len(), 1);
+    assert!(actual_host.has_withheld_results() || !receipt.withheld.is_empty());
+    drop(client);
+
+    let next_provider = Arc::new(RecordingProvider::default());
+    let (_, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        next_provider.clone(),
+        "after-dropped-waiter",
+        prefix,
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    assert!(matches!(
+        driver.drive_turn(handoff).await.unwrap(),
+        brassclaw_turns::LoopExit::Completed(_)
+    ));
+    assert_eq!(next_provider.requests.lock().unwrap().len(), 1);
+    owner.request_shutdown();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(exit.service.unwrap().tasks.is_empty());
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => {
+            panic!("actual clean settlement required")
         }
     }
 }
