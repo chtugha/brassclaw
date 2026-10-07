@@ -2600,3 +2600,22 @@ root Engine skills-db all-target lints pass in
 This supplies structural preflight, not semantic approval or catalogue
 activation. The ordinary runtime/approved catalogue/production factory cutover
 still remains, so no original-seven success is claimed.
+
+### 2026-10-07 — Actual structural Q1 record producer
+
+The private `pg_retained_q1.rs` candidate derives structural-only Q1 evidence
+from the actual contained inspection of the exact retained Tool program. It
+records the association checksum, complete selected usage closure and observed
+source facts. It accepts no caller-supplied passed flag. Repeated usages share
+one record; exact persistence is idempotent and conflicting bytes fail. The
+original evidence IDs and bytes survive storage/unknown-commit failure, so
+recovery persists the same observation rather than manufacturing a new verdict.
+
+Two native PostgreSQL cases pass in
+`/private/tmp/brassclaw-monty-source-q1-producer-native.log`; strict isolated
+all-target checks pass in `...-source-q1-producer-lints.log` with Rust 1.98.
+They cover exact old revisions after replacement, conflicting evidence and an
+actual deferred commit failure followed by idempotent recovery. No component
+activation, combination approval, behavioral approval or human Q2 is produced.
+This is a private producer prerequisite; ordinary runtime integration and the
+original seven composition failures remain unresolved.
