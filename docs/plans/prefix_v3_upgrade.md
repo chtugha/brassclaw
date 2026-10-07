@@ -1,6 +1,8 @@
 # Prefix v3 upgrade: compiler, source catalogue and WebUI
 
-Status: implementation plan, not shipped functionality. Source inspection: 2026-10-06.
+Status: implementation plan, not shipped functionality. Source and evidence review:
+2026-10-07. This revision incorporates Sempai quality experiments and the reproduced
+LMCache transfer failure; it does not deploy code or change inference services.
 The workspace package version is `1.6.0`; release identity also needs a commit and
 content manifest because version numbers alone do not identify the working tree.
 
@@ -31,6 +33,38 @@ Activate generation (separate operation)
   -> optionally warm the selected provider
   -> verify exact injected tokens and measured cache reuse
 ```
+
+### 1.1 What one click must deliver
+
+Generate is a durable, model-free build workflow, not direct invocation of a
+developer script. For a selected registered target it produces a reproducible,
+source-backed, capacity-checked artifact suitable for the declared consumer. For
+Kohai/Sempai that means the required base-plus-domain/reviewer composite, not just
+a parent reference requiring an undocumented second manual build. Orchestrate
+missing/outdated parents and composite compilation as separate reusable Recipe
+tasks under one visible operation; reuse eligible immutable parents. Pin a coherent
+source/parent selection and retain child job references. Never secretly activate,
+change a provider template, or replace an inference deployment on Generate.
+
+Without a configured provider, Generate can still build a source generation against
+registered local tokenizer/model artifacts. Label it Generated / target not selected;
+it cannot promise serving readiness. Missing worker/artifacts, unreviewed source
+changes and insufficient context have actionable blocked results. The UI must not
+say “successful” when a subprocess exited zero but no validated artifact exists.
+
+| Completion state | Evidence required | Meaning in the UI |
+| --- | --- | --- |
+| Source generation validated | Immutable originals, coverage, compiler and artifact checks | Downloadable reference; may still need a composite/target. |
+| Target artifact validated | Above plus required parents, exact rendering and context checks | Generated for this consumer/target; eligible for activation only if resolver/target gates pass. |
+| Model quality measured | Versioned task-suite results and intact drafts/responses | Separate first-pass and repair results; not universal expertise. |
+| Effective / cache verified | Actual injection contract and qualified cache path | Serving observation tied to the current runtime, never inferred from compilation. |
+
+“Perfectly designed” means all declared build contracts pass with no hidden loss or
+unsupported claims. It cannot guarantee a small model answers every unseen problem.
+Unused tokens are available capacity, not a requirement to add filler. Large,
+high-quality reference content remains the objective.
+
+### 1.2 Recipe and primitive boundaries
 
 Use separate reusable Tool usages and pure-logic PythonCode components for each
 operation. Each Rust-channel ToolSkill binding is immediately followed by its
@@ -111,6 +145,8 @@ acceptance during this planning task.
 | Staleness | Q2 approval calls `mark_stale`; current `get_system_bundle` uses a minimal fallback for stale rows or DB errors and has a default-project probe on a miss. | Add dependency-aware invalidation and a deliberate serving policy; do not silently discard a large usable generation during a rebuild. |
 | Startup | `component_boot::initialize_runtime_components` seeds host and first-party components and checks integrity; runtime initialization calls it. | Seed reference sources through this shared boot path, not only on WebUI mount. Global Monty lifecycle acceptance remains the separate Phase-3a prerequisite. |
 | Citation helpers | All three domain compiler `--mode run` entry points use `run_compiler_task`; the standalone shared CLI verifies the server token prefix. | Carry evidence IDs/manifests into production provider/answer paths. Existing direct vLLM calls remain unchecked. |
+| Standalone compiler execution | Sempai has legacy triage/distill/run modes as well as offline context compilation; the offline switch applies only to context mode. Runtime inspection uses local process flags. | A production worker must expose a pinned model-free build contract, not execute `--mode all`, inherit arbitrary environment settings or mistake its own host for the inference host. |
+| Hybrid cache evidence | LMCache 0.5.5 / vLLM 0.31.0 on the inspected Ornith server produced corruption on external restores; separation alone failed, then an upstream adapter backport passed sentinel restores. | Make runtime/cache-layout correctness an explicit target prerequisite; package versions and native hit counts alone are insufficient. |
 
 Relevant inspected files:
 
@@ -148,6 +184,41 @@ Builds expose explicit input/output directories, pinned model/tokenizer artifact
 and a machine-readable result. An offline build from a fixed source snapshot is
 deterministic and uses no model synthesis. Source refresh is a separate observable
 stage, with its own network permissions, recorded revisions and failure outcomes.
+
+### 4.1 Production compiler contract and artifact layout
+
+Extract a library/worker interface consuming only immutable registered inputs:
+profile/policy revision, coherent source export, exact component dependencies,
+verified teaching package where applicable, model configuration, tokenizer files,
+chat-template adapter and target capability revision. Paths are internal artifact
+handles. Build-time refresh, model calls and live host/process inspection are
+excluded; the scripts' synthesis/doctor/run/reset modes are not production build
+entry points. Test the real build with provider/network access unavailable, not
+merely a declared offline flag. Imports must not start clients or fetch sources.
+
+Specify supported Python/library versions, installed dependencies, CPU/RAM/disk/
+time limits, bounded child-process/output handling, cancellation, stage checkpoints
+and atomic staging/publication. Compilation is primarily parsing, evidence
+selection and tokenization; an NVIDIA GPU is not a prerequisite. Worker placement
+is an execution choice, not a browser host/path field or new provider catalogue.
+Resume verified stages; never publish a killed compiler's incomplete export.
+
+| Logical artifact | Required contents |
+| --- | --- |
+| Input manifest | Canonical release/catalogue/source/policy/compiler/tokenizer/template identities and all pinned dependencies. |
+| Raw source package | Complete original bytes, source disposition, selected/omitted whole-unit map and licensing metadata. |
+| Evidence index | Stable IDs, original ranges/fields/revisions, original and rendered hashes, applicability and navigation. |
+| Model input | Stable reference text and registered client/server rendering adapter; no job IDs, live conversation or fetch timestamps. |
+| Token manifest | Actual reference/shared/full-envelope token counts and leading-token hashes across supported variants; runtime cache assumptions separate. |
+| Build validation receipt | Coverage, artifact integrity, source/teacher checks, capacity, deterministic reproduction and specific blocked/error reasons. |
+| Quality/cache observations | Append-only receipts bound to generation and actual validator/provider/runtime revisions; never substituted for originals. |
+
+Use relative artifact names or content-addressed references. Host checkout/output
+paths, download locations and timestamps belong to operational records, not the
+content ID or stable model text. Avoid hash cycles: establish generation identity
+from canonical immutable inputs/rendered payloads, then attach receipts to it.
+Different output directories/worker hosts must not change evidence IDs, compiled
+text, templates or leading token IDs.
 
 ## 5. Base-prompt knowledge: complete originals and applicability
 
@@ -226,9 +297,9 @@ gain instruction authority, grant Tools or override current kernel policy.
 
 Seed a fifth `sempai` knowledge profile and its compiler/source registration at
 installation through the same shared boot, generation history and integrity path.
-Copy `Homeassistant-compiler.py` to `scripts/prefix/sempai-compiler.py`, replacing
-all HA sources, topic gates, cache paths and runtime guidance with Sempai content.
-Keep the existing compiler intact. The initial standalone copy and explicit
+The requested copy to `scripts/prefix/sempai-compiler.py` already exists. Audit its
+replacement sources, topic gates, cache paths and guidance; preserve its verified
+tutorial/evidence rather than recopying the HA file over this work. The copy and
 `sempai-authoring-reference.md` procedure are local compiler artifacts; DB seeding,
 activation and production reviewer wiring remain implementation work.
 
@@ -312,6 +383,78 @@ The current sink supports classes 21/22 but discards v3 Recipe fields; preserve
 those fields through the supported constructor/sink path before accepting v3
 Recipe proposals. See [the live test report](../../scripts/prefix/sempai-evaluation-20261006/README.md).
 
+### Evidence learned since that initial deployment
+
+The v14 standalone reference has 97,822 text tokens, 97,828 shared leading tokens,
+92 complete 1,056-token blocks (97,152 cacheable tokens) and a 676-token shared
+tail. Its 29 complete teaching examples pass 132 Linux behavioral probes with
+deliberate mutations rejected. These are teaching artifacts, not activated
+components or Monty/production Q1 proof. See the
+[retained experiments](../../scripts/prefix/sempai-accuracy-20261007/README.md).
+
+Unchanged-client v13 measured 54/60. V14's different two-call planning, strict-schema
+and input-presentation protocol measured 55/60 first pass and 60/60 after up to two
+feedback repairs. Additional development transfer cases measured 10/12 first pass
+and 11/12 after two repairs. Neither protocol changes nor repair acceptance may be
+advertised as prefix-only gains or flawless first-pass ability. Healthy native-only
+semantic failures remain distinct from cache serving failures. V14 is standalone
+Sempai: its capacity does not prove a full installed base-plus-Sempai composite fits.
+
+### 5.1 Knowledge quality and model-facing structure
+
+Version each profile's source and teaching policy. Require a coverage matrix mapping
+each promised capability to authoritative source units, applicability and checks;
+heading/keyword matches alone are insufficient. Sources record release, product/
+protocol version, licensing/distribution disposition, original hash and review
+status. Official specifications and project contracts take precedence; forums,
+cookbooks and local findings are qualified observations with prerequisites and
+limitations. Resolve conflicts explicitly rather than giving every source equal
+instruction authority. Refresh failures cannot silently substitute unreviewed
+content or manufacture current-version claims.
+
+For base/Sempai, include complete required authoring/schema/association/retry guides
+and approved catalogue records. Defensive coverage includes evidence preservation,
+incident response/backdoor/rootkit investigation and reversible maintenance with
+actual platform/version context. HA covers YAML indentation/typing, automation/
+script semantics, MQTT session/QoS/retention and Modbus addressing/data interpretation.
+Tomedo preserves versioned API, macOS/Postgres and dated German billing/coding
+sources, distinguishes local discoveries and excludes clinical knowledge. None of
+these references grants operational authority.
+
+Use one predictable envelope: trusted role/authority and precedence, navigation,
+applicability/contracts, literal evidence units, verified general teaching units,
+then one short task-independent dispatch/checklist boundary before volatile input.
+Keep the shared base spine stable; consumer instructions belong to the registered
+trusted envelope, not duplicated personas inside factual source units. Only the
+trusted envelope establishes authority; quoted source instructions remain data.
+Clearly delimit reference data. Preserve complete programs, YAML blocks,
+qualifications and related prerequisites together; nested source examples must not
+become chat roles or new instructions. Do not summarize away executable artifacts
+or repeatedly duplicate instructions. Stable source/component identifiers support
+navigation and citation checks.
+
+Teaching must transfer beyond a fixture: presence before value access, missing
+versus null, exact booleans versus integers, recursive container/item constraints,
+numeric boundaries, defaults only on missing inputs, complete invalid results,
+helper invocation and module-level result assignment, typed step handoff, effects
+and supported proposal transport. Pair positive complete examples with scoped
+negative contrasts. Validate whole artifacts and behavior against independently
+specified contracts; AST/schema success alone does not establish meaning.
+
+Pin teacher manifests, validator code and transitive checker/schema dependencies,
+execution environments and verification receipts. Reject drift until affected
+examples are revalidated. Developer-edited examples require review; compiler output
+must not turn model-generated explanations into official sources. Frozen evaluation
+fixtures/oracles and failed-draft feedback never enter the reusable reference.
+Feedback belongs only to that candidate's volatile review task. Keep first-pass,
+bounded-repair and fresh/held-out results separate.
+
+Select content by required coverage and measured transfer, not “fill remaining
+tokens.” Preserve the large prefix and full source store; admit optional whole
+units only under a reviewed deterministic policy after mandatory units fit. If
+mandatory knowledge cannot fit, fail with exact coverage/capacity evidence rather
+than choosing lossy slices. A fully seeded base library may require a larger model.
+
 ## 6. Installation-time DB seeding: preferred combined approach
 
 Use the database as the installed source catalogue, with a shipped reproducible
@@ -333,8 +476,10 @@ to reconstruct the base prefix.
    edits enter the supported validation path. Merely transferring a document into
    a DB or executing an upsert does not make it approved evidence.
 4. Seeding is idempotent and preserves operator edits/older approved revisions.
-   Upgrades create new revisions and atomically update the relevant active selection;
-   they do not overwrite a body used by a running task. Never seed generated
+   Upgrades create new revisions and atomically select eligible source revisions
+   under the applicable release-integrity/approval contract. They invalidate affected
+   prefix dependencies; they do not activate new compiled prefixes or overwrite a
+   body used by a running task. Never seed generated
    summaries back as authoritative originals.
 5. Register the five profile definitions and compiler artifacts at installation.
    Optionally import an existing verified domain generation. External domain source
@@ -364,7 +509,7 @@ not existing tables/API fields:
 | Prefix generation | Content-addressed ID, profile ID, compiler/input snapshot identities, full bundle text, evidence cards, immutable source/dependency manifest, model/tokenizer/template hashes, exact token counts and quality results. |
 | Generation job | Durable request/run ID, profile, pinned input references, state/stage, timestamps, logical step-invocation references, execution attempts, cancellation/fencing, checkpoints/artifacts and classified errors. |
 | Active selection | Provider/model/consumer binding to one immutable generation or explicitly compiled composite; desired/effective state and revision for compare-and-swap. |
-| Cache observation | Provider process/model identity, generation and actual token-prefix hash, warm/reuse/external-reload measurements and time; never confused with generation success. |
+| Cache observation | Provider process/model identity, generation/token-prefix hash, runtime/cache-layout fingerprint and salt policy, expected-content checks, native/extra-external hits, warm/reload measurements and time; never confused with generation success. |
 
 Migrate existing `reborn_basic_prompt_store` bundles as legacy base-prompt generations.
 Keep compatibility reads until both Kohai and Sempai use the new resolver. A legacy
@@ -375,7 +520,10 @@ dimension or introduce generation storage with a clearly defined compatibility
 pointer. Do not assert additive rows already solve this.
 
 Job states: queued, snapshotting, collecting, compiling, validating, completed,
-failed or cancelled. Activation and cache states are separate. Persist real stage
+failed or cancelled; represent prerequisite/capacity blocking explicitly with a
+reason and resumable dependencies rather than a misleading queued state. Generate
+operations may contain parent and composite child jobs. Activation and cache
+states are separate. Persist real stage
 progress and counts; report a percentage only with a known denominator. A browser
 disconnect does not cancel admitted work. Deduplicate repeated submissions and
 serialize conflicting profile/target mutations, while allowing independent builds
@@ -402,8 +550,9 @@ before every permitted retry. Never rerun confirmed effects because output check
 reply delivery or a later step failed. No DB-plus-provider/filesystem atomicity is
 assumed; define durable reconciliation for effects outside the DB transaction.
 
-Publish only after all required evidence/coverage/token checks pass. Publish and
-selection changes are atomic. Failed regeneration leaves the previous immutable
+Publish only after all required evidence/coverage/token checks pass. Publication is
+atomic; a separate selection change is independently atomic and revision-checked.
+Publication does not change active selections. Failed regeneration leaves the previous immutable
 generation intact. A completed publish is reused after downstream reply/warm failure;
 never rerun its effects because an HTTP response was lost. Cancellation, policy,
 attempt fencing and durable retry counts apply throughout. Artifact retention follows
@@ -438,6 +587,27 @@ View sources and validation; Activate a chosen compatible generation; Warm /
 Verify cache when the provider supports it; Roll back to a retained generation.
 Generating a prefix must not automatically replace an unrelated provider's active
 domain. Do not mark “fresh” optimistically from a job admission response.
+
+The primary Generate action uses a registered saved build specification: profile,
+consumer, optional target revision, accepted source-refresh policy and reviewed
+coverage/teaching policy. Operators do not compose shell flags or choose packing
+algorithms. Missing choices are explicit setup prerequisites. Snapshot-only offline
+building remains available without a provider. Advanced parent/composite actions
+are not mandatory hidden steps for normal target-aware generation.
+
+Show one operation timeline across parent/dependency/compile/validation stages with
+exact blocked reasons and counts. Distinguish source refresh/review from compilation:
+use an eligible pinned package or an explicitly authorized refresh policy; changed
+unreviewed sources are quarantined, not auto-approved. Unchanged inputs deduplicate
+to the same content-addressed generation while retaining the requested operation.
+Explicit refresh/rebuild creates new immutable inputs, never overwrites evidence.
+
+Details expose coverage and omitted units/reasons, source versions, actual capacity,
+teacher checks, first-pass/repair scores, injection owner and cache qualification.
+Show Cache unavailable, Unverified and Cache correctness failed distinctly. Failed
+enabled caching is a serving prerequisite failure, not missing telemetry. Citation/
+configuration/review support is per adapter; no universal “expert” badge follows
+from compilation or a warm timestamp.
 
 Retain the current API family. Proposed extensions, subject to final DTO review:
 
@@ -554,7 +724,10 @@ Use the existing job status/cancel routes and generation-detail projections, ext
 to show composite parents. Keep five top-level profile rows; show target-specific
 composites beneath their domain/reviewer row with Build composite / Rebuild, job progress,
 Capacity blocked and Activate state. Parent generation alone is labelled Generated,
-not Ready for BrassClaw activation. Never implicitly rebuild within Activate.
+not Ready for BrassClaw activation. Normal target-aware Generate orchestrates this
+Recipe with required parent tasks through the same job service; the explicit
+composite endpoint supports advanced exact-parent builds. Never implicitly rebuild
+within Activate.
 
 Parent source/selection changes invalidate dependent composites for new tasks.
 Rebuild explicitly pins the newest eligible parents under one coherent selection;
@@ -579,6 +752,11 @@ technical limit. Distinguish the current compiler's example 100000-token packing
 target and explicit operator settings from disabled global token budgets. Reserve
 workspace based on the real serving contract and selected model; do not install a
 universal hardcoded 100k/31k policy in every provider.
+Count the actual complete serving envelope, including tools, role/template overhead,
+current history/user input and requested output allowance, before each dispatch.
+Build-time reserve is an explicit target contract, not a guarantee that every future
+conversation fits. Oversized requests return a specific capacity outcome; no hidden
+history truncation or discarded mandatory knowledge compensates for overflow.
 
 Keep original tokenizer and chat-template artifacts immutable. Measure leading token
 IDs across thinking, tool and system-message variants. Stable text hashes alone do
@@ -594,11 +772,94 @@ this geometry. Derive hybrid block/chunk compatibility from the actual pinned
 configuration and runtime. Treat previous 1056-token-block/99264-token reuse
 receipts as observations for that deployment, not constants for all targets.
 
+### 9.1 Runtime/cache qualification and stable namespaces
+
+Compilation creates reference/context artifacts, not GPU attention pages or
+recurrent state. Inference creates those caches; eviction/restart may remove them.
+Caching is context reuse, not training or guaranteed knowledge persistence. A
+compiled generation and qualified serving target have different lifecycles.
+
+Qualify actual runtime/model/tokenizer/template and cache layout: vLLM/connector/
+LMCache source or build hashes (including backports), attention backend, parallelism,
+weights/config and relevant scale identity, KV/state dtypes, logical/physical block
+mapping, group/chunk geometry, checkpoint mode and prefill scheduling. Associate
+verified fingerprints with DB target revisions. Package versions are insufficient.
+Relevant runtime changes invalidate target qualification; rendering changes
+invalidate effective-token evidence. Renewing an observation does not require
+rebuilding identical reference content.
+Separate runtime compatibility identity from process lifetime: compatible restarts
+retain the declared namespace, while invalidating process-bound warm observations.
+PID/random engine IDs must not create a new namespace on every restart. Claim
+restart/disk reuse only after a real supported restore passes content checks.
+
+For enabled hybrid external caching, verify independent recurrent/full-attention
+groups and compatible transfer code, not just chunk divisibility. Derive flags from
+supported interfaces/effective metadata; absence of an explicit hybrid-manager flag
+does not prove the manager is disabled. Sparse align-mode checkpoints exist at
+scheduler boundaries, not every attention block. Larger prefill batches require a
+separate measured experiment, never automatic adjustment by Generate.
+
+`cache_salt` only namespaces entries. Use a stable namespace under the target's
+cache-isolation/runtime-layout contract; never create a salt per request or change
+it between prime/planner/writer/repair calls within an experiment. Introduce no
+tenant/feature-role registry for the single-instance operator. Keep incompatible
+cache layouts separate; reconcile old objects through supported provider management.
+
+Enforce generation selection independently through immutable injection and exact
+tokens. Where safe shared-base reuse is intended, a compatible namespace may span
+domain generations: token hashes distinguish divergent inputs. Salting every full
+composite isolates experiments but prevents cross-domain reuse of the common base
+spine. Record the tradeoff; never discard isolation to inflate hits. Salts/runtime
+epochs/statistics do not belong inside model-visible reference text.
+
+For observable local cache adapters, compare identical requests serially across
+cold compute, native reuse, native eviction with verified external restore, then
+native reuse of restored state. Keep prefix/template/messages/decoding fixed; retain
+raw responses/errors, expected-content checks and request-local native, external
+and **extra external** counts. LMCache total hits overlap native hits; extra hits
+establish additional restoration. HTTP 200/native hits do not prove correct state.
+Include unconstrained and constrained decoding and representative factual/behavioral
+probes; a fixed JSON grammar alone can hide nonsensical logits.
+
+The measured Ornith short warm probe ended within the final shared block, establishing
+a static checkpoint before long histories. Apply this only where the resolved
+checkpoint contract supports it; verify actual tokens and expected content. Priming
+cannot certify corrupted native state solely by hits. Qualify while the shared
+target is idle or through supported isolation; do not evict unrelated live requests
+or claim load safety from a serial probe.
+
+Measured 2026-10-07: LMCache 0.5.5/vLLM 0.31.0 omitted hybrid object separation and
+its attention adapter matched only rank-five tensors. Ornith's rank-four buffers
+used 32-token physical pages for 1,056-token logical blocks. Separation alone still
+corrupted outputs. The relevant class from upstream
+[PR 4253](https://github.com/LMCache/LMCache/pull/4253), alongside separation, passed
+plain/JSON sentinels with three verified 97,152-token external restores. See the
+[verification receipt](../../scripts/prefix/sempai-accuracy-20261007/cache-fix-verification.json)
+and [source/layout review](../../scripts/prefix/sempai-accuracy-20261007/lmcache-4253/source-and-layout-review.json).
+This qualifies that runtime; it proves neither arbitrary load, disk/restart
+persistence nor model accuracy.
+
+These layout/correctness checks precede production activation when the configured
+path can serve external hits. Known-corrupt paths are ineligible, not Unverified;
+fresh salts are not remediation. Requalify a repaired path or explicitly select an
+independently accepted alternative cache mode. External caching remains optional:
+providers not using/exposing it are not blocked by absent LMCache telemetry.
+Deployments remain operator-owned; Generate never patches packages, changes Compose,
+reloads systemd or restarts vLLM.
+Qualification is a separate observable operation against an immutable candidate
+using an accepted injection/isolation adapter; it must not require activating that
+candidate first. A completed build stays Generated if qualification later fails,
+with the target explicitly ineligible. Generate has no hidden model calls. Existing
+runtime qualification may be reused only within its recorded compatibility scope;
+candidate-specific token/injection evidence still names the exact generation.
+
 Warm through the provider that will actually serve the selected prefix, using its
 real template/tool envelope and a minimal normal completion when supported. Provider
 adapters declare warm-request support, token inspection, native reuse telemetry and
 external reload verification separately. Correct injection, capacity, freshness and
-generation enforcement gate activation; cache telemetry does not. Verify a second
+generation enforcement gate activation, alongside section 9.1's correctness gate
+for enabled external cache paths. Missing telemetry alone does not block a valid
+provider. Verify a second
 request's reuse only when observable; otherwise report Cache reuse unverified and
 disable unsupported verification actions without blocking valid inference. Token
 inspection is also capability-specific: client-owned mode verifies exact outbound
@@ -633,8 +894,33 @@ source/version combinations, not just invented IDs.
 Only Home Assistant currently has static configuration adapters. Defensive server/
 firewall configs, SQL and tomedo API payloads require their own versioned parsers,
 schemas or non-mutating application checks. Never treat the YAML check as validation
-of all other domains or execute generated code to validate it. Keep syntax, static
+of all other domains or run generated operational configurations against live
+systems merely to validate them. Keep syntax, static
 schema, semantic review and observed runtime/device checks separate.
+
+Sempai additionally needs lossless proposal/whole-artifact validation through its
+actual class-specific sink. Retain the draft before review; check supported fields,
+immutable input identity, authorized prompt-edit boundaries, capabilities and the
+entire component/association/workflow. Isolated bounded Linux pure-logic execution
+checks are appropriate; unapproved candidates never dispatch Tools or mutate
+devices. CPython success is not Monty compatibility or production Q1/Q2. Validate
+summaries against payloads; prerequisites/warnings must survive in the actual
+artifact, not exist only in a prose summary.
+
+An optional contract-planning model call is untrusted intermediate data, not an
+executable plan or approval. Each independent call/validation usage has its own
+Recipe step. Version output schemas/grammars and pin their hashes and supported
+parser behavior. Protected-message/single-proposal/single-variant constraints apply
+only when the trusted authoring contract requires them; offline benchmark settings
+must not restrict general v3 Recipes. Unsupported fields/APIs are failures.
+
+Bounded repairs consume only the retained failed draft and real validator evidence.
+Record positive attempt limits and parent/response/feedback hashes with an unchanged
+task contract. Never weaken checks to reach a score, replay effects, merge repairs
+into first-pass accuracy or supply benchmark answers to first-pass requests. Keep
+syntax, semantic behavior, citation support and serving failures separate. Quality
+observations identify suite/revision, client protocol, decoding controls, runtime
+fingerprint and first-pass/repaired results; absent measurements say Unmeasured.
 
 ## 11. Phased implementation and acceptance gates
 
@@ -649,6 +935,9 @@ least ten positive intent examples per authored Recipe plus negative routing cas
 
 Acceptance: reviewed end-to-end workflow and exact missing primitives; no invented
 UUIDs, unsupported store fields or false Tier-0/Q2/runtime claims.
+Include the saved build specification, five profile coverage matrices, artifact/
+identity schemas, worker dependency/resource contract and a target capability matrix
+for injection, token inspection, grammar, native/external cache and validation support.
 
 ### Gate A1 — Runtime prerequisites for production Recipe jobs
 
@@ -722,6 +1011,11 @@ survives export; no HA topic leakage; missing reference/coverage fails the build
 two offline builds of the same input produce identical source/evidence/template/
 leading-token fingerprints; raw originals survive failed builds. Fresh install,
 upgrade and reseed preserve integrity, operator edits and retained old versions.
+Also require host/path-independent content identity; byte/hash agreement between
+source, evidence and rendered text; reproducible whole-unit selection; intact
+YAML/Python/JSON; reviewed conflicting/versioned sources; tutorial mutation checks
+and transitive validator fingerprints. Prove zero provider/network/process discovery
+through the actual worker entry point. No optional synthesis mode is invoked.
 
 ### Phase C — Named generations, jobs and Recipe execution
 
@@ -749,6 +1043,12 @@ regeneration after component invalidation; missing artifacts; and zero LLM calls
 through the actual bootstrap caller. Test composite build/rebuild/cancel/restart,
 parent races, evidence-ID conflicts, exact parent manifests, deterministic rendering,
 coverage/capacity rejection and retained independently usable parent generations.
+Test the normal one-click operation with missing/outdated parents and reused parents,
+parent/target changes mid-operation, partial child failure and cancel/reconnect.
+Reconcile published children without replay; an outdated completed artifact remains
+historical. A source-generation-only operation without a provider completes honestly
+without an activation-ready badge. A target-aware operation cannot report success
+until its required composite validation completes.
 
 ### Phase C1 — Sempai reference, review packet and component proposals
 
@@ -776,6 +1076,13 @@ retain their selection, failed steps never replay as Tier 2, the production revi
 schema is not replaced by citation-benchmark JSON, and Tier-0 tasks gain no hidden
 Sempai calls. Prompt improvement/proposal correctness needs actual case evaluation,
 not only token/cache measurements.
+Port the whole-artifact validator through the real lossless sink; include missing/
+null/default/boolean/list/recursive/bounds/helper/result cases and malformed/duplicate
+Recipe layouts, invented Tools/UUIDs and summary/payload disagreement. Add independent
+transfer cases with different domains/field names/bounds, hold them out of teaching,
+and report first-pass separately from repair acceptance. Verify grammar/schema
+fingerprints and host-authorized edit constraints without forcing every Recipe to
+one variant. A rejected candidate stays rejected, even if its summary claims success.
 
 ### Phase C2 — Minimum provider resolver before activation
 
@@ -806,6 +1113,14 @@ dispatch after deactivation, explicit reactivation without restored selections,
 DB failure versus Unconfigured, and usable operator management/Tier-0 paths.
 Test a provider without cache telemetry and ensure activation/inference remain
 available while unsupported warm/verification actions and observations are honest.
+For targets serving hybrid external hits, section 9.1 is an acceptance prerequisite,
+not work deferred to Phase E: exercise cold/native/external/restored-native paths,
+plain and constrained decoding, expected content and representative semantic probes.
+Keep failed cache experiments out of model scores. Check bad page mapping, absent
+recurrent checkpoints, changed backend/chunk/source build and previously corrupted
+native state; known failures block the target. Qualify the actual configured path
+without new random salts concealing it. Package upgrades invalidate backport-bound
+receipts. No service/package/deployment mutation occurs from a WebUI build/warm job.
 
 ### Phase D — WebUI vertical
 
@@ -827,6 +1142,10 @@ worker/provider, rate limiting, stale source and compatible/incompatible activat
 Navigating away must not lose a job. A failed build must not replace an active prefix.
 Cover generated-parent versus ready-composite state, composite build/rebuild,
 dependency/capacity failures and a valid provider lacking cache telemetry.
+Cover the section 1.1 completion states through the browser and composed API: one
+click builds eligible parents/composite, repeated clicks deduplicate, prerequisite
+and quality/cache failures stay distinct, advanced details expose omitted-unit
+reasons and receipts, and Generate never changes the effective provider selection.
 
 ### Phase E — Extended cache and answer quality
 
@@ -834,6 +1153,13 @@ Build on the accepted Phase C2 resolver. Add richer cache observations and optio
 external persistence adapters. Integrate citation validation in actual answer
 routes and retain domain-specific config checks; minimum provider correctness is
 already a prerequisite for Phase D activation, not work deferred to this phase.
+Mandatory source/artifact/teaching/configuration checks are part of the build gates
+above. This phase broadens measured model/answer quality; it does not postpone those
+checks or reinterpret a compiled artifact as proven expertise. Quality evaluation
+is an explicit separate Recipe/job using a quarantined immutable candidate and an
+accepted injection adapter, never an implicit compiler call or production activation.
+It must not require an already active candidate to test that candidate or create
+a first-build dependency cycle. No provider means model quality is Unmeasured.
 
 Acceptance: exact effective `/tokenize` or equivalent adapter evidence; no duplicate
 automatic/client prefix; pinned selection across concurrent changes and continuations;
@@ -911,3 +1237,19 @@ base-prefix inputs contain the complete approved current docs/components, source
 generation history survive failure, model calls use the intended immutable context
 exactly once, and quality/cache status is supported by real receipts. Nothing in
 this plan authorizes claiming simplified-v3 runtime gaps are solved by prompt text.
+
+### Final one-click acceptance matrix
+
+| Operator scenario | Required result/evidence |
+| --- | --- |
+| Generate a profile for a registered consumer/target | One durable operation builds/reuses eligible parents and validates the complete composite; exact source/target references and downloadable receipts are visible. |
+| Generate without a provider | A valid source artifact or explicit missing-local-artifact prerequisite; model quality/cache readiness remain Unmeasured/Unverified. |
+| Repeat or reconnect during Generate | Durable deduplication, progress and retained child references; no repeated confirmed publication or automatic activation. |
+| Change sources/target, cancel, or exceed context | Classified stale/blocked/cancelled outcome, preserved originals and last-good selection; no silent partial knowledge or unreviewed replacements. |
+| Rebuild on another supported worker/path | Identical canonical content, evidence IDs, rendered text and leading tokens from identical pinned inputs. |
+| Validate knowledge and teaching | Required coverage, complete evidence units, independently specified behavior checks and transitive validator receipts; first-pass/repair/transfer results remain separate. |
+| Activate with enabled external caching | Accepted exact injection plus qualified real restore correctness; known-corrupt or incompatible paths block activation without changing the deployment. |
+| Inspect an active generation | Desired/effective selection, freshness, capacity, model quality and cache observations are distinct and traceable; retained tasks keep their pinned revisions. |
+
+Run this matrix through the production facade, composed ingress, Recipe worker and
+browser path. Script-only success or a screenshot of buttons does not close the plan.

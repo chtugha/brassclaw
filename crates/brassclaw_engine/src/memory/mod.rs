@@ -16,6 +16,11 @@ pub mod intent_system;
 pub mod metric_outcome;
 pub mod recipe_matcher;
 pub mod recipe_validator;
+pub mod retained_inputs;
+pub mod retained_instruction;
+#[cfg(feature = "skills-db")]
+pub mod retained_reviews;
+pub mod retained_tools;
 pub mod retrieval_source;
 pub mod similarity_checker;
 pub mod skill_tracker;

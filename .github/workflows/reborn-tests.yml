@@ -70,6 +70,58 @@ jobs:
       - name: Check the legacy benchmark
         run: cargo clippy --manifest-path tests/monty_legacy_baseline/Cargo.toml --locked --all-targets -- -D warnings
 
+  monty-control-gate:
+    name: Contained Monty and native admission (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.96.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          workspaces: tests/monty_control
+          key: monty-control-${{ matrix.os }}
+      - name: Build the actual isolated workers
+        run: cargo build --manifest-path tests/monty_control/Cargo.toml --locked --bins
+      - name: Test control, process, service and native PostgreSQL callers
+        run: |
+          cargo test --manifest-path tests/monty_control/Cargo.toml --locked \
+            --test allocator --test control --test scheduler_accounting \
+            --test child_host --test global_host --test process_host \
+            --test actor_host --test flow_host --test service_host \
+            --test model_host --test utility_host --test component_revisions --test association_reviews --test retained_execution -- --test-threads=1 --nocapture
+      - name: Check all control-harness consumers
+        run: cargo clippy --manifest-path tests/monty_control/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Test retained PostgreSQL IBS and typed input preparation
+        run: |
+          cargo build -p brassclaw_monty_host --bin monty_worker --locked
+          cargo test -p brassclaw_engine --locked --features skills-db --test retained_instruction --test retained_inputs --test retained_tools -- --test-threads=1 --nocapture
+      - name: Test stable Tool identities through the real kernel
+        run: |
+          cargo test -p brassclaw_authorization --locked --lib stable_tool_policy::tests::
+          cargo test -p brassclaw_host_runtime --locked --features test-support --test first_party_builtin_tools retained_builtin_handle_still_obeys_each_live_instance_policy_revision
+      - name: Check retained IBS consumers
+        run: cargo clippy -p brassclaw_engine --locked --features skills-db --all-targets -- -D warnings
+
   changes:
     name: Detect Reborn test scope
     runs-on: ubuntu-latest
@@ -503,6 +555,7 @@ jobs:
     needs:
       - changes
       - monty-upgrade-gate
+      - monty-control-gate
       - boundary-tests
       - package-matrix
       - matrix-config
@@ -544,6 +597,7 @@ jobs:
           fi
 
           require_success "monty-upgrade-gate" "${{ needs.monty-upgrade-gate.result }}"
+          require_success "monty-control-gate" "${{ needs.monty-control-gate.result }}"
           require_success "boundary-tests" "${{ needs.boundary-tests.result }}"
           require_success "package-matrix" "${{ needs.package-matrix.result }}"
           require_success "crate-tests" "${{ needs.crate-tests.result }}"

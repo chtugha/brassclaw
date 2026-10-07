@@ -11,6 +11,7 @@ pub mod kohai_port;
 pub mod orchestrator;
 pub mod orchestrator_code_port;
 pub mod prompt;
+pub mod retained_recipe;
 // The historical generic-tracker proof lives in tests/monty_legacy_tracker.
 pub mod scripting;
 pub mod structured;

@@ -259,13 +259,23 @@ async def _execute_recipe(task_token, recipe_id, step_link, inputs):
         if not isinstance(step_id, str) or step_id == "" or step_id in step_ids:
             raise RuntimeError("recipe_composition_failed")
         step_ids.append(step_id)
-    recipe_state = {"inputs": inputs, "results": {}, "previous_result": None}
     if "flow" in composed:
-        _validate_flow(composed["flow"], step_ids, inputs)
+        # IBS returns validated captures/defaults from this pinned workflow.
+        # The admitted envelope need not have the same names as local Recipe
+        # inputs. Values stay data and are never pasted into step source.
+        prepared_inputs = composed.get("inputs")
+        if not isinstance(prepared_inputs, dict):
+            raise RuntimeError("recipe_composition_failed")
+        for name in prepared_inputs:
+            if not _input_name(name):
+                raise RuntimeError("recipe_composition_failed")
+        recipe_state = {"inputs": prepared_inputs, "results": {}, "previous_result": None}
+        _validate_flow(composed["flow"], step_ids, prepared_inputs)
         outcome = await _run_flow_nodes(task_token, program_ref, composed["flow"]["body"], recipe_state, {}, [])
         if not outcome["returned"]:
             raise RuntimeError("recipe_execution_failed")
         return outcome["value"]
+    recipe_state = {"inputs": inputs, "results": {}, "previous_result": None}
     for step_id in step_ids:
         result = await host.run_program(task_token, program_ref, step_id, recipe_state)
         if not isinstance(result, dict) or result.get("ok") is not True or "return_value" not in result:

@@ -34,6 +34,50 @@ async fn exchange(
 }
 
 #[tokio::test]
+async fn unsolicited_idle_worker_exit_notifies_and_reaps_without_another_command() {
+    let (mut owner, ready) =
+        TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+            .await
+            .unwrap();
+    assert_eq!(ready.lifecycle, Lifecycle::Ready);
+    let client = owner.client();
+    assert_eq!(client.stop_kind().unwrap(), None);
+    assert!(client.completions().outstanding().unwrap().is_empty());
+    // Signal only the actual just-spawned owned native worker. There is no
+    // substitute worker, transport response or pending RPC to discover death.
+    let pid = owner.worker_process_id().unwrap();
+    let status = tokio::process::Command::new("/bin/kill")
+        .args(["-KILL", &pid.to_string()])
+        .status()
+        .await
+        .unwrap();
+    assert!(status.success());
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(2), client.stopped())
+            .await
+            .unwrap()
+            .unwrap(),
+        StopKind::TransportFailed
+    );
+    let exit = tokio::time::timeout(Duration::from_secs(2), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.kind, StopKind::TransportFailed);
+    assert!(!exit.exit_status.unwrap().success());
+    assert!(exit.containment_error.is_none());
+    assert!(exit.reap_error.is_none());
+    assert_eq!(
+        exit.shutdown_failure.unwrap().kind,
+        ProcessFailure::Transport
+    );
+    assert!(client.completions().outstanding().unwrap().is_empty());
+    assert!(
+        matches!(client.try_submit(WorkerCommand::Inspect),Err(error) if error.kind == ActorFailure::Closed)
+    );
+}
+
+#[tokio::test]
 async fn actual_root_failure_fences_instance_and_retains_undispatched_queue() {
     let source = "import asyncio\nasync def worker(worker_id):\n    task = await host.await_next_task(worker_id)\n    if task is None:\n        return\n    raise RuntimeError('root worker failure')\nawait asyncio.gather(*[worker(i) for i in range(worker_count)])";
     let (mut owner, ready) =
@@ -227,8 +271,12 @@ async fn frame_credits_and_graceful_exit_reject_queued_work_with_full_evidence()
 
 #[tokio::test]
 async fn real_native_worker_failure_retains_abandoned_result_and_undispatched_queue() {
+    // Exercise fatal physical allocator containment, not recoverable logical
+    // heap preflight. An instance ServiceOwner refuses this probe-only boot.
+    let mut physical_probe = boot(SOURCE);
+    physical_probe.heap_settings = None;
     let (mut owner, ready) =
-        TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+        TransportOwner::start(worker(), physical_probe, limits(), actor_limits())
             .await
             .unwrap();
     let client = owner.client();

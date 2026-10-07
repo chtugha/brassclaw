@@ -49,6 +49,7 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 sha2 = "0.10"
 
 [dev-dependencies]
+brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
 pretty_assertions = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }

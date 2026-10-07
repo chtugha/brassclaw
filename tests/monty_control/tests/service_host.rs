@@ -229,6 +229,93 @@ async fn graceful(owner: &mut ServiceOwner) {
 }
 
 #[tokio::test]
+async fn idle_native_worker_death_closes_service_without_a_new_task_or_control_rpc() {
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let pid = owner.worker_process_id().unwrap();
+    assert!(
+        tokio::process::Command::new("/bin/kill")
+            .args(["-KILL", &pid.to_string()])
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    let exit = tokio::time::timeout(Duration::from_secs(2), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::Transport));
+    assert!(exit.tasks.is_empty());
+    assert!(exit.pending_admission.is_none());
+    assert!(exit.failed_exchanges.is_empty());
+    assert!(exit.transport_inbox.outstanding().unwrap().is_empty());
+    let transport = exit.transport.unwrap();
+    assert_eq!(transport.kind, StopKind::TransportFailed);
+    assert!(!transport.exit_status.unwrap().success());
+    assert!(transport.containment_error.is_none());
+    assert!(transport.reap_error.is_none());
+    let directory = tempfile::tempdir().unwrap();
+    let ports = FilePorts::new(directory.path(), "after-exit", false);
+    assert!(matches!(
+        client.submit(ports.input(), ports),
+        Err(ServiceFailure::Closed)
+    ));
+}
+
+#[tokio::test]
+async fn worker_death_during_real_wait_fences_and_retains_late_io_before_service_settlement() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let ports = FilePorts::new(directory.path(), "dying", true);
+    let ticket = owner.client().submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), ports.started.notified())
+        .await
+        .unwrap();
+    let pid = owner.worker_process_id().unwrap();
+    assert!(
+        tokio::process::Command::new("/bin/kill")
+            .args(["-KILL", &pid.to_string()])
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !ports.fenced.load(Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(ports.writes.load(Ordering::Acquire), 0);
+    assert_eq!(
+        ticket.control().stopped(Duration::from_millis(20)).await,
+        Err(ServiceFailure::Deadline)
+    );
+    ports.release.notify_one();
+    let exit = tokio::time::timeout(Duration::from_secs(2), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::Transport));
+    assert_eq!(exit.tasks.len(), 1);
+    assert_eq!(
+        exit.tasks[0].host_results,
+        [json!(
+            tokio::fs::read_to_string(&ports.input).await.unwrap()
+        )]
+    );
+    assert!(exit.tasks[0].reported_outcome.is_none());
+    assert!(!ports.reply.exists());
+    assert!(matches!(
+        ticket.wait().await,
+        Err(ServiceFailure::Transport)
+    ));
+    assert_eq!(exit.transport.unwrap().kind, StopKind::TransportFailed);
+}
+
+#[tokio::test]
 async fn boot_is_idle_and_original_opaque_ids_reach_real_ports() {
     let directory = tempfile::tempdir().unwrap();
     let mut owner = start(FILE_ROOT).await;

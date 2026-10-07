@@ -36,6 +36,20 @@ pub mod value_contract;
 /// does not establish trusted evidence, activate components or grant authority.
 pub mod association_contract;
 
+/// Immutable revision data and complete exact dependency retention. These types
+/// do not establish review provenance, activation or Tool authority.
+pub mod component_revision;
+
+/// Instance-wide append-only revision storage, separate from the legacy mutable
+/// component tables. Draft retention never makes a revision executable.
+#[cfg(feature = "db-store")]
+pub mod revision_store;
+
+/// Exact immutable authored association/review records, read in the caller's
+/// selection snapshot. Trusted review producers and activation remain separate.
+#[cfg(feature = "db-store")]
+pub mod association_review_store;
+
 /// `reborn_skills` DB reader/writer — gated on `db-store` feature.
 #[cfg(feature = "db-store")]
 pub mod db_store;

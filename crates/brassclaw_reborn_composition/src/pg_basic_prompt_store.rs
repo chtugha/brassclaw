@@ -273,21 +273,35 @@ mod inner {
             user_id: &str,
             project_id: &str,
         ) -> Result<(), BasicPromptStoreError> {
-            let client = self.pool.get().await?;
-            client
-                .execute(
-                    "UPDATE reborn_basic_prompt_store
+            let mut client = self.pool.get().await?;
+            let tx = client.transaction().await?;
+            self.mark_stale_in_transaction(&tx, user_id, project_id)
+                .await?;
+            tx.commit().await?;
+            Ok(())
+        }
+
+        /// Invalidate in the caller's component graduation transaction. Missing
+        /// cache rows need no invalidation; SQL failures roll back graduation.
+        pub(crate) async fn mark_stale_in_transaction(
+            &self,
+            tx: &tokio_postgres::Transaction<'_>,
+            user_id: &str,
+            project_id: &str,
+        ) -> Result<(), BasicPromptStoreError> {
+            tx.execute(
+                "UPDATE reborn_basic_prompt_store
                      SET is_stale = true, updated_at = now()
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
-                    &[
-                        &self.tenant_id.as_str(),
-                        &user_id,
-                        &self.agent_id.as_str(),
-                        &project_id,
-                    ],
-                )
-                .await?;
+                &[
+                    &self.tenant_id.as_str(),
+                    &user_id,
+                    &self.agent_id.as_str(),
+                    &project_id,
+                ],
+            )
+            .await?;
             debug!(
                 tenant_id = %self.tenant_id,
                 user_id,

@@ -445,6 +445,7 @@ pub struct ServiceOwner {
     client: ServiceClient,
     shutdown: watch::Sender<bool>,
     join: Option<JoinHandle<ServiceExit>>,
+    worker_process_id: Option<u32>,
 }
 impl ServiceOwner {
     pub async fn start(
@@ -483,6 +484,7 @@ impl ServiceOwner {
         let workers = boot.bounds.workers;
         let values = boot.bounds.values;
         let (owner, ready) = TransportOwner::start(executable, boot, process, actor).await?;
+        let worker_process_id = owner.worker_process_id();
         // start_ready proves every live worker is parked before returning.
         let (admissions, rx) = mpsc::channel(queue_capacity);
         let (settings, settings_rx) = mpsc::channel(8);
@@ -521,10 +523,16 @@ impl ServiceOwner {
             client,
             shutdown,
             join: Some(join),
+            worker_process_id,
         })
     }
     pub fn client(&self) -> ServiceClient {
         self.client.clone()
+    }
+    /// Retained spawned process identity for trusted host diagnostics only.
+    /// This is not a liveness observation or a task-visible capability.
+    pub fn worker_process_id(&self) -> Option<u32> {
+        self.worker_process_id
     }
     pub fn request_shutdown(&self) {
         self.client.close_admission();
@@ -675,6 +683,9 @@ async fn run(
     let mut heap_inspection: Option<tokio::time::Instant> = None;
     let result = async {
         loop {
+            if !shutting_down && transport.stop_kind().map_err(|_| ServiceFailure::Transport)?.is_some() {
+                return Err(ServiceFailure::Transport);
+            }
             if *stop.borrow_and_update() && !shutting_down {
                 shutting_down = true;
                 closed.store(true, Ordering::Release);
@@ -890,6 +901,9 @@ async fn run(
             let available = snapshot.work_waits.iter().find(|(worker, _)|
                 !tasks.values().any(|task| task.worker == *worker)).copied();
             tokio::select! {
+                _ = transport.stopped(), if !shutting_down => {
+                    return Err(ServiceFailure::Transport);
+                }
                 // Export buffers can be freed after a pending-limit receipt is
                 // sent. Observe actual reclamation even if no task/port event
                 // follows. This timer exists only for pending resource work;

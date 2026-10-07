@@ -604,6 +604,28 @@ impl GlobalProcess {
             }
         }
     }
+
+    /// Trusted supervisor identity, never a VM/Tool binding or liveness proof.
+    pub(crate) fn worker_process_id(&self) -> Option<u32> {
+        self.child.id()
+    }
+
+    /// Await only while IPC is idle. Tokio Child::wait is cancellation-safe:
+    /// receiving a command cancels this wait without cancelling the worker.
+    /// An observed exit is retained by the actor; it cannot become a successful
+    /// global shutdown unless the root actually acknowledged that shutdown.
+    pub(crate) async fn wait_idle_exit(&mut self) -> Option<ExitStatus> {
+        match self.child.wait().await {
+            Ok(status) => {
+                self.terminal = true;
+                Some(status)
+            }
+            Err(error) => {
+                self.reap_error.get_or_insert(error);
+                None
+            }
+        }
+    }
 }
 struct ExchangeGuard<'a> {
     owner: &'a mut GlobalProcess,

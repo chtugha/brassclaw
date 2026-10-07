@@ -262,11 +262,7 @@ impl BootstrapStores {
             return;
         }
         // Q2 approve with actor = "builtin"
-        if let Err(e) = self
-            .queue
-            .approve(&scope, component_id, Some("builtin"))
-            .await
-        {
+        if let Err(e) = self.queue.approve_builtin_seed(&scope, component_id).await {
             tracing::debug!(
                 component_id = %component_id,
                 class_code,

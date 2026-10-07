@@ -2160,10 +2160,317 @@ native owner/model cases passed in
 service cases, real soft-limit caller and strict control consumers passed in
 `/private/tmp/brassclaw-monty-owned-heap-{process,service,lints}.log`.
 
-The latest pending-reclamation timer and syntax/transport diagnostic distinction
-still require their next targeted checks. OS/cgroup pressure sampling, physical
+The pending-reclamation timer and syntax/transport diagnostic distinction passed
+the relevant service/utility callers and strict consumers in
+`/private/tmp/brassclaw-monty-heap-pending-*.log`. The correctly named actual
+syntax caller and architecture checks passed in `...-correct-syntax-caller.log`
+and `...-host-architecture.log`; the earlier zero-case syntax filter is not
+acceptance evidence. Rust 1.96 Host checks passed in `...-heap-msrv.log`. OS/cgroup pressure sampling, physical
 backstop resizing, full adaptive publication, immutable catalogue/association
 selection, durable effects/waits and actual application startup wiring remain
 open. None of these proofs substitutes a No-Match-only production adapter for
 ordinary Recipe support. The original seven remain open until that conforming
 cutover and their unchanged production assertions pass.
+
+
+### 2026-10-07 Immutable revision retention and retained Recipe IBS
+
+V101 introduces instance-wide append-only component revision storage separate
+from legacy mutable component rows. The strict `component-revision/1` retention
+envelope preserves exact document, stable dependency and Skill-association
+bytes under one checksum; it is not a new Recipe `step_descriptions` syntax.
+Monotonic per-identity CAS rejects concurrent losing edits and class changes.
+Failed transactions do not consume a version. PostgreSQL rejects updates,
+deletes and truncation of retained revisions. No legacy validated label or
+`source=system` row is automatically imported as approved.
+
+Exact graph loading uses a read-only repeatable-read transaction, checks every
+UUID/class/version/checksum, rejects missing/unrelated/cyclic dependencies and
+keeps exact Skill association bytes with their owner revision. Bounds reject
+an entire oversized graph rather than truncate it. The snapshot deliberately
+has no approved/active flag: full graph retention is not trusted review evidence.
+Four real native PostgreSQL cases and strict Skills/control consumers passed
+in `/private/tmp/brassclaw-monty-revisions-{native,skills-lints,control-lints}.log`.
+
+The Engine's retained Recipe IBS compiler selects an embedded variant only
+from that exact retained Recipe document. It retains the complete graph with
+Recipe revision, variant, step_link, variable patterns and ordered instruction;
+unsupported fields, ambiguous variants, wrong executable classes and invalid
+single-component references fail before effects. It never fetches latest or
+executes prose. Workflow classification is supplied separately by the trusted
+review/caller; this compiler does not infer approval/tier from mutable metrics.
+Two actual PostgreSQL-to-IBS cases passed in
+`/private/tmp/brassclaw-monty-retained-ibs-native.log`. The first lint run identified
+an explicit test loop counter; it was changed to an iterator zip. Strict Engine
+consumers then passed in `...-retained-ibs-engine-lints-fixed.log`.
+
+Remaining catalogue work includes supported authoring/review adapters, exact
+trusted Q1/human Q2/behavioral evidence resolution, immutable Tool artifacts,
+atomic active generations, typed binding/contract metadata and durable task
+snapshot references. These retention/IBS callers do not activate components or
+wire the production global driver. The seven original composition assertions
+remain unchanged and unresolved until the conforming production cutover passes.
+
+
+### 2026-10-07 Unsolicited worker exit supervision
+
+The transport owner now awaits actual native child termination while IPC is
+idle, using cancellation-safe `Child::wait`. Incoming commands cancel only
+that wait, never the worker. An unsolicited exit closes its private command
+ledger, retains the real exit status and publishes a termination notification.
+The instance service observes that notification without an Inspect RPC, work
+polling or a new task. It closes admission, fences task ports and retains late
+actual host results until its owned futures settle. A terminated worker never
+becomes a successful global shutdown or a successful external-effect receipt.
+
+Six actor cases, eight service cases, seven native ownership/model cases and
+strict control/Engine consumers passed sequentially in
+`/private/tmp/brassclaw-monty-idle-exit-{actor,service,native-owner,control-lints}.log`
+and `...-retained-ibs-engine-lints-fixed.log`. New real SIGKILL cases cover an
+idle worker and a worker with paused real file I/O; the latter fences immediately,
+delays settlement until the actual read returns, retains its value and never
+posts a reply. The standalone fatal physical-allocation probe now explicitly
+omits logical soft preflight; its fatal-exit assertions remain unchanged and a
+ServiceOwner rejects that probe configuration. The first mismatch is retained
+in `...-idle-exit-actor-soft-preflight-mismatch.log`.
+
+These are contained service/owner prerequisites. Production runtime startup
+still uses the legacy driver, and the original seven failures remain unresolved.
+No process death, retained manifest, component label or passing isolated model
+case authorizes a Rust-loop or No-Match-only production cutover.
+
+### 2026-10-07 Retained typed inputs and actual Monty Recipe handoff
+
+`memory/retained_inputs.rs` now reads recursive PythonCode input/result
+contracts and selected variant bindings from the same retained Recipe graph.
+The new retention-document metadata is documented in
+`docs/reborn/contracts/retained-component-inputs.md`; it is not silently added
+to the legacy Recipe/PythonCode INSERT constructors. Preparation requires exact
+selected step/local coverage, typed constants/defaults and compatible earlier
+result fields. Concrete values remain data. No failed refinement becomes a raw
+positional slot, and no source interpolation or output invention is introduced.
+
+Retained variant example capture requires complete anchors/separators and the
+declared semantic names. Regexes compile once during preparation, with finite
+technical capture/compiled-regex/cache bounds. Full-slot refinement and named
+group participation are checked on concrete data. This is not active intent
+selection or a proof that the example passed semantic review. Numeric/boolean
+conversion remains explicit reviewed component logic, rather than text coercion.
+
+The existing typed composer now has an exact retained PythonCode resolver for
+workflows without Tool bindings or nested source assembly. Those two unsupported
+cases fail explicitly; this constructor is draft validation, not a restricted
+production fallback. Prepared layouts emit the existing `recipe-flow/1` control
+data. The global Python helper consumes the bound `inputs` from composition for
+that path and owns ordering, result state and the return handoff. Admission's
+message layout need not equal the Recipe's captured/local input layout.
+
+Actual PostgreSQL-to-IBS cases passed: two retained-instruction cases and three
+retained-input cases. The latter includes the actual global `_execute_recipe`
+helper requesting both selected steps, executing their actual retained bodies
+in one task-owned child context, and carrying the first result through Monty to
+the second. Rust transports and validates those requests/results; it does not
+select the next step or invent Tool/provider success. The validation entry does
+no intent matching, publication or component activation and is not advertised
+as the ordinary runtime caller. Its final probe is not acknowledged as a product
+task finish or external effect; the actual worker is reaped.
+
+Evidence: `/private/tmp/brassclaw-monty-retained-flow-native.log`,
+`...-retained-root-child-native-final.log` and strict affected Engine checks in
+`...-retained-root-child-lints.log`. The same global source passed 32 affected
+flow/global/process/native model callers on Rust 1.96 in
+`...-retained-flow-callers.log`. The preceding complete contained caller set
+passed 84 cases on Rust 1.96 in `...-ci-msrv-callers.log`. Architecture dependency
+and composition checks passed 29 cases after the new storage/test dependency
+edges; test binaries were run serially after Cargo finished, so their internal
+Cargo metadata calls did not overlap another Cargo execution. CI includes the
+retained PostgreSQL callers and builds the actual companion worker first.
+
+The first authoring fixtures omitted required IBS/check fields, then the stronger
+transport fixture used an unsupported task duration and failed to defer an
+async host call. These were corrected without relaxing validators, budget bounds
+or continuation checks. Their failed diagnostics remain in the corresponding
+`...-retained-inputs-*-fixture-failure.log`,
+`...-retained-root-child-invalid-fixture-budget.log` and
+`...-retained-root-child-undeferred-fixture.log` files.
+
+Next production work remains exact Tool implementation retention, trusted
+component/combination review and coherent active-catalogue generations, complete
+nested assembly and ordinary task-port/boot/shutdown wiring. Durable effect,
+wait/reclaim and adaptive resource acceptance remain required. This evidence
+does not close those gates: the original seven runtime composition failures
+remain unresolved and their assertions are unchanged.
+
+### 2026-10-07 Retained Tool binding preparation and actual handler retention
+
+`memory/retained_tools.rs` prepares a ToolSkill/PythonCode pair from the same
+exact graph used by IBS and typed inputs. The new retention-document binding
+contract is documented in `docs/reborn/contracts/retained-component-inputs.md`.
+Preparation verifies the explicit Tool UUID/callable/capability mapping,
+descriptor dependencies, unique matching Skill association, associated code
+contracts and compatible primitive parameters. Runtime arguments are checked as
+data. Legacy interpolation, Ignore/Fallback and implicit retry policies fail
+before a binding is exposed. Mutable path-based load directives are not emitted.
+Nested source assembly, trusted review and actual implementation registration
+remain separate gates; this preparation is not approved execution.
+
+The real PostgreSQL-to-IBS binding regression passed, including incompatible
+replacement contracts, changed mappings, missing/extra descriptor metadata and
+argument injection rejection. The previous retained instruction/input cases also
+passed: six cases total in `/private/tmp/brassclaw-monty-retained-tools-native.log`.
+Strict Engine checks passed in `...-retained-tools-lints.log`. CI includes the new
+caller with the retained PostgreSQL cases.
+
+Host Runtime now exposes `retain_binding` for an actual registered first-party
+handler. The returned handle owns that concrete implementation independently
+of registry replacement or destruction and refuses a request for another
+capability on a multi-primitive handler. A real JSON primitive regression proved
+retention and release. A second regression passed through the actual
+CapabilityHost/InstanceToolAuthorizer path: the same retained implementation
+succeeded at revision 1, was denied at revision 2 and succeeded at revision 3,
+without legacy scoped invocation grants. This does not establish registration
+provenance, artifact checksum/ABI compatibility, cross-restart retention or a
+stable Tool-UUID policy mapping. Those must be supplied by the catalogue and
+implementation adapter before production cutover.
+
+Both host regressions and strict Host Runtime checks passed in
+`/private/tmp/brassclaw-monty-retained-handles-{native,kernel,lints}.log`.
+The original seven were rerun individually and serially against the current
+composition binary: all seven still failed. Evidence is in
+`/private/tmp/brassclaw-monty-original-seven-current-{build,cases}.log` and the
+individual `brassclaw-original-seven-current-{1..7}.log` files. The runtime
+still constructs the UUID-only legacy driver; these focused proofs do not
+resolve those failures or authorize fallback.
+
+### 2026-10-07 Retained step execution and caller-owned selection snapshots
+
+`executor/retained_recipe.rs` now executes exactly the PythonCode step requested
+by Monty, using the retained IBS program and concrete typed inputs. One admitted
+task owns one child context across these feeds. Rust advances only mechanical
+control/host boundaries; the global Python helper still chooses each next step,
+retains result state and resolves the Recipe's input references. Unknown steps,
+missing implementations, repeated feeds and unsupported implicit retry policies
+fail explicitly. An actual execution/output failure fences subsequent feeds;
+dropping a feed future leaves the execution fenced, with actor receipts still
+owned by the instance. This does not implement durable invocation retry/reclaim.
+
+A Tool boundary must match the exact associated callable, accepts validated
+keyword data, and dispatches through the supplied actual retained kernel adapter.
+A completed host answer is retained before resume or result validation. Worker
+failures preserve their actual error/snapshot and the submitted command recovered
+from the actor ledger; command recovery failure is retained explicitly too.
+This private evidence remains available after conversion to a classified port
+failure. It is not a durable effect journal, cancellation acknowledgement or
+permission to retry. Supervisor settlement still owns actual context release.
+
+Binding preparation now indexes selected steps/usages once and caches each
+usage's complete dependency closure. Repeated uses share that retained closure.
+Association combination references include the Skill owner and its transitive
+selected dependencies, without unrelated Recipe steps. Aggregate combination
+capacity rejects the entire assembly rather than truncate approval references.
+These references establish selection only; no parsed declaration becomes trusted
+Q1/Q2/behavior evidence.
+
+`PgComponentRevisionStore::read_exact_in_transaction` supports exact graph reads
+inside the caller's repeatable-read/serializable selection transaction. It refuses
+read-committed isolation, does not open a second database view and never commits
+the caller's transaction. The native regression advances a real revision from a
+second connection: the original selecting view retains its old head/content,
+rejects the not-yet-visible replacement and leaves both immutable versions usable
+after commit. This is a selection primitive, not an active catalogue or approval.
+
+The real isolated caller now covers PostgreSQL retention/IBS, the actual global
+`_execute_recipe` helper, actor transport, child VM and real CapabilityHost with
+InstanceToolAuthorizer. It invokes the retained JSON implementation after its
+source registry is destroyed. A live policy edit denies the next explicitly
+requested step. A separate invalid-output draft retains the actual successful
+Tool answer before output validation fails, and neither case permits replay.
+No provider response, external effect, product completion or component approval
+is fabricated. These are unapproved behavioral-validation drafts, not ordinary
+application startup. CI includes this caller; the isolated lockfile gained only
+the Engine/Skills dependency edges and required existing YAML bridge packages.
+
+Five storage cases and the real kernel caller passed in
+`/private/tmp/brassclaw-monty-retained-snapshot-kernel-native.log`; strict isolated
+consumers passed in `...-retained-snapshot-control-lints.log`. Earlier root cases
+passed in `...-retained-executor-native-final.log`. All seven root retained IBS/input/Tool cases and strict root Engine consumers
+passed in `...-retained-snapshot-root-{native,lints}.log`. The serial minimum-
+Rust-1.96 run passed all 117 isolated caller cases and strict all-target linting
+in `...-retained-msrv-{callers,lints}.log`, with actual companion binaries built
+in `...-retained-msrv-worker.log`. This is local evidence; GitHub CI has not been
+run against this uncommitted change.
+Initial fixture schema/worker-count mismatches and the missing ledger-origin
+assertion are retained in `...-retained-kernel-native*.log`. The root lint's large
+failure-record diagnostic was fixed by boxing the retained command, not suppressed.
+
+The next ordinary task factory must load a consistent activated catalogue and
+resolve actual immutable Q1, human Q2 (or the controlled system-seed path),
+behavioral and association-combination records. It must retain exact Tool
+implementation/ABI/artifact identities, persist the selected workflow and
+invocation/effect evidence, and issue a private program reference. Composition
+returns typed inputs/flow/step identities; `run_program` validates that task's
+program reference and calls this retained execution primitive. Recheck actual
+admission/ownership and live kernel policy at their dispatch boundaries. A failed
+Recipe, approval lookup, SQL operation or ambiguity must never become No-Match.
+Only after the remaining catalogue, nested assembly, durable lifecycle and live
+resource gates pass may runtime.rs replace the legacy driver and start the global
+owner before workers/ingress. The original seven remain unresolved; their tests
+and assertions are unchanged.
+
+### 2026-10-07 — Fail-closed review callers and retained usage records
+
+The Recipe facade no longer falls back to a direct `validated` update when
+Q2 queue graduation fails. Missing/nonpassed/stale Q1 and SQL errors preserve
+the queue and prevent graduation. Recipe workflow-tag cleanup, the immutable
+legacy receipt and attached prefix invalidation commit or roll back together.
+Validator Recipes retain their intentional `05:validator` routing tag, so Q1
+continues discovering them. The public queue path requires the legacy human
+marker; checked-in bootstrap audits use a crate-private method. Neither marker
+nor this legacy receipt becomes an exact-combination approval or Tool grant.
+
+All three real facade regressions and 13 actual Q1 cases passed in
+`/private/tmp/brassclaw-monty-review-final-{facade,q1}.log`; all 24 queue cases
+passed in `...-review-queue-native.log`, and affected composition linting passed
+in `...-review-final-lints.log`. These cases include a real PostgreSQL cache
+constraint failure: graduation, tag cleanup, receipt and queue deletion all
+roll back, then commit coherently once the fault is removed. Explicit Q1 queue
+fixtures test lifecycle only, without claiming behavioral or semantic acceptance.
+
+`V102` and the read-only Skills review store retain exact authored association
+approval/evidence bytes in the selecting transaction. They verify the actual
+immutable usage graph, stage identity and successful same-combination records;
+human Q2 must cover precisely the chosen Q1 and behavioral records. Missing,
+failed, duplicated, overlapping or swapped evidence fails explicitly. Records
+are append-only; replacement leaves old usage versions and evidence available.
+The actual native storage/resolution fixtures passed in
+`...-association-records-native.log`, and strict consumers passed in
+`...-association-records-lints.log`. These fixture records are deliberately
+inactive and are not actual Q1/behavior/human-Q2 evidence. Trusted record writers,
+controlled system-seed provenance, Recipe approvals and catalogue activation
+remain unimplemented; the reader explicitly refuses system-seed mode.
+
+The IBS review consumer binds precisely the selected Skill usages to retained
+approval IDs/records, reusing each complete usage closure for repeated calls.
+Missing/extra IDs or a nonexistent database record cannot be accepted merely
+because binding/schema preparation succeeded. The actual PostgreSQL binding
+caller and strict Engine/control consumers passed in
+`...-ibs-review-{native,lints,control-lints}.log`. Workflow YAML parsing and all
+29 classifier cases also passed after the CI updates.
+
+`LiveStableToolPolicy` maps registered capability identities to stable Tool
+UUIDs and publishes that mapping with the current technical rules. Old version
+and alias mappings cannot be removed or reassigned by a settings publication.
+The actual retained PostgreSQL/IBS/global/child/kernel caller now checks its
+selected Tool UUID against this source before dispatch, then observes live
+revocation on the next step. Pure identity/publication cases and the actual
+kernel/global callers passed in `...-stable-policy-{native,kernel,retained}.log`;
+strict authorization/host/control consumers passed in
+`...-stable-policy-{lints,control-lints}.log`. Durable UUID policy persistence,
+verified registration/artifacts and the ordinary runtime cutover remain work.
+
+No original-seven assertion, Rust-loop fallback or empty-catalogue-only
+production adapter was introduced. Their ordinary runtime path still uses the
+legacy per-scope driver. Continue with trusted record producers, coherent active
+catalogue selection and the full ordinary task factory, then complete the
+resource/durable-lifecycle gates and wire startup/shutdown before rerunning all
+seven. These prerequisites and draft callers do not resolve the original seven.

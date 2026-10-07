@@ -270,6 +270,39 @@ pub trait FirstPartyCapabilityHandler: Send + Sync {
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError>;
 }
 
+/// A concrete retained implementation handle obtained from an actual host
+/// registration. Registry replacement/removal cannot change this binding.
+/// The catalogue owner attaches it to the exact selected Tool revision and
+/// separately verifies registration provenance/ABI and combination approval.
+/// A handle is not an authorization decision or proof of those checks.
+#[derive(Clone)]
+pub struct RetainedFirstPartyBinding {
+    capability_id: CapabilityId,
+    handler: Arc<dyn FirstPartyCapabilityHandler>,
+}
+impl RetainedFirstPartyBinding {
+    pub fn capability_id(&self) -> &CapabilityId {
+        &self.capability_id
+    }
+}
+#[async_trait]
+impl FirstPartyCapabilityHandler for RetainedFirstPartyBinding {
+    async fn dispatch(
+        &self,
+        request: FirstPartyCapabilityRequest,
+    ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        // BuiltinFirstPartyTools implements several primitives on one object.
+        // Never let an input request use its retained handle as a different
+        // capability, even when the underlying handler could implement it.
+        if request.capability_id != self.capability_id {
+            return Err(FirstPartyCapabilityError::new(
+                RuntimeDispatchErrorKind::UndeclaredCapability,
+            ));
+        }
+        self.handler.dispatch(request).await
+    }
+}
+
 /// Host-owned registry keyed by declared [`CapabilityId`].
 #[derive(Clone, Default)]
 pub struct FirstPartyCapabilityRegistry {
@@ -304,6 +337,19 @@ impl FirstPartyCapabilityRegistry {
         self.handlers.get(capability_id).cloned()
     }
 
+    /// Resolve once during the catalogue/implementation handoff. Subsequent
+    /// execution retains this actual handler instead of looking up latest by
+    /// name. The ordinary kernel path must still authorize every invocation.
+    pub fn retain_binding(
+        &self,
+        capability_id: &CapabilityId,
+    ) -> Option<RetainedFirstPartyBinding> {
+        Some(RetainedFirstPartyBinding {
+            capability_id: capability_id.clone(),
+            handler: self.get(capability_id)?,
+        })
+    }
+
     pub fn contains_handler(&self, capability_id: &CapabilityId) -> bool {
         self.handlers.contains_key(capability_id)
     }
@@ -317,6 +363,55 @@ impl FirstPartyCapabilityRegistry {
 mod tests {
     use super::*;
     use brassclaw_host_api::{ResourceUsage, SecretHandle};
+
+    #[tokio::test]
+    async fn retained_binding_survives_registry_replacement_and_rejects_other_capabilities() {
+        let id = CapabilityId::new(crate::JSON_CAPABILITY_ID).unwrap();
+        let mut registry = FirstPartyCapabilityRegistry::new().with_handler(
+            id.clone(),
+            Arc::new(crate::BuiltinFirstPartyTools::default()),
+        );
+        let original = Arc::downgrade(&registry.get(&id).unwrap());
+        let retained = registry.retain_binding(&id).unwrap();
+        let paused = retained.clone();
+        assert_eq!(retained.capability_id(), &id);
+        registry.insert_handler(
+            id.clone(),
+            Arc::new(crate::BuiltinFirstPartyTools::default()),
+        );
+        assert!(!Arc::ptr_eq(
+            &original.upgrade().unwrap(),
+            &registry.get(&id).unwrap()
+        ));
+        drop(registry);
+        assert!(original.upgrade().is_some());
+        let result = paused
+            .dispatch(FirstPartyCapabilityRequest::request_for_test(
+                id,
+                ResourceScope::system(),
+                serde_json::json!({"operation":"parse", "data":"{\"value\":7}"}),
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(result.output, serde_json::json!({"value":7}));
+        let error = paused
+            .dispatch(FirstPartyCapabilityRequest::request_for_test(
+                CapabilityId::new(crate::TIME_CAPABILITY_ID).unwrap(),
+                ResourceScope::system(),
+                serde_json::json!({}),
+                None,
+            ))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            Some(RuntimeDispatchErrorKind::UndeclaredCapability)
+        );
+        drop(paused);
+        drop(retained);
+        assert!(original.upgrade().is_none());
+    }
 
     #[test]
     fn first_party_capability_error_kind_returns_none_for_auth_required() {

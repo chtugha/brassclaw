@@ -5,6 +5,9 @@
 //! runtime internals. The first slices implement grant- and lease-backed gates
 //! for capability dispatch.
 
+mod stable_tool_policy;
+pub use stable_tool_policy::{LiveStableToolPolicy, StableToolPolicySnapshot};
+
 mod instance_policy;
 pub use instance_policy::{
     InstanceToolAuthorizer, InstanceToolPolicyError, InstanceToolPolicySnapshot,

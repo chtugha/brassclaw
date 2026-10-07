@@ -18,7 +18,7 @@ workspace = true
 [features]
 default = []
 # DB-backed skill store backed by brassclaw_pg.
-db-store = ["dep:brassclaw_pg"]
+db-store = ["dep:brassclaw_pg", "dep:tokio-postgres"]
 # v1 SKILL.md filesystem types: SkillManifest, LoadedSkill, SkillSource,
 # ActivationCriteria, GatingRequirements, SkillCredentialSpec, SkillOAuthConfig,
 # SkillCredentialLocation, ProviderRefreshStrategy, MAX_PROMPT_FILE_SIZE.
@@ -51,6 +51,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # Optional (db-store feature)
 brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"

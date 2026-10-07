@@ -42,7 +42,7 @@ use thiserror::Error;
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::validation_queue::ValidationQueueStore;
+use crate::validation_queue::{ValidationQueueError, ValidationQueueStore};
 
 /// Hard cap on how many recipes `list_all` / `fetch_validated` may return in a
 /// single call.  Guards against accidental full-table scans on large tenants.
@@ -519,40 +519,6 @@ impl PgRecipeStore {
             )
             .await
             .map_err(map_pg)?;
-        Ok(())
-    }
-
-    /// Remove `05:validator` from `consumer_tags` (Step-2 manual validation,
-    /// §3.5.1).
-    ///
-    /// Returns `Err(PgRecipeStoreError::NotFound)` if no row matched the full
-    /// scope tuple — guards against silent no-op on scope mismatch.
-    pub(crate) async fn pop_validator_tag(
-        &self,
-        tenant_id: &str,
-        user_id: &str,
-        agent_id: &str,
-        project_id: &str,
-        id: Uuid,
-    ) -> Result<(), PgRecipeStoreError> {
-        let client = self.pool.get().await.map_err(map_pool)?;
-        let sql = format!(
-            "UPDATE reborn_recipes
-             SET consumer_tags = array_remove(consumer_tags, '{VALIDATOR_CONSUMER_TAG}')
-             WHERE id = $1
-               AND tenant_id = $2 AND user_id = $3
-               AND agent_id  = $4 AND project_id = $5"
-        );
-        let affected = client
-            .execute(
-                sql.as_str(),
-                &[&id, &tenant_id, &user_id, &agent_id, &project_id],
-            )
-            .await
-            .map_err(map_pg)?;
-        if affected == 0 {
-            return Err(PgRecipeStoreError::NotFound { id: id.to_string() });
-        }
         Ok(())
     }
 
@@ -1408,75 +1374,27 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         let previous_status = current.validation_status.clone();
 
         if new_status == "validated" {
-            // Q2 human graduation path (Phase P.0): `approve()` atomically
-            // updates `validation_status = 'validated'` on the component row
-            // AND deletes the queue row in one transaction, recording
-            // `q2_actor = 'human'` before deletion.
-            //
-            // Fall back to the direct `update_validation_status` path when:
-            //   - the queue row does not exist (component was never submitted),
-            //   - the queue row is not in state 2 (Q1 not yet passed),
-            //   - any other `ValidationQueueError` occurs.
-            // These are soft-error cases — operators should be able to manually
-            // flip status even when the queue flow is not complete (e.g.,
-            // builtins or components restored from backup).
+            // Graduation requires an unchanged Q1-reviewed candidate. A
+            // missing queue, failed Q1, stale review or DB error never permits
+            // a direct status update. Tag cleanup, receipt and prefix
+            // invalidation belong to the same approval transaction.
             let scope = ComponentScope {
                 tenant_id: self.tenant_id.clone(),
                 user_id: user_id.to_string(),
                 agent_id: self.agent_id.clone(),
                 project_id: project_id.to_string(),
             };
-            match self.queue_store.approve(&scope, uuid, Some("human")).await {
-                Ok(_) => {
-                    // Atomic approve succeeded: validation_status is already
-                    // 'validated' on the component row and the queue row is
-                    // deleted. Pop the validator consumer-tag (best-effort).
-                    let _ = self
-                        .inner
-                        .pop_validator_tag(
-                            &self.tenant_id,
-                            user_id,
-                            &self.agent_id,
-                            project_id,
-                            uuid,
-                        )
-                        .await;
-                }
-                Err(e) => {
-                    // Queue row absent or not yet Q1-passed — fall through to
-                    // the direct status update so the operator's manual action
-                    // is not blocked by the queue state.
-                    debug!(
-                        component_id = %uuid,
-                        error = %e,
-                        "update_recipe_validation_status: queue approve failed, \
-                         falling back to direct status update"
-                    );
-                    self.inner
-                        .update_validation_status(
-                            &self.tenant_id,
-                            user_id,
-                            &self.agent_id,
-                            project_id,
-                            uuid,
-                            RecipeValidationStatusUpdate {
-                                validation_status: new_status,
-                            },
-                        )
-                        .await
-                        .map_err(map_pg_recipe_error)?;
-                    let _ = self
-                        .inner
-                        .pop_validator_tag(
-                            &self.tenant_id,
-                            user_id,
-                            &self.agent_id,
-                            project_id,
-                            uuid,
-                        )
-                        .await;
-                }
-            }
+            self.queue_store
+                .approve(&scope, uuid, Some("human"))
+                .await
+                .map_err(|error| match error {
+                    ValidationQueueError::Pool { reason } | ValidationQueueError::Db { reason } => {
+                        brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
+                    }
+                    other => {
+                        brassclaw_product_workflow::RecipeStoreError::Invalid(other.to_string())
+                    }
+                })?;
         } else {
             if new_status == "rejected" {
                 // Q2 rejection: the operator's reason lives on the queue row
@@ -1799,6 +1717,302 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
 mod tests {
     use super::*;
     use chrono::Utc;
+
+    async fn pending_recipe(pool: &PgPool, scope: &ComponentScope) -> Uuid {
+        pool.get()
+            .await
+            .unwrap()
+            .query_one(
+                "INSERT INTO reborn_recipes
+             (tenant_id,user_id,agent_id,project_id,name,description,consumer_tags)
+             VALUES ($1,$2,$3,$4,$5,'review candidate',ARRAY['02:orchestrator','05:validator'])
+             RETURNING id",
+                &[
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    &format!("review-{}", Uuid::new_v4()),
+                ],
+            )
+            .await
+            .unwrap()
+            .get(0)
+    }
+
+    fn review_scope() -> ComponentScope {
+        ComponentScope {
+            tenant_id: "review-tenant".into(),
+            user_id: "review-user".into(),
+            agent_id: "review-agent".into(),
+            project_id: "review-project".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn native_facade_never_validates_missing_pending_or_changed_q1_reviews() {
+        use brassclaw_product_workflow::RecipeStore;
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let scope = review_scope();
+        let facade = PgRecipeStoreFacade::new(rig.pool.clone(), &scope.tenant_id, &scope.agent_id);
+        for stage in 0..3 {
+            let id = pending_recipe(&rig.pool, &scope).await;
+            if stage > 0 {
+                facade
+                    .queue_store
+                    .submit(&scope, id, 21, None)
+                    .await
+                    .unwrap();
+            }
+            if stage == 2 {
+                // Queue lifecycle fixture only: this is not executable Q1 or
+                // v3 behavioral approval evidence.
+                facade
+                    .queue_store
+                    .gate1_pass(&scope, id, &[])
+                    .await
+                    .unwrap();
+                rig.pool
+                    .get()
+                    .await
+                    .unwrap()
+                    .execute(
+                        "UPDATE reborn_recipes SET description='changed after Q1' WHERE id=$1",
+                        &[&id],
+                    )
+                    .await
+                    .unwrap();
+            }
+            assert!(matches!(
+                facade
+                    .update_recipe_validation_status(
+                        &scope.user_id,
+                        &scope.project_id,
+                        &id.to_string(),
+                        "validated",
+                        None
+                    )
+                    .await,
+                Err(brassclaw_product_workflow::RecipeStoreError::Invalid(_))
+            ));
+            let row = facade
+                .inner
+                .get(
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    id,
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(row.validation_status, "pending");
+            assert!(row.has_validator_tag());
+            let receipts: i64 = rig.pool.get().await.unwrap().query_one(
+                "SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1", &[&id]
+            ).await.unwrap().get(0);
+            assert_eq!(receipts, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn native_facade_graduation_and_prefix_invalidation_commit_or_rollback_together() {
+        use brassclaw_product_workflow::RecipeStore;
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let scope = review_scope();
+        let prefix = Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+            rig.pool.clone(),
+            &scope.tenant_id,
+            &scope.agent_id,
+        ));
+        prefix
+            .store(
+                &scope.user_id,
+                &scope.project_id,
+                "actual cached bundle",
+                false,
+                None,
+                Uuid::new_v4(),
+            )
+            .await
+            .unwrap();
+        let facade = PgRecipeStoreFacade::new(rig.pool.clone(), &scope.tenant_id, &scope.agent_id)
+            .with_basic_prompt_store(prefix.clone());
+        let id = pending_recipe(&rig.pool, &scope).await;
+        facade
+            .queue_store
+            .submit(&scope, id, 21, None)
+            .await
+            .unwrap();
+        // Explicit lifecycle fixture; no behavioral/Q1 execution claim.
+        facade
+            .queue_store
+            .gate1_pass(&scope, id, &[])
+            .await
+            .unwrap();
+        // A real SQL constraint makes the invalidation fail inside graduation.
+        // It must also roll back the component, receipt, tag and queue deletion.
+        rig.pool.get().await.unwrap().batch_execute(
+            "ALTER TABLE reborn_basic_prompt_store ADD CONSTRAINT test_reject_stale CHECK (NOT is_stale)"
+        ).await.unwrap();
+        assert!(matches!(
+            facade
+                .update_recipe_validation_status(
+                    &scope.user_id,
+                    &scope.project_id,
+                    &id.to_string(),
+                    "validated",
+                    None
+                )
+                .await,
+            Err(brassclaw_product_workflow::RecipeStoreError::Unavailable(_))
+        ));
+        let row = facade
+            .inner
+            .get(
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.validation_status, "pending");
+        assert!(row.has_validator_tag());
+        assert_eq!(
+            facade.queue_store.list(&scope, None).await.unwrap().len(),
+            1
+        );
+        let count: i64 = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 0);
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .batch_execute(
+                "ALTER TABLE reborn_basic_prompt_store DROP CONSTRAINT test_reject_stale",
+            )
+            .await
+            .unwrap();
+        facade
+            .update_recipe_validation_status(
+                &scope.user_id,
+                &scope.project_id,
+                &id.to_string(),
+                "validated",
+                None,
+            )
+            .await
+            .unwrap();
+        let row = facade
+            .inner
+            .get(
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.validation_status, "validated");
+        assert!(!row.has_validator_tag());
+        assert!(
+            facade
+                .queue_store
+                .list(&scope, None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            prefix
+                .get_for_scope(&scope.user_id, &scope.project_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_stale
+        );
+        let bytes: String = rig.pool.get().await.unwrap().query_one(
+            "SELECT component_bytes FROM reborn_component_graduation_receipts WHERE component_id=$1", &[&id]
+        ).await.unwrap().get(0);
+        let receipt: Value = serde_json::from_str(&bytes).unwrap();
+        assert_eq!(
+            receipt["consumer_tags"],
+            serde_json::json!(["02:orchestrator"])
+        );
+        assert_eq!(receipt["validation_status"], "validated");
+    }
+
+    #[tokio::test]
+    async fn native_validator_graduation_retains_q1_routing_tag() {
+        use brassclaw_product_workflow::RecipeStore;
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let scope = review_scope();
+        let facade = PgRecipeStoreFacade::new(rig.pool.clone(), &scope.tenant_id, &scope.agent_id);
+        let id = pending_recipe(&rig.pool, &scope).await;
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .execute(
+                "UPDATE reborn_recipes SET validates_class_code=22 WHERE id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        facade
+            .queue_store
+            .submit(&scope, id, 21, None)
+            .await
+            .unwrap();
+        // Queue lifecycle fixture, not behavioral validation.
+        facade
+            .queue_store
+            .gate1_pass(&scope, id, &[])
+            .await
+            .unwrap();
+        facade
+            .update_recipe_validation_status(
+                &scope.user_id,
+                &scope.project_id,
+                &id.to_string(),
+                "validated",
+                None,
+            )
+            .await
+            .unwrap();
+        let row = facade
+            .inner
+            .get(
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.validation_status, "validated");
+        assert!(row.has_validator_tag());
+        assert_eq!(row.validates_class_code, Some(22));
+    }
 
     /// Phase A p7: `RECIPE_SELECT` must end with the three v3 authoring
     /// columns at indices 26/27/28, matching `decode_recipe_row`'s

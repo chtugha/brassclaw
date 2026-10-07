@@ -258,3 +258,15 @@ tests/monty_v1_upgrade/tests/compatibility.rs" \
 has_core_code=true
 has_legacy_tests=false
 has_reborn_tests=true"
+
+for path in \
+  crates/brassclaw_monty_host/src/service.rs \
+  vendor/monty-control/crates/monty-alloc/src/lib.rs \
+  tests/monty_control/tests/model_host.rs \
+  tests/monty_legacy_tracker/tests/task_budget.rs; do
+  assert_scope "contained Monty gate: $path" "$path" \
+    "docs_only=false
+has_core_code=true
+has_legacy_tests=false
+has_reborn_tests=true"
+done

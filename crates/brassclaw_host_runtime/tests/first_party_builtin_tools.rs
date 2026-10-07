@@ -77,6 +77,77 @@ use chrono::{DateTime, Datelike, TimeZone, Utc};
 use serde_json::{Value, json};
 
 #[tokio::test]
+async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision() {
+    use brassclaw_authorization::{
+        InstanceToolAuthorizer, InstanceToolRule, LiveStableToolPolicy, StableToolPolicySnapshot,
+        ToolExecutionRules,
+    };
+    use brassclaw_host_runtime::FirstPartyCapabilityRegistry;
+    use std::collections::HashMap;
+
+    let id = capability_id(JSON_CAPABILITY_ID);
+    let registrations =
+        builtin_first_party_handlers(Arc::new(InMemoryTriggerRepository::default())).unwrap();
+    let selected = registrations.retain_binding(&id).unwrap();
+    let retained = FirstPartyCapabilityRegistry::new().with_handler(id.clone(), Arc::new(selected));
+    drop(registrations);
+    let tool_uuid = uuid::Uuid::from_u128(1);
+    let snapshot = |revision, enabled| StableToolPolicySnapshot {
+        revision,
+        tools: HashMap::from([(
+            tool_uuid,
+            InstanceToolRule {
+                enabled,
+                revision,
+                execution: ToolExecutionRules {
+                    allowed_effects: vec![EffectKind::DispatchCapability],
+                    mounts: MountView::default(),
+                    network: NetworkPolicy::default(),
+                    secrets: vec![],
+                    resource_ceiling: None,
+                },
+            },
+        )]),
+        capabilities: HashMap::from([(id.clone(), tool_uuid)]),
+    };
+    let policy = Arc::new(LiveStableToolPolicy::new(snapshot(1, true)).unwrap());
+    let runtime = HostRuntimeServices::new(
+        Arc::new(registry()),
+        Arc::new(LocalFilesystem::new()),
+        Arc::new(InMemoryResourceGovernor::new()),
+        Arc::new(InstanceToolAuthorizer::new(policy.clone())),
+        brassclaw_processes::ProcessServices::in_memory(),
+        CapabilitySurfaceVersion::new("retained-surface").unwrap(),
+    )
+    .with_first_party_capabilities(Arc::new(retained))
+    .with_trust_policy(Arc::new(trust_policy()))
+    .with_runtime_policy(local_dev_policy())
+    .host_runtime_for_local_testing();
+    let input = json!({"operation":"parse","data":"{\"value\":7}"});
+    // No legacy user/project/invocation grant is supplied by this instance-policy
+    // fixture. The real CapabilityHost authorizer checks each current revision.
+    for (revision, enabled) in [(1, true), (2, false), (3, true)] {
+        if revision > 1 {
+            policy
+                .publish(revision - 1, snapshot(revision, enabled))
+                .unwrap();
+        }
+        let outcome = invoke_with_context(
+            &runtime,
+            JSON_CAPABILITY_ID,
+            input.clone(),
+            execution_context(std::iter::empty::<&str>()),
+        )
+        .await;
+        if enabled {
+            assert_eq!(outcome.unwrap(), json!({"value":7}));
+        } else {
+            assert_eq!(outcome.unwrap_err(), RuntimeFailureKind::Authorization);
+        }
+    }
+}
+
+#[tokio::test]
 async fn builtin_first_party_package_declares_expected_capabilities() {
     let package = builtin_first_party_package().unwrap();
     assert_eq!(package.id, provider_id());

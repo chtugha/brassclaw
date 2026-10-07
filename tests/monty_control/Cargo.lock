@@ -531,6 +531,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tokio-postgres",
+ "uuid",
 ]
 
 [[package]]
@@ -594,6 +595,31 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
+]
+
+[[package]]
+name = "brassclaw_engine"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "brassclaw_capabilities",
+ "brassclaw_common",
+ "brassclaw_monty_host",
+ "brassclaw_pg",
+ "brassclaw_skills",
+ "chrono",
+ "cron",
+ "monty",
+ "monty-types",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -841,6 +867,7 @@ dependencies = [
  "async-trait",
  "brassclaw_authorization",
  "brassclaw_embedded_postgres",
+ "brassclaw_engine",
  "brassclaw_extensions",
  "brassclaw_filesystem",
  "brassclaw_host_api",
@@ -852,6 +879,7 @@ dependencies = [
  "brassclaw_processes",
  "brassclaw_reborn",
  "brassclaw_resources",
+ "brassclaw_skills",
  "brassclaw_threads",
  "brassclaw_triggers",
  "brassclaw_trust",
@@ -869,6 +897,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1128,6 +1157,27 @@ dependencies = [
  "tokio-postgres",
  "tracing",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "brassclaw_skills"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "brassclaw_filesystem",
+ "brassclaw_host_api",
+ "brassclaw_pg",
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
  "uuid",
 ]
 
@@ -2886,6 +2936,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libyml"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3302702afa434ffa30847a83305f0a69d6abd74293b6554c18ec85c7ef30c980"
+dependencies = [
+ "anyhow",
+ "version_check",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4641,6 +4701,21 @@ dependencies = [
  "serde_core",
  "serde_json",
  "time",
+]
+
+[[package]]
+name = "serde_yml"
+version = "0.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59e2dd588bf1597a252c3b920e0143eb99b0f76e4e082f4c92ce34fbc9e71ddd"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "libyml",
+ "memchr",
+ "ryu",
+ "serde",
+ "version_check",
 ]
 
 [[package]]

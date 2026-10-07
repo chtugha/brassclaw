@@ -72,7 +72,7 @@ pub use extension_contracts::{
 };
 pub use first_party::{
     FirstPartyCapabilityError, FirstPartyCapabilityHandler, FirstPartyCapabilityRegistry,
-    FirstPartyCapabilityRequest, FirstPartyCapabilityResult,
+    FirstPartyCapabilityRequest, FirstPartyCapabilityResult, RetainedFirstPartyBinding,
 };
 pub use first_party_tools::{
     APPLY_PATCH_CAPABILITY_ID, BUILTIN_FIRST_PARTY_PROVIDER, BuiltinFirstPartyTools,

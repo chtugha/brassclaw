@@ -12,6 +12,7 @@ tracing = "0.1"
 brassclaw_monty_host = { path = "../../crates/brassclaw_monty_host" }
 serde_json = "1"
 sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "fs", "sync", "net"] }
 futures = "0.3"
 tempfile = "3"
@@ -29,10 +30,12 @@ brassclaw_pg = { path = "../../crates/brassclaw_pg" }
 brassclaw_embedded_postgres = { path = "../../crates/brassclaw_embedded_postgres" }
 brassclaw_interceptor = { path = "../../crates/brassclaw_interceptor" }
 brassclaw_resources = { path = "../../crates/brassclaw_resources" }
+brassclaw_skills = { path = "../../crates/brassclaw_skills", features = ["db-store"] }
 brassclaw_authorization = { path = "../../crates/brassclaw_authorization" }
 brassclaw_extensions = { path = "../../crates/brassclaw_extensions" }
 brassclaw_filesystem = { path = "../../crates/brassclaw_filesystem" }
 brassclaw_host_runtime = { path = "../../crates/brassclaw_host_runtime" }
+brassclaw_engine = { path = "../../crates/brassclaw_engine", features = ["skills-db"] }
 brassclaw_processes = { path = "../../crates/brassclaw_processes" }
 brassclaw_triggers = { path = "../../crates/brassclaw_triggers" }
 brassclaw_trust = { path = "../../crates/brassclaw_trust" }

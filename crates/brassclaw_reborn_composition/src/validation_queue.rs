@@ -58,6 +58,11 @@ use crate::pg_basic_prompt_store::PgBasicPromptStore;
 /// field; Phase K/N can later wire it from `reborn_monty_vm_settings`).
 pub const DEFAULT_REJECT_THRESHOLD: u8 = 3;
 
+enum GraduationActor {
+    Human,
+    Builtin,
+}
+
 /// State: just submitted, awaiting Gate 1.
 pub const STATE_Q1_PENDING: i16 = 1;
 /// State: Gate 1 clean — awaiting Q2 manual review.
@@ -86,6 +91,8 @@ pub enum ValidationQueueError {
     InvalidPayload { component_id: Uuid },
     #[error("component {component_id} cannot pass Q1 with reported errors")]
     InvalidGate1Result { component_id: Uuid },
+    #[error("component {component_id} requires the human Q2 review path")]
+    InvalidQ2Actor { component_id: Uuid },
     #[error("component {component_id} or its submission changed since Q1 review")]
     ReviewChanged { component_id: Uuid },
     #[error(
@@ -367,16 +374,45 @@ impl ValidationQueueStore {
     /// the live row is untouched.
     ///
     /// Returns `Ok(component_id)` on success.
-    /// `q2_actor` must be `Some("human")` for WebUI operator approvals and
-    /// `Some("builtin")` for the bootstrap-seeder audit path.  No other value
-    /// is sanctioned — enforcement is at the application layer (TEXT is left
-    /// open for future auditing categories but callers must not invent values).
+    /// `q2_actor` must be `Some("human")` on this public operator path.
+    /// Compiled-in bootstrap audits use the separate crate-private method.
+    /// This marker is legacy audit metadata, not authenticated identity or
+    /// v3 exact-combination approval evidence.
     pub async fn approve(
         &self,
         scope: &ComponentScope,
         component_id: Uuid,
         q2_actor: Option<&str>,
     ) -> Result<Uuid, ValidationQueueError> {
+        if q2_actor != Some("human") {
+            return Err(ValidationQueueError::InvalidQ2Actor { component_id });
+        }
+        self.approve_with_actor(scope, component_id, GraduationActor::Human)
+            .await
+    }
+
+    /// Internal checked-in bootstrap audit only. This legacy receipt is not a
+    /// v3 system-seed combination approval, Q1/behavior evidence or Tool grant.
+    /// Ordinary operator/component authoring cannot select this audit path.
+    pub(crate) async fn approve_builtin_seed(
+        &self,
+        scope: &ComponentScope,
+        component_id: Uuid,
+    ) -> Result<Uuid, ValidationQueueError> {
+        self.approve_with_actor(scope, component_id, GraduationActor::Builtin)
+            .await
+    }
+
+    async fn approve_with_actor(
+        &self,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        actor: GraduationActor,
+    ) -> Result<Uuid, ValidationQueueError> {
+        let q2_actor = Some(match actor {
+            GraduationActor::Human => "human",
+            GraduationActor::Builtin => "builtin",
+        });
         let mut client = self.pool.get().await.map_err(map_pool)?;
 
         // Queue-before-component lock order is shared with invalidation and
@@ -483,6 +519,30 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::ComponentMissing { component_id });
         }
 
+        // Ordinary Recipe graduation removes its Q1 workflow marker in this same
+        // transaction, before recording the exact resulting component bytes.
+        // A cleanup failure must roll back graduation, not leave an approved
+        // component with missing cleanup evidence or silently bypass Q1.
+        // Validator Recipes intentionally retain this routing tag: Q1 selects
+        // them by validates_class_code plus 05:validator, even after graduation.
+        if class_code == 21 {
+            tx.execute(
+                "UPDATE reborn_recipes
+                 SET consumer_tags=array_remove(consumer_tags, '05:validator')
+                 WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4
+                   AND project_id=$5 AND class_code=21 AND validates_class_code IS NULL",
+                &[
+                    &component_id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?;
+        }
+
         // Capture the actual updated row while its write lock is held. This
         // immutable legacy receipt is evidence retention, not an exact-version
         // Skill association approval or permission to invoke a Tool.
@@ -579,21 +639,19 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::NotFound { component_id });
         }
 
-        tx.commit().await.map_err(map_pg)?;
-
-        // §12 (prefix_V3.md): mark the Sempai prefix bundle stale so the next
-        // Sempai call re-assembles from the freshly-graduated component rows.
-        // Best-effort: errors here must not fail the graduation.
+        // The attached prefix store shares this graduation transaction. A
+        // failed invalidation preserves the queue/review and rolls back the
+        // component and receipt; no post-commit failure can invite replay.
         #[cfg(feature = "postgres")]
-        if let Some(store) = &self.basic_prompt_store
-            && let Err(e) = store.mark_stale(&scope.user_id, &scope.project_id).await
-        {
-            tracing::debug!(
-                component_id = %component_id,
-                error = %e,
-                "approve: mark_stale after Q2 graduation failed (non-fatal)"
-            );
+        if let Some(store) = &self.basic_prompt_store {
+            store
+                .mark_stale_in_transaction(&tx, &scope.user_id, &scope.project_id)
+                .await
+                .map_err(|error| ValidationQueueError::Db {
+                    reason: error.to_string(),
+                })?;
         }
+        tx.commit().await.map_err(map_pg)?;
 
         Ok(component_id)
     }
@@ -1598,6 +1656,30 @@ mod tests {
             assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "validated");
         }
 
+        /// Real queue/receipt persistence fixture. Its sealed Q1 state is test
+        /// setup, not a claim that a behavioral validator or v3 approval ran.
+        #[tokio::test]
+        async fn public_q2_rejects_missing_or_bootstrap_markers_without_mutating_review() {
+            let rig = pg_rig().await;
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+            let cid = insert_pending_note(&rig.pool, &scope).await;
+            store.submit(&scope, cid, 20, None).await.unwrap();
+            store.gate1_pass(&scope, cid, &[]).await.unwrap();
+            for marker in [None, Some("builtin"), Some("sempai"), Some("")] {
+                assert!(matches!(store.approve(&scope, cid, marker).await,
+                    Err(ValidationQueueError::InvalidQ2Actor { component_id }) if component_id == cid));
+                assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "pending");
+                let rows = store.list(&scope, Some(2)).await.unwrap();
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].component_id, cid);
+                let count: i64 = rig.pool.get().await.unwrap().query_one(
+                    "SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1", &[&cid]
+                ).await.unwrap().get(0);
+                assert_eq!(count, 0);
+            }
+        }
+
         #[tokio::test]
         async fn approve_graduates_component_and_deletes_queue_row() {
             let rig = pg_rig().await;
@@ -1750,7 +1832,7 @@ mod tests {
                 .await
                 .unwrap();
             let err = store
-                .approve(&scope, cid, None)
+                .approve(&scope, cid, Some("human"))
                 .await
                 .expect_err("unknown class must error without mutation");
             assert!(
@@ -1785,7 +1867,7 @@ mod tests {
                 .await
                 .unwrap();
             let err = store
-                .approve(&scope, cid, None)
+                .approve(&scope, cid, Some("human"))
                 .await
                 .expect_err("missing component must error");
             assert!(

@@ -72,6 +72,9 @@ is_reborn_test_path() {
     crates/brassclaw_architecture/*|crates/brassclaw_engine/*|tests/monty_v1_upgrade/*|tests/monty_legacy_baseline/*)
       return 0
       ;;
+    crates/brassclaw_monty_host/*|vendor/monty-control/*|tests/monty_control/*|tests/monty_legacy_tracker/*)
+      return 0
+      ;;
     crates/brassclaw_reborn/*|crates/brassclaw_reborn_*/*)
       return 0
       ;;
@@ -93,7 +96,7 @@ is_reborn_test_path() {
 is_code_path() {
   local path="$1"
   case "$path" in
-    src/*|crates/*|channels-src/*|tools-src/*|tests/*|migrations/*)
+    src/*|crates/*|channels-src/*|tools-src/*|tests/*|migrations/*|vendor/monty-control/*)
       return 0
       ;;
     Cargo.toml|Cargo.lock|Dockerfile|build.rs|providers.json)

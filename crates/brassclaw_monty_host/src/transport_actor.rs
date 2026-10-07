@@ -262,10 +262,30 @@ pub struct TransportClient {
     limits: ActorLimits,
     values: VmBounds,
     frame: usize,
+    stopped: watch::Receiver<Option<StopKind>>,
 }
 impl TransportClient {
     pub fn completions(&self) -> CompletionInbox {
         self.inbox.clone()
+    }
+    /// Actual actor termination notification, including unsolicited idle death.
+    /// No RPC, task/heap polling or successful effect acknowledgement occurs.
+    pub async fn stopped(&self) -> Result<StopKind, ActorFailure> {
+        let mut observed = self.stopped.clone();
+        loop {
+            if let Some(kind) = *observed.borrow_and_update() {
+                return Ok(kind);
+            }
+            observed.changed().await.map_err(|_| ActorFailure::Closed)?;
+        }
+    }
+
+    pub fn stop_kind(&self) -> Result<Option<StopKind>, ActorFailure> {
+        let kind = *self.stopped.borrow();
+        if kind.is_none() && self.stopped.has_changed().is_err() {
+            return Err(ActorFailure::Closed);
+        }
+        Ok(kind)
     }
     /// Synchronous acceptance: cancellation cannot occur between publishing the
     /// receipt identity and sending its command. Full/closed queues return the
@@ -402,6 +422,7 @@ pub struct TransportOwner {
     client: TransportClient,
     stop: watch::Sender<bool>,
     join: Option<JoinHandle<ActorExit>>,
+    worker_process_id: Option<u32>,
 }
 impl TransportOwner {
     pub async fn start(
@@ -422,6 +443,8 @@ impl TransportOwner {
         let (tx, rx) = mpsc::channel(limits.max_unclaimed);
         let (control_tx, control_rx) = mpsc::channel(limits.max_control_unclaimed);
         let (stop, stop_rx) = watch::channel(false);
+        let (stopped, observed_stop) = watch::channel(None);
+        let worker_process_id = process.worker_process_id();
         let inbox = CompletionInbox {
             ledger: Arc::new(Mutex::new(Ledger {
                 records: BTreeMap::new(),
@@ -437,19 +460,26 @@ impl TransportOwner {
             limits,
             values,
             frame: process_limits.max_frame_bytes,
+            stopped: observed_stop,
         };
-        let join = tokio::spawn(run(process, rx, control_rx, stop_rx, inbox));
+        let join = tokio::spawn(run(process, rx, control_rx, stop_rx, inbox, stopped));
         Ok((
             Self {
                 client,
                 stop,
                 join: Some(join),
+                worker_process_id,
             },
             ready,
         ))
     }
     pub fn client(&self) -> TransportClient {
         self.client.clone()
+    }
+    /// Spawned process identity for trusted host diagnostics. Retained after
+    /// exit; it is not proof of liveness or permission to signal another process.
+    pub fn worker_process_id(&self) -> Option<u32> {
+        self.worker_process_id
     }
     pub fn request_termination(&self) {
         self.stop.send_replace(true);
@@ -483,13 +513,22 @@ async fn run(
     mut control_rx: mpsc::Receiver<Envelope>,
     mut stop: watch::Receiver<bool>,
     inbox: CompletionInbox,
+    stopped: watch::Sender<Option<StopKind>>,
 ) -> ActorExit {
     let mut shutdown_failure = None;
     let mut control_burst = 0usize;
     let (kind, exit_status) = loop {
-        let Some((envelope, control)) =
-            next_command(&mut rx, &mut control_rx, &mut stop, control_burst >= 8).await
-        else {
+        let next = tokio::select! { biased;
+            observed = process.wait_idle_exit() => {
+                let status = if observed.is_some() { observed } else { process.terminate().await };
+                let mut failure = ProcessError::new(ProcessFailure::Transport);
+                failure.exit_status = status;
+                shutdown_failure = Some(failure);
+                break (StopKind::TransportFailed, status);
+            }
+            next = next_command(&mut rx, &mut control_rx, &mut stop, control_burst >= 8) => next,
+        };
+        let Some((envelope, control)) = next else {
             break (StopKind::Requested, process.terminate().await);
         };
         control_burst = if control {
@@ -578,6 +617,7 @@ async fn run(
             record.ready.send_replace(true);
         }
     }
+    stopped.send_replace(Some(kind));
     ActorExit {
         kind,
         exit_status,

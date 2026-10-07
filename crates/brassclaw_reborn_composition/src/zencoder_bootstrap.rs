@@ -112,7 +112,7 @@ impl ZencoderStores {
                 "zencoder audit: gate1_pass failed (non-fatal)");
             return;
         }
-        if let Err(e) = self.queue.approve(&scope, id, Some("builtin")).await {
+        if let Err(e) = self.queue.approve_builtin_seed(&scope, id).await {
             tracing::debug!(component_id=%id, class_code, name, error=%e,
                 "zencoder audit: approve failed (non-fatal)");
         }
