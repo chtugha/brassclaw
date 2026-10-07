@@ -16,6 +16,9 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio_postgres::Transaction;
 
+#[path = "pg_monty_invocation.rs"]
+mod invocation;
+
 /// Private admission address; neither serializable nor diagnostic-printable.
 pub(crate) struct PgMontyAdmission {
     pool: Arc<PgPool>,

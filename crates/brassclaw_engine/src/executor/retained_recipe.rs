@@ -50,12 +50,32 @@ impl RetainedProgram {
     }
 }
 
+/// Exact task and selected step supplied by this executor at the observed child
+/// HostCall. An address is neither Tool permission nor a retry/deduplication key.
+pub struct RetainedToolInvocation<'a> {
+    task: TaskHandle,
+    step_id: &'a str,
+}
+impl RetainedToolInvocation<'_> {
+    pub fn task(&self) -> TaskHandle {
+        self.task
+    }
+    pub fn step_id(&self) -> &str {
+        self.step_id
+    }
+}
+
+#[async_trait]
 /// The trusted caller retains the exact implementation and dispatches through
 /// its real kernel, current policy and durable effect adapter. The instance
 /// service must own this future to actual completion even after cancellation.
-#[async_trait]
 pub trait RetainedToolPort: Send + Sync {
-    async fn dispatch(&self, binding: &RetainedToolBinding, arguments: Value) -> PortAnswer;
+    async fn dispatch(
+        &self,
+        invocation: RetainedToolInvocation<'_>,
+        binding: &RetainedToolBinding,
+        arguments: Value,
+    ) -> PortAnswer;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -382,7 +402,16 @@ impl RetainedRecipeExecution {
                             let port = tools.ok_or(RetainedExecutionError::Invalid(
                                 "missing retained Tool port",
                             ))?;
-                            let answer = port.dispatch(binding, arguments).await;
+                            let answer = port
+                                .dispatch(
+                                    RetainedToolInvocation {
+                                        task: self.task,
+                                        step_id,
+                                    },
+                                    binding,
+                                    arguments,
+                                )
+                                .await;
                             dispatched = true;
                             // Retain the actual answer before attempting a resume. Failure
                             // of the resume or result contract can never replay this effect.

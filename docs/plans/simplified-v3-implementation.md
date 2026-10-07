@@ -2506,3 +2506,43 @@ changed; those seven runtime failures remain unresolved pending ordinary global
 owner/approved-catalogue/dispatch-resource wiring. Immutable active generation,
 trusted review producers, actual artifacts and durable invocation/reconciliation
 remain prerequisites; these selection APIs do not establish them.
+
+
+### 2026-10-07 — Durable stop-only dispatch and workflow selection
+
+V103 and the private `PgMontyAdmission` invocation adapter retain an immutable
+run/Recipe selection and initial Tool dispatch intent. The selection pins the
+exact Recipe, embedded variant/layout, order/classification and complete retained
+revision graph before execution. Later unexecuted steps cannot adopt a replacement
+revision. Recipe UUID scopes local step IDs, so a follow-on Recipe does not collide
+with the original workflow. Actual claim/admission checks precede insertion; a
+repeated run/Recipe/step requires reconciliation instead of effect replay.
+
+Actual host answers retain Return/domain/terminal classification and persist
+before child resume/output validation. The private original handle can store a
+late real answer after cancellation; exact repetition is idempotent and conflicting
+answers fail. Unknown/storage-failed dispatches remain uncertain. SQL rejects
+identity mutation, replay resets, deletes and truncation. These records are not
+combination approval or Tool permission; live kernel policy remains independent.
+
+The real PostgreSQL/IBS/global-Monty/child/kernel case retains success before output
+failure and checks live denial on the next call. Its actual uncaught root failure
+is acknowledged, the worker is reaped, and the real failed outcome is settled.
+The native journal case uses a real JSON Tool result, real answer-storage failure,
+late cancellation/result retention, a real immutable replacement, and a separate
+follow-on Recipe with the same local step ID. No effect/provider completion or
+human approval is fabricated.
+
+Eight native model/ownership/journal cases and the retained Recipe/kernel case
+pass in `/private/tmp/brassclaw-monty-invocations-selection-native.log`; strict
+isolated all-target lints pass in `...-invocations-selection-lints.log`. Strict
+root Engine all-target and Composition skills-db library lints passed in
+`...-invocations-{engine,composition}-lints.log` for the unchanged shared trait and
+dependency edge. This is local Rust 1.98 evidence, not GitHub CI or MSRV acceptance.
+
+The ordinary runtime still uses the legacy driver, so the original seven remain
+unresolved. Next work must supply trusted catalogue/review/artifact producers and
+the normal global task factory, then connect these records before ordinary feeds.
+Guarded repeated occurrences/retries, durable waits/recovery and adaptive/live
+resource uptake remain explicit cutover requirements. Stop-only infrastructure
+and unapproved draft callers do not satisfy that complete gate.

@@ -1224,3 +1224,270 @@ async fn cancelled_boot_retains_instance_ownership_until_actual_worker_settlemen
     .expect("actual boot and worker shutdown must release ownership");
     replacement.release().await.unwrap();
 }
+
+#[path = "support/admission.rs"]
+mod invocation_admission;
+#[path = "support/retained_kernel.rs"]
+mod retained_kernel;
+#[path = "support/retained_program.rs"]
+mod retained_program;
+
+#[tokio::test]
+async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_without_replay() {
+    use brassclaw_engine::memory::{
+        retained_instruction::{WorkflowClass, compile_retained_recipe},
+        retained_tools::prepare_retained_tool_program,
+    };
+    use brassclaw_host_api::{
+        CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ResourceEstimate,
+        RuntimeKind, TrustClass,
+    };
+    use brassclaw_host_runtime::{RuntimeCapabilityOutcome, RuntimeCapabilityRequest};
+    use brassclaw_monty_host::process::PortAnswer;
+    use brassclaw_skills::{
+        component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
+    };
+    use brassclaw_turns::{CancelRunRequest, SanitizedCancelReason};
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let program = retained_program::program(&store, false).await;
+    let admitted = invocation_admission::reserve(rig.pool.clone(), "actual journal input").await;
+    admitted
+        .admission
+        .retain_recipe_selection(program.inputs().instruction())
+        .await
+        .unwrap();
+    admitted
+        .admission
+        .retain_recipe_selection(program.inputs().instruction())
+        .await
+        .unwrap();
+    // A real immutable replacement can coexist in the store, but this task
+    // cannot switch to it, even before its first Tool invocation.
+    let old = program.inputs().instruction();
+    let root = old.recipe().uuid;
+    let old_draft = old.snapshot().revisions()[&root].draft();
+    let mut document = old_draft.document().clone();
+    document["variants"][0]["description"] = json!("replacement workflow");
+    let dependencies: Vec<_> = old_draft.dependencies().iter().copied().collect();
+    let replacement = ComponentRevisionDraft::from_json(
+        &json!({"format":"component-revision/1","uuid":root,"class_code":21,
+        "document":document,"dependencies":dependencies,"association":null})
+        .to_string(),
+    )
+    .unwrap();
+    let newer = store
+        .stage(&replacement, old.recipe().version)
+        .await
+        .unwrap();
+    let references: Vec<_> = old
+        .snapshot()
+        .revisions()
+        .values()
+        .map(|revision| {
+            if revision.reference().uuid == root {
+                newer
+            } else {
+                revision.reference()
+            }
+        })
+        .collect();
+    let replacement_program = prepare_retained_tool_program(
+        compile_retained_recipe(
+            Arc::new(store.read_exact(&[root], &references).await.unwrap()),
+            root,
+            "selected",
+            WorkflowClass::Deterministic,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        admitted
+            .admission
+            .retain_recipe_selection(replacement_program.inputs().instruction())
+            .await
+            .is_err()
+    );
+    assert!(
+        admitted.input["conversation_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("opaque-draft-")
+    );
+    let arguments = json!({"operation":"parse","data":"{\"text\":\"observed\"}"});
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(&replacement_program, "0:2", &arguments)
+            .await
+            .is_err(),
+        "a replacement cannot slip into an unexecuted step of the retained workflow"
+    );
+    let pending = admitted
+        .admission
+        .begin_tool_invocation(&program, "0:4", &arguments)
+        .await
+        .unwrap();
+    // No Tool was called for this record. Losing the Rust handle leaves a real
+    // persisted intent, not a fabricated effect-free or completed answer.
+    drop(pending);
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(&program, "0:4", &arguments)
+            .await
+            .is_err()
+    );
+    // Step IDs are Recipe-local. A different retained workflow in the same
+    // task can use 0:2 without replaying this Recipe's 0:2 invocation.
+    let follow_on = retained_program::program(&store, false).await;
+    let follow_on_record = admitted
+        .admission
+        .begin_tool_invocation(&follow_on, "0:2", &arguments)
+        .await
+        .unwrap();
+    drop(follow_on_record); // no Tool called; retain uncertainty honestly
+    let record = admitted
+        .admission
+        .begin_tool_invocation(&program, "0:2", &arguments)
+        .await
+        .unwrap();
+    let (runtime, policy) = retained_kernel::runtime(program.bindings()["0:2"].tool().uuid);
+    assert_eq!(
+        policy
+            .tool_identity(&CapabilityId::new("builtin.json").unwrap())
+            .unwrap(),
+        Some(program.bindings()["0:2"].tool().uuid)
+    );
+    let context = ExecutionContext::local_default(
+        UserId::new("draft-operator").unwrap(),
+        ExtensionId::new("draft-caller").unwrap(),
+        RuntimeKind::FirstParty,
+        TrustClass::FirstParty,
+        CapabilitySet::default(),
+        MountView::default(),
+    )
+    .unwrap();
+    let outcome = runtime
+        .invoke_capability(RuntimeCapabilityRequest::new(
+            context,
+            CapabilityId::new("builtin.json").unwrap(),
+            ResourceEstimate::default(),
+            arguments.clone(),
+            retained_kernel::trust(),
+        ))
+        .await
+        .unwrap();
+    let RuntimeCapabilityOutcome::Completed(completed) = outcome else {
+        panic!("actual JSON kernel result required: {outcome:?}");
+    };
+    assert_eq!(completed.output, json!({"text":"observed"}));
+    let answer = PortAnswer::Return {
+        value: completed.output,
+    };
+    let client = rig.pool.get().await.unwrap();
+    client
+        .batch_execute(&format!(
+            "ALTER TABLE brassclaw_monty_tool_invocations
+        ADD CONSTRAINT reject_test_answer CHECK (run_id <> '{}'::uuid OR phase <> 'answered')",
+            admitted.context.run_id
+        ))
+        .await
+        .unwrap();
+    assert!(record.record_answer(&answer).await.is_err());
+    // A real database failure after the actual operation cannot grant replay.
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(&program, "0:2", &arguments)
+            .await
+            .is_err()
+    );
+    let row = client
+        .query_one(
+            "SELECT phase,answer_bytes FROM brassclaw_monty_tool_invocations
+        WHERE run_id=$1 AND recipe_id=$2 AND step_id='0:2'",
+            &[
+                &admitted.context.run_id.as_uuid(),
+                &program.inputs().instruction().recipe().uuid,
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, &str>(0), "dispatch_intent");
+    assert!(row.get::<_, Option<String>>(1).is_none());
+    client
+        .batch_execute(
+            "ALTER TABLE brassclaw_monty_tool_invocations DROP CONSTRAINT reject_test_answer",
+        )
+        .await
+        .unwrap();
+    DefaultTurnCoordinator::new(admitted.state.clone())
+        .cancel_run(CancelRunRequest {
+            scope: admitted.context.scope.clone(),
+            actor: admitted.context.actor.clone().unwrap(),
+            run_id: admitted.context.run_id,
+            reason: SanitizedCancelReason::Policy,
+            idempotency_key: IdempotencyKey::new("late-record-cancel").unwrap(),
+        })
+        .await
+        .unwrap();
+    record.record_answer(&answer).await.unwrap();
+    record.record_answer(&answer).await.unwrap();
+    let rows = client
+        .query(
+            "SELECT step_id,phase,attempt_count,answer_bytes FROM brassclaw_monty_tool_invocations
+        WHERE run_id=$1 AND recipe_id=$2 ORDER BY step_id",
+            &[
+                &admitted.context.run_id.as_uuid(),
+                &program.inputs().instruction().recipe().uuid,
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].get::<_, &str>(0), "0:2");
+    assert_eq!(rows[0].get::<_, &str>(1), "answered");
+    let actual: Value = serde_json::from_str(rows[0].get(3)).unwrap();
+    assert_eq!(actual, json!({"kind":"return","value":{"text":"observed"}}));
+    assert_eq!(rows[1].get::<_, &str>(0), "0:4");
+    assert_eq!(rows[1].get::<_, &str>(1), "dispatch_intent");
+    assert!(rows[1].get::<_, Option<String>>(3).is_none());
+    for row in rows {
+        assert_eq!(row.get::<_, i16>(2), 1);
+    }
+    let row = client
+        .query_one(
+            "SELECT phase,answer_bytes FROM brassclaw_monty_tool_invocations
+             WHERE run_id=$1 AND recipe_id=$2 AND step_id='0:2'",
+            &[
+                &admitted.context.run_id.as_uuid(),
+                &follow_on.inputs().instruction().recipe().uuid,
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, &str>(0), "dispatch_intent");
+    assert!(row.get::<_, Option<String>>(1).is_none());
+    for statement in [
+        "UPDATE brassclaw_monty_tool_invocations SET phase='dispatch_intent',answer_bytes=NULL,answer_checksum=NULL,answered_at=NULL WHERE step_id='0:2'",
+        "UPDATE brassclaw_monty_tool_invocations SET attempt_count=2",
+        "UPDATE brassclaw_monty_tool_invocations SET step_id='replacement'",
+        "DELETE FROM brassclaw_monty_tool_invocations",
+        "TRUNCATE brassclaw_monty_tool_invocations",
+        "UPDATE brassclaw_monty_recipe_selections SET selection_bytes='{}'",
+        "DELETE FROM brassclaw_monty_recipe_selections",
+        "TRUNCATE brassclaw_monty_recipe_selections CASCADE",
+    ] {
+        let error = client.batch_execute(statement).await.unwrap_err();
+        assert_eq!(error.as_db_error().unwrap().code().code(), "23514");
+    }
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(&program, "0:4", &arguments)
+            .await
+            .is_err()
+    );
+}

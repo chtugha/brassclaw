@@ -20,7 +20,7 @@ default = ["postgres", "root-llm-provider"]
 # Default-on for the upgrade release. Removed in the release after.
 migrate-from-libsql = ["dep:libsql"]
 # DB-backed skill store + Q1 auto-validation capability surface.
-skills-db = ["brassclaw_engine/skills-db"]
+skills-db = ["brassclaw_engine/skills-db", "dep:brassclaw_skills"]
 # Wire a host-managed LLM model gateway into the assembled runtime.
 root-llm-provider = [
     "dep:brassclaw_llm",
@@ -73,6 +73,7 @@ brassclaw_extensions = { path = "../brassclaw_extensions" }
 brassclaw_filesystem = { path = "../brassclaw_filesystem" }
 brassclaw_first_party_extensions = { path = "../brassclaw_first_party_extensions" }
 brassclaw_engine = { path = "../brassclaw_engine" }
+brassclaw_skills = { path = "../brassclaw_skills", optional = true, default-features = false, features = ["db-store"] }
 brassclaw_hooks = { path = "../brassclaw_hooks" }
 brassclaw_hooks_pg = { path = "../brassclaw_hooks_pg" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }

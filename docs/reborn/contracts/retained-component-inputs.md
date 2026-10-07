@@ -221,3 +221,43 @@ Ranking limits distinct workflows after deduplication/spread filtering, so many
 matching templates cannot hide a different workflow. Candidates carry row/link
 identity through the host/PKR JSON mapping. None of this authorizes a resume to
 rematch an already selected v3 task.
+
+
+## Durable stop-only selection and invocation evidence
+
+`PgMontyAdmission` retains a Recipe's exact revision, embedded variant, input
+layout, selected order, workflow classification and full component references
+before an executable feed. V103 stores this selection immutably by run and Recipe
+UUID. Exact repetition is idempotent; a changed selection is rejected, including
+at a step that has not executed yet. A different Recipe in the same run has its
+own selection and local step namespace. This stores selection, not approval.
+
+The retained executor supplies its actual task handle and selected step to the
+trusted Tool port at the observed child HostCall. `begin_tool_invocation` locks
+and checks the real turn claim and admission, verifies the unchanged selection,
+then commits exact binding/association references and arguments before dispatch.
+The unique run/Recipe/step key fences a repeated flat invocation, including an
+uncertain prior call. Only initial `stop`/`max_attempts=1` is supported. Repeated
+workflow occurrences, retries and durable deduplication require their separate
+logical invocation/continuation contract; these records do not authorize them.
+
+`record_answer` persists the actual Return/DomainError/TerminalError before child
+resume or output validation. Its private original-address handle may record a
+late answer after cancellation. Exact answer repetition is idempotent; a changed
+answer, reset, deletion or truncation fails. Storage failure retains an uncertain
+dispatch intent and never grants replay. The instance owner must keep the actual
+host answer until persistence/reconciliation succeeds. SQL and host errors stay
+classified; arguments and private keys have no diagnostic/model-visible surface.
+
+The native behavioral caller exercises actual PostgreSQL, IBS, the global Monty
+Recipe helper, its child execution and the real JSON kernel handler. It preserves
+a successful Tool result through failed output validation, cancellation and a
+later live-policy denial. A separate actual-database failure case rejects answer
+persistence after the real Tool returned, then stores its late original result.
+These are unapproved draft validation paths, not ordinary application acceptance.
+
+Trusted review/activation and implementation provenance remain required. The
+normal global task factory must invoke selection retention before the first
+feed, integrate the journal with the actual dispatch adapter, and retain task
+snapshots/approval IDs through waits and recovery. This prerequisite supplies
+neither a production factory nor a claim of completed external effects.

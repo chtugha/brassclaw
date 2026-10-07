@@ -2361,6 +2361,7 @@ dependencies = [
  "brassclaw_runtime_policy",
  "brassclaw_safety",
  "brassclaw_secrets",
+ "brassclaw_skills",
  "brassclaw_threads",
  "brassclaw_triggers",
  "brassclaw_trust",

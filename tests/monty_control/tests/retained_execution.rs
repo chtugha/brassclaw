@@ -1,90 +1,49 @@
 //! Actual retained PostgreSQL/IBS -> global Monty -> child -> kernel Tool path.
 //! These unapproved drafts exercise behavioral validation, not activation or
 //! ordinary application boot. No provider or Tool success is manufactured.
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use brassclaw_authorization::{
-    InstanceToolAuthorizer, InstanceToolRule, LiveStableToolPolicy, StableToolPolicySnapshot,
-    ToolExecutionRules,
-};
+use brassclaw_authorization::LiveStableToolPolicy;
 use brassclaw_engine::{
     executor::retained_recipe::{
-        RetainedExecutionError, RetainedProgram, RetainedRecipeExecution, RetainedToolPort,
-        RetainedTransportEvidence,
+        RetainedExecutionError, RetainedProgram, RetainedRecipeExecution, RetainedToolInvocation,
+        RetainedToolPort, RetainedTransportEvidence,
     },
-    memory::{
-        retained_instruction::{WorkflowClass, compile_retained_recipe},
-        retained_tools::{RetainedToolBinding, RetainedToolProgram, prepare_retained_tool_program},
-    },
+    memory::retained_tools::{RetainedToolBinding, RetainedToolProgram},
 };
-use brassclaw_extensions::ExtensionRegistry;
-use brassclaw_filesystem::LocalFilesystem;
 use brassclaw_host_api::{
-    CapabilityId, CapabilitySet, EffectKind, ExecutionContext, ExtensionId, MountView,
-    NetworkPolicy, PackageId, ResourceEstimate, RuntimeKind, TrustClass, UserId,
+    CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ResourceEstimate,
+    RuntimeKind, TrustClass, UserId,
 };
 use brassclaw_host_runtime::{
-    CapabilitySurfaceVersion, FirstPartyCapabilityRegistry, HostRuntime, HostRuntimeServices,
-    RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind,
-    builtin_first_party_handlers, builtin_first_party_package,
+    HostRuntime, RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind,
 };
 use brassclaw_monty_host::{
+    VmFailure,
+    global::Lifecycle,
     process::{
-        PortAnswer, ProcessBoundary, ProcessSnapshot, RecipeBoundary, RecipeEvent, WorkerCommand,
+        PortAnswer, ProcessBoundary, ProcessFailure, ProcessSnapshot, RecipeBoundary, RecipeEvent,
+        TaskHandle, WorkerCommand,
     },
     transport_actor::{ActorLimits, TransportClient, TransportOwner},
 };
-use brassclaw_resources::InMemoryResourceGovernor;
-use brassclaw_skills::{
-    component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
-};
-use brassclaw_trust::{
-    AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
-    HostTrustPolicy, TrustDecision, TrustProvenance,
-};
+use brassclaw_skills::revision_store::PgComponentRevisionStore;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+#[path = "support/admission.rs"]
+mod admission;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
+#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission.rs"]
+mod pg_monty_admission;
+#[path = "support/retained_kernel.rs"]
+mod retained_kernel;
+#[path = "support/retained_program.rs"]
+mod retained_program;
 #[path = "support/runtime.rs"]
 mod support;
-
-fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPolicySnapshot {
-    StableToolPolicySnapshot {
-        revision,
-        tools: HashMap::from([(
-            tool,
-            InstanceToolRule {
-                enabled,
-                revision,
-                execution: ToolExecutionRules {
-                    allowed_effects: vec![EffectKind::DispatchCapability],
-                    mounts: MountView::default(),
-                    network: NetworkPolicy::default(),
-                    secrets: vec![],
-                    resource_ceiling: None,
-                },
-            },
-        )]),
-        capabilities: HashMap::from([(CapabilityId::new("builtin.json").unwrap(), tool)]),
-    }
-}
-fn trust() -> TrustDecision {
-    TrustDecision {
-        effective_trust: EffectiveTrustClass::user_trusted(),
-        authority_ceiling: AuthorityCeiling {
-            allowed_effects: vec![EffectKind::DispatchCapability],
-            max_resource_ceiling: None,
-        },
-        provenance: TrustProvenance::AdminConfig,
-        evaluated_at: chrono::Utc::now(),
-    }
-}
 
 struct KernelPort {
     runtime: Arc<dyn HostRuntime>,
@@ -92,58 +51,54 @@ struct KernelPort {
     deny_second: bool,
     tool: Uuid,
     calls: Mutex<usize>,
+    task: TaskHandle,
+    admitted: Arc<admission::Admitted>,
+    prepared: Arc<RetainedToolProgram>,
+    cancel_before_record: bool,
     outcomes: Mutex<Vec<&'static str>>,
 }
 impl KernelPort {
-    fn new(deny_second: bool, tool: Uuid) -> Self {
-        let package = builtin_first_party_package().unwrap();
-        let mut registry = ExtensionRegistry::new();
-        registry.insert(package).unwrap();
-        let registrations = builtin_first_party_handlers(Arc::new(
-            brassclaw_triggers::InMemoryTriggerRepository::default(),
-        ))
-        .unwrap();
-        let id = CapabilityId::new("builtin.json").unwrap();
-        let selected = registrations.retain_binding(&id).unwrap();
-        let retained = FirstPartyCapabilityRegistry::new().with_handler(id, Arc::new(selected));
-        // The actual selected handler stays alive after the source registry dies.
-        drop(registrations);
-        let policy = Arc::new(LiveStableToolPolicy::new(snapshot(1, true, tool)).unwrap());
-        let trust_policy = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
-            AdminEntry::for_local_manifest(
-                PackageId::new("builtin").unwrap(),
-                "/system/extensions/builtin/manifest.toml".into(),
-                None,
-                HostTrustAssignment::first_party(),
-                vec![EffectKind::DispatchCapability],
-                None,
-            ),
-        ]))])
-        .unwrap();
-        let runtime = HostRuntimeServices::new(
-            Arc::new(registry),
-            Arc::new(LocalFilesystem::new()),
-            Arc::new(InMemoryResourceGovernor::new()),
-            Arc::new(InstanceToolAuthorizer::new(policy.clone())),
-            brassclaw_processes::ProcessServices::in_memory(),
-            CapabilitySurfaceVersion::new("retained-draft-kernel").unwrap(),
-        )
-        .with_first_party_capabilities(Arc::new(retained))
-        .with_trust_policy(Arc::new(trust_policy))
-        .host_runtime_for_local_testing();
+    fn new(
+        deny_second: bool,
+        tool: Uuid,
+        task: TaskHandle,
+        admitted: Arc<admission::Admitted>,
+        prepared: Arc<RetainedToolProgram>,
+        cancel_before_record: bool,
+    ) -> Self {
+        let (runtime, policy) = retained_kernel::runtime(tool);
         Self {
-            runtime: Arc::new(runtime),
+            runtime,
             policy,
             deny_second,
             tool,
             calls: Mutex::new(0),
+            task,
+            admitted,
+            prepared,
+            cancel_before_record,
             outcomes: Mutex::new(Vec::new()),
         }
     }
 }
 #[async_trait]
 impl RetainedToolPort for KernelPort {
-    async fn dispatch(&self, binding: &RetainedToolBinding, arguments: Value) -> PortAnswer {
+    async fn dispatch(
+        &self,
+        invocation: RetainedToolInvocation<'_>,
+        binding: &RetainedToolBinding,
+        arguments: Value,
+    ) -> PortAnswer {
+        assert_eq!(invocation.task(), self.task);
+        let selected = &self.prepared.bindings()[invocation.step_id()];
+        assert_eq!(selected.tool(), binding.tool());
+        assert_eq!(selected.python(), binding.python());
+        let record = self
+            .admitted
+            .admission
+            .begin_tool_invocation(&self.prepared, invocation.step_id(), &arguments)
+            .await
+            .unwrap();
         assert_eq!(binding.capability_id(), "builtin.json");
         assert_eq!(binding.association().callable(), "host.json");
         assert_eq!(
@@ -159,7 +114,7 @@ impl RetainedToolPort for KernelPort {
         };
         if self.deny_second && count == 2 {
             self.policy
-                .publish(1, snapshot(2, false, self.tool))
+                .publish(1, retained_kernel::snapshot(2, false, self.tool))
                 .unwrap();
         }
         let context = ExecutionContext::local_default(
@@ -178,11 +133,11 @@ impl RetainedToolPort for KernelPort {
                 CapabilityId::new(binding.capability_id()).unwrap(),
                 ResourceEstimate::default(),
                 arguments,
-                trust(),
+                retained_kernel::trust(),
             ))
             .await
             .unwrap();
-        match outcome {
+        let answer = match outcome {
             RuntimeCapabilityOutcome::Completed(completed) => {
                 self.outcomes.lock().unwrap().push("completed");
                 PortAnswer::Return {
@@ -197,97 +152,34 @@ impl RetainedToolPort for KernelPort {
                 }
             }
             other => panic!("unexpected real kernel outcome: {other:?}"),
+        };
+        if self.cancel_before_record {
+            use brassclaw_turns::{
+                CancelRunRequest, DefaultTurnCoordinator, IdempotencyKey, SanitizedCancelReason,
+                TurnCoordinator,
+            };
+            DefaultTurnCoordinator::new(self.admitted.state.clone())
+                .cancel_run(CancelRunRequest {
+                    scope: self.admitted.context.scope.clone(),
+                    actor: self.admitted.context.actor.clone().unwrap(),
+                    run_id: self.admitted.context.run_id,
+                    reason: SanitizedCancelReason::Policy,
+                    idempotency_key: IdempotencyKey::new("late-invocation-answer").unwrap(),
+                })
+                .await
+                .unwrap();
         }
+        record.record_answer(&answer).await.unwrap();
+        record.record_answer(&answer).await.unwrap(); // exact repetition is idempotent
+        // A changed answer cannot replace the retained real result.
+        let rejected = PortAnswer::TerminalError {
+            reason_kind: "forged_answer".into(),
+        };
+        assert!(record.record_answer(&rejected).await.is_err());
+        answer
     }
 }
 
-fn draft(
-    id: Uuid,
-    class: i32,
-    document: Value,
-    dependencies: &[Uuid],
-    association: Value,
-) -> ComponentRevisionDraft {
-    ComponentRevisionDraft::from_json(
-        &json!({"format":"component-revision/1","uuid":id,"class_code":class,
-        "document":document,"dependencies":dependencies,"association":association})
-        .to_string(),
-    )
-    .unwrap()
-}
-async fn program(
-    store: &PgComponentRevisionStore,
-    invalid_output: bool,
-) -> Arc<RetainedToolProgram> {
-    let (root, code, descriptor, tool, skill) = (
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-    );
-    let inputs = json!({"data":{"type":"string","required":true,"checks":[]}});
-    let result = json!({"type":"object","allow_extra_fields":false,"fields":{"text":{"type":"string","required":true}}});
-    let association = json!({"format":"skill-association/1","skill_uuid":skill,"python_code_uuid":code,"tool_skill_uuid":descriptor,"tool_uuid":tool,
-        "callable":"host.json","inputs":inputs,"arguments":{"data":"data"},"code_arguments":{"operation":{"type":"string","checks":[],"depends_on":[],"meaning":"Fixed parse operation for this usage"}},"result":result,
-        "failure":{"action":"stop","max_attempts":1,"idempotency":"not_assumed","idempotency_evidence_ref":null,"retryable_outcomes":[]}}).to_string();
-    let body = if invalid_output {
-        "value = host.json(operation='parse', data=inputs['data'])\nresult = 'invalid output'"
-    } else {
-        "result = host.json(operation='parse', data=inputs['data'])"
-    };
-    let recipe = json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":["parse %"],"variable_patterns":[{"name":"data","pattern":null,"description":null}]}],
-        "step_descriptions":[{"desc_idx":0,"label":"two explicit usages","yaml_source":"","steps":[
-            {"stepnumber":1,"knowledge":"rust","goal":"Bind JSON","content":"","type":"component","include":[descriptor],"tool_bindings":[{"tool_id":tool,"tool_name":"json","params":{},"error_policy":{"policy":"fail"}}]},
-            {"stepnumber":2,"knowledge":"orchestrator","goal":"Parse JSON","content":"","type":"component","include":[code]},
-            {"stepnumber":3,"knowledge":"rust","goal":"Bind JSON","content":"","type":"component","include":[descriptor],"tool_bindings":[{"tool_id":tool,"tool_name":"json","params":{},"error_policy":{"policy":"fail"}}]},
-            {"stepnumber":4,"knowledge":"orchestrator","goal":"Parse JSON again","content":"","type":"component","include":[code]}]}],
-        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":inputs,"steps":{
-            "0:2":{"data":{"kind":"task_input","reference":"{{vars.data}}"}},"0:4":{"data":{"kind":"task_input","reference":"{{vars.data}}"}}}}}});
-    let mut refs = Vec::new();
-    for d in [
-        draft(
-            tool,
-            0,
-            json!({"capability_id":"builtin.json","callable":"host.json","input_contract":{
-            "operation":{"type":"string","required":true,"checks":[]},"data":{"type":"string","required":true,"checks":[]}}}),
-            &[],
-            Value::Null,
-        ),
-        draft(
-            descriptor,
-            13,
-            json!({"binding":{"format":"tool-skill-binding/1","tool_uuid":tool,"callable":"host.json","capability_id":"builtin.json"}}),
-            &[tool],
-            Value::Null,
-        ),
-        draft(
-            code,
-            22,
-            json!({"content":body,"input_contract":inputs,"result_contract":result}),
-            &[],
-            Value::Null,
-        ),
-        draft(
-            skill,
-            1,
-            json!({"body":"Parse the supplied JSON text and return its object."}),
-            &[code, descriptor, tool],
-            json!(association),
-        ),
-        draft(root, 21, recipe, &[descriptor, code, skill], Value::Null),
-    ] {
-        refs.push(store.stage(&d, 0).await.unwrap());
-    }
-    let retained = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
-    Arc::new(
-        prepare_retained_tool_program(
-            compile_retained_recipe(retained, root, "selected", WorkflowClass::Deterministic)
-                .unwrap(),
-        )
-        .unwrap(),
-    )
-}
 async fn exchange(transport: &TransportClient, command: WorkerCommand) -> ProcessSnapshot {
     transport
         .try_submit(command)
@@ -310,7 +202,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     for invalid_output in [false, true] {
-        let prepared = program(&store, invalid_output).await;
+        let prepared = retained_program::program(&store, invalid_output).await;
         assert_eq!(prepared.bindings()["0:2"].combination().len(), 4);
         assert!(std::ptr::eq(
             prepared.bindings()["0:2"].combination(),
@@ -318,7 +210,8 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         ));
         let data = json!({"text":"'quotes'\n Ü {{vars.data}} host.forbidden()"});
         let inputs = json!({"data":data.to_string()});
-        let port = KernelPort::new(!invalid_output, prepared.bindings()["0:2"].tool().uuid);
+        let admitted_fixture =
+            Arc::new(admission::reserve(rig.pool.clone(), inputs["data"].as_str().unwrap()).await);
         let definitions =
             include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py")
                 .strip_suffix("asyncio.run(_global_main())\n")
@@ -345,9 +238,23 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         .await
         .unwrap();
         let transport = owner.client();
-        let admitted = exchange(&transport, WorkerCommand::Admit { key: ready.work_waits[0].1,
-            task: json!({"conversation_id":"opaque-draft", "message_id":"draft-message", "turn_id":"draft-turn", "run_id":"draft-run", "user_input":inputs["data"], "history":[]}) }).await;
+        let admitted = exchange(
+            &transport,
+            WorkerCommand::Admit {
+                key: ready.work_waits[0].1,
+                task: admitted_fixture.input.clone(),
+            },
+        )
+        .await;
         let task = admitted.admitted_task.unwrap();
+        let port = KernelPort::new(
+            !invalid_output,
+            prepared.bindings()["0:2"].tool().uuid,
+            task,
+            admitted_fixture.clone(),
+            prepared.clone(),
+            invalid_output,
+        );
         let root = progress(&transport, admitted).await;
         let Some(ProcessBoundary::HostCall {
             key,
@@ -365,6 +272,11 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         assert_eq!(args[2], "0:1-0:E");
         let token = args[0].clone();
         let reference = Uuid::new_v4().to_string();
+        admitted_fixture
+            .admission
+            .retain_recipe_selection(prepared.inputs().instruction())
+            .await
+            .unwrap();
         exchange(&transport, WorkerCommand::Defer { key }).await;
         let root = exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return { value: json!({"ok":true,"program_ref":reference,
             "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),"inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()}) } }).await;
@@ -442,6 +354,24 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                     *port.calls.lock().unwrap(),
                     if invalid_output { 1 } else { 2 }
                 );
+                // Feed the observed child failure back to the actual waiting
+                // root. This validation entry deliberately has no task error
+                // handler, so its uncaught failure is an instance failure.
+                let receipt = transport
+                    .try_submit(WorkerCommand::Resolve {
+                        key,
+                        answer: PortAnswer::DomainError {
+                            reason_kind: "recipe_execution_failed".into(),
+                        },
+                    })
+                    .unwrap()
+                    .wait()
+                    .await
+                    .unwrap();
+                assert!(receipt.transport_started);
+                let failure = receipt.outcome.unwrap_err();
+                assert_eq!(failure.kind, ProcessFailure::Vm(VmFailure::Python));
+                assert_eq!(failure.snapshot.unwrap().lifecycle, Lifecycle::Failed);
                 break;
             }
             let value = result.unwrap();
@@ -458,6 +388,66 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             .await;
             root = progress(&transport, resolved).await;
         }
+        let rows = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query(
+                "SELECT step_id,attempt_count,phase,selection_bytes,arguments_bytes,answer_bytes
+             FROM brassclaw_monty_tool_invocations WHERE run_id=$1 ORDER BY step_id",
+                &[&admitted_fixture.context.run_id.as_uuid()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), if invalid_output { 1 } else { 2 });
+        for row in &rows {
+            assert_eq!(row.get::<_, i16>(1), 1);
+            assert_eq!(row.get::<_, &str>(2), "answered");
+            let selection: Value = serde_json::from_str(row.get(3)).unwrap();
+            assert_eq!(
+                selection["recipe"]["uuid"],
+                prepared.inputs().instruction().recipe().uuid.to_string()
+            );
+            assert_eq!(selection["variant_key"], "selected");
+            assert_eq!(selection["components"].as_array().unwrap().len(), 5);
+            let arguments: Value = serde_json::from_str(row.get(4)).unwrap();
+            assert_eq!(arguments["data"], inputs["data"]);
+        }
+        let answer: Value = serde_json::from_str(rows[0].get(5)).unwrap();
+        assert_eq!(answer, json!({"kind":"return","value":data}));
+        assert!(
+            admitted_fixture
+                .admission
+                .begin_tool_invocation(
+                    &prepared,
+                    "0:2",
+                    &json!({"data":inputs["data"],"operation":"parse"})
+                )
+                .await
+                .is_err(),
+            "completed/cancelled invocation cannot replay outside the Rust executor either"
+        );
+        if invalid_output {
+            assert!(
+                admitted_fixture
+                    .admission
+                    .begin_tool_invocation(
+                        &prepared,
+                        "0:4",
+                        &json!({"data":inputs["data"],"operation":"parse"})
+                    )
+                    .await
+                    .is_err(),
+                "cancelled claim cannot record intent for a new effect"
+            );
+        } else {
+            let answer: Value = serde_json::from_str(rows[1].get(5)).unwrap();
+            assert_eq!(
+                answer,
+                json!({"kind":"terminal_error","reason_kind":"tool_policy_denied"})
+            );
+        }
         // Failure never gets a fabricated product completion or effect-free
         // receipt. Retain actual evidence and reap the worker explicitly.
         owner.request_termination();
@@ -465,5 +455,10 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         assert!(exit.exit_status.is_some());
         assert!(exit.containment_error.is_none());
         assert!(exit.reap_error.is_none());
+        admitted_fixture
+            .admission
+            .settle(json!({"status":"failed","reason_kind":"recipe_execution_failed"}))
+            .await
+            .unwrap();
     }
 }
