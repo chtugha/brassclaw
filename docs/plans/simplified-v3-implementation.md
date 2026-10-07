@@ -2833,3 +2833,40 @@ key rejection and durable review admission. No validator, Recipe, provider or
 prefix was approved/activated. The original seven failures, normal global factory,
 resource/settings and continuation cutover remain open; their unchanged tests
 were not rerun for this storage repair.
+
+### 2026-10-08 — Own global task preparation and settlement
+
+Added OwnedGlobalTaskFactory for the existing global-driver candidate. It checks
+the exact opaque conversation/message/turn/run handoff before admission and
+retains the private admission address before any database I/O. Previously the
+convenience reservation function returned its owner only after COMMIT, discarding
+the address on an uncertain acknowledgement. That convenience now exists only
+for native fixtures; application ownership uses prepare/persist separately.
+
+Catalogue capture, failed/dropped preparation, child/Tool state and actual service
+receipts stay owned under bounded capacity. A failed capture cannot replace its
+reservation or turn into No-Match. Successful completion frees its slot only
+after a real published reply and durable acknowledgement. Failed settlement
+transfers the host, admission, ports and receipt together after acknowledgement,
+without declaring effects reconciled or authorizing replay. Registry locks do
+not span database/provider/VM waits. Concurrent acknowledgement cannot release a
+replacement reservation at the same attempt address. See
+[the task-factory contract](../reborn/contracts/global-monty-task-factory.md).
+
+Seventeen actual worker/kernel/native-PostgreSQL cases passed serially in screen:
+11 model-host/ownership/factory cases, four review-host cases and two retained
+execution cases. New checks cover identity rejection before database writes,
+failed and cancelled catalogue preparation, stable retained admission keys,
+capacity backpressure, actual failed-Recipe settlement transfer, and subsequent
+No-Match work on the same global root. The existing model/tool/provider replay,
+opaque identity, cancellation, database ownership and no-Recipe-replay assertions
+remain intact. Isolated all-target strict lint passed without warnings. Logs:
+`/private/tmp/brassclaw-owned-task-factory{,-lints}.log`, Rust 1.98, with mandatory
+disk checks/cleanups before each Cargo execution.
+
+This uses the explicit draft-validation catalogue for its constrained caller
+tests. It does not supply or certify a production approved-catalogue owner. The
+ordinary runtime still constructs PersistentMontyDriver, and the original seven
+composition failures remain unresolved. Protected-root/seed provenance, coherent
+approved activation, retained actual implementations, live resource/settings and
+durable continuation/recovery wiring still gate the ordinary factory cutover.

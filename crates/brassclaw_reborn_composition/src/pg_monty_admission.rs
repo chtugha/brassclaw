@@ -31,7 +31,23 @@ pub(crate) struct PgMontyAdmission {
 }
 
 impl PgMontyAdmission {
+    // Native fixture convenience only. Application owners must retain a
+    // prepared address before I/O, including an ambiguous COMMIT result.
+    #[cfg(test)]
     pub(crate) async fn reserve(
+        pool: Arc<PgPool>,
+        context: &LoopRunContext,
+        attempt: MontyTaskAttempt,
+    ) -> Result<Self, AgentLoopDriverError> {
+        let reservation = Self::prepare(pool, context, attempt)?;
+        reservation.persist_reservation().await?;
+        Ok(reservation)
+    }
+
+    /// Construct the private reservation before database I/O. The production
+    /// owner retains this object before calling `persist_reservation`: a lost
+    /// commit acknowledgement must not discard the only admission key.
+    pub(crate) fn prepare(
         pool: Arc<PgPool>,
         context: &LoopRunContext,
         attempt: MontyTaskAttempt,
@@ -47,7 +63,7 @@ impl PgMontyAdmission {
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
         let nonce = serde_json::to_vec(&brassclaw_turns::TurnLeaseToken::new())
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
-        let reservation = Self {
+        Ok(Self {
             pool,
             scope: context.scope.clone(),
             turn_id: context.turn_id,
@@ -55,8 +71,14 @@ impl PgMontyAdmission {
             attempt,
             key: Sha256::digest(nonce).into(),
             checksum: Sha256::digest(claim).into(),
-        };
-        let mut client = reservation
+        })
+    }
+
+    /// Persist this exact prepared address once. A conflict is not permission
+    /// to replace another admission; an uncertain result requires recovery with
+    /// this retained address, never another reservation or effect replay.
+    pub(crate) async fn persist_reservation(&self) -> Result<(), AgentLoopDriverError> {
+        let mut client = self
             .pool
             .get()
             .await
@@ -65,10 +87,10 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
-        reservation.verify_claim(&transaction, false).await?;
-        let scope = serde_json::to_value(&reservation.scope)
+        self.verify_claim(&transaction, false).await?;
+        let scope = serde_json::to_value(&self.scope)
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
-        let runner = serde_json::to_value(attempt.runner_id)
+        let runner = serde_json::to_value(self.attempt.runner_id)
             .map_err(|_| failed("monty_admission_identity_invalid"))?
             .as_str()
             .ok_or_else(|| failed("monty_admission_identity_invalid"))?
@@ -76,8 +98,8 @@ impl PgMontyAdmission {
         let inserted = transaction.execute("INSERT INTO brassclaw_monty_task_admissions
             (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase)
             VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved') ON CONFLICT (run_id) DO NOTHING",
-            &[&attempt.run_id.as_uuid(), &context.turn_id.as_uuid(), &scope, &reservation.accepted.as_str(),
-                &runner, &&reservation.checksum[..], &&reservation.key[..]])
+            &[&self.attempt.run_id.as_uuid(), &self.turn_id.as_uuid(), &scope, &self.accepted.as_str(),
+                &runner, &&self.checksum[..], &&self.key[..]])
             .await.map_err(|_| failed("monty_admission_database_failed"))?;
         if inserted != 1 {
             return Err(failed("monty_admission_replay_requires_recovery"));
@@ -87,7 +109,7 @@ impl PgMontyAdmission {
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
         drop(client);
-        Ok(reservation)
+        Ok(())
     }
 
     /// Call before one requested operation. Started/settled admission is not an

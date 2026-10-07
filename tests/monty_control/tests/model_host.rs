@@ -3,7 +3,7 @@
 //! Recording provider fixtures match the original composition acceptance tests;
 //! this isolated caller does not certify application boot or ordinary Recipes.
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -57,6 +57,8 @@ mod global_monty_driver;
 mod global_monty_owner;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_recipe_ports.rs"]
 mod global_recipe_ports;
+#[path = "../../../crates/brassclaw_reborn_composition/src/global_task_factory.rs"]
+mod global_task_factory;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_instance_owner.rs"]
 mod monty_instance_owner;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_task_input.rs"]
@@ -192,13 +194,50 @@ struct AdmittedPorts {
 }
 
 struct NativeTaskPortsFactory {
-    pool: Arc<PgPool>,
     last_host: Mutex<Option<Arc<MontyTaskHost>>>,
-    admissions: Mutex<HashMap<MontyTaskAttempt, Arc<pg_monty_admission::PgMontyAdmission>>>,
-    ownership: global_monty_owner::GlobalOwnerCheck,
+    inner: global_task_factory::OwnedGlobalTaskFactory,
+}
+struct DraftCatalogueProvider {
+    pool: Arc<PgPool>,
     draft: Option<Arc<brassclaw_engine::memory::retained_tools::RetainedToolProgram>>,
 }
-
+#[async_trait]
+impl global_task_factory::MontyCatalogueProvider for DraftCatalogueProvider {
+    async fn capture(
+        &self,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<pg_monty_admission::PgMontyAdmission>,
+        _input: &TaskInput,
+    ) -> Result<
+        Arc<dyn global_recipe_ports::MontyTaskCatalogue>,
+        brassclaw_turns::run_profile::AgentLoopDriverError,
+    > {
+        Ok(Arc::new(task_catalogue::ValidationCatalogue::new(
+            self.pool.clone(),
+            host,
+            self.draft.clone(),
+            admission,
+        )))
+    }
+}
+impl NativeTaskPortsFactory {
+    fn new(
+        pool: Arc<PgPool>,
+        ownership: global_monty_owner::GlobalOwnerCheck,
+        draft: Option<Arc<brassclaw_engine::memory::retained_tools::RetainedToolProgram>>,
+    ) -> Self {
+        Self {
+            last_host: Mutex::new(None),
+            inner: global_task_factory::OwnedGlobalTaskFactory::new(
+                pool.clone(),
+                ownership,
+                Arc::new(DraftCatalogueProvider { pool, draft }),
+                8,
+            )
+            .unwrap(),
+        }
+    }
+}
 #[async_trait]
 impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
     async fn build(
@@ -207,35 +246,7 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
         input: &TaskInput,
     ) -> Result<Arc<dyn TaskPorts>, brassclaw_turns::run_profile::AgentLoopDriverError> {
         *self.last_host.lock().unwrap() = Some(host.clone());
-        self.ownership.check().await.map_err(|_| {
-            brassclaw_turns::run_profile::AgentLoopDriverError::Failed {
-                reason_kind: "monty_instance_ownership_failed".into(),
-            }
-        })?;
-        let admission = Arc::new(
-            pg_monty_admission::PgMontyAdmission::reserve(
-                self.pool.clone(),
-                host.run_context(),
-                host.attempt(),
-            )
-            .await?,
-        );
-        self.admissions
-            .lock()
-            .unwrap()
-            .insert(host.attempt(), admission.clone());
-        Ok(Arc::new(global_recipe_ports::GlobalRecipePorts::new(
-            host.clone(),
-            admission.clone(),
-            Arc::new(task_catalogue::ValidationCatalogue::new(
-                self.pool.clone(),
-                host,
-                self.draft.clone(),
-                admission,
-            )),
-            input.user_input.clone(),
-            self.ownership.clone(),
-        )))
+        global_monty_driver::GlobalTaskPortsFactory::build(&self.inner, host, input).await
     }
 
     async fn settle(
@@ -243,24 +254,7 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
         host: Arc<MontyTaskHost>,
         receipt: Arc<brassclaw_monty_host::service::TaskReceipt>,
     ) -> Result<(), brassclaw_turns::run_profile::AgentLoopDriverError> {
-        let admission = self
-            .admissions
-            .lock()
-            .unwrap()
-            .get(&host.attempt())
-            .cloned()
-            .unwrap();
-        let outcome = match &receipt.outcome {
-            TaskOutcome::Completed { reply_ref } => {
-                json!({"status":"completed", "reply_ref":reply_ref})
-            }
-            TaskOutcome::Failed { reason_kind } => {
-                json!({"status":"failed", "reason_kind":reason_kind})
-            }
-        };
-        admission.settle(outcome).await?;
-        self.admissions.lock().unwrap().remove(&host.attempt());
-        Ok(())
+        global_monty_driver::GlobalTaskPortsFactory::settle(&self.inner, host, receipt).await
     }
 }
 fn failure() -> PortFailure {
@@ -984,13 +978,11 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     )
     .await
     .unwrap();
-    let factory = Arc::new(NativeTaskPortsFactory {
-        pool: database.pool.clone(),
-        last_host: Mutex::new(None),
-        admissions: Mutex::new(HashMap::new()),
-        ownership: owner.ownership_check(),
-        draft: None,
-    });
+    let factory = Arc::new(NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        None,
+    ));
     owner.ownership_check().check().await.unwrap();
     assert!(matches!(
         monty_instance_owner::PgMontyOwner::acquire(&database.pool).await,
@@ -1107,6 +1099,226 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
 }
 
 #[tokio::test]
+async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admission() {
+    use global_monty_driver::GlobalTaskPortsFactory;
+
+    struct FailedCapture;
+    #[async_trait]
+    impl global_task_factory::MontyCatalogueProvider for FailedCapture {
+        async fn capture(
+            &self,
+            _host: Arc<MontyTaskHost>,
+            _admission: Arc<pg_monty_admission::PgMontyAdmission>,
+            _input: &TaskInput,
+        ) -> Result<
+            Arc<dyn global_recipe_ports::MontyTaskCatalogue>,
+            brassclaw_turns::run_profile::AgentLoopDriverError,
+        > {
+            Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed {
+                reason_kind: "catalogue_capture_failed".into(),
+            })
+        }
+    }
+    let database = native_pg::NativePostgres::start().await;
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    let mut owner = global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+        },
+    )
+    .await
+    .unwrap();
+    let factory = global_task_factory::OwnedGlobalTaskFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        Arc::new(FailedCapture),
+        1,
+    )
+    .unwrap();
+    let provider = Arc::new(RecordingProvider::default());
+    let prefix = Arc::new(SelectedPrefix("actual preparation prefix".into()));
+    let (mut input, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "preparation-failure",
+        prefix.clone(),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let host = Arc::new(MontyTaskHost::new(handoff));
+    let original_conversation = input.conversation_id.clone();
+    input.conversation_id = "another-opaque-conversation".into();
+    assert!(matches!(factory.build(host.clone(), &input).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_identity_invalid"));
+    let client = database.pool.get().await.unwrap();
+    assert!(
+        !client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_task_admissions WHERE run_id=$1)",
+                &[&host.attempt().run_id.as_uuid()]
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    input.conversation_id = original_conversation;
+    assert!(matches!(factory.build(host.clone(), &input).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "catalogue_capture_failed"));
+    let original = client.query_one("SELECT phase,admission_key,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
+    assert_eq!(original.get::<_, &str>(0), "reserved");
+    assert!(factory.take_failed_settlement(host.attempt()).is_err());
+    assert!(matches!(factory.build(host.clone(), &input).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery"));
+    let repeated = client.query_one("SELECT admission_key,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
+    assert_eq!(original.get::<_, Vec<u8>>(1), repeated.get::<_, Vec<u8>>(0));
+    assert_eq!(original.get::<_, Vec<u8>>(2), repeated.get::<_, Vec<u8>>(1));
+    let (next_input, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "preparation-capacity",
+        prefix,
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let next = Arc::new(MontyTaskHost::new(handoff));
+    assert!(matches!(
+        factory.build(next.clone(), &next_input).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Unavailable { .. })
+    ));
+    assert!(
+        !client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_task_admissions WHERE run_id=$1)",
+                &[&next.attempt().run_id.as_uuid()]
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    assert!(provider.requests.lock().unwrap().is_empty());
+    drop(client);
+    owner.request_shutdown();
+    let exit = owner.join().await.unwrap();
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => panic!("no task was submitted"),
+    }
+    let service = exit.service.unwrap();
+    assert!(service.tasks.is_empty());
+    assert_eq!(service.failure, None);
+    assert_eq!(service.transport.unwrap().kind, StopKind::Graceful);
+}
+
+#[tokio::test]
+async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
+    use global_monty_driver::GlobalTaskPortsFactory;
+
+    struct WaitingCapture(Arc<tokio::sync::Notify>);
+    #[async_trait]
+    impl global_task_factory::MontyCatalogueProvider for WaitingCapture {
+        async fn capture(
+            &self,
+            _host: Arc<MontyTaskHost>,
+            _admission: Arc<pg_monty_admission::PgMontyAdmission>,
+            _input: &TaskInput,
+        ) -> Result<
+            Arc<dyn global_recipe_ports::MontyTaskCatalogue>,
+            brassclaw_turns::run_profile::AgentLoopDriverError,
+        > {
+            self.0.notify_one();
+            std::future::pending().await
+        }
+    }
+    let database = native_pg::NativePostgres::start().await;
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    let mut owner = global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+        },
+    )
+    .await
+    .unwrap();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let factory = global_task_factory::OwnedGlobalTaskFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        Arc::new(WaitingCapture(entered.clone())),
+        1,
+    )
+    .unwrap();
+    let provider = Arc::new(RecordingProvider::default());
+    let (input, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "cancelled-preparation",
+        Arc::new(SelectedPrefix("selected prefix".into())),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let host = Arc::new(MontyTaskHost::new(handoff));
+    let mut preparation = Box::pin(factory.build(host.clone(), &input));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::select! {
+            _ = entered.notified() => (),
+            _ = &mut preparation => panic!("catalogue capture must still be pending"),
+        }
+    })
+    .await
+    .unwrap();
+    // This is a real dropped preparation future, not a fabricated service
+    // cancellation receipt. No Python task or external work was submitted.
+    drop(preparation);
+    host.fence_dispatch();
+    assert!(factory.take_failed_settlement(host.attempt()).is_err());
+    assert!(matches!(factory.build(host.clone(), &input).await,
+        Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_replay_requires_recovery"));
+    let client = database.pool.get().await.unwrap();
+    let row = client.query_one("SELECT phase,octet_length(admission_key),outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
+    assert_eq!(row.get::<_, &str>(0), "reserved");
+    assert_eq!(row.get::<_, i32>(1), 32);
+    assert_eq!(row.get::<_, Option<Value>>(2), None);
+    assert!(provider.requests.lock().unwrap().is_empty());
+    drop(client);
+    owner.request_shutdown();
+    let exit = owner.join().await.unwrap();
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => panic!("no task was submitted"),
+    }
+    assert!(exit.service.unwrap().tasks.is_empty());
+}
+
+#[tokio::test]
 async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch() {
     let database = native_pg::NativePostgres::start().await;
     let boot = support::boot(SOURCE);
@@ -1159,13 +1371,11 @@ async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch()
         None,
     )
     .await;
-    let factory = Arc::new(NativeTaskPortsFactory {
-        pool: database.pool.clone(),
-        last_host: Mutex::new(None),
-        admissions: Mutex::new(HashMap::new()),
-        ownership: owner.ownership_check(),
-        draft: None,
-    });
+    let factory = Arc::new(NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        None,
+    ));
     let driver =
         global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory, 1).unwrap();
     assert!(matches!(driver.drive_turn(handoff).await,
@@ -1624,13 +1834,11 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
     )
     .await
     .unwrap();
-    let factory = Arc::new(NativeTaskPortsFactory {
-        pool: database.pool.clone(),
-        last_host: Mutex::new(None),
-        admissions: Mutex::new(HashMap::new()),
-        ownership: owner.ownership_check(),
-        draft: Some(program.clone()),
-    });
+    let factory = Arc::new(NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        Some(program.clone()),
+    ));
     let threads = Arc::new(PgSessionThreadService::new(
         database.pool.clone(),
         "native-global-host",
@@ -1682,11 +1890,30 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
     );
     drop(client);
     assert!(provider.requests.lock().unwrap().is_empty());
-    let (_, receipt, retained_control) = driver.take_settlement(attempt).unwrap().unwrap();
+    let (actual_host, receipt, retained_control) =
+        driver.take_settlement(attempt).unwrap().unwrap();
     assert!(
         matches!(receipt.outcome, TaskOutcome::Failed { ref reason_kind } if reason_kind == "recipe_reply_invalid")
     );
     assert!(retained_control.receipt().unwrap().is_ok());
+    let (factory_host, retained_admission, retained_ports, factory_receipt) = factory
+        .inner
+        .take_failed_settlement(attempt)
+        .unwrap()
+        .unwrap();
+    assert!(Arc::ptr_eq(&factory_host, &actual_host));
+    assert!(Arc::ptr_eq(&factory_receipt, &receipt));
+    // The caller now owns both the actual child/Tool state and its durable
+    // admission address. Taking settlement cannot grant another dispatch.
+    retained_ports.fence();
+    assert!(retained_admission.check_and_start().await.is_err());
+    assert!(
+        factory
+            .inner
+            .take_failed_settlement(attempt)
+            .unwrap()
+            .is_none()
+    );
     // The same global root handles an actual No-Match after the failed Recipe.
     let (_, handoff, _, _, _) = admitted(
         database.pool.clone(),
