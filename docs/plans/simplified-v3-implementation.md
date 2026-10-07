@@ -2546,3 +2546,31 @@ the normal global task factory, then connect these records before ordinary feeds
 Guarded repeated occurrences/retries, durable waits/recovery and adaptive/live
 resource uptake remain explicit cutover requirements. Stop-only infrastructure
 and unapproved draft callers do not satisfy that complete gate.
+
+
+### 2026-10-07 — Strict audit verdicts and contained syntax observations
+
+The existing Engine code-audit helper now accepts exactly five explicit ordered
+PASS/FAIL verdicts. Empty, incomplete, extra, misleading or malformed responses
+and non-text model outputs cannot pass. Its obsolete artificial 512-token cap
+is removed; the verdict parser has an explicit byte-capacity error instead of
+silent truncation. Source inspection found no live caller of this helper; this
+fix does not activate a new ordinary Q1 or certify any component.
+
+The contained utility now supports syntax observations using the same Ruff parser
+version as Monty's compiler. It compiles first and executes no Python. Reports
+retain exact-source checksum and syntactic host calls/ranges, imports, host-value
+references, retired/dangerous name references and result stores. Strings/comments
+are ignored. Bounded traversal/report failure is explicit. These observations do
+not prove call reachability, approved dependent chains, semantic consistency or
+producer provenance. The worker utility protocol is 2; global transport remains
+unchanged. No new host Tool or ordinary runtime fallback was introduced.
+
+Seven verdict cases and strict Engine lints pass in
+`/private/tmp/brassclaw-monty-audit-{verdicts,lints}.log`. Five actual utility and
+four existing flow-host cases pass in `...-structure-utility.log`, including
+real parser errors and contained allocator/deadline failures. Strict isolated
+all-target lints and all workspace architecture cases pass in
+`...-structure-{lints,boundaries}.log`. Checks ran serially in background screen
+with Rust 1.98. The original seven are still unresolved: no ordinary driver
+replacement or catalogue activation is claimed by these checks.

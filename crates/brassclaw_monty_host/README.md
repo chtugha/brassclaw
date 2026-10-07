@@ -347,7 +347,7 @@ in the same root scope fail before dispatch and preserve pending evidence.
 
 `utility::execute` supplies a separate contained parser/pure-formatter operation
 for the Monty 1.0 utility-caller migration. The same allocator worker has an
-explicit one-operation `--utility` mode (its own private protocol 1); it never
+explicit one-operation `--utility` mode (its own private protocol 2); it never
 boots or replaces the global orchestrator. Source and typed inputs are separate,
 all input roots share aggregate preflight limits, and unsupported output fails
 rather than becoming null. No host ports are installed; sleeps and external
@@ -374,3 +374,14 @@ both executables; the installer verifies both checksums before replacement.
 There is no PATH search or in-process utility fallback. Library tests require
 `cargo build -p brassclaw_monty_host --bin monty_worker` first in the same profile
 and target directory. These serial commands belong in the validation queue.
+
+Source inspection uses `UtilityRequest::InspectSource` in that same contained
+worker, after Monty compilation and without executing any opcode. It returns
+exact-source SHA-256, direct syntactic host-call sites and byte ranges, imports,
+first-class host references, reserved-name references and `result` stores. The
+Ruff parser version matches the vendored Monty compiler. Strings/comments do
+not become code. Traversal and output capacity fail explicitly rather than
+returning partial observations. The report is private diagnostic data, not
+trusted approval, proof of reachability/dependent chains or a Tool grant.
+The ordinary catalogue/review owner must apply its supported Q1 and semantic
+review contract separately. Protocol 2 requires the matching packaged worker.

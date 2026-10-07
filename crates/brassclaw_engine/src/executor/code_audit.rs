@@ -72,6 +72,11 @@ const AUDIT_CHECKS: &str = "\
 5. Secret exfiltration: does this code read or transmit secrets, tokens, or API \
    keys to external endpoints?";
 
+const AUDIT_CHECK_COUNT: usize = 5;
+// Technical verdict-parser capacity, independent of token consumption budgets.
+// Oversized reports fail explicitly; nothing is silently truncated.
+const MAX_AUDIT_RESPONSE_BYTES: usize = 65_536;
+
 /// Build the Rust-side audit prompt for a component.
 ///
 /// The prompt is intentionally minimal so the LLM's response is easy to parse:
@@ -89,7 +94,7 @@ pub fn code_audit_prompt(component_title: &str, component_content: &str) -> Stri
         title = component_title,
         content = component_content,
         checks = AUDIT_CHECKS,
-        n = 5,
+        n = AUDIT_CHECK_COUNT,
     )
 }
 
@@ -115,7 +120,6 @@ pub async fn run_code_audit(
     let messages = vec![ThreadMessage::user(prompt)];
 
     let config = LlmCallConfig {
-        max_tokens: Some(512),
         temperature: Some(0.0),
         force_text: true,
         ..LlmCallConfig::default()
@@ -130,19 +134,12 @@ pub async fn run_code_audit(
         }
     };
 
-    let text = match &output.response {
-        LlmResponse::Text(t) => t.clone(),
-        LlmResponse::ActionCalls { content, .. } => content.clone().unwrap_or_default(),
-        LlmResponse::Code { content, .. } => content.clone().unwrap_or_default(),
-    };
-
-    if text.is_empty() {
-        return CodeAuditResult::AuditError {
-            reason: "LLM returned empty response".into(),
-        };
+    match &output.response {
+        LlmResponse::Text(text) => parse_audit_response(text),
+        LlmResponse::ActionCalls { .. } | LlmResponse::Code { .. } => CodeAuditResult::AuditError {
+            reason: "LLM audit requires a text verdict".into(),
+        },
     }
-
-    parse_audit_response(&text)
 }
 
 // ---------------------------------------------------------------------------
@@ -151,18 +148,40 @@ pub async fn run_code_audit(
 
 /// Parse the audit response lines into a [`CodeAuditResult`].
 ///
-/// Expects up to 5 lines each starting with `PASS` or `FAIL:`.
-/// Any `FAIL` line is treated as a finding. If all lines are `PASS` (or the
-/// response is empty), returns [`CodeAuditResult::AuditClean`].
+/// Require exactly five explicit verdicts in the requested order. A malformed,
+/// missing or additional verdict is an audit error, never a clean review.
+/// This syntax check does not establish semantic approval or replace human Q2.
 fn parse_audit_response(text: &str) -> CodeAuditResult {
-    let findings: Vec<String> = text
-        .lines()
-        .filter(|l| {
-            let upper = l.trim().to_ascii_uppercase();
-            upper.starts_with("FAIL")
-        })
-        .map(|l| l.trim().to_string())
-        .collect();
+    let invalid = || CodeAuditResult::AuditError {
+        reason: "LLM audit requires exactly five PASS or FAIL: reason verdicts".into(),
+    };
+    if text.len() > MAX_AUDIT_RESPONSE_BYTES {
+        return CodeAuditResult::AuditError {
+            reason: "LLM audit response exceeds technical parser capacity".into(),
+        };
+    }
+    let mut findings = Vec::new();
+    let mut count = 0;
+    for line in text.trim().lines() {
+        count += 1;
+        if count > AUDIT_CHECK_COUNT {
+            return invalid();
+        }
+        let line = line.trim();
+        if line.eq_ignore_ascii_case("PASS") {
+            continue;
+        }
+        let Some((verdict, reason)) = line.split_once(':') else {
+            return invalid();
+        };
+        if !verdict.eq_ignore_ascii_case("FAIL") || reason.trim().is_empty() {
+            return invalid();
+        }
+        findings.push(line.to_owned());
+    }
+    if count != AUDIT_CHECK_COUNT {
+        return invalid();
+    }
 
     if findings.is_empty() {
         CodeAuditResult::AuditClean
@@ -226,17 +245,43 @@ mod tests {
     }
 
     #[test]
-    fn parse_empty_response_returns_clean() {
-        assert!(matches!(
-            parse_audit_response(""),
-            CodeAuditResult::AuditClean
-        ));
+    fn malformed_or_incomplete_response_never_passes_review() {
+        for text in [
+            "",
+            "   \n\t",
+            "looks safe",
+            "PASS",
+            "PASS\nPASS\nPASS\nPASS",
+            "PASS\nPASS\nPASS\nPASS\nPASS\nPASS",
+            "PASS\nPASS\n\nPASS\nPASS\nPASS",
+            "PASSPORT\nPASS\nPASS\nPASS\nPASS",
+            "PASS: probably\nPASS\nPASS\nPASS\nPASS",
+            "FAIL:\nPASS\nPASS\nPASS\nPASS",
+            "```\nPASS\nPASS\nPASS\nPASS\nPASS\n```",
+        ] {
+            assert!(matches!(
+                parse_audit_response(text),
+                CodeAuditResult::AuditError { .. }
+            ));
+        }
     }
 
     #[test]
     fn parse_fail_case_insensitive() {
-        let text = "fail: something bad";
+        let text = "pass\nfail: something bad\nPass\nPASS\npAsS";
         let result = parse_audit_response(text);
         assert!(matches!(result, CodeAuditResult::AuditFindings { .. }));
+    }
+
+    #[test]
+    fn oversized_valid_looking_report_fails_without_truncation() {
+        let text = format!(
+            "FAIL: {}\nPASS\nPASS\nPASS\nPASS",
+            "x".repeat(MAX_AUDIT_RESPONSE_BYTES)
+        );
+        assert!(matches!(
+            parse_audit_response(&text),
+            CodeAuditResult::AuditError { .. }
+        ));
     }
 }

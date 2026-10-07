@@ -28,7 +28,7 @@ use crate::{
     process::{ProcessFailure, ProcessLimits, encode, read_frame, transport_value, write_frame},
 };
 
-const PROTOCOL: u32 = 1;
+const PROTOCOL: u32 = 2;
 
 /// Caller-authored utility source is intentionally not an approved component.
 /// Data remains separately injected values, never Python source substitution.
@@ -36,6 +36,10 @@ const PROTOCOL: u32 = 1;
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum UtilityRequest {
     Parse {
+        source: String,
+        bounds: VmBounds,
+    },
+    InspectSource {
         source: String,
         bounds: VmBounds,
     },
@@ -49,19 +53,21 @@ pub enum UtilityRequest {
 impl UtilityRequest {
     fn bounds(&self) -> VmBounds {
         match self {
-            Self::Parse { bounds, .. } | Self::Evaluate { bounds, .. } => *bounds,
+            Self::Parse { bounds, .. }
+            | Self::InspectSource { bounds, .. }
+            | Self::Evaluate { bounds, .. } => *bounds,
         }
     }
     fn valid(&self, frame_limit: usize) -> bool {
         let (source, bounds) = match self {
-            Self::Parse { source, bounds } | Self::Evaluate { source, bounds, .. } => {
-                (source, bounds)
-            }
+            Self::Parse { source, bounds }
+            | Self::InspectSource { source, bounds }
+            | Self::Evaluate { source, bounds, .. } => (source, bounds),
         };
         bounds.valid()
             && source.len() <= bounds.max_source_bytes
             && match self {
-                Self::Parse { .. } => true,
+                Self::Parse { .. } | Self::InspectSource { .. } => true,
                 Self::Evaluate {
                     inputs,
                     max_compute_time,
@@ -155,12 +161,19 @@ pub fn inputs_within_bounds<'a>(
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum UtilityOutput {
     Parsed,
-    Evaluated { value: Value, stdout: String },
+    Inspected {
+        structure: crate::source_structure::SourceStructure,
+    },
+    Evaluated {
+        value: Value,
+        stdout: String,
+    },
 }
 impl fmt::Debug for UtilityOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Parsed => "Parsed",
+            Self::Inspected { .. } => "Inspected(<private source structure>)",
             Self::Evaluated { .. } => "Evaluated(<private result>)",
         })
     }
@@ -328,6 +341,10 @@ pub async fn execute(
                 let valid = match (&*error.request, &output) {
                     (UtilityRequest::Parse { .. }, UtilityOutput::Parsed) => true,
                     (
+                        UtilityRequest::InspectSource { source, bounds },
+                        UtilityOutput::Inspected { structure },
+                    ) => structure.valid_for(source, *bounds),
+                    (
                         UtilityRequest::Evaluate { .. },
                         UtilityOutput::Evaluated { value, stdout },
                     ) => {
@@ -408,14 +425,15 @@ fn evaluate(request: UtilityRequest, frame_limit: usize) -> Result<UtilityOutput
     if !request.valid(frame_limit) {
         return Err(VmError::kind(VmFailure::InvalidInputs));
     }
-    let (source, inputs, bounds, compute) = match request {
-        UtilityRequest::Parse { source, bounds } => (source, None, bounds, None),
+    let (source, inputs, bounds, compute, inspect) = match request {
+        UtilityRequest::Parse { source, bounds } => (source, None, bounds, None, false),
+        UtilityRequest::InspectSource { source, bounds } => (source, None, bounds, None, true),
         UtilityRequest::Evaluate {
             source,
             inputs,
             bounds,
             max_compute_time,
-        } => (source, Some(inputs), bounds, Some(max_compute_time)),
+        } => (source, Some(inputs), bounds, Some(max_compute_time), false),
     };
     let names = inputs
         .as_ref()
@@ -440,6 +458,11 @@ fn evaluate(request: UtilityRequest, frame_limit: usize) -> Result<UtilityOutput
         ..OsPolicy::default()
     });
     let Some(inputs) = inputs else {
+        if inspect {
+            return Ok(UtilityOutput::Inspected {
+                structure: crate::source_structure::inspect(&source, bounds)?,
+            });
+        }
         return Ok(UtilityOutput::Parsed);
     };
     let values = inputs

@@ -21,9 +21,10 @@ use std::{
 use brassclaw_resources::{MontyTaskBudgetError, MontyTaskClock, SharedMontyTaskBudget};
 pub mod global;
 pub mod heap;
-pub mod service;
 pub mod process;
 mod process_recipe;
+pub mod service;
+pub mod source_structure;
 pub mod transport_actor;
 pub mod utility;
 

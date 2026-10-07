@@ -15,6 +15,9 @@ brassclaw_resources = { path = "../brassclaw_resources" }
 monty = { path = "../../vendor/monty-control/crates/monty" }
 monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
 sha2 = "0.10"
+ruff_python_ast = "=0.0.14"
+ruff_python_parser = "=0.0.14"
+ruff_text_size = "=0.0.14"
 num-traits = "0.2"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }

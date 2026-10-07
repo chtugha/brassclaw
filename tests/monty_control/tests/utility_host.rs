@@ -7,6 +7,7 @@ use brassclaw_monty_host::{
     utility::{UtilityOutput, UtilityRequest, execute},
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 mod support;
 use support::{SOURCE, boot, limits, task, worker};
@@ -18,6 +19,100 @@ fn evaluate(source: &str, inputs: BTreeMap<String, serde_json::Value>) -> Utilit
         bounds: boot(SOURCE).bounds.values,
         max_compute_time: Duration::from_secs(2),
     }
+}
+
+#[tokio::test]
+async fn contained_structure_observes_real_syntax_without_running_it_or_approving_it() {
+    let source = "import os\nimport json\n# host.fake_comment()\nliteral = 'host.fake_literal() __execute_action__ eval(1)'\nvalue = host.json(operation='parse', data=inputs['text'])\nreceiver = host\nlegacy = __execute_action__\nreader = open\nresult = value\nraise RuntimeError('inspection must not run')";
+    let output = execute(
+        worker(),
+        UtilityRequest::InspectSource {
+            source: source.into(),
+            bounds: boot(SOURCE).bounds.values,
+        },
+        limits(),
+    )
+    .await
+    .unwrap();
+    assert!(!format!("{output:?}").contains("fake_literal"));
+    let UtilityOutput::Inspected { structure } = output else {
+        panic!("actual parser observations required");
+    };
+    assert_eq!(
+        structure.source_checksum,
+        format!("{:x}", Sha256::digest(source.as_bytes()))
+    );
+    assert_eq!(structure.direct_host_calls.len(), 1);
+    let site = &structure.direct_host_calls[0];
+    assert_eq!(site.attribute, "json");
+    assert_eq!(
+        &source[site.start as usize..site.end as usize],
+        "host.json(operation='parse', data=inputs['text'])"
+    );
+    assert_eq!(
+        structure.imports,
+        std::collections::BTreeSet::from(["os".into(), "json".into()])
+    );
+    assert_eq!(structure.host_value_references, 1);
+    assert_eq!(
+        structure.reserved_name_references,
+        std::collections::BTreeSet::from(["__execute_action__".into(), "open".into()])
+    );
+    assert_eq!(structure.result_store_sites, 1);
+    assert!(!structure.relative_imports);
+
+    // Multiple syntactic sites, including one nested in an argument, must not
+    // disappear merely because the result contract looks compatible.
+    let output = execute(
+        worker(),
+        UtilityRequest::InspectSource {
+            source: "result = host.json(data=host.other())".into(),
+            bounds: boot(SOURCE).bounds.values,
+        },
+        limits(),
+    )
+    .await
+    .unwrap();
+    let UtilityOutput::Inspected { structure } = output else {
+        panic!("actual nested call sites required");
+    };
+    assert_eq!(
+        structure
+            .direct_host_calls
+            .iter()
+            .map(|site| site.attribute.as_str())
+            .collect::<Vec<_>>(),
+        ["json", "other"]
+    );
+    assert_eq!(structure.host_value_references, 0);
+
+    let syntax = execute(
+        worker(),
+        UtilityRequest::InspectSource {
+            source: "def broken(:".into(),
+            bounds: boot(SOURCE).bounds.values,
+        },
+        limits(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(syntax.kind, ProcessFailure::Vm(VmFailure::Python));
+    assert!(syntax.exit_status.unwrap().success());
+
+    let mut bounds = boot(SOURCE).bounds.values;
+    bounds.max_value_nodes = 3;
+    let capacity = execute(
+        worker(),
+        UtilityRequest::InspectSource {
+            source: "result = host.json(data='real source')".into(),
+            bounds,
+        },
+        limits(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(capacity.kind, ProcessFailure::Vm(VmFailure::ResourceLimit));
+    assert!(capacity.exit_status.unwrap().success());
 }
 
 #[tokio::test]
