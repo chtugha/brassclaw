@@ -35,12 +35,13 @@ Activate generation (separate operation)
 
 Redesign / Create prefix (separate Tier-1 Recipes)
   -> obtain explicit confirmation of the provider-assisted design request
-  -> pin Prefix-Maker, existing design/source evidence and provider/target metadata
-  -> provider proposes a new versioned design or new profile draft
-  -> retain proposal; validate contracts and compile a quarantined trial generation
+  -> refresh/review applicable content and architecture evidence; pin current snapshot
+  -> pin Prefix-Maker, model-specific design/source evidence and provider/target metadata
+  -> provider proposes a model-specific design or new profile draft
+  -> retain proposal; validate contracts and compile a complete updated candidate generation
   -> show design/content diff and quality/capacity evidence
-  -> operator reviews and accepts a validated design revision
-  -> Generate uses that revision; Activate remains a separate operation
+  -> operator accepts validated design and publishes its exact updated generation
+  -> later Generate uses that model-specific revision; Activate remains separate
 ```
 
 ### 1.1 What one click must deliver
@@ -501,6 +502,15 @@ Use the accepted DB-only provider gateway and actual sink contracts; introduce n
 special Rust workflow executor or guessed API. The design provider may differ from
 the target model: pin both identities and capabilities explicitly.
 
+A Redesign task updates both design and knowledge: collect the current eligible
+approved component catalogue, release/architecture documents and applicable model/
+cache evidence under the configured refresh/review policy. Preserve newly collected
+unreviewed sources in quarantine and report the prerequisite rather than treating
+them as current authoritative knowledge. Pin the coherent current snapshot after
+this stage; do not merely reformat an old generation or wait for a later Generate
+click to incorporate the new information. Preserve the old generation as the
+comparison baseline and return a complete updated candidate as the task result.
+
 A design task pins an approved fresh Prefix-Maker generation/composite, current
 profile/design/generation, source/evidence manifests, requested goals, hard coverage
 requirements and target metadata. For new profiles the existing-profile reference
@@ -529,15 +539,20 @@ implementation work, not executable text or a silently ignored setting. If a des
 requires new executable components, route them through separate supported authoring,
 Q1/behavioral review/human Q2 and registration; do not treat the popup as approval.
 
-Compile a quarantined trial with pinned sources and the proposed design; require
+Compile a complete quarantined candidate generation with the current pinned sources
+and proposed model-specific design, including required base/domain composites; require
 evidence preservation, coverage, formatting, capacity and reproducibility checks.
 Optional provider evaluations are explicit child jobs with first-pass/repair/transfer
 results and cache correctness separated. Show Unsupported, Capacity blocked or
 Validation failed rather than claiming an upgrade merely because a model approved it.
 Present old/new design and content diffs, omitted-unit reasons and receipts for human
-review. Persist the accepted design as a new immutable revision with review evidence;
-authored component changes still require Q1 and human Q2. Selecting it for future
-Generate is explicit and revision-checked, never automatic production activation.
+review. Accept redesign records the new immutable model-specific design and publishes
+its exact validated updated generation through a fenced, reconciled operation. Reuse
+the candidate's verified artifacts, not a second unpinned compile. If content/design/
+target changed meanwhile, report stale and require explicit rebuild/review; do not
+accept yesterday's snapshot as current. Authored component changes still require Q1
+and human Q2. Select the accepted design for future builds independently of production
+prefix activation; the new generation is Generated, not automatically Effective.
 
 Generate snapshots the applicable approved knowledge using the selected immutable
 design. Identical design/target/source inputs reproduce identical output; new approved
@@ -550,6 +565,58 @@ Prefix-Maker may itself have a Redesign button: use its previously approved fres
 generation to propose its successor. It cannot approve itself or use its unvalidated
 successor as the review authority. If no usable predecessor exists, restore/build the
 reviewed bootstrap reference first; do not fall back to an ungrounded model call.
+
+### 5.3 Database-owned model specifications and model-specific designs
+
+Prefix length, formatting and cache strategy are model-dependent. Persist model
+specifications and design revisions in PostgreSQL through the final provider catalogue
+and prefix stores, not browser state, environment variables or a second provider
+registry. Reuse/extend the DB provider/model identity contract from simplified-v3 §10;
+define migrations/DTOs explicitly where current storage lacks these records.
+
+| Proposed record | Required contract |
+| --- | --- |
+| Model specification revision | Stable registered model identity plus exact weights/config/tokenizer/template identities, technical context/output limits, supported roles/tools/thinking/grammar, architecture and attention/recurrent-state facts with versioned evidence and Unknown where unavailable. Display name alone is not identity. |
+| Target runtime/cache revision | DB provider/model binding, injection adapter, actual deployment/backend/KV and recurrent dtypes, group/page/chunk/checkpoint layout, effective limits and capability/qualification receipts. Model architecture and deployment-specific cache settings remain separate. |
+| Model design revision | Immutable formatting/ordering/whole-unit selection, teaching and rendering rules, explicit prefix-capacity/reserve contract and supported compiler options, linked to exact model specification and compatible target runtime revisions, Prefix-Maker proposal/review evidence and schema/hash. |
+| Profile/model design selection | Revision-checked mapping from profile and consumer to an accepted model design/coverage revision and compatible target; profile requirements remain independent of reusable model formatting defaults. |
+
+A model can have multiple historical designs and profile-specific overrides; do not
+make one global prefix token target apply to every profile/model. Shared defaults
+are immutable reusable references with explicit overrides, not copied mutable blobs.
+Record measured counts and full-envelope/output allowance; token budgets disabled
+does not remove model context limits. A supported chunk-alignment strategy may be
+part of a target-specific design, but changing runtime cache settings invalidates its
+compatibility evidence without inventing different underlying model architecture.
+
+Add a Tier-1 Generate model design Recipe: select an active registered model/target,
+collect verified architecture/runtime evidence, use a fresh compatible Prefix-Maker
+on the design provider, retain the proposed declarative design, validate supported
+rendering/capacity options and trial examples, then expose it for acceptance. This
+creates design records, not a prefix for every profile. Generate on a profile resolves
+the accepted profile/model selection and compiles current approved content model-free.
+Redesign additionally reviews that profile's knowledge and produces its complete
+updated generation. Bootstrap model designs are reviewed shipped records and need
+no provider call; unsupported new targets are explicit setup/design prerequisites.
+
+Provider changes, Kohai model changes and Sempai provider/model changes resolve the
+appropriate consumer's design and prefix generation independently. Prefix-Maker also
+needs a generation compatible with its actual design-provider model, which may differ
+from the model it is designing for. Never reuse an Ornith prefix/design solely because
+another provider has the same friendly model name. Reuse exact compatible records
+where evidence permits; rebuild rendering/capacity when tokenizer/template/effective
+limits differ, and requalify caches when only runtime/cache identity differs.
+
+On a provider/model edit, show affected consumers/profiles and accepted-compatible,
+Needs generation, Needs model design or Incompatible states. An explicit confirmed
+switch workflow may queue model-free regeneration for accepted designs; do not hide
+provider-assisted redesign calls inside Generate or provider settings save. If no
+compatible prefix is ready, keep the previous working selection until a staged switch
+commits, or expose the newly selected target as blocked under its explicit lifecycle.
+Never silently serve the old incompatible prefix, downgrade to a tiny fallback or
+disable deterministic Tier-0/management paths. New tasks use revision-checked selected
+targets/designs; retained tasks keep pinned references subject to the provider's live
+availability/policy contract. Preserve old model designs and generation history.
 
 ## 6. Installation-time DB seeding: preferred combined approach
 
@@ -578,6 +645,9 @@ to reconstruct the base prefix.
    body used by a running task. Never seed generated
    summaries back as authoritative originals.
 5. Register the six seeded profile definitions and compiler artifacts at installation.
+   Seed reviewed model specifications/design defaults only for supported pinned
+   targets with provenance; do not guess architecture for arbitrary provider names.
+   Preserve operator model-design revisions, accepted bindings and history on upgrade.
    Optionally import an existing verified domain generation. External domain source
    fetches and expensive generation are operator jobs, not boot-time network/GPU
    prerequisites. A missing domain bundle is visible as Not generated.
@@ -602,7 +672,8 @@ not existing tables/API fields:
 | Record | Required content |
 | --- | --- |
 | Prefix profile | Stable profile ID, display metadata, registered compiler/version/checksum, source/coverage policy, model targets and supported validation adapters. |
-| Design revision/proposal | Stable profile identity, immutable declarative design/schema revision and checksum, predecessor, pinned Prefix-Maker/provider/source/target references, raw proposal, diff, validation/trial receipts and acceptance evidence. Draft proposals never become active designs by a status label alone. |
+| Design revision/proposal | Model-specific declarative design/schema revision and checksum, profile/consumer bindings, predecessor, pinned Prefix-Maker/design-provider/model-specification/source/target references, raw proposal, diff, exact updated candidate generation and validation/acceptance evidence. Draft proposals never become accepted designs by a status label alone. |
+| Model specification/design selection | DB-owned versioned records and mappings from section 5.3, with explicit compatibility/Unknown states and retained revisions; no browser-only model-formatting configuration. |
 | Prefix generation | Content-addressed ID, profile ID, compiler/input snapshot identities, full bundle text, evidence cards, immutable source/dependency manifest, model/tokenizer/template hashes, exact token counts and quality results. |
 | Generation job | Durable request/run ID, profile, pinned input references, state/stage, timestamps, logical step-invocation references, execution attempts, cancellation/fencing, checkpoints/artifacts and classified errors. |
 | Active selection | Provider/model/consumer binding to one immutable generation or explicitly compiled composite; desired/effective state and revision for compare-and-swap. |
@@ -688,8 +759,9 @@ domain. Do not mark “fresh” optimistically from a job admission response.
 Place a button labelled **Redesign** immediately beside Generate / Regenerate on
 every seeded/custom profile row. Before admission, open an accessible confirmation
 popup naming the profile/current design, design provider/model and target, permitted
-source data sent to that provider, requested goal and the expected outcome: a draft
-design for review, with no active prefix changed. Offer Cancel and Confirm redesign;
+source data sent to that provider, requested goal and the expected outcome: refreshed
+knowledge plus a model-specific design and complete updated candidate generation for
+review, with no active prefix changed. Offer Cancel and Confirm redesign;
 Escape/cancel makes no job or provider call. Revalidate prerequisites and exact
 revisions server-side on confirmation. If they changed, require confirmation of the
 updated request. Persist confirmed request identity/idempotency before dispatch so
@@ -697,11 +769,13 @@ double clicks, reconnects or recovery do not create duplicate confirmed effects.
 This is the requested UX confirmation, not a per-Tool authorization lease; current
 global policy, external authentication and technical limits still apply independently.
 
-Redesign shows durable progress, raw proposal/diff, trial validation and a separate
-Accept design action. Failed/cancelled/rejected proposals preserve the selected design,
-generated artifacts and active selection. Accept design updates only the saved design
-for subsequent Generate; a trial may be reused only when its exact accepted inputs
-match. Source refresh is not Redesign, and Regenerate never asks a model to rewrite
+Redesign shows content/architecture refresh, durable progress, raw design/content diff,
+complete candidate validation and a separate Accept redesign action. Failed/cancelled/
+rejected proposals preserve the selected design, generated artifacts and active
+selection. Acceptance records the new model-specific design and publishes the exact
+updated candidate generation; no extra Generate click is required to obtain it.
+Activation remains separate. Source-only refresh does not change design; Redesign
+includes current knowledge refresh, while Regenerate never asks a model to rewrite
 the design. Missing provider/fresh Prefix-Maker/target evidence disables Redesign with
 an actionable explanation while offline Generate remains available.
 
@@ -716,6 +790,25 @@ not eligible serving selections. On validated human acceptance, register the cus
 profile/design, then expose it in the same list with Generate and Redesign. Registration,
 generation and activation remain distinct. Seed upgrades cannot overwrite custom
 profiles/designs; removed drafts cannot break retained job/artifact references.
+
+Add a **Model Designs** area/tab in the same Prefix settings section. Its selector
+lists active DB-registered provider/model targets, explicitly identifying the model
+being designed for and the separate provider doing the design. **Generate model
+design** opens a confirmation summary, then admits the section 5.3 Tier-1 Recipe.
+List already generated model designs, including retained designs for inactive models,
+with model/provider identity, specification/design revision, formatting summary,
+prefix-size/reserve rules, evidence provenance, validation/acceptance status, compatible
+targets, profile bindings and affected/stale generations. Show unknown architecture
+and missing prerequisites rather than guessing cache features. Details expose hashes
+and geometry; ordinary copy explains what will fit and which profiles use the design.
+
+Offer View/Review, Accept model design and explicit profile-binding controls; proposals
+do not overwrite accepted records. Review the impact of selecting another design on
+Kohai, Sempai and Prefix-Maker separately, and offer explicit Generate/Redesign actions
+for affected profiles. Provider/model changes surface compatibility and missing-build
+states here. Merely selecting a model in the form makes no provider call, prefix build,
+deployment change or active selection mutation. The list comes from persisted records
+and survives reload/restart, including historical designs and their receipts.
 
 The primary Generate action uses a registered saved build specification: profile,
 consumer, optional target revision, accepted source-refresh policy and reviewed
@@ -747,6 +840,8 @@ Retain the current API family. Proposed extensions, subject to final DTO review:
 | Redesign | Proposed `POST /api/webchat/v2/prefixes/{name}/redesign-jobs`: confirmed typed request with exact existing design/generation, registered design-provider/target references and goals; returns durable job reference (`202`). |
 | Create profile draft/design | Proposed `POST /api/webchat/v2/prefix-profile-drafts`: validated form and confirmed provider-assisted design request; allocates draft identity and returns its durable job reference. |
 | Review/accept design | Proposed design-proposal detail and explicit acceptance mutations under the profile/draft family; require exact proposal/checksum, predecessor revision and validation/review evidence. No acceptance by arbitrary JSON overwrite. |
+| Model design catalogue/jobs | Proposed `GET /api/webchat/v2/prefix-model-designs` and `POST /api/webchat/v2/prefix-model-design-jobs`; read persisted model/design records and admit confirmed design jobs using registered model/target/design-provider references. |
+| Model design acceptance/binding | Proposed detail/acceptance and profile-model binding mutations under that API family; exact model/design/schema revisions, compatibility evidence and compare-and-swap, never browser-authored runtime facts. |
 | Observe/cancel | `GET /api/webchat/v2/prefix-jobs/{id}` and `POST /api/webchat/v2/prefix-jobs/{id}/cancel`; reuse runtime events where available. |
 | Generation details | `GET /api/webchat/v2/prefixes/{name}/generations/{id}` with manifest, source and quality projection. |
 | Activation/warm | Explicit mutation operations under the same profile family with registered target identity and exact generation, not arbitrary host paths or shell commands. |
@@ -1070,6 +1165,9 @@ UUIDs, unsupported store fields or false Tier-0/Q2/runtime claims.
 Include the saved build specification, six seeded profile coverage matrices and custom-profile coverage contracts, artifact/
 identity schemas, worker dependency/resource contract and a target capability matrix
 for injection, token inspection, grammar, native/external cache and validation support.
+Specify section 5.3's model/specification/runtime/design identities, immutable schemas,
+profile/consumer selection rules, provider-switch impact and the confirmed design-job
+contracts before implementing database or UI fields. Unknown capabilities stay explicit.
 
 ### Gate A1 — Runtime prerequisites for production Recipe jobs
 
@@ -1115,7 +1213,7 @@ Gate A1. Label intermediate artifacts and surfaces as development/unavailable.
 | Phase C | Phase 0a durable execution/selection contracts and Phase 6 versioned storage, reference preservation and recovery. |
 | Phase C1 | Sempai reviewer reference/packet/proposal contracts, Phase 0a authoring validation and human Q2, with consumer wiring accepted in C2. |
 | Phase C2 | §10 DB-only provider lifecycle, live global policy and applicable Phase 7 production-caller acceptance. |
-| Phase C3 | Accepted Gate A1/C/C2 paths plus immutable design/proposal contracts and Prefix-Maker bootstrap; authored executable changes follow Phase 0a Q1/human Q2 and registration. |
+| Phase C3 | Accepted Gate A1/C/C2 paths plus DB model specifications/designs/bindings, immutable proposal/current-content generation contracts and Prefix-Maker bootstrap; authored executable changes follow Phase 0a Q1/human Q2 and registration. |
 | Phase D | Phase 5 instance operator UI/API; reachable actions depend on accepted Gate A1/C/C2 paths, with C3 additionally required for design operations. Prefix knowledge profiles do not introduce security RuntimeProfiles or product editions. |
 | Phase E | Phase 7 answer/cache acceptance and §5.1 performance evidence; quality and cache reuse remain separate measurements. |
 | Production cutover | Phase 8 coordinated migration and component-cutover gate after the applicable prerequisite matrices pass. |
@@ -1258,8 +1356,10 @@ receipts. No service/package/deployment mutation occurs from a WebUI build/warm 
 ### Phase C3 — Prefix-Maker, Redesign and custom profile creation
 
 Seed the reviewed Prefix-Maker package/design and register its model-free compiler.
-Implement immutable declarative design/proposal storage, compatible shared-engine
-options and exact acceptance contracts. Author the Tier-1 Redesign/Create Recipes,
+Implement section 5.3's DB model specifications/runtime identities, reusable model
+designs, profile/consumer bindings, immutable proposal storage and migration/retention
+contracts. Implement compatible shared-engine options and exact acceptance contracts.
+Author the Tier-1 Redesign/Create/Generate model design Recipes,
 reusing existing provider, export, validation and proposal primitives. Production
 calls require Gate A1, Phase C/C2, usable Prefix-Maker and the lossless proposal path;
 do not activate unsupported workflows or route failures through Tier 2.
@@ -1273,8 +1373,22 @@ compiler execution. Check malformed/provider-failed/cancelled/duplicate requests
 recovery after a possible provider effect, stale proposal acceptance, custom-profile
 identity conflicts, human rejection and Prefix-Maker self-redesign with the old
 approved generation. New design selection never activates a generation or bypasses
-authored Q1/human Q2. Identical approved design and source inputs reproduce output;
-new approved components change content while keeping the selected design contract.
+authored Q1/human Q2. Redesign must collect current approved content/architecture and
+produce a complete updated generation; acceptance publishes the exact validated
+candidate together with its design evidence, without another manual Generate.
+Identical approved model-specific design and source inputs reproduce output; new
+approved components change content while keeping the selected design contract.
+
+Exercise two real registered models with different tokenizer/template/context and
+architecture capabilities through the production DB/provider path. Verify separate
+formatting/capacity designs and profile bindings, Unknown model/cache facts, reusable
+compatible defaults and incompatible overrides. Test design-provider versus target
+model separation, Kohai/Sempai provider/model changes independently, same-name/different
+weights, template/context/backend edits, missing design/prefix readiness, staged switch,
+concurrent acceptance/switch and restart persistence. No stale incompatible generation
+serves new work, no hidden LLM design call occurs on Generate, and old tasks/history
+retain their references. Cache-only changes requalify runtime evidence; do not rebuild
+identical reference content needlessly. Seeded/custom model designs survive upgrades.
 
 ### Phase D — WebUI vertical
 
@@ -1287,12 +1401,14 @@ within the domain/reviewer rows; activation selects a published eligible composi
 Show the Sempai row's source quality, reviewer target/readiness and proposal
 validation guidance. Keep review enablement separate from reference generation.
 Show Prefix-Maker readiness, Redesign beside each Generate button, the confirmation
-popup, proposal/diff review and Accept design controls. Add the Create Prefix tab and
+popup, proposal/diff review and Accept redesign controls. Add the Create Prefix tab and
 custom-profile draft/registration lifecycle through the same facade/API/runtime path.
+Add Model Designs selection/generation/list/review/binding controls and affected
+consumer readiness on provider/model changes; expose persisted historical designs too.
 Generate requires Gate A1 and Phase C acceptance. Activate/Rollback/Warm requires
 Phase C2 acceptance for the specific registered provider target. Until then, show
 disabled actions with their missing prerequisite; enforce the same gate server-side.
-Redesign/Create/Accept design require the accepted Phase C3 path; their absence must
+Redesign/Create/model-design generation/acceptance require the accepted Phase C3 path; their absence must
 not disable the model-free Generate workflow.
 
 Acceptance: real composed-route tests and browser checks for first Generate,
@@ -1309,7 +1425,10 @@ Exercise popup cancel/Escape (zero admission/provider calls), explicit confirmat
 changed prerequisites, double-submit/reconnect, provider unavailable, stale/rejected
 proposals, new-profile creation and custom profiles surviving reseed. Verify keyboard
 focus and accessible dialog/tab labels. No button or popup implicitly accepts a model
-proposal, approves a component or activates a prefix.
+proposal, approves a component or activates a prefix. Verify active-model selection,
+separate design-provider selection, generated model-design history after reload,
+validation/acceptance and explicit bindings, switch readiness for both consumers,
+and Redesign returning a complete current-content generation rather than design only.
 
 ### Phase E — Extended cache and answer quality
 
@@ -1404,6 +1523,11 @@ this plan authorizes claiming simplified-v3 runtime gaps are solved by prompt te
 Each profile also exposes confirmed provider-assisted Redesign, and Create Prefix
 can produce a reviewed custom profile/design. These paths preserve existing designs
 and active selections until their separate acceptance/activation operations.
+Redesign produces a complete updated generation with current approved knowledge;
+accepted per-model designs, size/formatting rules and profile bindings persist in DB.
+Model Designs lists generated revisions and can generate a design for an active
+registered model. Provider/Kohai/Sempai model changes use compatible designs/generations
+or report their explicit readiness prerequisite rather than serving mismatched context.
 
 ### Final one-click acceptance matrix
 
@@ -1417,10 +1541,13 @@ and active selections until their separate acceptance/activation operations.
 | Validate knowledge and teaching | Required coverage, complete evidence units, independently specified behavior checks and transitive validator receipts; first-pass/repair/transfer results remain separate. |
 | Activate with enabled external caching | Accepted exact injection plus qualified real restore correctness; known-corrupt or incompatible paths block activation without changing the deployment. |
 | Inspect an active generation | Desired/effective selection, freshness, capacity, model quality and cache observations are distinct and traceable; retained tasks keep their pinned revisions. |
-| Cancel or confirm Redesign | Cancel makes no job/provider call; confirmation admits one pinned Tier-1 task and returns a retained proposal/trial, without replacing the existing design or active prefix. |
-| Accept a redesign, then Generate | Exact reviewed design revision is selected explicitly; deterministic compilation uses it with current approved content, and production activation remains separate. |
+| Cancel or confirm Redesign | Cancel makes no job/provider call; confirmation admits one pinned Tier-1 task, refreshes current approved content/architecture and returns a model-specific proposal plus complete updated candidate, without replacing the existing design or active prefix. |
+| Accept a redesign | Exact reviewed model-specific design and its validated updated generation are recorded/published without another Generate click; later Generate reuses the accepted design and production activation remains separate. |
 | Create a new prefix | Same-section Create Prefix tab yields a validated draft and human-accepted registered custom profile; it appears with Generate/Redesign and survives reseeding. |
 | Redesign Prefix-Maker itself | Previous approved fresh generation reviews a quarantined successor; bootstrap and approval never depend on that unvalidated successor. |
+| Generate model design | Active registered target and separate design provider yield a persisted, validated proposal with model-specific formatting/capacity rules; acceptance and profile binding are explicit. |
+| Change Kohai/Sempai provider or model | Resolve exact compatible model/profile/consumer design and generation, or report Needs design/generation/Incompatible; no old mismatched prefix or hidden redesign call. |
+| Reopen Model Designs | Generated and historical model designs, evidence, acceptance and bindings survive reload/restart and reseeding. |
 
 Run this matrix through the production facade, composed ingress, Recipe worker and
 browser path. Script-only success or a screenshot of buttons does not close the plan.
