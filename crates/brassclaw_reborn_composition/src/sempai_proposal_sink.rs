@@ -8,10 +8,10 @@
 //!
 //! # Proposal shapes
 //!
-//! - **`proposed_recipe_updates`** — each blob is expected to carry at
-//!   minimum a `"name"` string and either a `"steps"` array (recipe) or
-//!   a `"description"` field.  Missing or malformed blobs are skipped
-//!   (logged at debug).
+//! - **`proposed_recipe_updates`** — each blob is expected to carry
+//!   `"name"` and `"description"` strings and the supported Recipe constructor
+//!   fields, including IBS descriptions, variants and dependencies. Unknown
+//!   fields and malformed types are rejected, never silently projected away.
 //!
 //! - **`proposed_intent_examples`** — each blob carries at minimum an
 //!   `"input"` string (the example text).  The example is stored as a
@@ -22,7 +22,10 @@
 //!
 //! - **`proposed_components`** (§0.23.6) — each blob carries a `class_code`
 //!   and a raw JSON payload.  The sink dispatches each entry to the correct
-//!   class table.  Unsupported class codes are skipped with a debug log.
+//!   class table. Unsupported class codes are reported without inserting a row.
+//!
+//! This is the legacy pending-row/queue adapter, not immutable v3 review
+//! admission or approval. Nested authoring contracts still need Q1 and human Q2.
 
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 mod inner {
@@ -33,11 +36,76 @@ mod inner {
         ComponentProposal, InterceptorError, ProposalSubmitResult, SempaiProposalSink,
     };
     use brassclaw_pg::PgPool;
-    use tracing::debug;
+    use serde::Deserialize;
+    use serde_json::Value;
+    use tracing::{debug, warn};
+    use uuid::Uuid;
 
     use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
     use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
     use crate::validation_queue::ValidationQueueStore;
+
+    // Only authorable constructor fields cross this boundary. Scope, identity,
+    // source, status, approval, tier and integrity checksums belong to the host.
+    // Structured field contents remain candidate data for Q1, not executable
+    // source or evidence that their schema/behavior has passed review.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RecipeProposal {
+        name: String,
+        description: String,
+        #[serde(default, deserialize_with = "present_json")]
+        trigger: Option<Value>,
+        #[serde(default)]
+        steps: Vec<Value>,
+        prior_knowledge_content: Option<String>,
+        #[serde(default)]
+        override_prompt_creation: bool,
+        #[serde(default)]
+        consumer_tags: Vec<String>,
+        #[serde(default, deserialize_with = "present_json")]
+        intent_examples: Option<Value>,
+        #[serde(default, deserialize_with = "present_json")]
+        step_descriptions: Option<Value>,
+        #[serde(default, deserialize_with = "present_json")]
+        variants: Option<Value>,
+        #[serde(default, deserialize_with = "present_json")]
+        dependency_registry: Option<Value>,
+        validates_class_code: Option<i16>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct PythonCodeProposal {
+        name: String,
+        description: String,
+        content: String,
+        prior_knowledge_content: Option<String>,
+        #[serde(default)]
+        override_prompt_creation: bool,
+        #[serde(default)]
+        consumer_tags: Vec<String>,
+        #[serde(default, deserialize_with = "present_json")]
+        intent_examples: Option<Value>,
+        #[serde(default, deserialize_with = "present_json")]
+        dependency_registry: Option<Value>,
+        #[serde(default)]
+        includes: Vec<Uuid>,
+    }
+
+    // SQL NULL (absent field) and a present JSON null remain distinguishable.
+    fn present_json<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Value>, D::Error> {
+        Value::deserialize(deserializer).map(Some)
+    }
+
+    fn pending_tags(mut tags: Vec<String>) -> Vec<String> {
+        if !tags.iter().any(|tag| tag == "05:validator") {
+            tags.push("05:validator".into());
+        }
+        tags
+    }
 
     /// Postgres-backed [`SempaiProposalSink`].
     ///
@@ -47,8 +115,8 @@ mod inner {
     ///
     /// All proposals are non-builtin — they must go through the Q1→Q2
     /// validation queue before becoming usable. `create_and_submit` on the
-    /// recipe/python_code stores ensures every inserted row immediately gets
-    /// a `reborn_validation_queue` entry at state 1.
+    /// recipe/python_code stores commits the draft and its state-1 queue entry
+    /// together. No passing review or activation is recorded here.
     #[derive(Clone)]
     pub(crate) struct PgSempaiProposalSink {
         recipe_store: PgRecipeStore,
@@ -84,8 +152,8 @@ mod inner {
         ///
         /// Uses `create_and_submit` so the row is immediately tracked by
         /// `reborn_validation_queue` (state 1). The row carries
-        /// `05:validator` in `consumer_tags` so it is invisible to consumers
-        /// until a human approves it via Q2 (spec §3.9).
+        /// `05:validator` in `consumer_tags`; pending validation status prevents
+        /// ordinary delivery. Tags alone are never approval evidence.
         async fn insert_recipe_proposal(
             &self,
             blob: &serde_json::Value,
@@ -93,46 +161,31 @@ mod inner {
             project_id: &str,
             source: &str,
         ) -> bool {
-            let name = match blob.get("name").and_then(|v| v.as_str()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => {
-                    debug!("sempai_proposal: recipe blob missing name — skipped");
-                    return false;
-                }
+            let Ok(proposal) = RecipeProposal::deserialize(blob) else {
+                // Parser diagnostics can contain candidate values: don't log
+                // private model/source data just to report a rejected shape.
+                warn!("sempai_proposal: unsupported recipe fields or malformed field types");
+                return false;
             };
-            let description = blob
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let trigger = blob.get("trigger").cloned();
-            let steps = blob.get("steps").cloned().unwrap_or(serde_json::json!([]));
-            let prior_knowledge_content = blob
-                .get("prior_knowledge_content")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let intent_examples = blob.get("intent_examples").cloned();
 
             let row = NewPgRecipe {
                 tenant_id: self.tenant_id.clone(),
                 user_id: user_id.to_string(),
                 agent_id: self.agent_id.clone(),
                 project_id: project_id.to_string(),
-                name,
-                description,
-                trigger,
-                steps,
-                prior_knowledge_content,
-                override_prompt_creation: false,
-                // New rows start with 05:validator so they are invisible to
-                // consumers until an operator validates them (spec §3.9).
-                consumer_tags: vec!["05:validator".to_string()],
-                intent_examples,
+                name: proposal.name,
+                description: proposal.description,
+                trigger: proposal.trigger,
+                steps: Value::Array(proposal.steps),
+                prior_knowledge_content: proposal.prior_knowledge_content,
+                override_prompt_creation: proposal.override_prompt_creation,
+                consumer_tags: pending_tags(proposal.consumer_tags),
+                intent_examples: proposal.intent_examples,
                 source: source.to_string(),
-                step_descriptions: None,
-                variants: None,
-                dependency_registry: None,
-                validates_class_code: None,
+                step_descriptions: proposal.step_descriptions,
+                variants: proposal.variants,
+                dependency_registry: proposal.dependency_registry,
+                validates_class_code: proposal.validates_class_code,
             };
 
             match self
@@ -145,7 +198,7 @@ mod inner {
                     true
                 }
                 Err(err) => {
-                    debug!(error = %err, "sempai_proposal: failed to insert+submit recipe row — skipped");
+                    warn!(error = %err, "sempai_proposal: recipe draft transaction failed");
                     false
                 }
             }
@@ -161,39 +214,26 @@ mod inner {
             user_id: &str,
             project_id: &str,
         ) -> bool {
-            let name = match blob.get("name").and_then(|v| v.as_str()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => {
-                    debug!("sempai_proposal: python_code blob missing name — skipped");
-                    return false;
-                }
+            let Ok(proposal) = PythonCodeProposal::deserialize(blob) else {
+                warn!("sempai_proposal: unsupported PythonCode fields or malformed field types");
+                return false;
             };
-            let description = blob
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let content = blob
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
 
             let row = NewPgPythonCode {
                 tenant_id: self.tenant_id.clone(),
                 user_id: user_id.to_string(),
                 agent_id: self.agent_id.clone(),
                 project_id: project_id.to_string(),
-                name,
-                description,
-                content,
-                prior_knowledge_content: None,
-                override_prompt_creation: false,
+                name: proposal.name,
+                description: proposal.description,
+                content: proposal.content,
+                prior_knowledge_content: proposal.prior_knowledge_content,
+                override_prompt_creation: proposal.override_prompt_creation,
                 source: "sempai_proposal".to_string(),
-                consumer_tags: vec!["05:validator".to_string()],
-                intent_examples: None,
-                dependency_registry: None,
-                includes: vec![],
+                consumer_tags: pending_tags(proposal.consumer_tags),
+                intent_examples: proposal.intent_examples,
+                dependency_registry: proposal.dependency_registry,
+                includes: proposal.includes,
                 content_checksum: None,
             };
 
@@ -207,7 +247,7 @@ mod inner {
                     true
                 }
                 Err(err) => {
-                    debug!(error = %err, "sempai_proposal: failed to insert+submit python_code row — skipped");
+                    warn!(error = %err, "sempai_proposal: PythonCode draft transaction failed");
                     false
                 }
             }
@@ -245,7 +285,7 @@ mod inner {
                     .and_then(|v| v.as_str())
                     .is_none_or(str::is_empty)
                 {
-                    debug!(
+                    warn!(
                         idx,
                         "sempai_proposal: proposed_intent_example missing input — skipped"
                     );
@@ -294,10 +334,10 @@ mod inner {
                             .await
                     }
                     other => {
-                        debug!(
+                        warn!(
                             idx,
                             class_code = other,
-                            "sempai_proposal: unsupported class_code — skipped"
+                            "sempai_proposal: unsupported class_code — not submitted"
                         );
                         false
                     }
@@ -318,3 +358,7 @@ mod inner {
 
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) use inner::PgSempaiProposalSink;
+
+#[cfg(all(test, feature = "postgres", feature = "root-llm-provider"))]
+#[path = "sempai_proposal_sink_tests.rs"]
+mod tests;

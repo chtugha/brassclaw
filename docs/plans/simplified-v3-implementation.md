@@ -2792,3 +2792,44 @@ review admission, actual trusted validators, whole-workflow/protected-root and
 controlled-seed evidence, coherent activation and the normal global factory,
 resource and continuation cutover remain required. The original seven composition
 failures remain unresolved; normal runtime still constructs PersistentMontyDriver.
+
+### 2026-10-07 — Reconcile validator/prefix plans and retain Sempai draft fields
+
+Read validator_v3.md and docs/plans/prefix_v3_upgrade.md completely. Their review,
+bootstrap, catalogue, provider and prefix gates remain prerequisites for the
+production global cutover, rather than approval that can be inferred from draft
+storage. The next repair addresses the prefix plan's observed proposal loss.
+
+The actual PgSempaiProposalSink now decodes the supported class-21/22 constructor
+fields without discarding IBS descriptions, variants, dependency registries,
+PythonCode includes, prior knowledge, override settings or routing metadata.
+Unknown top-level fields and malformed typed fields are reported and rejected;
+host scope, identity, provenance, approval and tier cannot come from the model.
+Optional JSON values preserve absence versus JSON null. Candidate nested contracts
+remain pending data for Q1, not proven valid or executable components.
+
+Recipe/PythonCode creation and queue submission now share the author's transaction.
+The prior two-transaction path could leave an orphan row after queue failure.
+V105 repairs another actual blocker: V052's PythonCode source constraint rejected
+every `sempai_proposal` write. The new migration admits that origin without
+changing pending status or the existing system-seed rules. Store diagnostics keep
+SQLSTATE without private candidate rows. See
+[the supported persistence contract](../reborn/contracts/sempai-draft-persistence.md).
+
+Five real PostgreSQL caller regressions passed on Rust 1.98 with skills-db: three
+Sempai cases and two shared queue cases. They cover both proposal transports,
+complete supported fields/source, pending delivery exclusion, unsupported fields,
+malformed booleans/includes, repeatable provenance migration, queue/commit failure
+rollback, known-failure retry and duplicate queue rejection. Checks ran serially
+in screen with the required disk checks/cleanups. Composition skills-db strict
+all-target lint passed without warnings. Changed documentation links and
+`git diff --check` passed; no dependency/API edge or frontend changed.
+Logs: `/private/tmp/brassclaw-sempai-v3-{native,queue,lints}.log`.
+
+This is a repair of the legacy proposal transport, not validator_v3 Step 2's
+complete migration. Sempai still needs immutable review identities, complete
+proposed dependency selection, unknown-commit reconciliation, raw-byte duplicate
+key rejection and durable review admission. No validator, Recipe, provider or
+prefix was approved/activated. The original seven failures, normal global factory,
+resource/settings and continuation cutover remain open; their unchanged tests
+were not rerun for this storage repair.

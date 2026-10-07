@@ -77,7 +77,11 @@ fn map_pool(e: deadpool_postgres::PoolError) -> PgPythonCodeStoreError {
 
 fn map_pg(e: tokio_postgres::Error) -> PgPythonCodeStoreError {
     PgPythonCodeStoreError::Db {
-        reason: e.to_string(),
+        // Constraint details can contain the entire private proposed row.
+        reason: match e.code() {
+            Some(code) => format!("SQLSTATE {}", code.code()),
+            None => e.to_string(),
+        },
     }
 }
 
@@ -246,11 +250,18 @@ impl PgPythonCodeStore {
         &self,
         row: NewPgPythonCode,
     ) -> Result<Uuid, PgPythonCodeStoreError> {
+        let client = self.pool.get().await.map_err(map_pool)?;
+        Self::insert_on(&**client, row).await
+    }
+
+    async fn insert_on(
+        client: &(impl tokio_postgres::GenericClient + Sync),
+        row: NewPgPythonCode,
+    ) -> Result<Uuid, PgPythonCodeStoreError> {
         let includes_json =
             serde_json::to_value(&row.includes).map_err(|e| PgPythonCodeStoreError::Db {
                 reason: format!("includes encode failed: {e}"),
             })?;
-        let client = self.pool.get().await.map_err(map_pool)?;
         let db_row = client
             .query_one(
                 "INSERT INTO reborn_python_code
@@ -455,7 +466,7 @@ impl PgPythonCodeStore {
 /// `postgres` feature, so [`ValidationQueueStore`] is in scope here.
 impl PgPythonCodeStore {
     /// Insert a new python_code row AND submit it to the Q1 validation queue
-    /// (state 1) in one call — the save-path surface Phase K wires for both
+    /// (state 1) in one transaction — the legacy save-path surface for both
     /// WebUI manual authoring and Sempai auto-creation (§0.23.6).
     ///
     /// `proposed_payload` is `None` (new-component submission per §0.23.5);
@@ -472,13 +483,16 @@ impl PgPythonCodeStore {
             agent_id: row.agent_id.clone(),
             project_id: row.project_id.clone(),
         };
-        let id = self.insert(row).await?;
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let transaction = client.transaction().await.map_err(map_pg)?;
+        let id = Self::insert_on(&*transaction, row).await?;
         queue_store
-            .submit(&scope, id, 22, None)
+            .submit_in_transaction(&transaction, &scope, id, 22, None)
             .await
             .map_err(|e| PgPythonCodeStoreError::Queue {
                 reason: e.to_string(),
             })?;
+        transaction.commit().await.map_err(map_pg)?;
         Ok(id)
     }
 }

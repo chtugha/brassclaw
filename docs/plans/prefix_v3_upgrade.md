@@ -390,9 +390,13 @@ Recipe design passing structure/intent checks. Initial JSON/proposal failures,
 duplicate/incomplete drafts and a malformed blocked Recipe remained important
 negative evidence. This is supervised draft generation, not production Q1/Q2,
 Monty compatibility, DB seeding, automatic proposal insertion or consumer wiring.
-The current sink supports classes 21/22 but discards v3 Recipe fields; preserve
-those fields through the supported constructor/sink path before accepting v3
-Recipe proposals. See [the live test report](../../scripts/prefix/sempai-evaluation-20261006/README.md).
+The audited sink supported classes 21/22 but discarded v3 Recipe fields. The
+subsequent [draft-persistence repair](../reborn/contracts/sempai-draft-persistence.md)
+retains supported constructor fields, rejects unknown fields and commits the
+legacy draft/queue together. This does not establish immutable review admission,
+complete class-specific validation, association support or production approval;
+those prerequisites remain required before activating v3 proposals. See
+[the live test report](../../scripts/prefix/sempai-evaluation-20261006/README.md).
 
 ### Evidence learned since that initial deployment
 

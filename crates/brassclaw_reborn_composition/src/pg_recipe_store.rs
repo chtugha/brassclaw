@@ -83,7 +83,11 @@ fn map_pool(e: deadpool_postgres::PoolError) -> PgRecipeStoreError {
 
 fn map_pg(e: tokio_postgres::Error) -> PgRecipeStoreError {
     PgRecipeStoreError::Db {
-        reason: e.to_string(),
+        // Constraint details can contain the entire private proposed row.
+        reason: match e.code() {
+            Some(code) => format!("SQLSTATE {}", code.code()),
+            None => e.to_string(),
+        },
     }
 }
 
@@ -293,6 +297,14 @@ impl PgRecipeStore {
         tier0_builtin: bool,
     ) -> Result<Uuid, PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
+        Self::insert_on(&**client, row, tier0_builtin).await
+    }
+
+    async fn insert_on(
+        client: &(impl tokio_postgres::GenericClient + Sync),
+        row: NewPgRecipe,
+        tier0_builtin: bool,
+    ) -> Result<Uuid, PgRecipeStoreError> {
         let db_row = client
             .query_one(
                 "INSERT INTO reborn_recipes
@@ -334,7 +346,7 @@ impl PgRecipeStore {
     }
 
     /// Insert a new recipe AND submit it to the Q1 validation queue (state 1)
-    /// in one call — the canonical non-builtin save path for all recipe
+    /// in one transaction — the legacy non-builtin save path for recipe
     /// authoring (WebUI manual, Sempai auto-creation, DocPlan dissector).
     ///
     /// Mirrors `PgPythonCodeStore::create_and_submit` and
@@ -352,13 +364,16 @@ impl PgRecipeStore {
             agent_id: row.agent_id.clone(),
             project_id: row.project_id.clone(),
         };
-        let id = self.insert(row).await?;
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let transaction = client.transaction().await.map_err(map_pg)?;
+        let id = Self::insert_on(&*transaction, row, false).await?;
         queue_store
-            .submit(&scope, id, 21, None)
+            .submit_in_transaction(&transaction, &scope, id, 21, None)
             .await
             .map_err(|e| PgRecipeStoreError::Queue {
                 reason: e.to_string(),
             })?;
+        transaction.commit().await.map_err(map_pg)?;
         Ok(id)
     }
 

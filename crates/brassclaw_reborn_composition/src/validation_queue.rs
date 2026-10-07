@@ -212,6 +212,45 @@ impl ValidationQueueStore {
         component_class: i32,
         proposed_payload: Option<Value>,
     ) -> Result<(), ValidationQueueError> {
+        let client = self.pool.get().await.map_err(map_pool)?;
+        Self::submit_on(
+            &**client,
+            scope,
+            component_id,
+            component_class,
+            proposed_payload,
+        )
+        .await
+    }
+
+    /// Enqueue on the component author's transaction. The caller must roll back
+    /// on error and acknowledge only after commit; no separate queue connection
+    /// may make a partially committed draft visible.
+    pub(crate) async fn submit_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        component_class: i32,
+        proposed_payload: Option<Value>,
+    ) -> Result<(), ValidationQueueError> {
+        Self::submit_on(
+            transaction,
+            scope,
+            component_id,
+            component_class,
+            proposed_payload,
+        )
+        .await
+    }
+
+    async fn submit_on(
+        client: &(impl tokio_postgres::GenericClient + Sync),
+        scope: &ComponentScope,
+        component_id: Uuid,
+        component_class: i32,
+        proposed_payload: Option<Value>,
+    ) -> Result<(), ValidationQueueError> {
         if let Some(payload) = &proposed_payload {
             validate_upgrade_payload(component_class, component_id, payload)?;
         }
@@ -221,7 +260,6 @@ impl ValidationQueueStore {
                 .map_err(|_| ValidationQueueError::UnknownClass {
                     class_code: component_class,
                 })?;
-        let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(
                 "INSERT INTO reborn_validation_queue
