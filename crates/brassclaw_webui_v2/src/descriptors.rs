@@ -75,6 +75,13 @@ pub const WEBUI_V2_ROUTE_DELETE_COMPONENT: &str = "webui.v2.delete_component";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_component_audit_status";
 pub const WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW: &str = "webui.v2.prepare_association_review";
 pub const WEBUI_V2_ROUTE_APPROVE_ASSOCIATION: &str = "webui.v2.approve_association";
+pub const WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW: &str = "webui.v2.submit_component_review";
+pub const WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION: &str =
+    "webui.v2.get_component_review_submission";
+pub const WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW: &str =
+    "/api/webchat/v2/component-review-submissions";
+pub const WEBUI_V2_PATTERN_GET_COMPONENT_REVIEW_SUBMISSION: &str =
+    "/api/webchat/v2/component-review-submissions/{submission_id}";
 pub const WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW: &str =
     "/api/webchat/v2/skills/{skill_id}/association-review";
 pub const WEBUI_V2_PATTERN_APPROVE_ASSOCIATION: &str =
@@ -295,6 +302,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         validate_component_descriptor(),
         association_review_descriptor(),
         association_approval_descriptor(),
+        submit_component_review_descriptor(),
+        get_component_review_submission_descriptor(),
         reject_component_descriptor(),
         send_component_to_revision_descriptor(),
         re_review_component_descriptor(),
@@ -378,8 +387,39 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
     is_webui_v2_llm_config_route_id(route_id)
         || matches!(
             route_id,
-            WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW | WEBUI_V2_ROUTE_APPROVE_ASSOCIATION
+            WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW
+                | WEBUI_V2_ROUTE_APPROVE_ASSOCIATION
+                | WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW
+                | WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION
         )
+}
+
+fn submit_component_review_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW,
+        mutation_policy(
+            body_limit_kib(14336),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_component_review_submission_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_COMPONENT_REVIEW_SUBMISSION,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
 }
 
 fn association_review_descriptor() -> IngressRouteDescriptor {

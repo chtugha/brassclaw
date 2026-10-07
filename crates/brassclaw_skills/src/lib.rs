@@ -45,6 +45,10 @@ pub mod component_revision;
 #[cfg(feature = "db-store")]
 pub mod revision_store;
 
+/// Exact immutable authoring subjects, separate from review and activation.
+#[cfg(feature = "db-store")]
+pub mod review_submission_store;
+
 /// Exact immutable authored association/review records and transactional human
 /// decisions. Trusted Q1/behavior producers and catalogue activation are separate.
 #[cfg(feature = "db-store")]

@@ -2746,3 +2746,49 @@ result handoff, invalid output fencing, rejected malformed/nonempty replacements
 and retained originals. Engine skills-db strict all-target lint passed. Evidence:
 `/private/tmp/brassclaw-monty-leaf-includes-{native,lints}.log`, Rust 1.98, serial
 Cargo in screen. The ordinary global cutover and original seven remain open.
+
+### 2026-10-07 — Immutable operator review submissions
+
+The existing RecipeStore/RebornServices facade now exposes operator-only staging
+and exact-subject reads, wired through the actual PgRecipeStoreFacade. V104 and
+PgReviewSubmissionStore reuse V101's CAS revision allocation and retain the
+candidate's exact bytes, base reference, authenticated actor and complete declared
+transitive dependency selection in one repeatable-read transaction. Stable IDs
+recover identical requests before any new allocation, even after heads advance;
+changed subjects/actors conflict. Incomplete graphs and actual commit failures
+roll back the revision head and subject together. The records reject mutation,
+deletion and truncation. No live legacy component, review evidence or activation
+record is changed by the new staging path.
+
+The advanced WebUI editor renders sources as text and retains the pending request
+while mounted. First explicit rejections permit correction; uncertain requests
+keep their original identity/bytes. Loading by ID does not automatically settle a
+pending mutation from a potentially different actor. Browser reload is not a
+durable outbox. Ingress/extractor bounds agree at 14 MiB; a real payload above
+Axum's former 2 MiB default reaches the normal HTTP caller. The receipt explicitly
+reports unreviewed/activation=false. Declared graph retention is not proof of
+class-specific semantics, trusted validation, override enforcement or activation.
+See [the submission contract](../reborn/contracts/component-review-submissions.md).
+
+Tracing the legacy Sempai writer also exposed a byte-slicing panic and invalid
+Recipe names. Intent proposal identifiers now use a schema-compatible UUID slug;
+the full Unicode/long example remains in intent_examples instead of a truncated
+name or oversized description. The real sink persists it and queues it pending.
+This repair does not migrate Sempai to immutable submission identities.
+
+Serial screen evidence on Rust 1.98: three actual PostgreSQL/HTTP/Sempai cases,
+two locked-descriptor cases and ten gateway helper cases passed; affected
+composition/product-workflow/WebUI/skills all-target strict lint passed. Logs:
+`/private/tmp/brassclaw-monty-submission-{native,descriptors,gateway,lints}.log`.
+The native queue first caught the legacy name constraint; strict lint then caught
+the fixed-size chunk API update. Both were repaired, with no suppression. Final
+native regressions and strict lint passed after those repairs; unchanged route
+checks were reused. Changed JS syntax checks passed; browser interaction, CI and
+performance measurements were not exercised.
+
+This implements the operator submission prerequisite in validator_v3 Step 2,
+not the complete step or plan. Legacy authoring/proposal migration, durable Monty
+review admission, actual trusted validators, whole-workflow/protected-root and
+controlled-seed evidence, coherent activation and the normal global factory,
+resource and continuation cutover remain required. The original seven composition
+failures remain unresolved; normal runtime still constructs PersistentMontyDriver.

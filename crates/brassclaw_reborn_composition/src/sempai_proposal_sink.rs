@@ -240,23 +240,26 @@ mod inner {
 
             // ── Intent-example proposals ─────────────────────────────────
             for (idx, blob) in proposed_intent_examples.iter().enumerate() {
-                let input_text = match blob.get("input").and_then(|v| v.as_str()) {
-                    Some(t) if !t.is_empty() => t.to_string(),
-                    _ => {
-                        debug!(
-                            idx,
-                            "sempai_proposal: proposed_intent_example missing input — skipped"
-                        );
-                        continue;
-                    }
-                };
+                if blob
+                    .get("input")
+                    .and_then(|v| v.as_str())
+                    .is_none_or(str::is_empty)
+                {
+                    debug!(
+                        idx,
+                        "sempai_proposal: proposed_intent_example missing input — skipped"
+                    );
+                    continue;
+                }
 
                 // Store as a class-21 recipe row with the example blob in
                 // intent_examples JSONB.  The operator validates the row and
                 // the WebUI handler can then seed it into reborn_intent_inputs.
+                // Recipe names are ASCII slugs of at most 64 characters. The
+                // example is data, not an identifier or shortened description.
                 let synthetic_blob = serde_json::json!({
-                    "name": format!("intent_proposal:{}", &input_text[..input_text.len().min(60)]),
-                    "description": format!("Sempai-proposed intent example: {input_text}"),
+                    "name": format!("intent-proposal-{}", uuid::Uuid::new_v4()),
+                    "description": "Sempai-proposed intent example",
                     "intent_examples": [blob],
                 });
                 if self

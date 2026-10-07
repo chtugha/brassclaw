@@ -1,4 +1,20 @@
-import { registerPack } from "../lib/i18n.js";
+import {
+  "componentSubmission.title": "Vorgeschlagene Komponentenrevision sichern",
+  "componentSubmission.scope": "Eine vorgeschlagene Revision zusammen mit ihren exakten Abhängigkeiten sichern. Der Gegenstand bleibt ungeprüft; Validierung und Aktivierung werden dadurch nicht gestartet.",
+  "componentSubmission.editor": "Erweiterter Revisionseditor",
+  "componentSubmission.id": "Einreichungs-UUID — für Wiederholung und Wiederherstellung aufbewahren",
+  "componentSubmission.new": "Weitere Einreichung beginnen",
+  "componentSubmission.candidate": "Vollständiges component-revision/1-Dokument (JSON)",
+  "componentSubmission.base": "Exakte Basisreferenz für eine Änderung, oder null für eine neue Identität",
+  "componentSubmission.dependencies": "Vollständige Abhängigkeitsreferenzen (JSON-Array: uuid, class_code, version, checksum)",
+  "componentSubmission.submit": "Vorschlag sichern",
+  "componentSubmission.retry": "Identischen Vorschlag erneut senden",
+  "componentSubmission.load": "Gesicherten Gegenstand über die UUID laden",
+  "componentSubmission.retained": "Einreichung {id} gesichert. Validierung und Aktivierung erfolgen separat.",
+  "componentSubmission.component": "Gesicherte Komponente {index}",
+  "componentSubmission.capacity": "Die Anfrage überschreitet die Transportgrenze von 14 MiB.",
+  "componentSubmission.conflict": "Der gesicherte Gegenstand weicht vom ausstehenden Vorschlag ab. Ursprüngliche Anfrage zur Wiederherstellung aufbewahren.",
+ registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
   "associationReview.noteTooLarge": "Review-Notizen dürfen höchstens 16 KiB UTF-8-Text enthalten.",

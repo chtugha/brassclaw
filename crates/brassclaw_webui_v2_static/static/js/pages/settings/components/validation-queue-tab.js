@@ -13,6 +13,7 @@ import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
 import { IntentTemplatePreviewPanel } from "./intent-template-preview-panel.js";
 import { AssociationReviewPanel } from "./association-review-panel.js";
+import { ComponentSubmissionPanel } from "./component-submission-panel.js";
 import { ComponentDetailPane, componentTypeForClass } from "./component-detail-pane.js";
 import { Section } from "./component-detail-primitives.js";
 
@@ -33,11 +34,14 @@ export function ValidationQueueTab({ searchQuery = "" }) {
 
   if (query.isError) {
     return html`
+      <div className="space-y-4">
+      <${ComponentSubmissionPanel} />
       <${Card} padding="md">
         <p className="text-sm text-[var(--v2-danger-text)]">
           ${t("validationQueue.failedLoad", { message: query.error?.message })}
         </p>
       <//>
+      </div>
     `;
   }
 
@@ -54,6 +58,7 @@ export function ValidationQueueTab({ searchQuery = "" }) {
       <div className="space-y-4">
         <${IntentTemplatePreviewPanel} />
         <${AssociationReviewPanel} />
+        <${ComponentSubmissionPanel} />
         <${Card} padding="lg">
           <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
             ${t("validationQueue.empty")}
@@ -74,6 +79,7 @@ export function ValidationQueueTab({ searchQuery = "" }) {
     <div className="space-y-4">
       <${IntentTemplatePreviewPanel} />
       <${AssociationReviewPanel} />
+      <${ComponentSubmissionPanel} />
       <${Card} padding="md">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">

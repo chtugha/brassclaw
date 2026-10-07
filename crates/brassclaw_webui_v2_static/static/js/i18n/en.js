@@ -1,4 +1,20 @@
-import { registerPack } from "../lib/i18n.js";
+import {
+  "componentSubmission.title": "Retain a proposed component revision",
+  "componentSubmission.scope": "Keep a proposed revision and its exact dependencies together. This saves an unreviewed subject; it does not start validation or activate the component.",
+  "componentSubmission.editor": "Advanced revision editor",
+  "componentSubmission.id": "Submission UUID — keep this ID for retries and recovery",
+  "componentSubmission.new": "Start another submission",
+  "componentSubmission.candidate": "Complete component-revision/1 document (JSON)",
+  "componentSubmission.base": "Exact base reference for an edit, or null for a new identity",
+  "componentSubmission.dependencies": "Complete dependency references (JSON array: uuid, class_code, version, checksum)",
+  "componentSubmission.submit": "Retain proposal",
+  "componentSubmission.retry": "Retry the identical proposal",
+  "componentSubmission.load": "Load retained subject by ID",
+  "componentSubmission.retained": "Submission {id} retained. Validation and activation remain separate.",
+  "componentSubmission.component": "Retained component {index}",
+  "componentSubmission.capacity": "The request exceeds the 14 MiB transport limit.",
+  "componentSubmission.conflict": "The retained subject differs from the pending proposal. Keep the original request for recovery.",
+ registerPack } from "../lib/i18n.js";
 
 registerPack("en", {
   "associationReview.noteTooLarge": "Review notes must fit within 16 KiB of UTF-8 text.",

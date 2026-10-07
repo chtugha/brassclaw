@@ -231,6 +231,45 @@ pub struct AssociationApprovalResponse {
     pub catalogue_activated: bool,
 }
 
+/// Exact selection, never an approval or request to look up latest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComponentRevisionSelection {
+    pub uuid: String,
+    pub class_code: i32,
+    pub version: u64,
+    pub checksum: String,
+}
+
+/// Stable ID and identical fields are required after an unknown commit.
+/// Candidate bytes remain data, including source, schemas and associations.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitComponentReviewRequest {
+    pub submission_id: String,
+    pub candidate_bytes: String,
+    pub base: Option<ComponentRevisionSelection>,
+    pub dependencies: Vec<ComponentRevisionSelection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentReviewSubmissionReceipt {
+    pub submission_id: String,
+    pub subject_checksum: String,
+    pub candidate: ComponentRevisionSelection,
+    pub base: Option<ComponentRevisionSelection>,
+    pub dependencies: Vec<ComponentRevisionSelection>,
+    pub review_status: String,
+    pub catalogue_activated: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ComponentReviewSubmissionView {
+    pub receipt: ComponentReviewSubmissionReceipt,
+    pub subject_bytes: String,
+    pub component_bytes: Vec<String>,
+}
+
 /// Response for `PUT/validate`, `PUT/reject`, `PUT/review-request`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateValidationStatusResponse {
@@ -277,6 +316,25 @@ pub struct RecordOutcomeResponse {
 /// `RecipeSummary` / `ToolSkillSummary` for the WebUI list tab.
 #[async_trait]
 pub trait RecipeStore: Send + Sync {
+    async fn submit_component_review(
+        &self,
+        _actor: &str,
+        _request: SubmitComponentReviewRequest,
+    ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "immutable review submissions are unavailable".into(),
+        ))
+    }
+
+    async fn get_component_review_submission(
+        &self,
+        _submission_id: &str,
+    ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "immutable review submissions are unavailable".into(),
+        ))
+    }
+
     async fn prepare_association_review(
         &self,
         _skill_id: &str,
@@ -461,6 +519,8 @@ pub enum RecipeStoreError {
     Invalid(String),
     #[error("recipe/skill not found: {0}")]
     NotFound(String),
+    #[error("component authoring conflict: {0}")]
+    Conflict(String),
     #[error("recipe/skill store unavailable: {0}")]
     Unavailable(String),
     #[error("recipe/skill store internal error: {0}")]
@@ -473,7 +533,7 @@ impl From<RecipeStoreError> for ProductWorkflowError {
             RecipeStoreError::Invalid(reason) => {
                 ProductWorkflowError::InvalidBindingRequest { reason }
             }
-            RecipeStoreError::NotFound(reason) => {
+            RecipeStoreError::NotFound(reason) | RecipeStoreError::Conflict(reason) => {
                 ProductWorkflowError::InvalidBindingRequest { reason }
             }
             RecipeStoreError::Unavailable(reason) => ProductWorkflowError::Transient { reason },

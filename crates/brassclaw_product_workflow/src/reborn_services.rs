@@ -1127,6 +1127,22 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
+    async fn submit_component_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::recipes::SubmitComponentReviewRequest,
+    ) -> Result<crate::recipes::ComponentReviewSubmissionReceipt, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
+    async fn get_component_review_submission(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _submission_id: &str,
+    ) -> Result<crate::recipes::ComponentReviewSubmissionView, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
     /// Exact immutable usage and evidence view for authenticated human review.
     async fn prepare_association_review(
         &self,
@@ -3939,6 +3955,32 @@ impl RebornServicesApi for RebornServices {
         })
     }
 
+    async fn submit_component_review(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::recipes::SubmitComponentReviewRequest,
+    ) -> Result<crate::recipes::ComponentReviewSubmissionReceipt, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .submit_component_review(&caller.user_id.to_string(), request)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn get_component_review_submission(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        submission_id: &str,
+    ) -> Result<crate::recipes::ComponentReviewSubmissionView, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .get_component_review_submission(submission_id)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
     async fn prepare_association_review(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -4793,6 +4835,12 @@ impl RebornServicesApi for RebornServices {
 /// `Internal` → 500.
 fn map_recipe_store_error(error: crate::recipes::RecipeStoreError) -> RebornServicesError {
     match error {
+        crate::recipes::RecipeStoreError::Conflict(_) => RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::Conflict,
+            RebornServicesErrorKind::Conflict,
+            409,
+            false,
+        ),
         crate::recipes::RecipeStoreError::Invalid(_) => {
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         }

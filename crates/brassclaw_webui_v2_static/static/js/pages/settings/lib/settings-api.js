@@ -275,6 +275,13 @@ export function prepareAssociationReview(skillId, selection) {
   return apiFetch(`/api/webchat/v2/skills/${encodeURIComponent(skillId)}/association-review`,
     { method: "POST", body: JSON.stringify(selection) });
 }
+export function submitComponentReview(request) {
+  return apiFetch("/api/webchat/v2/component-review-submissions",
+    { method: "POST", body: JSON.stringify(request) });
+}
+export function fetchComponentReviewSubmission(id) {
+  return apiFetch(`/api/webchat/v2/component-review-submissions/${encodeURIComponent(id)}`);
+}
 export function approveAssociation(skillId, request) {
   return apiFetch(`/api/webchat/v2/skills/${encodeURIComponent(skillId)}/association-approval`,
     { method: "POST", body: JSON.stringify(request) });

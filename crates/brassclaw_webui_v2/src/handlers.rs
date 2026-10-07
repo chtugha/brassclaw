@@ -1201,8 +1201,34 @@ pub struct ComponentPath {
     pub component_id: String,
 }
 
-/// Exact immutable usage view; host composition mounts this only for the
-/// instance operator. No client-provided source or success flag is accepted.
+/// Retain a candidate as data; this neither reviews nor activates it.
+pub async fn submit_component_review(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::SubmitComponentReviewRequest>,
+) -> Result<Json<brassclaw_product_workflow::ComponentReviewSubmissionReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .submit_component_review(caller, request)
+            .await?,
+    ))
+}
+
+pub async fn get_component_review_submission(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(submission_id): Path<String>,
+) -> Result<Json<brassclaw_product_workflow::ComponentReviewSubmissionView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_component_review_submission(caller, &submission_id)
+            .await?,
+    ))
+}
+
+/// Exact immutable usage view, mounted only for the instance operator.
 pub async fn prepare_association_review(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
