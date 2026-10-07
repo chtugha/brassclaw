@@ -247,8 +247,16 @@ pub struct SharedExtensionRegistry {
 
 impl SharedExtensionRegistry {
     pub fn new(registry: ExtensionRegistry) -> Self {
+        Self::from_snapshot(Arc::new(registry))
+    }
+
+    /// Start an independent registry view from an actual immutable snapshot.
+    /// Mutations use copy-on-write; neither the original live registry nor
+    /// other retained views change. The snapshot is shared without copying its
+    /// complete catalogue for each selected capability.
+    pub fn from_snapshot(registry: Arc<ExtensionRegistry>) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(Arc::new(registry))),
+            inner: Arc::new(RwLock::new(registry)),
             version: Arc::new(AtomicU64::new(0)),
         }
     }

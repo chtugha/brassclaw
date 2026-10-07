@@ -54,6 +54,7 @@ use crate::{
 };
 
 /// Default production wiring for [`HostRuntime`].
+#[derive(Clone)]
 pub struct DefaultHostRuntime {
     registry: Arc<SharedExtensionRegistry>,
     dispatcher: Arc<dyn CapabilityDispatcher>,
@@ -75,6 +76,20 @@ pub struct DefaultHostRuntime {
 }
 
 impl DefaultHostRuntime {
+    /// Host-runtime-internal composition only. The selected registry and real
+    /// dispatcher remain fixed, while the same live authorizer, trust policy,
+    /// obligations and substrate services still mediate every invocation.
+    pub(crate) fn retain_dispatch(
+        &self,
+        registry: Arc<SharedExtensionRegistry>,
+        dispatcher: Arc<dyn CapabilityDispatcher>,
+    ) -> Self {
+        let mut retained = self.clone();
+        retained.registry = registry;
+        retained.dispatcher = dispatcher;
+        retained
+    }
+
     /// Constructs a default host runtime over the supplied kernel services.
     ///
     /// This constructor snapshots the supplied registry into an internal

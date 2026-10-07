@@ -1642,7 +1642,7 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     )
     .unwrap();
     let outcome = runtime
-        .invoke_capability(RuntimeCapabilityRequest::new(
+        .invoke(RuntimeCapabilityRequest::new(
             context,
             CapabilityId::new("builtin.json").unwrap(),
             ResourceEstimate::default(),

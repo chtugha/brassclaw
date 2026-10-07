@@ -7,7 +7,7 @@ use brassclaw_extensions::ExtensionRegistry;
 use brassclaw_filesystem::LocalFilesystem;
 use brassclaw_host_api::{CapabilityId, EffectKind, MountView, NetworkPolicy, PackageId};
 use brassclaw_host_runtime::{
-    CapabilitySurfaceVersion, FirstPartyCapabilityRegistry, HostRuntime, HostRuntimeServices,
+    CapabilitySurfaceVersion, HostRuntimeServices, RetainedFirstPartyCapability,
     builtin_first_party_handlers, builtin_first_party_package,
 };
 use brassclaw_resources::InMemoryResourceGovernor;
@@ -49,7 +49,9 @@ pub(super) fn trust() -> TrustDecision {
     }
 }
 
-pub(super) fn runtime(tool: Uuid) -> (Arc<dyn HostRuntime>, Arc<LiveStableToolPolicy>) {
+pub(super) fn runtime(
+    tool: Uuid,
+) -> (Arc<RetainedFirstPartyCapability>, Arc<LiveStableToolPolicy>) {
     let package = builtin_first_party_package().unwrap();
     let mut registry = ExtensionRegistry::new();
     registry.insert(package).unwrap();
@@ -58,10 +60,6 @@ pub(super) fn runtime(tool: Uuid) -> (Arc<dyn HostRuntime>, Arc<LiveStableToolPo
     ))
     .unwrap();
     let id = CapabilityId::new("builtin.json").unwrap();
-    let selected = registrations.retain_binding(&id).unwrap();
-    let retained = FirstPartyCapabilityRegistry::new().with_handler(id, Arc::new(selected));
-    // The actual selected handler stays alive after the source registry dies.
-    drop(registrations);
     let policy = Arc::new(LiveStableToolPolicy::new(snapshot(1, true, tool)).unwrap());
     let trust_policy = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
         AdminEntry::for_local_manifest(
@@ -82,8 +80,28 @@ pub(super) fn runtime(tool: Uuid) -> (Arc<dyn HostRuntime>, Arc<LiveStableToolPo
         brassclaw_processes::ProcessServices::in_memory(),
         CapabilitySurfaceVersion::new("retained-draft-kernel").unwrap(),
     )
-    .with_first_party_capabilities(Arc::new(retained))
+    .with_first_party_capabilities(Arc::new(registrations))
     .with_trust_policy(Arc::new(trust_policy))
-    .host_runtime_for_local_testing();
-    (Arc::new(runtime), policy)
+    .with_runtime_policy(brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {
+        deployment: brassclaw_host_api::runtime_policy::DeploymentMode::LocalSingleUser,
+        requested_profile: brassclaw_host_api::runtime_policy::RuntimeProfile::LocalDev,
+        resolved_profile: brassclaw_host_api::runtime_policy::RuntimeProfile::LocalDev,
+        filesystem_backend:
+            brassclaw_host_api::runtime_policy::FilesystemBackendKind::HostWorkspace,
+        process_backend: brassclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost,
+        network_mode: brassclaw_host_api::runtime_policy::NetworkMode::DirectLogged,
+        secret_mode: brassclaw_host_api::runtime_policy::SecretMode::ScrubbedEnv,
+        approval_policy: brassclaw_host_api::runtime_policy::ApprovalPolicy::AskDestructive,
+        audit_mode: brassclaw_host_api::runtime_policy::AuditMode::LocalMinimal,
+    });
+    let snapshot = runtime.capture_first_party_capabilities().unwrap();
+    let selected = snapshot.retain(&id).unwrap();
+    // The actual handler and declaration survive source registry replacement.
+    runtime
+        .shared_extension_registry()
+        .remove(&brassclaw_host_api::ExtensionId::new("builtin").unwrap())
+        .unwrap();
+    drop(runtime);
+    drop(snapshot);
+    (Arc::new(selected), policy)
 }

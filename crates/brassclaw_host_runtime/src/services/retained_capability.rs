@@ -1,0 +1,175 @@
+//! Actual retained first-party implementation through the ordinary kernel path.
+//! This supplies execution ownership, not catalogue approval or artifact trust.
+use super::{
+    DefaultHostRuntime, FirstPartyCapabilityRegistry, FirstPartyRuntimeAdapter,
+    HostRuntimeServices, InvocationServicesResolver, ProcessResultStore, ProcessStore,
+    ResourceGovernor, RootFilesystem,
+};
+use crate::{HostRuntime, HostRuntimeError, RuntimeCapabilityOutcome, RuntimeCapabilityRequest};
+use brassclaw_dispatcher::RuntimeDispatcher;
+use brassclaw_events::EventSink;
+use brassclaw_extensions::SharedExtensionRegistry;
+use brassclaw_host_api::{
+    CapabilityDescriptor, CapabilityId, RuntimeKind, runtime_policy::EffectiveRuntimePolicy,
+};
+use std::sync::Arc;
+
+/// Technical registration failure, never a routing outcome or a Tool grant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum RetainedCapabilityError {
+    #[error("retained capability requires explicit runtime and trust policies")]
+    MissingPolicy,
+    #[error("first-party implementation registration is missing")]
+    MissingRegistration,
+    #[error("selected capability is not declared")]
+    MissingCapability,
+    #[error("selected capability is not a first-party registration")]
+    WrongRuntime,
+    #[error("selected capability and package declaration disagree")]
+    InconsistentDeclaration,
+}
+
+/// One actual host catalogue snapshot plus immutable handler registrations.
+/// Fields stay private: upper composition cannot overwrite the captured view,
+/// invoke a raw handler, or reach around kernel mediation. This view does not
+/// establish component revision/ABI matching, activation or review approval.
+pub struct FirstPartyCapabilitySnapshot<F, G>
+where
+    F: RootFilesystem + 'static,
+    G: ResourceGovernor + 'static,
+{
+    registry: Arc<SharedExtensionRegistry>,
+    registrations: Arc<FirstPartyCapabilityRegistry>,
+    kernel: DefaultHostRuntime,
+    filesystem: Arc<F>,
+    governor: Arc<G>,
+    services: Arc<dyn InvocationServicesResolver>,
+    policy: EffectiveRuntimePolicy,
+    events: Option<Arc<dyn EventSink>>,
+}
+
+/// A selected real handler and declaration behind the existing kernel facade.
+/// Replacement/removal cannot change them. Current authority and technical
+/// enforcement remain independent and are checked before each invocation.
+#[derive(Clone)]
+pub struct RetainedFirstPartyCapability {
+    descriptor: CapabilityDescriptor,
+    runtime: Arc<DefaultHostRuntime>,
+}
+impl RetainedFirstPartyCapability {
+    pub fn descriptor(&self) -> &CapabilityDescriptor {
+        &self.descriptor
+    }
+
+    pub async fn invoke(
+        &self,
+        request: RuntimeCapabilityRequest,
+    ) -> Result<RuntimeCapabilityOutcome, HostRuntimeError> {
+        if request.capability_id != self.descriptor.id {
+            return Err(HostRuntimeError::invalid_request(
+                "retained capability identity mismatch",
+            ));
+        }
+        self.runtime.invoke_capability(request).await
+    }
+}
+
+impl<F, G> FirstPartyCapabilitySnapshot<F, G>
+where
+    F: RootFilesystem + 'static,
+    G: ResourceGovernor + 'static,
+{
+    pub fn retain(
+        &self,
+        capability: &CapabilityId,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let registry = self.registry.snapshot();
+        let descriptor = registry
+            .get_capability(capability)
+            .ok_or(RetainedCapabilityError::MissingCapability)?;
+        let package = registry
+            .get_extension(&descriptor.provider)
+            .ok_or(RetainedCapabilityError::InconsistentDeclaration)?;
+        if descriptor.runtime != RuntimeKind::FirstParty
+            || package.manifest.runtime_kind() != RuntimeKind::FirstParty
+        {
+            return Err(RetainedCapabilityError::WrongRuntime);
+        }
+        if package
+            .capabilities
+            .iter()
+            .find(|entry| entry.id == *capability)
+            != Some(descriptor)
+        {
+            return Err(RetainedCapabilityError::InconsistentDeclaration);
+        }
+        let selected = self
+            .registrations
+            .retain_binding(capability)
+            .ok_or(RetainedCapabilityError::MissingRegistration)?;
+        let handlers = Arc::new(
+            FirstPartyCapabilityRegistry::new()
+                .with_handler(capability.clone(), Arc::new(selected)),
+        );
+        let mut dispatcher = RuntimeDispatcher::from_shared_registry(
+            self.registry.clone(),
+            self.filesystem.clone(),
+            self.governor.clone(),
+        )
+        .with_runtime_policy(self.policy.clone())
+        .with_runtime_adapter_arc(
+            RuntimeKind::FirstParty,
+            Arc::new(FirstPartyRuntimeAdapter::from_registry(
+                handlers,
+                self.services.clone(),
+            )),
+        );
+        if let Some(events) = &self.events {
+            dispatcher = dispatcher.with_event_sink_arc(events.clone());
+        }
+        Ok(RetainedFirstPartyCapability {
+            descriptor: descriptor.clone(),
+            runtime: Arc::new(
+                self.kernel
+                    .retain_dispatch(self.registry.clone(), Arc::new(dispatcher)),
+            ),
+        })
+    }
+}
+
+impl<F, G, S, R> HostRuntimeServices<F, G, S, R>
+where
+    F: RootFilesystem + 'static,
+    G: ResourceGovernor + 'static,
+    S: ProcessStore + 'static,
+    R: ProcessResultStore + 'static,
+{
+    /// Capture once for task/catalogue preparation, before selecting usages.
+    /// Capturing executes nothing and creates no authorization or approval.
+    pub fn capture_first_party_capabilities(
+        &self,
+    ) -> Result<FirstPartyCapabilitySnapshot<F, G>, RetainedCapabilityError> {
+        let policy = self
+            .runtime_policy
+            .clone()
+            .filter(|_| self.trust_policy_configured)
+            .ok_or(RetainedCapabilityError::MissingPolicy)?;
+        let registrations = self
+            .first_party_runtime
+            .clone()
+            .ok_or(RetainedCapabilityError::MissingRegistration)?;
+        let registry = Arc::new(SharedExtensionRegistry::from_snapshot(
+            self.registry.snapshot(),
+        ));
+        Ok(FirstPartyCapabilitySnapshot {
+            registry,
+            registrations,
+            kernel: self.build_host_runtime(),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: self.invocation_services_resolver(),
+            policy,
+            events: self.event_sink.clone(),
+        })
+    }
+}

@@ -2925,3 +2925,23 @@ This repairs settlement ownership, not ordinary startup. The original seven
 composition failures remain unresolved until the approved catalogue, protected
 root, retained implementation/resource/continuation owners and ordinary global
 factory are connected and their existing acceptance assertions pass.
+
+### Retained first-party dispatch through the actual kernel (2026-10-08)
+
+Host-runtime task preparation can now capture one immutable extension/handler
+view and retain a selected first-party capability behind the existing kernel.
+Removal or replacement affects new captures; running tasks keep the actual
+handler and declaration. Each invocation still checks current stable-Tool
+policy and uses the original technical services, governor and trust boundary.
+The facade rejects another capability identity and exposes no raw handler.
+See [the retained-dispatch contract](../reborn/contracts/retained-first-party-capability.md).
+
+On this diff, serial screen checks passed: 19 native Monty/PostgreSQL cases in
+`tests/monty_control/Cargo.toml`, isolated all-target strict lint, the actual
+builtin JSON retention/live-policy regression, 14 host-runtime consumer cases,
+host-runtime/extensions all-target strict lint, and 29 architecture cases.
+Rust 1.98 logs are `/private/tmp/brassclaw-retained-kernel-*.log`; native tests
+exercise the compiled global worker and existing V106 review/journal fixtures.
+These establish candidate kernel-mediated execution ownership, not
+Tool-revision/artifact/ABI approval, catalogue activation, ordinary startup,
+CI or resolution of the original seven composition failures.

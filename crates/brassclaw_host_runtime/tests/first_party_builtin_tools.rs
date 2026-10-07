@@ -88,11 +88,8 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
     let id = capability_id(JSON_CAPABILITY_ID);
     let registrations =
         builtin_first_party_handlers(Arc::new(InMemoryTriggerRepository::default())).unwrap();
-    let selected = registrations.retain_binding(&id).unwrap();
-    let retained = FirstPartyCapabilityRegistry::new().with_handler(id.clone(), Arc::new(selected));
-    drop(registrations);
     let tool_uuid = uuid::Uuid::from_u128(1);
-    let snapshot = |revision, enabled| StableToolPolicySnapshot {
+    let policy_snapshot = |revision, enabled| StableToolPolicySnapshot {
         revision,
         tools: HashMap::from([(
             tool_uuid,
@@ -110,8 +107,8 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
         )]),
         capabilities: HashMap::from([(id.clone(), tool_uuid)]),
     };
-    let policy = Arc::new(LiveStableToolPolicy::new(snapshot(1, true)).unwrap());
-    let runtime = HostRuntimeServices::new(
+    let policy = Arc::new(LiveStableToolPolicy::new(policy_snapshot(1, true)).unwrap());
+    let services = HostRuntimeServices::new(
         Arc::new(registry()),
         Arc::new(LocalFilesystem::new()),
         Arc::new(InMemoryResourceGovernor::new()),
@@ -119,30 +116,66 @@ async fn retained_builtin_handle_still_obeys_each_live_instance_policy_revision(
         brassclaw_processes::ProcessServices::in_memory(),
         CapabilitySurfaceVersion::new("retained-surface").unwrap(),
     )
-    .with_first_party_capabilities(Arc::new(retained))
+    .with_first_party_capabilities(Arc::new(registrations))
     .with_trust_policy(Arc::new(trust_policy()))
-    .with_runtime_policy(local_dev_policy())
-    .host_runtime_for_local_testing();
+    .with_runtime_policy(local_dev_policy());
+    let snapshot = services.capture_first_party_capabilities().unwrap();
+    let retained = snapshot.retain(&id).unwrap();
+    let original_descriptor = retained.descriptor().clone();
+    let registry = services.shared_extension_registry();
+    registry.remove(&provider_id()).unwrap();
+    // Replacement affects the next capture only. Already selected declarations
+    // and actual handler registrations remain owned by the running task.
+    let services =
+        services.with_first_party_capabilities(Arc::new(FirstPartyCapabilityRegistry::new()));
+    let fresh = services.capture_first_party_capabilities().unwrap();
+    assert!(matches!(
+        fresh.retain(&id),
+        Err(brassclaw_host_runtime::RetainedCapabilityError::MissingCapability)
+    ));
+    assert!(snapshot.retain(&id).is_ok());
+    assert_eq!(retained.descriptor(), &original_descriptor);
+    assert!(
+        retained
+            .invoke(RuntimeCapabilityRequest::new(
+                execution_context(std::iter::empty::<&str>()),
+                capability_id(TIME_CAPABILITY_ID),
+                ResourceEstimate::default(),
+                json!({}),
+                trust_decision(),
+            ))
+            .await
+            .is_err()
+    );
     let input = json!({"operation":"parse","data":"{\"value\":7}"});
     // No legacy user/project/invocation grant is supplied by this instance-policy
     // fixture. The real CapabilityHost authorizer checks each current revision.
     for (revision, enabled) in [(1, true), (2, false), (3, true)] {
         if revision > 1 {
             policy
-                .publish(revision - 1, snapshot(revision, enabled))
+                .publish(revision - 1, policy_snapshot(revision, enabled))
                 .unwrap();
         }
-        let outcome = invoke_with_context(
-            &runtime,
-            JSON_CAPABILITY_ID,
-            input.clone(),
-            execution_context(std::iter::empty::<&str>()),
-        )
-        .await;
+        let outcome = retained
+            .invoke(RuntimeCapabilityRequest::new(
+                execution_context(std::iter::empty::<&str>()),
+                id.clone(),
+                ResourceEstimate::default(),
+                input.clone(),
+                trust_decision(),
+            ))
+            .await
+            .unwrap();
         if enabled {
-            assert_eq!(outcome.unwrap(), json!({"value":7}));
+            let RuntimeCapabilityOutcome::Completed(completed) = outcome else {
+                panic!("actual retained JSON completion required: {outcome:?}");
+            };
+            assert_eq!(completed.output, json!({"value":7}));
         } else {
-            assert_eq!(outcome.unwrap_err(), RuntimeFailureKind::Authorization);
+            let RuntimeCapabilityOutcome::Failed(failed) = outcome else {
+                panic!("live policy block must prevent execution: {outcome:?}");
+            };
+            assert_eq!(failed.kind, RuntimeFailureKind::Authorization);
         }
     }
 }

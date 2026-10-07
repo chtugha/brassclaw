@@ -85,7 +85,11 @@ type SharedToolCallHttpEgress = Arc<Mutex<Option<Arc<dyn ToolCallHttpEgress>>>>;
 mod builder;
 mod production_services;
 mod production_wiring;
+mod retained_capability;
 mod runtime_adapters;
+pub use retained_capability::{
+    FirstPartyCapabilitySnapshot, RetainedCapabilityError, RetainedFirstPartyCapability,
+};
 
 use production_wiring::{
     ProductionComponentType, ProductionComponentTypes, ProductionImplementationReadiness,
@@ -358,23 +362,7 @@ where
                 .clone()
                 .unwrap_or_else(local_testing_runtime_policy),
         );
-        let mut invocation_services_resolver = LocalInvocationServicesResolver::new(
-            Arc::clone(&self.filesystem) as Arc<dyn RootFilesystem>,
-            runtime_http_egress(&self.runtime_http_egress),
-            Arc::clone(&self.process_port),
-            self.secret_store.clone(),
-        )
-        .with_tool_call_http_egress(tool_call_http_egress(&self.tool_call_http_egress));
-        if let Some(audit_sink) = &self.audit_sink {
-            invocation_services_resolver =
-                invocation_services_resolver.with_audit_sink(Arc::clone(audit_sink));
-        }
-        if let Some(process_port) = &self.tenant_sandbox_process_port {
-            invocation_services_resolver = invocation_services_resolver
-                .with_tenant_sandbox_process_port(Arc::clone(process_port));
-        }
-        let invocation_services: Arc<dyn InvocationServicesResolver> =
-            Arc::new(invocation_services_resolver);
+        let invocation_services = self.invocation_services_resolver();
 
         if let Some(runtime) = &self.mcp_runtime {
             dispatcher = dispatcher.with_runtime_adapter_arc(
@@ -399,6 +387,25 @@ where
         }
 
         dispatcher
+    }
+
+    fn invocation_services_resolver(&self) -> Arc<dyn InvocationServicesResolver> {
+        let mut invocation_services_resolver = LocalInvocationServicesResolver::new(
+            Arc::clone(&self.filesystem) as Arc<dyn RootFilesystem>,
+            runtime_http_egress(&self.runtime_http_egress),
+            Arc::clone(&self.process_port),
+            self.secret_store.clone(),
+        )
+        .with_tool_call_http_egress(tool_call_http_egress(&self.tool_call_http_egress));
+        if let Some(audit_sink) = &self.audit_sink {
+            invocation_services_resolver =
+                invocation_services_resolver.with_audit_sink(Arc::clone(audit_sink));
+        }
+        if let Some(process_port) = &self.tenant_sandbox_process_port {
+            invocation_services_resolver = invocation_services_resolver
+                .with_tenant_sandbox_process_port(Arc::clone(process_port));
+        }
+        Arc::new(invocation_services_resolver)
     }
 
     /// Builds the upper facade without production validation.

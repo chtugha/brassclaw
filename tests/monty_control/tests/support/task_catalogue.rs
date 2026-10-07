@@ -21,7 +21,9 @@ use brassclaw_host_api::{
     CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ResourceEstimate,
     RuntimeKind, TrustClass, UserId,
 };
-use brassclaw_host_runtime::{HostRuntime, RuntimeCapabilityOutcome, RuntimeCapabilityRequest};
+use brassclaw_host_runtime::{
+    RetainedFirstPartyCapability, RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
+};
 use brassclaw_monty_host::{process::PortAnswer, service::PortFailure};
 use brassclaw_pg::PgPool;
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
@@ -177,7 +179,7 @@ impl MontyTaskCatalogue for ValidationCatalogue {
     }
 }
 struct JsonPort {
-    runtime: Arc<dyn HostRuntime>,
+    runtime: Arc<RetainedFirstPartyCapability>,
     program: Arc<RetainedToolProgram>,
     admission: Arc<PgMontyAdmission>,
 }
@@ -208,7 +210,7 @@ impl RetainedToolPort for JsonPort {
         .unwrap();
         let actual = self
             .runtime
-            .invoke_capability(RuntimeCapabilityRequest::new(
+            .invoke(RuntimeCapabilityRequest::new(
                 context,
                 CapabilityId::new(binding.capability_id()).unwrap(),
                 ResourceEstimate::default(),

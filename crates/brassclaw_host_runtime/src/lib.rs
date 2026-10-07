@@ -120,10 +120,11 @@ pub use sandbox_process::{
     RebornScopedSandboxCommandTransport,
 };
 pub use services::{
-    HostRuntimeServices, ProductAuthCredentialStageError, ProductAuthProviderRuntimePorts,
-    ProductionEventStoreWiringError, ProductionWiringComponent, ProductionWiringConfig,
-    ProductionWiringIssue, ProductionWiringIssueKind, ProductionWiringReport,
-    RegisteredRuntimeHealth,
+    FirstPartyCapabilitySnapshot, HostRuntimeServices, ProductAuthCredentialStageError,
+    ProductAuthProviderRuntimePorts, ProductionEventStoreWiringError, ProductionWiringComponent,
+    ProductionWiringConfig, ProductionWiringIssue, ProductionWiringIssueKind,
+    ProductionWiringReport, RegisteredRuntimeHealth, RetainedCapabilityError,
+    RetainedFirstPartyCapability,
 };
 pub use surface::{CapabilitySurfacePolicy, VisibleCapability, VisibleCapabilityAccess};
 pub use turn_scheduler::{

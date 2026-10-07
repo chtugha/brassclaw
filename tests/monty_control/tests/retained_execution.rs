@@ -19,7 +19,8 @@ use brassclaw_host_api::{
     RuntimeKind, TrustClass, UserId,
 };
 use brassclaw_host_runtime::{
-    HostRuntime, RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind,
+    RetainedFirstPartyCapability, RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
+    RuntimeFailureKind,
 };
 use brassclaw_monty_host::{
     VmFailure,
@@ -49,7 +50,7 @@ mod retained_program;
 mod support;
 
 struct KernelPort {
-    runtime: Arc<dyn HostRuntime>,
+    runtime: Arc<RetainedFirstPartyCapability>,
     policy: Arc<LiveStableToolPolicy>,
     deny_second: bool,
     tool: Uuid,
@@ -131,7 +132,7 @@ impl RetainedToolPort for KernelPort {
         .unwrap();
         let outcome = self
             .runtime
-            .invoke_capability(RuntimeCapabilityRequest::new(
+            .invoke(RuntimeCapabilityRequest::new(
                 context,
                 CapabilityId::new(binding.capability_id()).unwrap(),
                 ResourceEstimate::default(),
