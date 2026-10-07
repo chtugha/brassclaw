@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use brassclaw_engine::memory::{
-    retained_instruction::{RetainedRecipeInstruction, WorkflowClass},
+    retained_instruction::{RetainedRecipeInstruction, RetainedSelectionError},
     retained_tools::RetainedToolProgram,
 };
 use brassclaw_monty_host::process::PortAnswer;
@@ -209,29 +209,13 @@ impl PgMontyAdmission {
 fn workflow_selection(
     instruction: &RetainedRecipeInstruction,
 ) -> Result<String, AgentLoopDriverError> {
-    let references: Vec<_> = instruction
-        .snapshot()
-        .revisions()
-        .values()
-        .map(|revision| reference(revision.reference()))
-        .collect();
-    let recipe = &instruction.snapshot().revisions()[&instruction.recipe().uuid];
-    let layout = recipe
-        .draft()
-        .document()
-        .get("input_layouts")
-        .and_then(|layouts| layouts.get(&instruction.variant().variant_key))
-        .ok_or_else(|| failed("monty_invocation_selection_invalid"))?;
-    encoded(&json!({
-        "format":"monty-retained-recipe-selection/1",
-        "recipe":reference(instruction.recipe()), "variant":instruction.variant(),
-        "workflow_class":match instruction.class() {
-            WorkflowClass::Deterministic => "deterministic",
-            WorkflowClass::RequiresModel => "requires_model",
-        },
-        "input_layout":layout, "step_order":instruction.ordered().step_order(),
-        "components":references,
-    }))
+    instruction
+        .retained_selection()
+        .map(|selection| selection.exact_bytes().to_owned())
+        .map_err(|error| match error {
+            RetainedSelectionError::Invalid => failed("monty_invocation_selection_invalid"),
+            RetainedSelectionError::Capacity => failed("monty_invocation_capacity_exceeded"),
+        })
 }
 impl PgMontyInvocation {
     /// Persist the actual host answer before child resume/output validation.

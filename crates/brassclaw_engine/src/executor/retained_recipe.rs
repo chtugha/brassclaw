@@ -269,6 +269,7 @@ pub struct RetainedRecipeExecution {
     latest_snapshot: Option<ProcessSnapshot>,
     host_answers: Vec<(String, PortAnswer)>,
     observations: BTreeMap<String, RetainedStepObservation>,
+    observation_order: Vec<String>,
     observe_behavior: bool,
     transport_failure: Option<RetainedTransportEvidence>,
 }
@@ -318,6 +319,7 @@ impl RetainedRecipeExecution {
             latest_snapshot: None,
             host_answers: Vec::new(),
             observations: BTreeMap::new(),
+            observation_order: Vec::new(),
             observe_behavior,
             transport_failure: None,
         })
@@ -337,6 +339,11 @@ impl RetainedRecipeExecution {
     }
     pub fn observations(&self) -> &BTreeMap<String, RetainedStepObservation> {
         &self.observations
+    }
+    /// Actual begun-step order, present only when behavioral observation was
+    /// enabled before execution. A sorted map cannot establish workflow order.
+    pub fn observation_order(&self) -> Option<&[String]> {
+        self.observe_behavior.then_some(&self.observation_order)
     }
     /// Actual completed host answers survive a subsequent validation/IPC error.
     /// They are evidence, never permission to repeat a completed invocation.
@@ -445,6 +452,7 @@ impl RetainedRecipeExecution {
         self.phase = Phase::Running;
         self.started.insert(step_id.to_owned());
         if let Some(input_checksum) = input_checksum {
+            self.observation_order.push(step_id.to_owned());
             self.observations.insert(
                 step_id.to_owned(),
                 RetainedStepObservation {

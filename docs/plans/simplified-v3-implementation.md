@@ -2870,3 +2870,32 @@ ordinary runtime still constructs PersistentMontyDriver, and the original seven
 composition failures remain unresolved. Protected-root/seed provenance, coherent
 approved activation, retained actual implementations, live resource/settings and
 durable continuation/recovery wiring still gate the ordinary factory cutover.
+
+### 2026-10-08 — Retain exact workflow observations, including pure logic
+
+V106 adds immutable selected-variant structural and step-execution evidence,
+separate from one-Tool association records. The actual IBS selection now has
+one sealed representation shared by review evidence and the durable task
+journal. Behavioral observation retains execution order as well as typed
+value fingerprints, so reordered steps cannot pass solely because their
+individual results match. Pure-logic workflows need no fabricated Tool usage.
+Missing/unsettled steps, wrong termination and uncertain transport are rejected;
+failed expectations remain failed evidence. Commit recovery retains the same
+review object, ID and exact bytes without replaying effects. See
+[the workflow-observation contract](../reborn/contracts/workflow-review-evidence.md).
+
+Eighteen affected native worker/kernel/PostgreSQL cases passed: 11 existing
+model-host cases, five review-host cases and two retained-execution cases.
+The shared authenticated human-review HTTP caller also passed with the actual
+compiled companion worker. Both isolated all-target and composition skills-db
+all-target strict lint passed without warnings. Checks ran serially in screen,
+with disk checks/cleanup before each Cargo execution. Rust 1.98 logs:
+`/private/tmp/brassclaw-workflow-review-{native,lints}.log` and
+`/private/tmp/brassclaw-workflow-review-consumer-{native,lints}.log`.
+
+Reports explicitly retain semantic_approval=false and task_completion=false;
+structural checks and child results alone do not certify semantic correctness
+or a published, settled root task. No activation, protected-root approval,
+production catalogue or ordinary factory cutover is claimed. The original
+seven runtime failures remain open; their unchanged ordinary-driver cause
+was not retested for this review/journal change.

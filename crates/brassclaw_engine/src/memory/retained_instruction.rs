@@ -6,9 +6,12 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use brassclaw_skills::{
-    association_contract::ComponentRevisionRef, component_revision::RetainedComponentSnapshot,
+    association_contract::ComponentRevisionRef,
+    component_revision::{REVISION_LIMITS, RetainedComponentSnapshot},
+    value_contract::validate_data_bounds,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::instruction_builder::{
@@ -51,6 +54,78 @@ impl RetainedRecipeInstruction {
     pub fn ordered(&self) -> &OrderedBuildInstruction {
         &self.ordered
     }
+
+    /// Exact task/review subject derived from the actual IBS selection. This
+    /// retains references and layout, never an executable BuildInstruction or
+    /// runtime input/result. It establishes no approval, activation or grant.
+    pub fn retained_selection(&self) -> Result<RetainedRecipeSelection, RetainedSelectionError> {
+        let recipe = self
+            .snapshot
+            .revisions()
+            .get(&self.recipe.uuid)
+            .filter(|revision| revision.reference() == self.recipe)
+            .ok_or(RetainedSelectionError::Invalid)?;
+        let layout = recipe
+            .draft()
+            .document()
+            .get("input_layouts")
+            .and_then(|layouts| layouts.get(&self.variant.variant_key))
+            .ok_or(RetainedSelectionError::Invalid)?;
+        let references: Vec<_> = self
+            .snapshot
+            .revisions()
+            .values()
+            .map(|revision| revision_reference(revision.reference()))
+            .collect();
+        let selection = json!({
+            "format":"monty-retained-recipe-selection/1",
+            "recipe":revision_reference(self.recipe), "variant":self.variant,
+            "workflow_class":match self.class {
+                WorkflowClass::Deterministic => "deterministic",
+                WorkflowClass::RequiresModel => "requires_model",
+            },
+            "input_layout":layout, "step_order":self.ordered.step_order(),
+            "components":references,
+        });
+        validate_data_bounds(&selection, REVISION_LIMITS)
+            .map_err(|_| RetainedSelectionError::Capacity)?;
+        let bytes = selection.to_string();
+        if bytes.len() > REVISION_LIMITS.max_bytes {
+            return Err(RetainedSelectionError::Capacity);
+        }
+        let checksum = Sha256::digest(bytes.as_bytes()).into();
+        Ok(RetainedRecipeSelection { bytes, checksum })
+    }
+}
+
+/// Constructed only from a retained compiled instruction, not arbitrary JSON or
+/// a caller-supplied success flag. Sensitive authoring metadata has no Debug.
+pub struct RetainedRecipeSelection {
+    bytes: String,
+    checksum: [u8; 32],
+}
+impl RetainedRecipeSelection {
+    pub fn exact_bytes(&self) -> &str {
+        &self.bytes
+    }
+    pub fn checksum(&self) -> [u8; 32] {
+        self.checksum
+    }
+}
+#[derive(Debug, thiserror::Error)]
+pub enum RetainedSelectionError {
+    #[error("retained Recipe selection metadata is inconsistent")]
+    Invalid,
+    #[error("retained Recipe selection exceeds technical transport capacity")]
+    Capacity,
+}
+fn revision_reference(reference: ComponentRevisionRef) -> Value {
+    let checksum: String = reference
+        .checksum
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    json!({"uuid":reference.uuid,"class_code":reference.class_code,"version":reference.version,"checksum":checksum})
 }
 
 #[derive(Debug, thiserror::Error)]

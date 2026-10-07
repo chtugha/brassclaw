@@ -37,6 +37,8 @@ mod native_pg;
 mod pg_monty_admission;
 #[path = "../../../crates/brassclaw_reborn_composition/src/pg_retained_q1.rs"]
 mod pg_retained_q1;
+#[path = "../../../crates/brassclaw_reborn_composition/src/pg_workflow_review.rs"]
+mod pg_workflow_review;
 #[path = "support/retained_kernel.rs"]
 mod retained_kernel;
 #[path = "support/retained_program.rs"]
@@ -109,6 +111,29 @@ async fn actual_structural_reviews_retain_exact_source_and_are_not_combination_a
             .await
             .unwrap(),
     );
+    let workflow =
+        Arc::new(pg_workflow_review::WorkflowReview::structural(inspected.clone()).unwrap());
+    let workflow_value: Value = serde_json::from_str(workflow.evidence()).unwrap();
+    assert_eq!(workflow_value["kind"], "q1");
+    assert_eq!(
+        workflow_value["report"]["scope"],
+        "selected-variant-structure"
+    );
+    assert_eq!(
+        workflow_value["report"]["sources"]
+            .as_object()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(workflow_value["report"]["semantic_approval"], false);
+    assert_eq!(workflow_value["report"]["task_completion"], false);
+    pg_workflow_review::persist_workflow_review(&rig.pool, workflow.clone())
+        .await
+        .unwrap();
+    pg_workflow_review::persist_workflow_review(&rig.pool, workflow.clone())
+        .await
+        .unwrap();
     let reviews = Arc::new(StructuralReviewSet::prepare(inspected).unwrap());
     assert_eq!(reviews.references().len(), 1);
     assert_eq!(reviews.inspected().source_checks().len(), 1);
@@ -186,6 +211,24 @@ async fn actual_structural_reviews_retain_exact_source_and_are_not_combination_a
     assert_eq!(counts.get::<_, i64>(0), 1);
     assert_eq!(counts.get::<_, i64>(1), 0);
     assert_eq!(counts.get::<_, i64>(2), 0);
+    let selected = program.inputs().instruction().retained_selection().unwrap();
+    let stored = client.query_one("SELECT selection_bytes,selection_checksum,evidence_bytes FROM reborn_workflow_review_evidence WHERE evidence_id=$1", &[&workflow.id()]).await.unwrap();
+    assert_eq!(stored.get::<_, &str>(0), selected.exact_bytes());
+    assert_eq!(
+        stored.get::<_, String>(1),
+        format!("{:x}", Sha256::digest(selected.exact_bytes().as_bytes()))
+    );
+    assert_eq!(stored.get::<_, &str>(2), workflow.evidence());
+    for statement in [
+        "UPDATE reborn_workflow_review_evidence SET evidence_kind='behavior'",
+        "DELETE FROM reborn_workflow_review_evidence",
+        "TRUNCATE reborn_workflow_review_evidence",
+    ] {
+        assert_eq!(
+            client.batch_execute(statement).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
+    }
 
     let conflicting = Arc::new(
         StructuralReviewSet::prepare(Arc::new(
@@ -347,6 +390,191 @@ async fn progress(transport: &TransportClient, mut snapshot: ProcessSnapshot) ->
         snapshot = exchange(transport, WorkerCommand::ResumeControl { key }).await;
     }
     snapshot
+}
+
+#[tokio::test]
+async fn pure_logic_workflow_evidence_observes_values_and_rejects_reordered_steps() {
+    use brassclaw_engine::memory::{
+        retained_inputs::prepare_retained_unbound_program,
+        retained_instruction::{WorkflowClass, compile_retained_recipe},
+    };
+    use pg_workflow_review::{
+        ExpectedWorkflowTermination, WorkflowReview, WorkflowStepExpectation,
+        persist_workflow_review,
+    };
+    use uuid::Uuid;
+
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let (recipe, first, second) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let result = json!({"type":"object","allow_extra_fields":false,"fields":{"text":{"type":"string","required":true}}});
+    let document = json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":["show %"],"variable_patterns":[{"name":"value","pattern":null,"description":null}]}],
+        "step_descriptions":[{"desc_idx":0,"label":"pure logic handoff","yaml_source":"","steps":[
+            {"stepnumber":1,"knowledge":"orchestrator","goal":"Prepare text","content":"","type":"component","include":[first]},
+            {"stepnumber":2,"knowledge":"orchestrator","goal":"Consume prepared text","content":"","type":"component","include":[second]}]}],
+        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{"value":{"type":"string","required":true,"checks":[]}},
+            "steps":{"0:1":{"text":{"kind":"task_input","reference":"{{vars.value}}"}},
+                "0:2":{"previous":{"kind":"result","step_id":"0:1","path":["text"]}}}}}});
+    let mut refs = Vec::new();
+    for (id, class, document, dependencies) in [
+        (
+            first,
+            22,
+            json!({"content":"result = {'text': inputs['text']}","includes":[],"dependency_registry":null,
+            "input_contract":{"text":{"type":"string","required":true,"checks":[]}},"result_contract":result}),
+            Vec::new(),
+        ),
+        (
+            second,
+            22,
+            json!({"content":"result = {'text': inputs['previous'] + '!'}","includes":[],"dependency_registry":null,
+            "input_contract":{"previous":{"type":"string","required":true,"checks":[]}},"result_contract":result}),
+            Vec::new(),
+        ),
+        (recipe, 21, document, vec![first, second]),
+    ] {
+        let draft = ComponentRevisionDraft::from_json(
+            &json!({"format":"component-revision/1","uuid":id,"class_code":class,
+            "document":document,"dependencies":dependencies,"association":null})
+            .to_string(),
+        )
+        .unwrap();
+        refs.push(store.stage(&draft, 0).await.unwrap());
+    }
+    let selected = compile_retained_recipe(
+        Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+        recipe,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    let inspected = Arc::new(
+        InspectedRetainedProgram::inspect(
+            RetainedProgram::Unbound(Arc::new(
+                prepare_retained_unbound_program(selected).unwrap(),
+            )),
+            worker(),
+        )
+        .await
+        .unwrap(),
+    );
+    let structural = Arc::new(WorkflowReview::structural(inspected.clone()).unwrap());
+    persist_workflow_review(&rig.pool, structural)
+        .await
+        .unwrap();
+    for order in [["0:1", "0:2"], ["0:2", "0:1"]] {
+        // This neutral fixture keeps a real root/task waiting while probing child
+        // execution. It is constrained draft validation, not application startup
+        // or a claimed production Recipe completion.
+        let source = "import asyncio\nasync def validate():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    await host.validation_hold(task['task_token'])\nasyncio.run(validate())\n";
+        let mut boot = support::boot(source);
+        boot.bounds.workers = 1;
+        boot.aliases.insert("validation_hold".into());
+        let (mut owner, ready) = TransportOwner::start(
+            worker(),
+            boot,
+            support::limits(),
+            ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * 1024 * 1024,
+                max_control_unclaimed: 8,
+                max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+            },
+        )
+        .await
+        .unwrap();
+        let admitted = admission::reserve(rig.pool.clone(), "actual pure logic validation").await;
+        let transport = owner.client();
+        let snapshot = exchange(
+            &transport,
+            WorkerCommand::Admit {
+                key: ready.work_waits[0].1,
+                task: admitted.input,
+            },
+        )
+        .await;
+        let task = snapshot.admitted_task.unwrap();
+        let root = progress(&transport, snapshot).await;
+        let Some(ProcessBoundary::HostCall { name, key, .. }) = root.boundary else {
+            panic!("actual validation wait required");
+        };
+        assert_eq!(name, "validation_hold");
+        exchange(&transport, WorkerCommand::Defer { key }).await;
+        let text = "'quoted'\\value\nÜ {{vars.value}} host.forbidden()";
+        let expected = BTreeMap::from([
+            (
+                "0:1".into(),
+                WorkflowStepExpectation {
+                    inputs: json!({"text":text}),
+                    tool: None,
+                    result: ExpectedStepResult::Return(json!({"text":text})),
+                },
+            ),
+            (
+                "0:2".into(),
+                WorkflowStepExpectation {
+                    inputs: json!({"previous":text}),
+                    tool: None,
+                    result: ExpectedStepResult::Return(json!({"text":format!("{text}!")})),
+                },
+            ),
+        ]);
+        let mut execution =
+            RetainedRecipeExecution::new_for_behavioral_validation(task, inspected.clone())
+                .unwrap();
+        assert!(matches!(
+            WorkflowReview::behavior(
+                &execution,
+                &expected,
+                ExpectedWorkflowTermination::CompletedSteps
+            ),
+            Err(StructuralReviewFailure::Observation)
+        ));
+        for step in order {
+            let value = execution
+                .run_step(&transport, step, &expected[step].inputs, None)
+                .await
+                .unwrap();
+            let ExpectedStepResult::Return(wanted) = &expected[step].result else {
+                panic!("expected actual value");
+            };
+            assert_eq!(&value, wanted);
+        }
+        assert!(execution.host_answers().is_empty());
+        if order == ["0:1", "0:2"] {
+            let review = Arc::new(
+                WorkflowReview::behavior(
+                    &execution,
+                    &expected,
+                    ExpectedWorkflowTermination::CompletedSteps,
+                )
+                .unwrap(),
+            );
+            let value: Value = serde_json::from_str(review.evidence()).unwrap();
+            assert_eq!(value["succeeded"], true);
+            assert_eq!(value["report"]["semantic_approval"], false);
+            assert_eq!(value["report"]["task_completion"], false);
+            assert!(!review.evidence().contains("host.forbidden"));
+            persist_workflow_review(&rig.pool, review).await.unwrap();
+        } else {
+            assert!(
+                matches!(
+                    WorkflowReview::behavior(
+                        &execution,
+                        &expected,
+                        ExpectedWorkflowTermination::CompletedSteps
+                    ),
+                    Err(StructuralReviewFailure::Observation)
+                ),
+                "matching outputs cannot certify a reordered workflow"
+            );
+        }
+        owner.request_termination();
+        let exit = owner.join().await.unwrap();
+        assert!(exit.exit_status.is_some());
+        assert!(exit.reap_error.is_none());
+        assert!(exit.containment_error.is_none());
+    }
 }
 
 #[tokio::test]
@@ -538,6 +766,124 @@ pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserve
                 },
             );
         }
+        let workflow_expectations = expected
+            .iter()
+            .map(|(step, wanted)| {
+                (
+                    step.clone(),
+                    pg_workflow_review::WorkflowStepExpectation {
+                        inputs: wanted.inputs.clone(),
+                        tool: Some((
+                            wanted.arguments.clone(),
+                            match &wanted.answer {
+                                PortAnswer::Return { value } => PortAnswer::Return {
+                                    value: value.clone(),
+                                },
+                                PortAnswer::DomainError { reason_kind } => {
+                                    PortAnswer::DomainError {
+                                        reason_kind: reason_kind.clone(),
+                                    }
+                                }
+                                PortAnswer::TerminalError { reason_kind } => {
+                                    PortAnswer::TerminalError {
+                                        reason_kind: reason_kind.clone(),
+                                    }
+                                }
+                            },
+                        )),
+                        result: ExpectedStepResult::Return(data.clone()),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let termination = if invalid_output {
+            pg_workflow_review::ExpectedWorkflowTermination::FailedStep {
+                step: "0:2".into(),
+                failure: RetainedStepFailure::ResultContract,
+            }
+        } else {
+            pg_workflow_review::ExpectedWorkflowTermination::CompletedSteps
+        };
+        if invalid_output {
+            assert!(
+                matches!(
+                    pg_workflow_review::WorkflowReview::behavior(
+                        &execution,
+                        &workflow_expectations,
+                        pg_workflow_review::ExpectedWorkflowTermination::CompletedSteps
+                    ),
+                    Err(StructuralReviewFailure::Observation)
+                ),
+                "a failed prefix cannot become complete-workflow evidence"
+            );
+        }
+        let workflow = Arc::new(
+            pg_workflow_review::WorkflowReview::behavior(
+                &execution,
+                &workflow_expectations,
+                termination,
+            )
+            .unwrap(),
+        );
+        let evidence: Value = serde_json::from_str(workflow.evidence()).unwrap();
+        assert_eq!(evidence["succeeded"], !invalid_output);
+        assert_eq!(evidence["report"]["task_completion"], false);
+        assert_eq!(
+            evidence["report"]["execution_order"],
+            if invalid_output {
+                json!(["0:2"])
+            } else {
+                json!(["0:2", "0:4"])
+            }
+        );
+        assert!(!workflow.evidence().contains("host.forbidden"));
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE FUNCTION fail_workflow_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'actual workflow commit failure' USING ERRCODE='23514'; END; $$; CREATE CONSTRAINT TRIGGER workflow_commit_fault AFTER INSERT ON reborn_workflow_review_evidence DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_workflow_commit()").await.unwrap();
+        let error = pg_workflow_review::persist_workflow_review(&rig.pool, workflow.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error.failure,
+            StructuralReviewFailure::Database(_)
+        ));
+        assert!(Arc::ptr_eq(&error.retained, &workflow));
+        assert!(!format!("{error:?}").contains("actual workflow commit failure"));
+        assert!(!client.query_one("SELECT EXISTS(SELECT 1 FROM reborn_workflow_review_evidence WHERE evidence_id=$1)", &[&workflow.id()]).await.unwrap().get::<_, bool>(0));
+        client.batch_execute("DROP TRIGGER workflow_commit_fault ON reborn_workflow_review_evidence; DROP FUNCTION fail_workflow_commit()").await.unwrap();
+        pg_workflow_review::persist_workflow_review(&rig.pool, error.retained.clone())
+            .await
+            .unwrap();
+        pg_workflow_review::persist_workflow_review(&rig.pool, error.retained)
+            .await
+            .unwrap();
+        let stored = client.query_one("SELECT selection_bytes,evidence_bytes FROM reborn_workflow_review_evidence WHERE evidence_id=$1", &[&workflow.id()]).await.unwrap();
+        let journal: String = client.query_one("SELECT selection_bytes FROM brassclaw_monty_recipe_selections WHERE run_id=$1 AND recipe_id=$2", &[&admitted.context.run_id.as_uuid(), &prepared.inputs().instruction().recipe().uuid]).await.unwrap().get(0);
+        assert_eq!(stored.get::<_, &str>(0), journal);
+        assert_eq!(stored.get::<_, &str>(1), workflow.evidence());
+        if invalid_output {
+            let mut negative = workflow_expectations;
+            negative.get_mut("0:2").unwrap().result =
+                ExpectedStepResult::Failure(RetainedStepFailure::ResultContract);
+            let reviewed = Arc::new(
+                pg_workflow_review::WorkflowReview::behavior(
+                    &execution,
+                    &negative,
+                    pg_workflow_review::ExpectedWorkflowTermination::FailedStep {
+                        step: "0:2".into(),
+                        failure: RetainedStepFailure::ResultContract,
+                    },
+                )
+                .unwrap(),
+            );
+            assert_eq!(
+                serde_json::from_str::<Value>(reviewed.evidence()).unwrap()["succeeded"],
+                true
+            );
+            pg_workflow_review::persist_workflow_review(&rig.pool, reviewed)
+                .await
+                .unwrap();
+        }
+        drop(client);
         let reviews = Arc::new(BehavioralReviewSet::prepare(&execution, &expected).unwrap());
         assert_eq!(reviews.references().len(), 1);
         let actual: Value = serde_json::from_str(reviews.evidence(skill).unwrap()).unwrap();
