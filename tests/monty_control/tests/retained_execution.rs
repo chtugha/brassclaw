@@ -10,6 +10,7 @@ use brassclaw_engine::{
         RetainedExecutionError, RetainedProgram, RetainedRecipeExecution, RetainedToolInvocation,
         RetainedToolPort, RetainedTransportEvidence,
     },
+    executor::retained_source::{InspectedRetainedProgram, RetainedSourceError},
     memory::retained_tools::{RetainedToolBinding, RetainedToolProgram},
 };
 use brassclaw_host_api::{
@@ -27,6 +28,7 @@ use brassclaw_monty_host::{
         TaskHandle, WorkerCommand,
     },
     transport_actor::{ActorLimits, TransportClient, TransportOwner},
+    utility::UtilityRequest,
 };
 use brassclaw_skills::revision_store::PgComponentRevisionStore;
 use serde_json::{Value, json};
@@ -281,8 +283,16 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         let root = exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return { value: json!({"ok":true,"program_ref":reference,
             "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),"inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()}) } }).await;
         let mut root = progress(&transport, root).await;
-        let mut execution =
-            RetainedRecipeExecution::new(task, RetainedProgram::Tools(prepared.clone())).unwrap();
+        let inspected = Arc::new(
+            InspectedRetainedProgram::inspect(
+                RetainedProgram::Tools(prepared.clone()),
+                support::worker(),
+            )
+            .await
+            .unwrap(),
+        );
+        assert_eq!(inspected.source_checks().len(), 1);
+        let mut execution = RetainedRecipeExecution::new(task, inspected).unwrap();
         for step in &prepared.program().steplist {
             let Some(ProcessBoundary::HostCall {
                 key,
@@ -461,4 +471,65 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             .await
             .unwrap();
     }
+}
+
+#[tokio::test]
+async fn retained_source_preflight_rejects_unbound_code_before_any_execution() {
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let valid = "# host.forbidden() import os\ntext = 'host.fake() eval(1) __execute_action__'\nresult = host.json(operation='parse', data=inputs['data'])";
+    let program = retained_program::program_with_source(&store, false, Some(valid)).await;
+    let inspected = InspectedRetainedProgram::inspect(
+        RetainedProgram::Tools(program.clone()),
+        support::worker(),
+    )
+    .await
+    .unwrap();
+    // One actual observation is shared by both selected uses of this revision.
+    assert_eq!(inspected.source_checks().len(), 1);
+    let reference = program.inputs().components()["0:2"];
+    let observed = &inspected.source_checks()[&reference.uuid];
+    assert_eq!(observed.component(), reference);
+    assert_eq!(observed.observations().direct_host_calls.len(), 1);
+    assert!(observed.observations().imports.is_empty());
+    assert!(observed.observations().reserved_name_references.is_empty());
+    for source in [
+        "result = host.unbound(data=inputs['data'])",
+        "receiver = host\nresult = receiver.json(data=inputs['data'])",
+        "first = host.json(data=inputs['data'])\nresult = host.json(data=inputs['data'])",
+        "result = __execute_action__('json')",
+        "import os\nresult = host.json(data=inputs['data'])",
+        "value = host.json(data=inputs['data'])",
+        "result = {'text': inputs['data']}",
+    ] {
+        let program = retained_program::program_with_source(&store, false, Some(source)).await;
+        let error = match InspectedRetainedProgram::inspect(
+            RetainedProgram::Tools(program),
+            support::worker(),
+        )
+        .await
+        {
+            Ok(_) => panic!("unsupported selected source must fail preflight"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, RetainedSourceError::Invalid { .. }));
+        assert!(!format!("{error:?}").contains(source));
+    }
+    let program = retained_program::program_with_source(&store, false, Some("def broken(:")).await;
+    let error =
+        match InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
+            .await
+        {
+            Ok(_) => panic!("malformed source must fail contained compilation"),
+            Err(error) => error,
+        };
+    let RetainedSourceError::Inspection { error, .. } = error else {
+        panic!("actual worker error evidence required");
+    };
+    assert_eq!(error.kind, ProcessFailure::Vm(VmFailure::Python));
+    assert!(error.exit_status.unwrap().success());
+    let UtilityRequest::InspectSource { source, .. } = error.request.as_ref() else {
+        panic!("original rejected source required");
+    };
+    assert_eq!(source, "def broken(:");
 }

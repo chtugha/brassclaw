@@ -7,6 +7,7 @@ use std::{sync::Arc, time::Duration};
 use brassclaw_engine::executor::retained_recipe::{
     RetainedExecutionError, RetainedProgram, RetainedRecipeExecution,
 };
+use brassclaw_engine::executor::retained_source::InspectedRetainedProgram;
 use brassclaw_engine::memory::{
     retained_inputs::{
         RetainedInputError, RetainedUnboundProgram, prepare_retained_unbound_program,
@@ -212,8 +213,15 @@ async fn execute_draft_flow(
     )
     .await;
     let mut root = root_progress(&process, resolved).await;
-    let mut execution =
-        RetainedRecipeExecution::new(task, RetainedProgram::Unbound(program.clone())).unwrap();
+    let inspected = Arc::new(
+        InspectedRetainedProgram::inspect(
+            RetainedProgram::Unbound(program.clone()),
+            &installed_worker().unwrap(),
+        )
+        .await
+        .unwrap(),
+    );
+    let mut execution = RetainedRecipeExecution::new(task, inspected).unwrap();
     let mut observed = Vec::new();
     for step in &program.program().steplist {
         let Some(ProcessBoundary::HostCall {

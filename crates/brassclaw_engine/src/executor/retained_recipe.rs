@@ -42,7 +42,7 @@ impl RetainedProgram {
             Self::Tools(p) => p.program(),
         }
     }
-    fn binding(&self, step: &str) -> Option<&RetainedToolBinding> {
+    pub(super) fn binding(&self, step: &str) -> Option<&RetainedToolBinding> {
         match self {
             Self::Unbound(_) => None,
             Self::Tools(p) => p.bindings().get(step),
@@ -128,6 +128,7 @@ enum Phase {
 pub struct RetainedRecipeExecution {
     task: TaskHandle,
     program: RetainedProgram,
+    source_checks: Arc<super::retained_source::InspectedRetainedProgram>,
     context: Option<RecipeContextId>,
     phase: Phase,
     started: BTreeSet<String>,
@@ -136,7 +137,11 @@ pub struct RetainedRecipeExecution {
     transport_failure: Option<RetainedTransportEvidence>,
 }
 impl RetainedRecipeExecution {
-    pub fn new(task: TaskHandle, program: RetainedProgram) -> Result<Self, RetainedExecutionError> {
+    pub fn new(
+        task: TaskHandle,
+        inspected: Arc<super::retained_source::InspectedRetainedProgram>,
+    ) -> Result<Self, RetainedExecutionError> {
+        let program = inspected.program().clone();
         // Check the supported complete layout before any VM or effect begins.
         program.inputs().monty_flow()?;
         if let RetainedProgram::Tools(p) = &program
@@ -152,6 +157,7 @@ impl RetainedRecipeExecution {
         Ok(Self {
             task,
             program,
+            source_checks: inspected,
             context: None,
             phase: Phase::Idle,
             started: BTreeSet::new(),
@@ -163,6 +169,11 @@ impl RetainedRecipeExecution {
 
     pub fn latest_snapshot(&self) -> Option<&ProcessSnapshot> {
         self.latest_snapshot.as_ref()
+    }
+    /// Exact syntax observations retained before the first executable feed.
+    /// These do not establish semantic review, activation or Tool authority.
+    pub fn source_checks(&self) -> &super::retained_source::InspectedSources {
+        self.source_checks.source_checks()
     }
     /// Actual completed host answers survive a subsequent validation/IPC error.
     /// They are evidence, never permission to repeat a completed invocation.

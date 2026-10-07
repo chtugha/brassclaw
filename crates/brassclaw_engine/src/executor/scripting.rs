@@ -202,7 +202,7 @@ pub async fn validate_python_syntax(code: &str) -> Result<(), String> {
 
 /// Technical transport bounds, independent of token accounting. The physical
 /// allocator backstop applies only to the disposable worker, including parsing.
-fn utility_bounds() -> brassclaw_monty_host::VmBounds {
+pub(super) fn utility_bounds() -> brassclaw_monty_host::VmBounds {
     brassclaw_monty_host::VmBounds {
         max_source_bytes: MAX_PYTHON_UTILITY_SOURCE_BYTES,
         max_compiled_source_bytes: MAX_PYTHON_UTILITY_SOURCE_BYTES * 2,

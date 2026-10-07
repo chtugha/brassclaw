@@ -2574,3 +2574,29 @@ all-target lints and all workspace architecture cases pass in
 `...-structure-{lints,boundaries}.log`. Checks ran serially in background screen
 with Rust 1.98. The original seven are still unresolved: no ordinary driver
 replacement or catalogue activation is claimed by these checks.
+
+
+### 2026-10-07 — Mandatory retained-source preflight
+
+The retained executor now accepts only the exact program returned by contained
+source inspection. The immutable result can be shared across task hosts and
+repeated component uses. Every selected use is checked against its actual
+prepared Tool binding before executable feeds. The current adapter supports
+zero-call pure logic and one-call Tool usage; dynamic host access, unbound or
+multiple call sites, forbidden/unsupported imports and intrinsics, and missing
+result stores fail explicitly. No authoring rule forbidding supported dependent
+chains is introduced; that broader binding adapter remains required.
+
+Actual PostgreSQL drafts show misleading literals/comments are ignored and
+wrong bindings/dynamic dispatch/intrinsics/imports/missing results are rejected
+before execution. Actual compiler failures retain original source and worker
+receipt. The existing real global-Monty/child/kernel success-before-output-error
+and live-policy case still passes. Two native cases pass in
+`/private/tmp/brassclaw-monty-source-retained-native.log`; four native typed-flow
+cases pass in `...-source-retained-inputs.log`; strict isolated all-target and
+root Engine skills-db all-target lints pass in
+`...-source-{isolated,engine}-lints.log`. Checks ran serially in screen, Rust 1.98.
+
+This supplies structural preflight, not semantic approval or catalogue
+activation. The ordinary runtime/approved catalogue/production factory cutover
+still remains, so no original-seven success is claimed.

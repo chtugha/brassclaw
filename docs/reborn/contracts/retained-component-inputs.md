@@ -261,3 +261,22 @@ normal global task factory must invoke selection retention before the first
 feed, integrate the journal with the actual dispatch adapter, and retain task
 snapshots/approval IDs through waits and recovery. This prerequisite supplies
 neither a production factory nor a claim of completed external effects.
+
+
+## Contained executable source preflight
+
+`RetainedRecipeExecution::new` requires an `Arc<InspectedRetainedProgram>` made
+by actual contained inspection of that exact retained program. Every use is
+checked against its prepared binding; repeated uses of one immutable code
+revision share one inspection. The currently supported adapter accepts pure
+logic with zero host calls and single-Tool steps with one matching direct host
+call. Dynamic host access, unsupported imports/intrinsics, missing result stores
+and unbound/multiple call sites fail before executable feeds. Unsupported
+dependent-chain binding coverage remains an explicit adapter limitation, not
+an authoring prohibition. Actual worker errors retain their original source
+and receipt privately.
+
+The immutable inspection can be shared across task hosts. Parser observations
+do not prove reachability, global result assignment, behavior or prose/code
+agreement. Q1 semantic review, real behavior, human Q2, catalogue activation,
+actual Tool implementation provenance and live kernel policy remain separate.
