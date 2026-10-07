@@ -8,7 +8,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use brassclaw_engine::executor::{
-    retained_recipe::{RetainedRecipeExecution, RetainedToolPort},
+    retained_recipe::{RetainedRecipeExecution, RetainedTaskContext, RetainedToolPort},
     retained_source::InspectedRetainedProgram,
 };
 use brassclaw_monty_host::{
@@ -73,6 +73,7 @@ pub(crate) struct GlobalRecipePorts {
     user_input: String,
     ownership: crate::global_monty_owner::GlobalOwnerCheck,
     state: Mutex<State>,
+    task_context: Mutex<Option<RetainedTaskContext>>,
     fenced: std::sync::atomic::AtomicBool,
 }
 impl GlobalRecipePorts {
@@ -90,6 +91,7 @@ impl GlobalRecipePorts {
             user_input,
             ownership,
             state: Mutex::new(State::default()),
+            task_context: Mutex::new(None),
             fenced: std::sync::atomic::AtomicBool::new(false),
         }
     }
@@ -223,9 +225,26 @@ impl GlobalRecipePorts {
                     .iter()
                     .map(|step| json!({"step_id":step.step_id}))
                     .collect();
-                let execution =
-                    RetainedRecipeExecution::new(task, selected.selected.inspected.clone())
-                        .map_err(|_| failure("recipe_composition_failed"))?;
+                let parent = {
+                    // This per-task lock covers only its one parent allocation.
+                    // Cancellation uses the atomic fence and never waits here.
+                    let mut slot = self.task_context.lock().await;
+                    let context = slot.get_or_insert_with(|| RetainedTaskContext::new(task));
+                    if context.task() != task {
+                        return Err(failure("task_identity_invalid"));
+                    }
+                    context
+                        .open(transport)
+                        .await
+                        .map_err(|_| failure("recipe_context_failed"))?
+                };
+                self.check_fence()?;
+                let execution = RetainedRecipeExecution::new_child(
+                    task,
+                    parent,
+                    selected.selected.inspected.clone(),
+                )
+                .map_err(|_| failure("recipe_composition_failed"))?;
                 *execution_slot = Some(execution);
                 Ok(
                     json!({"ok":true,"program_ref":selected.program_ref,"steps":steps,

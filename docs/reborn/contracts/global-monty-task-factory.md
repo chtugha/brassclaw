@@ -24,6 +24,18 @@ does not match, compile a workflow, run Tools, supply an empty catalogue or
 convert catalogue errors into No-Match. The native fixture explicitly supplies
 a draft-validation catalogue, which is not a production activation owner.
 
+Recipe composition opens one task-owned idle parent context. Each selected
+Recipe executes beneath that actual same-task parent; later named workflows
+therefore do not try to allocate a second task root. Monty supplies their inputs
+and passes returned values explicitly. Parent ownership shares no implicit
+variables, claim identity or authority between Recipe contexts. The worker
+checks parent ownership/liveness and retains the shared task compute account.
+Opening the parent retains its accepted transport ticket before awaiting and
+the actual receipt afterwards. Abandoning that wait resumes the original
+request, never allocates another root. A rejected/failed request remains evidence.
+Child release is not root completion, durable settlement or permission to reset
+the active task's account.
+
 Only the already-running global service executes Python and returns an actual
 task receipt. Successful settlement requires the host's real published reply,
 no withheld late answers, and acknowledged durable admission settlement. Failed

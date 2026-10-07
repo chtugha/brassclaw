@@ -569,3 +569,221 @@ async fn retained_source_preflight_rejects_unbound_code_before_any_execution() {
     };
     assert_eq!(source, "def broken(:");
 }
+
+#[tokio::test]
+async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
+    use brassclaw_engine::executor::retained_recipe::RetainedTaskContext;
+    use brassclaw_monty_host::process::RecipeCommand;
+
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let first = retained_program::program(&store, false).await;
+    let second = retained_program::program(&store, false).await;
+    let expected = json!({"text":"'quotes'\n Ü {{vars.data}} host.forbidden()"});
+    let first_value = json!({"text":expected.to_string()});
+    let initial = json!({"data":first_value.to_string()});
+    let admitted_fixture =
+        Arc::new(admission::reserve(rig.pool.clone(), initial["data"].as_str().unwrap()).await);
+    let definitions = include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py")
+        .strip_suffix("asyncio.run(_global_main())\n")
+        .unwrap();
+    // Actual Monty sequences both constrained draft workflows. Rust responds
+    // only to the requested composition/step; runtime values remain data.
+    let source = format!(
+        "{definitions}\nasync def validate_children():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    first = await _execute_recipe(task['task_token'], 'first', '0:1-0:E', {{'data': task['user_input']}})\n    second = await _execute_recipe(task['task_token'], 'second', '0:1-0:E', {{'data': first['text']}})\n    await host.validation_result(task['task_token'], second)\nasyncio.run(validate_children())\n"
+    );
+    let mut boot = support::boot(&source);
+    boot.bounds.workers = 1;
+    boot.aliases.insert("validation_result".into());
+    let (mut owner, ready) = TransportOwner::start(
+        support::worker(),
+        boot,
+        support::limits(),
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+        },
+    )
+    .await
+    .unwrap();
+    let transport = owner.client();
+    let admitted = exchange(
+        &transport,
+        WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: admitted_fixture.input.clone(),
+        },
+    )
+    .await;
+    let task = admitted.admitted_task.unwrap();
+    let mut root = progress(&transport, admitted).await;
+    let mut parent_owner = RetainedTaskContext::new(task);
+    let mut opening = Box::pin(parent_owner.open(&transport));
+    assert!(futures::poll!(opening.as_mut()).is_pending());
+    drop(opening);
+    let pending = transport.completions().outstanding().unwrap();
+    assert_eq!(pending.len(), 1);
+    let parent = parent_owner.open(&transport).await.unwrap();
+    let original_request = parent_owner.receipt().unwrap().id;
+    assert_eq!(pending, vec![original_request]);
+    assert_eq!(parent_owner.open(&transport).await.unwrap(), parent);
+    assert_eq!(parent_owner.receipt().unwrap().id, original_request);
+    for (name, prepared, inputs, value) in [
+        ("first", first.clone(), initial, first_value),
+        (
+            "second",
+            second.clone(),
+            json!({"data":expected.to_string()}),
+            expected.clone(),
+        ),
+    ] {
+        let Some(ProcessBoundary::HostCall {
+            key,
+            name: operation,
+            args,
+            kwargs,
+        }) = root.boundary
+        else {
+            panic!("Monty composition request required")
+        };
+        assert_eq!(operation, "compose_orchestrator");
+        assert!(kwargs.is_empty());
+        assert_eq!(args[1], name);
+        assert_eq!(args[3], inputs);
+        admitted_fixture
+            .admission
+            .retain_recipe_selection(prepared.inputs().instruction())
+            .await
+            .unwrap();
+        exchange(&transport, WorkerCommand::Defer { key }).await;
+        let reference = Uuid::new_v4().to_string();
+        root = progress(&transport, exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return {
+            value: json!({"ok":true,"program_ref":reference,
+            "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),
+            "inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap()})
+        }}).await).await;
+        let inspected = Arc::new(
+            InspectedRetainedProgram::inspect(
+                RetainedProgram::Tools(prepared.clone()),
+                support::worker(),
+            )
+            .await
+            .unwrap(),
+        );
+        let mut child = RetainedRecipeExecution::new_child(task, parent, inspected).unwrap();
+        let port = KernelPort::new(
+            false,
+            prepared.bindings()["0:2"].tool().uuid,
+            task,
+            admitted_fixture.clone(),
+            prepared.clone(),
+            false,
+        );
+        for step in &prepared.program().steplist {
+            let Some(ProcessBoundary::HostCall {
+                key,
+                name,
+                args,
+                kwargs,
+            }) = root.boundary
+            else {
+                panic!("Monty child step request required")
+            };
+            assert_eq!(name, "run_program");
+            assert_eq!(args[1], reference);
+            assert_eq!(args[2], step.step_id);
+            assert!(kwargs.is_empty());
+            exchange(&transport, WorkerCommand::Defer { key }).await;
+            let actual = child
+                .run_step(&transport, &step.step_id, &args[3]["inputs"], Some(&port))
+                .await
+                .unwrap();
+            assert_eq!(actual, value);
+            root = progress(
+                &transport,
+                exchange(
+                    &transport,
+                    WorkerCommand::Resolve {
+                        key,
+                        answer: PortAnswer::Return {
+                            value: json!({"ok":true,"return_value":actual}),
+                        },
+                    },
+                )
+                .await,
+            )
+            .await;
+        }
+        assert_eq!(*port.calls.lock().unwrap(), 2);
+        assert_eq!(child.host_answers().len(), 2);
+    }
+    let Some(ProcessBoundary::HostCall {
+        key, name, args, ..
+    }) = root.boundary
+    else {
+        panic!("actual draft validation result required")
+    };
+    assert_eq!(name, "validation_result");
+    assert_eq!(args[1], expected);
+    exchange(&transport, WorkerCommand::Defer { key }).await;
+    let released = exchange(
+        &transport,
+        WorkerCommand::Recipe {
+            command: RecipeCommand::CancelContext { context: parent },
+        },
+    )
+    .await;
+    let Some(RecipeEvent::Released {
+        task: None,
+        contexts,
+    }) = released.recipe
+    else {
+        panic!("actual task context release required")
+    };
+    assert_eq!(released.lifecycle, Lifecycle::Ready);
+    assert_eq!(
+        contexts.len(),
+        3,
+        "one parent and two explicit Recipe children"
+    );
+    // Local child release cannot reset the still-active root task account or
+    // turn this draft validation into product completion.
+    let premature = transport
+        .try_submit(WorkerCommand::Recipe {
+            command: RecipeCommand::CloseTask { task },
+        })
+        .unwrap()
+        .wait()
+        .await
+        .unwrap()
+        .outcome
+        .unwrap_err();
+    assert_eq!(premature.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+    assert_eq!(premature.snapshot.unwrap().task_accounting.len(), 1);
+    let client = rig.pool.get().await.unwrap();
+    let rows = client.query("SELECT recipe_id,attempt_count,phase FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+        &[&admitted_fixture.context.run_id.as_uuid()]).await.unwrap();
+    assert_eq!(rows.len(), 4);
+    for row in rows {
+        let recipe: Uuid = row.get(0);
+        assert!(
+            [
+                first.inputs().instruction().recipe().uuid,
+                second.inputs().instruction().recipe().uuid
+            ]
+            .contains(&recipe)
+        );
+        assert_eq!(row.get::<_, i16>(1), 1);
+        assert_eq!(row.get::<_, &str>(2), "answered");
+    }
+    drop(client);
+    // This constrained validator has no product reply/finish contract. Its
+    // observed child results never fabricate whole-task completion or approval.
+    owner.request_termination();
+    let exit = owner.join().await.unwrap();
+    assert!(exit.exit_status.is_some());
+    assert!(exit.containment_error.is_none());
+    assert!(exit.reap_error.is_none());
+}

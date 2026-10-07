@@ -15,7 +15,9 @@ use brassclaw_monty_host::{
         PortAnswer, ProcessError, ProcessSnapshot, RecipeBoundary, RecipeCommand, RecipeContextId,
         RecipeEvent, SelectedPython, TaskHandle, WorkerCommand,
     },
-    transport_actor::{ActorFailure, RequestId, SubmitError, TransportClient},
+    transport_actor::{
+        ActorFailure, RequestId, RequestTicket, SubmitError, TransportClient, TransportReceipt,
+    },
 };
 use brassclaw_skills::{
     association_contract::FailureAction,
@@ -118,6 +120,91 @@ pub enum RetainedTransportEvidence {
         request: RequestId,
         command: Result<Box<WorkerCommand>, ActorFailure>,
     },
+}
+
+enum TaskContextState {
+    Empty,
+    Rejected(Arc<SubmitError>),
+    Pending(RequestTicket),
+    Settled(Box<TransportReceipt>),
+}
+
+/// One task-owned parent for explicitly delegated Recipe children. Opening
+/// this idle context executes no Python or Tool. The actual request/receipt is
+/// retained before/after awaits, so abandonment cannot cause a second root
+/// allocation or discard an uncertain worker outcome.
+pub struct RetainedTaskContext {
+    task: TaskHandle,
+    state: TaskContextState,
+}
+impl RetainedTaskContext {
+    pub fn new(task: TaskHandle) -> Self {
+        Self {
+            task,
+            state: TaskContextState::Empty,
+        }
+    }
+
+    pub fn task(&self) -> TaskHandle {
+        self.task
+    }
+
+    /// Actual transport evidence for supervisor reconciliation, never permission
+    /// to replay a task, reopen a child or restore another attempt's state.
+    pub fn receipt(&self) -> Option<&TransportReceipt> {
+        match &self.state {
+            TaskContextState::Settled(receipt) => Some(receipt),
+            _ => None,
+        }
+    }
+
+    pub async fn open(
+        &mut self,
+        transport: &TransportClient,
+    ) -> Result<RecipeContextId, RetainedExecutionError> {
+        if matches!(self.state, TaskContextState::Empty) {
+            self.state = match transport.try_submit(WorkerCommand::Recipe {
+                command: RecipeCommand::Open {
+                    task: self.task,
+                    parent: None,
+                },
+            }) {
+                Ok(ticket) => TaskContextState::Pending(ticket),
+                Err(error) => TaskContextState::Rejected(Arc::new(error)),
+            };
+        }
+        if let TaskContextState::Pending(ticket) = &self.state {
+            let receipt = ticket
+                .wait()
+                .await
+                .map_err(|kind| RetainedExecutionError::Receipt {
+                    request: ticket.id,
+                    kind,
+                })?;
+            self.state = TaskContextState::Settled(Box::new(receipt));
+        }
+        match &self.state {
+            TaskContextState::Rejected(error) => {
+                Err(RetainedExecutionError::Submission(error.clone()))
+            }
+            TaskContextState::Settled(receipt) => match &receipt.outcome {
+                Ok(snapshot) => match &snapshot.recipe {
+                    Some(RecipeEvent::Opened { task, context }) if *task == self.task => {
+                        Ok(*context)
+                    }
+                    _ => Err(RetainedExecutionError::Invalid(
+                        "worker did not open the task parent context",
+                    )),
+                },
+                Err(_) => Err(RetainedExecutionError::Invalid(
+                    "task parent context failed; retained receipt requires reconciliation",
+                )),
+            },
+            _ => Err(RetainedExecutionError::Invalid(
+                "task parent context has no observed receipt",
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -264,6 +351,7 @@ pub struct RetainedRecipeExecution {
     program: RetainedProgram,
     source_checks: Arc<super::retained_source::InspectedRetainedProgram>,
     context: Option<RecipeContextId>,
+    parent: Option<RecipeContextId>,
     phase: Phase,
     started: BTreeSet<String>,
     latest_snapshot: Option<ProcessSnapshot>,
@@ -278,7 +366,18 @@ impl RetainedRecipeExecution {
         task: TaskHandle,
         inspected: Arc<super::retained_source::InspectedRetainedProgram>,
     ) -> Result<Self, RetainedExecutionError> {
-        Self::prepare(task, inspected, false)
+        Self::prepare(task, inspected, false, None)
+    }
+
+    /// Execute beneath the actual same-task parent opened by Monty's transport
+    /// owner. The worker verifies ownership and liveness. Inputs/results still
+    /// travel explicitly as typed data; a parent link shares no implicit state.
+    pub fn new_child(
+        task: TaskHandle,
+        parent: RecipeContextId,
+        inspected: Arc<super::retained_source::InspectedRetainedProgram>,
+    ) -> Result<Self, RetainedExecutionError> {
+        Self::prepare(task, inspected, false, Some(parent))
     }
 
     /// The same actual runner/child/Tool path, with bounded observations enabled
@@ -288,13 +387,14 @@ impl RetainedRecipeExecution {
         task: TaskHandle,
         inspected: Arc<super::retained_source::InspectedRetainedProgram>,
     ) -> Result<Self, RetainedExecutionError> {
-        Self::prepare(task, inspected, true)
+        Self::prepare(task, inspected, true, None)
     }
 
     fn prepare(
         task: TaskHandle,
         inspected: Arc<super::retained_source::InspectedRetainedProgram>,
         observe_behavior: bool,
+        parent: Option<RecipeContextId>,
     ) -> Result<Self, RetainedExecutionError> {
         let program = inspected.program().clone();
         // Check the supported complete layout before any VM or effect begins.
@@ -314,6 +414,7 @@ impl RetainedRecipeExecution {
             program,
             source_checks: inspected,
             context: None,
+            parent,
             phase: Phase::Idle,
             started: BTreeSet::new(),
             latest_snapshot: None,
@@ -510,7 +611,7 @@ impl RetainedRecipeExecution {
                 transport,
                 RecipeCommand::Open {
                     task: self.task,
-                    parent: None,
+                    parent: self.parent,
                 },
             )
             .await?;

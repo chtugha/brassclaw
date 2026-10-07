@@ -2964,3 +2964,25 @@ lint passed on this diff with Rust 1.98, serially in screen. Evidence:
 an opaque reply reference was corrected to its actual string accessor before
 the passing run. This candidate settlement repair does not change ordinary
 runtime wiring or resolve the original seven composition failures.
+
+### One task parent for explicitly delegated Recipe children (2026-10-08)
+
+The global Recipe-port candidate now retains one idle parent context for its
+admitted task and opens each selected Recipe beneath it. A second named workflow
+no longer requests another root. Parent allocation retains the actual transport
+ticket before waiting, then its receipt, so a dropped waiter resumes that request.
+Monty still sequences steps and passes runtime results as typed inputs; parent
+links neither share implicit state nor grant authority.
+
+The actual constrained native regression runs two immutable draft Recipes through
+Monty, IBS, child execution, kernel and PostgreSQL invocation records. It checks
+hostile-looking data handoff, four actual single-attempt Tool results, one parent
+allocation despite an abandoned waiter, release of the parent/two-child graph,
+and refusal to close/reset a still-active root task. It supplies no product reply,
+approval or activation evidence. The 13 existing model-host and five review-host
+cases passed in `/private/tmp/brassclaw-task-recipe-parent-native.log`; all three
+retained-execution cases passed after correcting the validator's host transport
+and completion sequence in `...-native-final.log`. Isolated all-target strict
+lint passed in `...-lints.log`, manifest `tests/monty_control/Cargo.toml`, Rust 1.98.
+Checks ran serially in screen. Ordinary catalogue/root/resource/continuation
+wiring and the original seven composition failures remain open.
