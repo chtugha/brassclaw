@@ -3503,4 +3503,123 @@ For the accountant follow-up, retain usage observability and outstanding
 reservations across live edits, including isolated model work and cancellation;
 do not simply bypass all resource/cost accounting or drop reservations when the
 mode changes. Full workspace/CI/Linux and external model acceptance are unverified.
+
+### 2026-10-09 — Portable adaptive-memory implementation constraints
+
+The operator clarified that Linux and Windows are required alongside macOS.
+Use one shared budget policy with platform-specific observations of available
+capacity, pressure and applicable process/container limits. A macOS-only probe
+or a Windows compilation result cannot establish portable runtime acceptance.
+The current native executable retention path rejects Windows; ordinary installed
+catalogue startup calls that path. Windows runtime acceptance therefore also
+requires a verified executable-retention implementation and actual startup tests.
+
+The 70 MiB worker regression deliberately exceeds an artificial 64 MiB initial
+physical limit. Neither value is a production memory default or a reason to
+introduce page-level reclamation. Limit publication uses scalar accounting and
+limit updates, without scanning or moving heap objects. Release completed task
+contexts normally; under pressure, reclaim only provably disposable contexts or
+whole cache entries in bounded batches. Keep live Recipe state, waits and retained
+task selections intact. The operating system manages physical pages.
+
+Choose measurement cadence, reserve and growth/reduction hysteresis from the
+required performance baseline. Avoid per-task OS surveys, repeated publications
+of unchanged limits and fine-grained page management. Measure sampling and
+allocation-accounting overhead separately; no performance improvement or lack
+of regression is established by the current functional tests.
+
+Production wiring must stage calculated limits until actual worker acknowledgement,
+keep automatic calculation revisions separate from durable settings revisions,
+and apply memory backpressure both at submission and before queued VM admission.
+The current driver converts submission errors into task admission failures;
+persistent waiting under memory pressure needs coordinated durable admission
+handling. These remain implementation requirements, not completed acceptance.
 This batch completes the task-settings bridge, not the full v3 cutover.
+## 2026-10-09 — Completed-task cleanup and hosting-limit audit
+
+The operator requires every configurable Monty resource cap to be removed or
+managed through the existing instance WebUI settings. Fixed startup allocator
+limits are not a second independent operator policy: the finite allocator
+backstop must track the acknowledged logical heap plus explicitly configured
+transport/non-VM headroom. Disabling token budgets does not disable that physical
+safety boundary or change provider context capabilities.
+
+Normal completion is the cleanup boundary after Monty accepts the returned
+values, reply/history persistence is verified and outstanding host calls have
+settled. The existing root clears its task-local variables before its next work
+wait. `CloseTask` removes its child contexts and task account. The service must
+publish that command's post-release snapshot before acknowledging completion,
+preserving any other unconsumed root boundary. Retaining a completed receipt
+must not retain its child interpreter. Parent Recipes retain only data they still
+need; failed or uncertain effects retain their required reconciliation evidence.
+Neither releasing allocations nor reducing a logical budget requires scanning,
+compacting or reclaiming individual pages. Physical RSS may remain above live
+allocation bytes because the platform allocator can retain reusable storage.
+
+The following inventory is implementation work, not an acceptance claim. Defaults
+are current source values, not binding target defaults. A settings row or UI
+control alone does not establish runtime uptake.
+
+| Resource | Current enforcing path/default | Required disposition |
+| --- | --- | --- |
+| Logical shared heap | `global_monty_startup` uses required `max_memory_bytes`; new rows inherit 128 MiB | Automatic mode with measured capacity/reserve, optional preserved operator ceiling; live worker acknowledgement. |
+| Physical worker allocator | Startup heap + two 64 MiB frames + 4 MiB adapter reserve; `WorkerHeap` now resizes the backstop with heap edits | Derive from the same acknowledged policy; expose frame/non-VM reserve inputs and resulting physical bound, remove independent startup ceiling. |
+| Source and accumulated compiled source | `VmBounds`: 1 MiB / 2 MiB | Settings propagated to root, child constructor, retained artifact inspection and every subsequent feed; already pinned sources remain retained. |
+| Feeds per Recipe context | `VmBounds.max_feeds = 128` | Live limit; preserve consumed feed count, reject new feeds after reduction rather than resetting it. |
+| Captured stdout | `VmBounds.max_stdout_bytes = 1 MiB` | Live bounded capture with explicit overflow; no silently discarded output or unrelated task failure. |
+| Typed value depth/nodes/bytes | `VmBounds`: depth 48, nodes 1 Mi, bytes 64 MiB | One revision at JSON preflight, actor serialization, root conversion and child conversion. Existing retained values are not truncated on reduction. |
+| IPC frame | `ProcessLimits.max_frame_bytes` and independent `MAX_FRAME_BYTES = 64 MiB` | Remove independent 64 MiB ceiling; validate the configured value against wire integer representation, actual byte reservations and allocator headroom on both ends. |
+| IPC nesting | `MAX_TRANSPORT_DEPTH = 64`, receive decoder recursion bound | Configured common bound including protocol wrappers; explicitly validate against decoder/stack capabilities or implement a tested iterative codec before supporting greater depth. |
+| Active root task slots / pending calls | `GlobalBounds`: 2 workers, 128 pending calls | Adjust admission and actual Monty coroutine capacity together. Do not report a larger Rust semaphore as a larger VM pool. Reductions drain existing work; no per-chat VM or root restart. |
+| Child contexts | `RootBoot.max_recipe_contexts = 64` | Current and desired capacity live; reductions leave owned contexts intact and prevent further opens until usage fits. |
+| Admitted work backlog | Queue 64; `ServiceOwner` separately rejects above 1024 | Adjustable logical capacity with count and aggregate payload-byte accounting. Remove independent 1024 ceiling; admission pressure waits durably instead of losing an accepted message. |
+| Actor ordinary/control lanes | 8 unclaimed requests and 16 frame reservations each | Adjustable count/byte credits checked atomically; retain a bounded available completion/settings/cancellation lane during work saturation and unsafe reductions. |
+| Settings publication lane | `ServiceOwner` fixed channel capacity 8 | Adjustable logical credits or removal in favour of the common bounded control lane; dropped HTTP waiters do not withdraw accepted publications. |
+| Retained admissions/attempts | Factory and driver each start with independent 256 slots | One live instance retention capacity used by both owners; completed durable settlements release slots, unresolved effects keep their evidence and trigger visible backpressure. |
+| Recipes retained per task | `GlobalRecipePorts` separately rejects at 8 recipes in two places | Adjustable per-task bound or removal in favour of tracked memory/selection capacity; no hidden eight-Recipe limit. |
+| Hosting deadlines and VM slice | Startup/response 30 s, slice 5 ms; settings source/uptake 2/5 s | Expose hosting/control parameters with validated relationships. Task compute time remains distinct from IPC, startup, idle and external waits. |
+| Prepared flow limits | Root `_validate_flow*`: depth 16, 512 identifiers, foreach 256, repeat 64, total 4096 executions | Inventory matching IBS/Q1 validators; configurable common contract or removal of redundant runtime maxima. Approved Recipe iteration counts remain explicit workflow inputs, not silent global truncation. |
+
+Reuse `MontyVmSettingsStore`, the existing PUT/GET/status routes and settings
+owner. Extend their validated snapshot instead of adding a second admin service.
+The complete settings generation must reach service admission, actor credits,
+worker allocator, root conversion/tracker and existing child contexts before
+claiming it applied. Keep desired policy revision separate from automatic heap
+calculation/publication revision. Safe reductions never delete active contexts,
+reservations or pending effect evidence; usage above the requested capacity is
+visible as pending with admission backpressure. Validate checked arithmetic and
+cross-field constraints before persistence, then recheck actual usage at the
+serialized worker boundary. A manual heap reduction rejected by that boundary
+must not be presented as an applied desired setting. Commit uncertainty requires
+readback/reconciliation, not a blind second write or rollback that enables work
+with inconsistent limits. All these owners must use the same publication path;
+an HTTP caller dropping is not publication cancellation.
+
+Production acceptance must exercise normal completion, retained receipts,
+parent/child result lifetime, safe/unsafe reductions during running and suspended
+tasks, saturation of ordinary versus control lanes, abandoned update waiters,
+unknown DB/worker acknowledgement outcomes and recovery. Verify actual heap
+refund and unchanged root identity, counts and computation history. Platform
+memory measurements and startup acceptance are required on Linux, macOS and
+Windows; OS-specific runtime evidence cannot be replaced with compilation alone.
+### Validation of the cleanup/acknowledgement repair
+
+On 2026-10-09, the serial `brassclaw-task-memory-tests` screen queue passed:
+`cargo test --manifest-path tests/monty_control/Cargo.toml --test service_host
+--locked -- --test-threads=1` (11 passed, no failures/ignored tests), and
+`cargo test -p brassclaw_resources --lib monty_heap_budget --locked` (7 passed).
+Strict all-target Clippy passed separately for the isolated native workspace
+and root resource package. Rust 1.98, incremental disabled, dev/test debug info
+disabled, target `/Users/ollama/brassclaw-target`; disk guard ran before each
+Cargo command. Logs are `/private/tmp/brassclaw-task-memory-{native,resources,
+native-lints,resource-lints}.log`.
+
+The actual native service test reads a real file through a child interpreter,
+retains a 2 MiB child allocation, writes/verifies the actual reply, finishes
+normally, observes that allocation refunded before the completion receipt, and
+executes a second task under the identical root identity while retaining the
+first ticket/receipt. This establishes worker allocation cleanup and fresh
+service observation; it does not measure OS RSS reclamation or complete the
+production WebUI/adaptive memory/platform acceptance. The deterministic budget
+tests establish that repeated proposals, rejected acknowledgements and safe
+manual ceilings do not fabricate a changed effective allocator budget.

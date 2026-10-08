@@ -851,8 +851,9 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("invalid worker limits".into());
     }
-    // Arm before receiving/compiling source. Never reset this ceiling per chat,
-    // task or IPC command, and never disable it after the initial boot.
+    // Arm before receiving/compiling source. Heap publications resize the
+    // finite backstop at a quiescent boundary, preserving all allocation counts;
+    // chats/tasks never reset it or disable allocator enforcement.
     monty_alloc::set_hard_limit(Some(hard_memory_bytes))?;
     monty_alloc::enable_vm_accounting()?;
     if mode.is_some() {

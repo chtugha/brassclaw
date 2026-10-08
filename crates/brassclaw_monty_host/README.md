@@ -1,4 +1,4 @@
-# Monty execution host — isolated upgrade candidate
+# Monty execution host
 
 `service::ServiceOwner` adds instance-owned boundary routing on top of the
 transport actor. Boot waits for the actual root's idle work waits. Admissions
@@ -27,9 +27,12 @@ ownership/health fencing, durable reconciliation, live resources and the
 application driver/No-Match model-port adapter remain cutover work.
 
 This crate supplies mechanical root-VM and child-VM boundaries for Phase 3a.
-The application now uses its contained authoring utility adapter. Global
-production orchestration is still not wired and does not resolve the seven composition
-message-flow failures or establish production/global lifecycle acceptance.
+Ordinary installation startup now owns its global worker, and the original seven
+composition regressions have passed through that runtime. Task duration and token
+mode use worker-acknowledged live revisions. Full adaptive-memory, durable
+continuation/effect reconciliation and general catalogue acceptance remain open.
+The sections below also retain earlier mechanical milestones and their then-open
+items; consult the implementation report for current production evidence.
 
 Use [recipe.md](../../recipe.md) for definitions: a Recipe is ordered task
 instructions plus an explicit component inventory. IBS/composition assembles
@@ -385,3 +388,13 @@ returning partial observations. The report is private diagnostic data, not
 trusted approval, proof of reachability/dependent chains or a Tool grant.
 The ordinary catalogue/review owner must apply its supported Q1 and semantic
 review contract separately. Protocol 2 requires the matching packaged worker.
+
+
+The control.7 worker resizes its logical heap limit and finite physical backstop
+at the same quiescent control boundary. The initial boot is still bounded by its
+configured startup cap; later trusted heap publications may grow beyond it.
+Allocation ownership/usage never resets. Manual reductions below live VM or
+physical allocations fail without revision mutation. Automatic reductions remain
+pending until actual reclamation permits both ceilings; admission is backpressured
+and existing task/child state remains retained. Host-pressure sampling, adaptive
+settings migration and production WebUI heap publication still require integration.

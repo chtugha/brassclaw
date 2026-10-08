@@ -97,6 +97,64 @@ pub fn set_vm_limit(bytes: usize) -> Result<(), &'static str> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkerMemoryLimitError {
+    InvalidSettings,
+    AccountingUnavailable,
+    Overflow,
+    VmReduction,
+    PhysicalReduction,
+}
+impl fmt::Display for WorkerMemoryLimitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidSettings => "invalid worker memory limits",
+            Self::AccountingUnavailable => "worker allocation accounting is unavailable",
+            Self::Overflow => "allocator memory budget is out of range",
+            Self::VmReduction => "VM memory limit is below live allocations",
+            Self::PhysicalReduction => "worker memory limit is below live allocations",
+        })
+    }
+}
+impl std::error::Error for WorkerMemoryLimitError {}
+
+/// Resize the logical VM ceiling and its finite allocator backstop together.
+/// The serialized worker must be quiescent, with no concurrent allocation or
+/// interpreter execution. All validation precedes publication; neither counter
+/// nor ownership tag is reset. Transport and exception reserve is separate from
+/// the VM budget and must cover the worker's bounded frame/adapter overhead.
+pub fn set_worker_limits(vm_bytes: usize, reserve_bytes: usize) -> Result<(), WorkerMemoryLimitError> {
+    if !VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) {
+        return Err(WorkerMemoryLimitError::AccountingUnavailable);
+    }
+    let budget = vm_bytes
+        .checked_add(reserve_bytes)
+        .filter(|bytes| *bytes != usize::MAX && vm_bytes > 0 && reserve_bytes > 0)
+        .ok_or(WorkerMemoryLimitError::InvalidSettings)?;
+    let live = LIVE_MEMORY.load(Ordering::Relaxed);
+    if live == 0 {
+        return Err(WorkerMemoryLimitError::AccountingUnavailable);
+    }
+    let baseline = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
+    let hard = baseline
+        .checked_add(budget)
+        .filter(|bytes| *bytes != usize::MAX)
+        .ok_or(WorkerMemoryLimitError::Overflow)?;
+    if vm_live_bytes() > vm_bytes {
+        return Err(WorkerMemoryLimitError::VmReduction);
+    }
+    if live > hard {
+        return Err(WorkerMemoryLimitError::PhysicalReduction);
+    }
+    // No fallible work or allocations between these stores. Only the quiescent
+    // worker owner may call this function; another thread cannot use an interim
+    // mixed ceiling. Baseline may decrease, never absorb live VM consumption.
+    BASELINE_MEMORY.store(baseline, Ordering::Relaxed);
+    HARD_LIMIT.store(hard, Ordering::Relaxed);
+    VM_MEMORY_LIMIT.store(vm_bytes, Ordering::Relaxed);
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 struct Header {
     vm_owned: bool,

@@ -4,6 +4,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{VmError, VmFailure};
 
+fn limit_error(error: monty_alloc::WorkerMemoryLimitError) -> VmError {
+    use monty_alloc::WorkerMemoryLimitError;
+    VmError::kind(match error {
+        WorkerMemoryLimitError::VmReduction | WorkerMemoryLimitError::PhysicalReduction => {
+            VmFailure::UnsafeHeapReduction
+        }
+        WorkerMemoryLimitError::InvalidSettings | WorkerMemoryLimitError::Overflow => {
+            VmFailure::InvalidBounds
+        }
+        WorkerMemoryLimitError::AccountingUnavailable => VmFailure::ResourceLimit,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HeapSettings {
@@ -26,16 +39,19 @@ impl HeapStatus {
 
 pub(crate) struct WorkerHeap {
     status: HeapStatus,
-    max_soft_bytes: usize,
+    initial_max_soft_bytes: usize,
+    non_vm_reserve_bytes: usize,
 }
 impl WorkerHeap {
     pub(crate) fn new(physical: usize, frame: usize) -> Result<Self, VmError> {
         // Incoming frame, outgoing frame and exception/adapter headroom remain
         // separate from the logical domain. No cap is silently saturated.
-        let max_soft_bytes = frame
+        let non_vm_reserve_bytes = frame
             .checked_mul(2)
             .and_then(|frames| frames.checked_add(4 * 1024 * 1024))
-            .and_then(|reserve| physical.checked_sub(reserve))
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        let initial_max_soft_bytes = physical
+            .checked_sub(non_vm_reserve_bytes)
             .filter(|capacity| *capacity > 0)
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
         Ok(Self {
@@ -44,7 +60,8 @@ impl WorkerHeap {
                 effective: None,
                 pending_reduction: false,
             },
-            max_soft_bytes,
+            initial_max_soft_bytes,
+            non_vm_reserve_bytes,
         })
     }
 
@@ -61,7 +78,13 @@ impl WorkerHeap {
         if expected != self.status.desired_revision() || next.revision <= expected {
             return Err(VmError::kind(VmFailure::SettingsRevisionConflict));
         }
-        if next.max_vm_bytes == 0 || next.max_vm_bytes > self.max_soft_bytes {
+        if next.max_vm_bytes == 0
+            || next
+                .max_vm_bytes
+                .checked_add(self.non_vm_reserve_bytes)
+                .is_none_or(|bytes| bytes == usize::MAX)
+            || (self.status.effective.is_none() && next.max_vm_bytes > self.initial_max_soft_bytes)
+        {
             return Err(VmError::kind(VmFailure::InvalidBounds));
         }
         if next.max_vm_bytes < monty_alloc::vm_live_bytes() {
@@ -71,13 +94,25 @@ impl WorkerHeap {
             self.status.desired = Some(next);
             self.status.pending_reduction = true;
         } else {
-            monty_alloc::set_vm_limit(next.max_vm_bytes)
-                .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
-            self.status = HeapStatus {
-                desired: Some(next),
-                effective: Some(next),
-                pending_reduction: false,
-            };
+            match monty_alloc::set_worker_limits(next.max_vm_bytes, self.non_vm_reserve_bytes) {
+                Ok(()) => {
+                    self.status = HeapStatus {
+                        desired: Some(next),
+                        effective: Some(next),
+                        pending_reduction: false,
+                    };
+                }
+                Err(monty_alloc::WorkerMemoryLimitError::PhysicalReduction)
+                    if automatic && self.status.effective.is_some() =>
+                {
+                    // Bounded transport data may still be alive at this command.
+                    // Defer the reduction rather than killing the worker or
+                    // claiming a limit the allocator did not accept.
+                    self.status.desired = Some(next);
+                    self.status.pending_reduction = true;
+                }
+                Err(error) => return Err(limit_error(error)),
+            }
         }
         Ok(())
     }
@@ -89,10 +124,17 @@ impl WorkerHeap {
                 .desired
                 .ok_or_else(|| VmError::kind(VmFailure::ResourceLimit))?;
             if monty_alloc::vm_live_bytes() <= desired.max_vm_bytes {
-                monty_alloc::set_vm_limit(desired.max_vm_bytes)
-                    .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
-                self.status.effective = Some(desired);
-                self.status.pending_reduction = false;
+                match monty_alloc::set_worker_limits(
+                    desired.max_vm_bytes,
+                    self.non_vm_reserve_bytes,
+                ) {
+                    Ok(()) => {
+                        self.status.effective = Some(desired);
+                        self.status.pending_reduction = false;
+                    }
+                    Err(monty_alloc::WorkerMemoryLimitError::PhysicalReduction) => {}
+                    Err(error) => return Err(limit_error(error)),
+                }
             }
         }
         Ok(())

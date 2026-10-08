@@ -10,7 +10,7 @@
 //!
 //! Stores budget approval gates in `brassclaw_budget_gates` (V019).
 
-use std::sync::Arc;
+use std::{future::Future, sync::Arc, time::Duration};
 
 use brassclaw_host_api::ResourceScope;
 use brassclaw_pg::PgPool;
@@ -58,6 +58,31 @@ fn map_json_b(e: serde_json::Error) -> BudgetGateError {
     }
 }
 
+// The synchronous governor is called on the production multithread runtime.
+// Reject incompatible callers before block_in_place can panic. Do not detach
+// mutations onto another executor: cancellation must not lose a reservation.
+fn blocking_pg<T, E>(
+    operation: impl Future<Output = Result<T, E>>,
+    storage_error: impl Fn(&str) -> E,
+) -> Result<T, E> {
+    let runtime = tokio::runtime::Handle::try_current()
+        .map_err(|_| storage_error("PostgreSQL resource store requires a Tokio runtime"))?;
+    if runtime.runtime_flavor() != tokio::runtime::RuntimeFlavor::MultiThread {
+        return Err(storage_error(
+            "PostgreSQL resource store requires a multithread Tokio runtime",
+        ));
+    }
+    tokio::task::block_in_place(|| {
+        runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(2), operation)
+                .await
+                .map_err(|_| storage_error(
+                    "PostgreSQL resource operation timed out; write outcome may require readback",
+                ))?
+        })
+    })
+}
+
 // ---------------------------------------------------------------------------
 // PgResourceGovernorStore
 // ---------------------------------------------------------------------------
@@ -77,8 +102,8 @@ impl PgResourceGovernorStore {
     }
 
     fn read_snapshot_sync(&self) -> Result<(ResourceGovernorSnapshot, i64), ResourceError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+        blocking_pg(
+            async {
                 let client = self.pool.get().await.map_err(map_pool_r)?;
                 let row = client
                     .query_opt(
@@ -99,8 +124,11 @@ impl PgResourceGovernorStore {
                         Ok((snapshot, version))
                     }
                 }
-            })
-        })
+            },
+            |reason| ResourceError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 
     fn write_snapshot_sync(
@@ -108,12 +136,15 @@ impl PgResourceGovernorStore {
         snapshot: &ResourceGovernorSnapshot,
         expected_version: i64,
     ) -> Result<bool, ResourceError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+        blocking_pg(
+            async {
                 let payload = serde_json::to_value(snapshot).map_err(map_json_r)?;
-                let next_version = expected_version.checked_add(1).ok_or_else(|| ResourceError::Storage {
-                    reason: "resource governor version exhausted".to_owned(),
-                })?;
+                let next_version =
+                    expected_version
+                        .checked_add(1)
+                        .ok_or_else(|| ResourceError::Storage {
+                            reason: "resource governor version exhausted".to_owned(),
+                        })?;
                 let client = self.pool.get().await.map_err(map_pool_r)?;
                 let rows = if expected_version == 0 {
                     // First writer wins. A stale initial reader must not replace
@@ -135,8 +166,11 @@ impl PgResourceGovernorStore {
                     ).await.map_err(map_pg_r)?
                 };
                 Ok(rows > 0)
-            })
-        })
+            },
+            |reason| ResourceError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 }
 
@@ -187,8 +221,8 @@ impl PgBudgetGateStore {
         &self,
         id: BudgetGateId,
     ) -> Result<Option<BudgetApprovalGate>, BudgetGateError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+        blocking_pg(
+            async {
                 let client = self.pool.get().await.map_err(map_pool_b)?;
                 let row = client
                     .query_opt(
@@ -207,8 +241,11 @@ impl PgBudgetGateStore {
                         Ok(Some(gate))
                     }
                 }
-            })
-        })
+            },
+            |reason| BudgetGateError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 
     fn status_kind_str(status: &BudgetGateStatus) -> &'static str {
@@ -227,22 +264,22 @@ impl BudgetGateStore for PgBudgetGateStore {
         _scope: &ResourceScope,
         gate: BudgetApprovalGate,
     ) -> Result<(), BudgetGateError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+        blocking_pg(
+            async {
                 let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
                 // Use Display (not Debug) — Debug gives "InputTokens", Display gives "input_tokens".
                 let gate_kind = gate.needed.dimension.to_string();
-                let requested_amount: f64 = match &gate.needed.requested {
-                    crate::ResourceValue::Decimal(d) => d.to_string().parse::<f64>().unwrap_or(0.0),
-                    crate::ResourceValue::Integer(i) => *i as f64,
+                let requested_amount = match &gate.needed.requested {
+                    crate::ResourceValue::Decimal(d) => d.to_string(),
+                    crate::ResourceValue::Integer(i) => i.to_string(),
                 };
                 let client = self.pool.get().await.map_err(map_pool_b)?;
-                client
+                let inserted = client
                     .execute(
                         "INSERT INTO brassclaw_budget_gates \
                          (id, tenant_id, gate_kind, status, requested_amount, payload, \
                           expires_at) \
-                         VALUES ($1, $2, $3, 'pending', $4, $5, $6) \
+                         VALUES ($1, $2, $3, 'pending', $4::text::numeric, $5, $6) \
                          ON CONFLICT (id) DO NOTHING",
                         &[
                             &gate.id.as_uuid().to_string(),
@@ -255,9 +292,29 @@ impl BudgetGateStore for PgBudgetGateStore {
                     )
                     .await
                     .map_err(map_pg_b)?;
+                if inserted == 0 {
+                    let row = client
+                        .query_opt(
+                            "SELECT payload FROM brassclaw_budget_gates WHERE id=$1 AND tenant_id=$2",
+                            &[&gate.id.to_string(), &self.tenant_id],
+                        )
+                        .await
+                        .map_err(map_pg_b)?;
+                    let existing: Option<BudgetApprovalGate> = row
+                        .map(|row| serde_json::from_value(row.get(0)).map_err(map_json_b))
+                        .transpose()?;
+                    if existing.as_ref() != Some(&gate) {
+                        return Err(BudgetGateError::Storage {
+                            reason: "budget gate identifier conflict".into(),
+                        });
+                    }
+                }
                 Ok(())
-            })
-        })
+            },
+            |reason| BudgetGateError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 
     fn resolve(
@@ -267,11 +324,11 @@ impl BudgetGateStore for PgBudgetGateStore {
         outcome: BudgetGateOutcome,
         at: DateTime<Utc>,
     ) -> Result<BudgetApprovalGate, BudgetGateError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let mut gate = self
-                    .read_gate_sync(id)?
-                    .ok_or(BudgetGateError::Unknown { id })?;
+        let mut gate = self
+            .read_gate_sync(id)?
+            .ok_or(BudgetGateError::Unknown { id })?;
+        blocking_pg(
+            async {
                 if gate.status.is_terminal() {
                     return Err(BudgetGateError::AlreadyResolved { id });
                 }
@@ -289,7 +346,7 @@ impl BudgetGateStore for PgBudgetGateStore {
                 let new_status_str = Self::status_kind_str(&gate.status);
                 let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
                 let client = self.pool.get().await.map_err(map_pool_b)?;
-                client
+                let updated = client
                     .execute(
                         "UPDATE brassclaw_budget_gates \
                          SET status = $1, payload = $2, updated_at = now() \
@@ -303,9 +360,15 @@ impl BudgetGateStore for PgBudgetGateStore {
                     )
                     .await
                     .map_err(map_pg_b)?;
+                if updated != 1 {
+                    return Err(BudgetGateError::AlreadyResolved { id });
+                }
                 Ok(gate)
-            })
-        })
+            },
+            |reason| BudgetGateError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 
     fn expire_pending_older_than(
@@ -313,40 +376,47 @@ impl BudgetGateStore for PgBudgetGateStore {
         _scope: &ResourceScope,
         cutoff: DateTime<Utc>,
     ) -> Result<Vec<BudgetApprovalGate>, BudgetGateError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = self.pool.get().await.map_err(map_pool_b)?;
-                let rows = client
+        blocking_pg(
+            async {
+                let mut client = self.pool.get().await.map_err(map_pool_b)?;
+                let transaction = client.transaction().await.map_err(map_pg_b)?;
+                // Lock the exact set being expired, so a concurrent approval cannot
+                // be overwritten and returned payloads match durable terminal state.
+                let rows = transaction
                     .query(
-                        "SELECT payload FROM brassclaw_budget_gates \
-                         WHERE tenant_id = $1 AND status = 'pending' \
-                           AND created_at < $2",
+                        "SELECT id, payload FROM brassclaw_budget_gates
+                 WHERE tenant_id=$1 AND status='pending' AND expires_at <= $2
+                 ORDER BY id FOR UPDATE",
                         &[&self.tenant_id, &cutoff],
                     )
                     .await
                     .map_err(map_pg_b)?;
-                let gates: Vec<BudgetApprovalGate> = rows
-                    .into_iter()
-                    .filter_map(|r| {
-                        let payload: Value = r.get(0);
-                        serde_json::from_value(payload).ok()
-                    })
-                    .collect();
-                if !gates.is_empty() {
-                    client
-                        .execute(
-                            "UPDATE brassclaw_budget_gates \
-                             SET status = 'expired', updated_at = now() \
-                             WHERE tenant_id = $1 AND status = 'pending' \
-                               AND created_at < $2",
-                            &[&self.tenant_id, &cutoff],
-                        )
-                        .await
-                        .map_err(map_pg_b)?;
+                let mut gates = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let id: String = row.get(0);
+                    let mut gate: BudgetApprovalGate =
+                        serde_json::from_value(row.get(1)).map_err(map_json_b)?;
+                    if gate.status != BudgetGateStatus::Pending || gate.expires_at > cutoff {
+                        return Err(BudgetGateError::Storage {
+                            reason: "inconsistent budget gate state".into(),
+                        });
+                    }
+                    gate.status = BudgetGateStatus::Expired { at: cutoff };
+                    let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
+                    transaction.execute(
+                    "UPDATE brassclaw_budget_gates SET status='expired', payload=$1, updated_at=now()
+                     WHERE id=$2 AND tenant_id=$3 AND status='pending'",
+                    &[&payload, &id, &self.tenant_id],
+                ).await.map_err(map_pg_b)?;
+                    gates.push(gate);
                 }
+                transaction.commit().await.map_err(map_pg_b)?;
                 Ok(gates)
-            })
-        })
+            },
+            |reason| BudgetGateError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 
     fn get(
@@ -361,8 +431,8 @@ impl BudgetGateStore for PgBudgetGateStore {
         &self,
         _scope: &ResourceScope,
     ) -> Result<Vec<BudgetApprovalGate>, BudgetGateError> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+        blocking_pg(
+            async {
                 let client = self.pool.get().await.map_err(map_pool_b)?;
                 let rows = client
                     .query(
@@ -373,14 +443,16 @@ impl BudgetGateStore for PgBudgetGateStore {
                     )
                     .await
                     .map_err(map_pg_b)?;
-                Ok(rows
-                    .into_iter()
-                    .filter_map(|r| {
+                rows.into_iter()
+                    .map(|r| {
                         let payload: Value = r.get(0);
-                        serde_json::from_value(payload).ok()
+                        serde_json::from_value(payload).map_err(map_json_b)
                     })
-                    .collect())
-            })
-        })
+                    .collect::<Result<_, _>>()
+            },
+            |reason| BudgetGateError::Storage {
+                reason: reason.to_owned(),
+            },
+        )
     }
 }

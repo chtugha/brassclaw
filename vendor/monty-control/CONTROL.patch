@@ -6,10 +6,9 @@ index 8e47c652..237a52a1 100644
 -imports_granularity = "Crate"
 -group_imports = "StdExternalCrate"
 diff --git a/Cargo.toml b/Cargo.toml
-index a8b516cb..fac12c0b 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -3,21 +3,2 @@ resolver = "2"
+@@ -3,21 +3,2 @@
 -members = [
 -    "crates/monty",
 -    "crates/monty-types",
@@ -33,10 +32,10 @@ index a8b516cb..fac12c0b 100644
 -default-members = ["crates/monty-runtime"]
 +members = ["crates/monty", "crates/monty-types", "crates/monty-macros", "crates/monty-alloc"]
 +default-members = ["crates/monty"]
-@@ -27 +8 @@ edition = "2024"
+@@ -27 +8 @@
 -version = "1.0.0"
-+version = "1.0.0-brassclaw.control.6"
-@@ -63,9 +44,4 @@ strip = false
++version = "1.0.0-brassclaw.control.7"
+@@ -63,9 +44,4 @@
 -monty = { path = "crates/monty", version = "1.0.0" }
 -monty-types = { path = "crates/monty-types", version = "1.0.0" }
 -monty-alloc = { path = "crates/monty-alloc", version = "1.0.0" }
@@ -46,10 +45,10 @@ index a8b516cb..fac12c0b 100644
 -monty-pool = { path = "crates/monty-pool", version = "1.0.0" }
 -monty-type-checking = { path = "crates/monty-type-checking", version = "1.0.0" }
 -monty-typeshed = { path = "crates/monty-typeshed", version = "1.0.0" }
-+monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.6" }
-+monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.6" }
-+monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.6" }
-+monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.6" }
++monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.7" }
++monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.7" }
++monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.7" }
++monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.7" }
 diff --git a/crates/monty-alloc/Cargo.toml b/crates/monty-alloc/Cargo.toml
 index c8d3c876..97e5aa72 100644
 --- a/crates/monty-alloc/Cargo.toml
@@ -58,10 +57,9 @@ index c8d3c876..97e5aa72 100644
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-alloc/README.md b/crates/monty-alloc/README.md
-index 75202ae3..9694b259 100644
 --- a/crates/monty-alloc/README.md
 +++ b/crates/monty-alloc/README.md
-@@ -54,3 +54,23 @@ cdylib it would hijack the allocator of the embedding host process.
+@@ -54,3 +54,33 @@
 -Published so the `monty` binary can be, not for direct use. On a 32-bit target
 -a limit near 4 GiB saturates the arithmetic and leaves the worker
 -uncapped.
@@ -88,8 +86,17 @@ index 75202ae3..9694b259 100644
 +must adopt received data into VM allocations and keep unrelated frame handling
 +outside the scope. See `BRASSCLAW.md` for the verified measurement boundary and
 +remaining production/adaptive acceptance requirements.
++
++
++`control.7` supplies `set_worker_limits(vm_bytes, reserve_bytes)` for that same
++quiescent owner. It replaces both the logical limit and finite physical backstop
++after validating actual VM/process allocations and checked arithmetic. The
++reserve covers bounded transport/exception overhead separately; growing the VM
++does not reset either live counter or move VM allocations into baseline. Typed
++errors distinguish invalid settings/accounting from unsafe reductions. A failed
++publication leaves both limits unchanged. Concurrent allocation/execution must
++be excluded by the worker owner. This API is not an OS capacity measurement.
 diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
-index 400c5355..e0974c47 100644
 --- a/crates/monty-alloc/src/lib.rs
 +++ b/crates/monty-alloc/src/lib.rs
 @@ -2 +2,4 @@
@@ -98,16 +105,17 @@ index 400c5355..e0974c47 100644
 +    unsafe_code,
 +    reason = "GlobalAlloc requires aligned private headers and matching System layouts"
 +)]
-@@ -5,0 +9 @@ use std::{
+@@ -5,0 +9 @@
 +    cell::Cell,
-@@ -7,0 +12 @@ use std::{
+@@ -7,0 +12 @@
 +    marker::PhantomData,
-@@ -8,0 +14 @@ use std::{
+@@ -8,0 +14 @@
 +    rc::Rc,
-@@ -14 +20 @@ use monty_types::OOM_EXIT_CODE;
+@@ -14 +20 @@
 -use monty_types::{BASELINE_MEMORY, LIVE_MEMORY};
 +use monty_types::{BASELINE_MEMORY, LIVE_MEMORY, VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT};
-@@ -20,0 +27,89 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
+@@ -19,0 +26,147 @@
++
 +thread_local! {
 +    // Const initialization and a destructor-free Cell are essential: allocator
 +    // entry must neither allocate recursively nor acquire a mutex.
@@ -181,6 +189,64 @@ index 400c5355..e0974c47 100644
 +    Ok(())
 +}
 +
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum WorkerMemoryLimitError {
++    InvalidSettings,
++    AccountingUnavailable,
++    Overflow,
++    VmReduction,
++    PhysicalReduction,
++}
++impl fmt::Display for WorkerMemoryLimitError {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.write_str(match self {
++            Self::InvalidSettings => "invalid worker memory limits",
++            Self::AccountingUnavailable => "worker allocation accounting is unavailable",
++            Self::Overflow => "allocator memory budget is out of range",
++            Self::VmReduction => "VM memory limit is below live allocations",
++            Self::PhysicalReduction => "worker memory limit is below live allocations",
++        })
++    }
++}
++impl std::error::Error for WorkerMemoryLimitError {}
++
++/// Resize the logical VM ceiling and its finite allocator backstop together.
++/// The serialized worker must be quiescent, with no concurrent allocation or
++/// interpreter execution. All validation precedes publication; neither counter
++/// nor ownership tag is reset. Transport and exception reserve is separate from
++/// the VM budget and must cover the worker's bounded frame/adapter overhead.
++pub fn set_worker_limits(vm_bytes: usize, reserve_bytes: usize) -> Result<(), WorkerMemoryLimitError> {
++    if !VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) {
++        return Err(WorkerMemoryLimitError::AccountingUnavailable);
++    }
++    let budget = vm_bytes
++        .checked_add(reserve_bytes)
++        .filter(|bytes| *bytes != usize::MAX && vm_bytes > 0 && reserve_bytes > 0)
++        .ok_or(WorkerMemoryLimitError::InvalidSettings)?;
++    let live = LIVE_MEMORY.load(Ordering::Relaxed);
++    if live == 0 {
++        return Err(WorkerMemoryLimitError::AccountingUnavailable);
++    }
++    let baseline = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
++    let hard = baseline
++        .checked_add(budget)
++        .filter(|bytes| *bytes != usize::MAX)
++        .ok_or(WorkerMemoryLimitError::Overflow)?;
++    if vm_live_bytes() > vm_bytes {
++        return Err(WorkerMemoryLimitError::VmReduction);
++    }
++    if live > hard {
++        return Err(WorkerMemoryLimitError::PhysicalReduction);
++    }
++    // No fallible work or allocations between these stores. Only the quiescent
++    // worker owner may call this function; another thread cannot use an interim
++    // mixed ceiling. Baseline may decrease, never absorb live VM consumption.
++    BASELINE_MEMORY.store(baseline, Ordering::Relaxed);
++    HARD_LIMIT.store(hard, Ordering::Relaxed);
++    VM_MEMORY_LIMIT.store(vm_bytes, Ordering::Relaxed);
++    Ok(())
++}
++
 +#[derive(Clone, Copy)]
 +struct Header {
 +    vm_owned: bool,
@@ -196,18 +262,17 @@ index 400c5355..e0974c47 100644
 +fn allocation_is_vm_owned() -> bool {
 +    VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) && VM_SCOPE.try_with(Cell::get).unwrap_or(false)
 +}
-+
-@@ -27,2 +122,2 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
+@@ -27,2 +180,2 @@
 -/// On a 32-bit target (wasm) a budget near 4 GiB saturates the arithmetic and
 -/// leaves the worker uncapped — there is no cap to express.
 +/// An unrepresentable finite ceiling is rejected; it must never become an
 +/// unlimited worker. Invalid settings leave the previously armed ceiling intact.
-@@ -33,0 +129,4 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str>
+@@ -33,0 +187,4 @@
 +    let candidate = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
 +    if memory_budget.is_some_and(|bytes| candidate.checked_add(bytes).is_none()) {
 +        return Err("allocator memory budget is out of range");
 +    }
-@@ -37 +136,6 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str>
+@@ -37 +194,6 @@
 -    let hard_limit = memory_budget.map_or(usize::MAX, |bytes| baseline.saturating_add(bytes));
 +    let hard_limit = match memory_budget {
 +        Some(bytes) => baseline
@@ -215,7 +280,7 @@ index 400c5355..e0974c47 100644
 +            .ok_or("allocator memory budget is out of range")?,
 +        None => usize::MAX,
 +    };
-@@ -46,3 +150,6 @@ pub struct LimitedAllocator;
+@@ -46,3 +208,6 @@
 -// SAFETY: every method forwards its arguments unchanged to `System` and returns
 -// what `System` returned (or diverges). No pointer is fabricated, aliased or
 -// freed here, so this upholds exactly the invariants `System` upholds.
@@ -225,7 +290,7 @@ index 400c5355..e0974c47 100644
 +// The offset depends only on payload alignment, so realloc retains both the
 +// header and payload at their original offsets. Dealloc reconstructs exactly
 +// the original layout; headers are private and initialized before publication.
-@@ -51,3 +158,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -51,3 +216,5 @@
 -        charge(layout.size());
 -        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
 -        let ptr = unsafe { System.alloc(layout) };
@@ -234,7 +299,7 @@ index 400c5355..e0974c47 100644
 +        charge(storage.size(), vm_owned);
 +        // SAFETY: storage is a validated Layout containing header and payload.
 +        let ptr = unsafe { System.alloc(storage) };
-@@ -60 +169,6 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -60 +227,6 @@
 -        ptr
 +        // SAFETY: storage reserves an aligned initialized header and a payload
 +        // at offset, with the caller's requested size and alignment.
@@ -242,7 +307,7 @@ index 400c5355..e0974c47 100644
 +            ptr.cast::<Header>().write(Header { vm_owned });
 +            ptr.add(offset)
 +        }
-@@ -64,3 +178,9 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -64,3 +236,9 @@
 -        refund(layout.size());
 -        // SAFETY: `ptr` came from our `alloc`/`realloc` with this same `layout`.
 -        unsafe { System.dealloc(ptr, layout) };
@@ -255,7 +320,7 @@ index 400c5355..e0974c47 100644
 +        // SAFETY: base and storage reconstruct the exact System allocation.
 +        unsafe { System.dealloc(base, storage) };
 +        refund(storage.size(), header.vm_owned);
-@@ -72,3 +192,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -72,3 +250,5 @@
 -        charge(layout.size());
 -        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
 -        let ptr = unsafe { System.alloc_zeroed(layout) };
@@ -264,18 +329,22 @@ index 400c5355..e0974c47 100644
 +        charge(storage.size(), vm_owned);
 +        // SAFETY: validated combined layout; the payload remains all zeroes.
 +        let ptr = unsafe { System.alloc_zeroed(storage) };
-@@ -81 +203,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -81 +261,5 @@
 -        ptr
 +        // SAFETY: initializing the private header touches no payload bytes.
 +        unsafe {
 +            ptr.cast::<Header>().write(Header { vm_owned });
 +            ptr.add(offset)
 +        }
-@@ -87,4 +213,10 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -87,8 +271,15 @@
 -        if let Some(size_change) = new_size.checked_sub(layout.size()) {
 -            charge(size_change);
 -        } else {
 -            refund(layout.size() - new_size);
+-        }
+-        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
+-        // `new_size` is the caller's — all forwarded unchanged.
+-        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
 +        let (storage, offset) = storage_layout(layout);
 +        let new_payload = Layout::from_size_align(new_size, layout.align())
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocation layout overflow")));
@@ -286,15 +355,12 @@ index 400c5355..e0974c47 100644
 +        let header = unsafe { base.cast::<Header>().read() };
 +        if new_storage.size() > storage.size() {
 +            charge(new_storage.size() - storage.size(), header.vm_owned);
-@@ -92,3 +224,4 @@ unsafe impl GlobalAlloc for LimitedAllocator {
--        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
--        // `new_size` is the caller's — all forwarded unchanged.
--        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
++        }
 +        // SAFETY: storage describes base's live System block. Both layouts have
 +        // identical alignment and header/payload offsets; nonzero new_size is
 +        // part of the GlobalAlloc caller contract.
 +        let new_ptr = unsafe { System.realloc(base, storage, new_storage.size()) };
-@@ -98 +231,6 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -98 +289,6 @@
 -        new_ptr
 +        if new_storage.size() < storage.size() {
 +            refund(storage.size() - new_storage.size(), header.vm_owned);
@@ -302,7 +368,7 @@ index 400c5355..e0974c47 100644
 +        // SAFETY: realloc preserves the initialized header and overlapping
 +        // payload. The original payload offset remains valid after resize.
 +        unsafe { new_ptr.add(offset) }
-@@ -104,2 +242,7 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -104,2 +300,7 @@
 -fn charge(size: usize) {
 -    let live = LIVE_MEMORY.fetch_add(size, Ordering::Relaxed).saturating_add(size);
 +fn charge(size: usize, vm_owned: bool) {
@@ -312,13 +378,13 @@ index 400c5355..e0974c47 100644
 +    let Some(live) = previous.checked_add(size) else {
 +        out_of_memory(format_args!("monty worker: allocator accounting overflow"));
 +    };
-@@ -110,0 +254,5 @@ fn charge(size: usize) {
+@@ -110,0 +312,5 @@
 +    if vm_owned {
 +        VM_LIVE_MEMORY
 +            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: VM allocator accounting overflow")));
 +    }
-@@ -116,2 +264,14 @@ fn charge(size: usize) {
+@@ -116,2 +322,14 @@
 -fn refund(size: usize) {
 -    LIVE_MEMORY.fetch_sub(size, Ordering::Relaxed);
 +fn refund(size: usize, vm_owned: bool) {

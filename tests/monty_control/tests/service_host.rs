@@ -66,6 +66,8 @@ struct FilePorts {
     release: Notify,
     pause_read: bool,
     panic_after_read: bool,
+    retain_child_heap: bool,
+    retained_vm_bytes: AtomicUsize,
 }
 impl FilePorts {
     fn new(root: &std::path::Path, label: &str, pause_read: bool) -> Arc<Self> {
@@ -88,6 +90,8 @@ impl FilePorts {
             release: Notify::new(),
             pause_read,
             panic_after_read: false,
+            retain_child_heap: false,
+            retained_vm_bytes: AtomicUsize::new(0),
         })
     }
     fn input(&self) -> TaskInput {
@@ -100,6 +104,68 @@ impl FilePorts {
             history: self.expected["history"].as_array().unwrap().clone(),
         }
     }
+
+    async fn run_retained_child(
+        &self,
+        transport: &TransportClient,
+        task: TaskHandle,
+        content: String,
+    ) -> Result<String, PortFailure> {
+        use brassclaw_monty_host::process::{
+            RecipeBoundary, RecipeCommand, RecipeEvent, SelectedPython, WorkerCommand,
+        };
+        use sha2::{Digest, Sha256};
+
+        let exchange = async |command| {
+            transport
+                .try_submit(WorkerCommand::Recipe { command })
+                .map_err(|_| failure("child_transport_failed"))?
+                .wait()
+                .await
+                .map_err(|_| failure("child_transport_failed"))?
+                .outcome
+                .map_err(|_| failure("child_transport_failed"))
+        };
+        let opened = exchange(RecipeCommand::Open { task, parent: None }).await?;
+        let Some(RecipeEvent::Opened { context, .. }) = opened.recipe else {
+            return Err(failure("child_transport_failed"));
+        };
+        // The returned file content is small, while the child keeps actual
+        // interpreter storage until the service closes this completed task.
+        let source = "held = 'x' * 2097152\nresult = inputs['content']";
+        let mut progress = exchange(RecipeCommand::Start {
+            context,
+            selected: SelectedPython {
+                source: source.into(),
+                checksum: Sha256::digest(source.as_bytes()).into(),
+                aliases: Default::default(),
+            },
+            inputs: json!({"content": content}),
+        })
+        .await?;
+        loop {
+            match progress.recipe {
+                Some(RecipeEvent::Progress {
+                    boundary: RecipeBoundary::ControlYield { key },
+                    ..
+                }) => {
+                    progress = exchange(RecipeCommand::ResumeControl { context, key }).await?;
+                }
+                Some(RecipeEvent::Progress {
+                    boundary:
+                        RecipeBoundary::Complete {
+                            value: Value::String(content),
+                        },
+                    ..
+                }) => {
+                    self.retained_vm_bytes
+                        .store(progress.vm_live_bytes, Ordering::Release);
+                    return Ok(content);
+                }
+                _ => return Err(failure("child_execution_failed")),
+            }
+        }
+    }
 }
 fn failure(reason: &str) -> PortFailure {
     PortFailure::new(reason).unwrap()
@@ -107,8 +173,8 @@ fn failure(reason: &str) -> PortFailure {
 impl TaskPorts for FilePorts {
     fn call(
         self: Arc<Self>,
-        _task: TaskHandle,
-        _transport: TransportClient,
+        task: TaskHandle,
+        transport: TransportClient,
         name: String,
         args: Vec<Value>,
         kwargs: BTreeMap<String, Value>,
@@ -126,13 +192,24 @@ impl TaskPorts for FilePorts {
                         return Err(failure("wrong_task_input"));
                     }
                     self.reads.fetch_add(1, Ordering::AcqRel);
+                    let child_value = if self.retain_child_heap {
+                        let value = tokio::fs::read_to_string(&self.input)
+                            .await
+                            .map_err(|_| failure("file_read_failed"))?;
+                        Some(self.run_retained_child(&transport, task, value).await?)
+                    } else {
+                        None
+                    };
                     self.started.notify_one();
                     if self.pause_read {
                         self.release.notified().await;
                     }
-                    let value = tokio::fs::read_to_string(&self.input)
-                        .await
-                        .map_err(|_| failure("file_read_failed"))?;
+                    let value = match child_value {
+                        Some(value) => value,
+                        None => tokio::fs::read_to_string(&self.input)
+                            .await
+                            .map_err(|_| failure("file_read_failed"))?,
+                    };
                     assert!(!self.panic_after_read, "actual port panic after file read");
                     Ok(Value::String(value))
                 }
@@ -767,5 +844,51 @@ async fn owned_heap_edits_reject_unsafe_limits_and_survive_dropped_waiter_during
     assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
     assert_eq!(ports.reads.load(Ordering::Acquire), 1);
     assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn normal_completion_releases_child_heap_before_receipt_and_keeps_global_root() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let initial = client.heap_observation();
+    let mut ports = FilePorts::new(directory.path(), "completed-memory", true);
+    Arc::get_mut(&mut ports).unwrap().retain_child_heap = true;
+    let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), ports.started.notified())
+        .await
+        .unwrap();
+    let occupied = ports.retained_vm_bytes.load(Ordering::Acquire);
+    assert!(occupied >= initial.vm_live_bytes + 2 * 1024 * 1024);
+    ports.release.notify_one();
+    let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+    let released = client.heap_observation();
+    assert!(
+        released.vm_live_bytes + 2 * 1024 * 1024 <= occupied,
+        "completion must publish the post-release observation, including while idle"
+    );
+    assert_eq!(released.status, initial.status);
+    assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+    assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+    // Retain the first ticket/receipt to catch service-side context leaks. A
+    // completed caller retaining its receipt must not retain the child VM.
+    let next = FilePorts::new(directory.path(), "after-completion", false);
+    let next_ticket = client.submit(next.input(), next.clone()).unwrap();
+    let next_receipt = tokio::time::timeout(Duration::from_secs(10), next_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(next_receipt.root, receipt.root);
+    assert!(matches!(
+        next_receipt.outcome,
+        TaskOutcome::Completed { .. }
+    ));
+    assert_eq!(next.reads.load(Ordering::Acquire), 1);
+    assert_eq!(next.writes.load(Ordering::Acquire), 1);
     graceful(&mut owner).await;
 }

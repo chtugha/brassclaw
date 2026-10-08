@@ -222,6 +222,13 @@ pub struct RebornRuntime {
     trigger_conversation_pairing:
         Option<Arc<dyn brassclaw_conversations::ConversationActorPairingService>>,
     budget_event_projection: Option<crate::budget_events::BudgetEventProjection>,
+    #[cfg(any(test, feature = "test-support"))]
+    resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor>,
+    #[cfg(any(test, feature = "test-support"))]
+    budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore>,
+    broadcast_budget_sink: Arc<brassclaw_resources::BroadcastBudgetEventSink>,
+    #[cfg(any(test, feature = "test-support"))]
+    in_memory_budget_sink: Arc<brassclaw_resources::InMemoryBudgetEventSink>,
     poll_settings: PollSettings,
     actor_user_id: UserId,
     source_binding_ref: SourceBindingRef,
@@ -810,10 +817,7 @@ impl RebornRuntime {
     pub fn budget_resource_governor(
         &self,
     ) -> Option<Arc<dyn brassclaw_resources::ResourceGovernor>> {
-        self.services
-            .local_runtime
-            .as_ref()
-            .map(|rt| Arc::clone(&rt.resource_governor))
+        Some(Arc::clone(&self.resource_governor))
     }
 
     /// Test-only handle on the in-memory budget event sink wired to the
@@ -821,10 +825,7 @@ impl RebornRuntime {
     /// audit-event stream produced by a run.
     #[cfg(any(test, feature = "test-support"))]
     pub fn budget_event_sink(&self) -> Option<Arc<brassclaw_resources::InMemoryBudgetEventSink>> {
-        self.services
-            .local_runtime
-            .as_ref()
-            .map(|rt| Arc::clone(&rt.in_memory_budget_event_sink))
+        Some(Arc::clone(&self.in_memory_budget_sink))
     }
 
     /// Broadcast sink that fans every emitted `BudgetEvent` to any
@@ -842,10 +843,7 @@ impl RebornRuntime {
     pub fn broadcast_budget_event_sink(
         &self,
     ) -> Option<Arc<brassclaw_resources::BroadcastBudgetEventSink>> {
-        self.services
-            .local_runtime
-            .as_ref()
-            .map(|rt| Arc::clone(&rt.broadcast_budget_event_sink))
+        Some(Arc::clone(&self.broadcast_budget_sink))
     }
 
     /// Test-only handle on the budget approval-gate store. Tests resolve
@@ -853,10 +851,7 @@ impl RebornRuntime {
     /// F3/F4/F5 approval-flow scenarios.
     #[cfg(any(test, feature = "test-support"))]
     pub fn budget_gate_store(&self) -> Option<Arc<dyn brassclaw_resources::BudgetGateStore>> {
-        self.services
-            .local_runtime
-            .as_ref()
-            .map(|rt| Arc::clone(&rt.budget_gate_store))
+        Some(Arc::clone(&self.budget_gate_store))
     }
 
     /// Apply the outcome of a resolved [`BudgetApprovalGate`]: when the
@@ -874,12 +869,7 @@ impl RebornRuntime {
         scope: &brassclaw_host_api::ResourceScope,
         gate_id: brassclaw_resources::BudgetGateId,
     ) -> Result<brassclaw_resources::BudgetApprovalGate, RebornRuntimeError> {
-        let local_runtime = self.services.local_runtime.as_ref().ok_or_else(|| {
-            RebornRuntimeError::InvalidArgument {
-                reason: "local-dev runtime substrate required to apply a budget gate".to_string(),
-            }
-        })?;
-        let gate = local_runtime
+        let gate = self
             .budget_gate_store
             .get(scope, gate_id)
             .map_err(|error| RebornRuntimeError::InvalidArgument {
@@ -892,8 +882,7 @@ impl RebornRuntime {
             increased_limit, ..
         } = &gate.status
         {
-            local_runtime
-                .resource_governor
+            self.resource_governor
                 .set_limit(gate.needed.account.clone(), increased_limit.clone())
                 .map_err(|error| RebornRuntimeError::InvalidArgument {
                     reason: format!("failed to apply approved budget limit: {error}"),
@@ -1679,6 +1668,17 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "postgres")]
     let pg_reborn_home: Option<std::path::PathBuf> =
         services_input.pg_reborn_home().map(|p| p.to_path_buf());
+    #[cfg(feature = "postgres")]
+    if pg_reborn_home.is_some() {
+        let supported = tokio::runtime::Handle::try_current().is_ok_and(|handle| {
+            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+        });
+        if !supported {
+            return Err(RebornRuntimeError::InvalidArgument {
+                reason: "PostgreSQL runtime accounting requires a multithread Tokio runtime".into(),
+            });
+        }
+    }
     // Extract the runtime tenant_id before consuming `identity` — the PG store
     // constructors need it before `validate_runtime_identity` is called later.
     #[cfg(feature = "postgres")]
@@ -1749,8 +1749,7 @@ pub async fn build_reborn_runtime(
                     Arc::clone(pool),
                     pg_tenant_id.as_str(),
                 ));
-            let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
-                as Arc<dyn brassclaw_resources::BudgetEventSink>;
+            let event_sink = Arc::clone(&stores.budget_event_sink);
             let result = (
                 Arc::new(brassclaw_turns::TurnStateDriverBox::new(
                     Arc::clone(&stores.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
@@ -1772,8 +1771,7 @@ pub async fn build_reborn_runtime(
             pg_stores = None;
             let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
                 Arc::clone(&lr.thread_service);
-            let event_sink = Arc::clone(&lr.broadcast_budget_event_sink)
-                as Arc<dyn brassclaw_resources::BudgetEventSink>;
+            let event_sink = Arc::clone(&lr.budget_event_sink);
             (
                 Arc::new(brassclaw_turns::TurnStateDriverBox::new(
                     Arc::clone(&lr.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
@@ -1813,8 +1811,7 @@ pub async fn build_reborn_runtime(
             crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home, &pg_tenant_id)
                 .await
                 .map_err(RebornRuntimeError::Build)?;
-        let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
-            as Arc<dyn brassclaw_resources::BudgetEventSink>;
+        let event_sink = Arc::clone(&stores.budget_event_sink);
         let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> = Arc::new(
             brassclaw_threads::PgSessionThreadService::new(Arc::clone(pool), pg_tenant_id.as_str()),
         );
@@ -1858,8 +1855,7 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "postgres"))]
     let thread_service = Arc::clone(&local_runtime.thread_service);
     #[cfg(not(feature = "postgres"))]
-    let budget_event_sink_for_accountant = Arc::clone(&local_runtime.broadcast_budget_event_sink)
-        as Arc<dyn brassclaw_resources::BudgetEventSink>;
+    let budget_event_sink_for_accountant = Arc::clone(&local_runtime.budget_event_sink);
     #[cfg(not(feature = "postgres"))]
     let resource_governor_for_accountant = Arc::clone(&local_runtime.resource_governor);
     #[cfg(not(feature = "postgres"))]
@@ -1914,6 +1910,28 @@ pub async fn build_reborn_runtime(
         }
         #[cfg(not(feature = "postgres"))]
         Arc::clone(&local_runtime.broadcast_budget_event_sink)
+    };
+
+    #[cfg(any(test, feature = "test-support"))]
+    let in_memory_budget_sink = {
+        #[cfg(feature = "postgres")]
+        {
+            if let Some(pg) = pg_stores.as_ref() {
+                Arc::clone(&pg.in_memory_budget_event_sink)
+            } else {
+                Arc::clone(
+                    &services
+                        .local_runtime
+                        .as_ref()
+                        .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                            reason: "budget event substrate missing".into(),
+                        })?
+                        .in_memory_budget_event_sink,
+                )
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        Arc::clone(&local_runtime.in_memory_budget_event_sink)
     };
 
     // Extract approval_requests and capability_leases from the substrate.
@@ -2000,6 +2018,7 @@ pub async fn build_reborn_runtime(
     // defaults; read failures must not silently disable limits. The duration is
     // an executing-VM/task budget, never a Rust wall-clock limit over provider
     // waits. Shared live revision uptake remains part of the global cutover.
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let startup_monty_settings: Option<brassclaw_product_workflow::MontyVmSettings> = {
         #[cfg(feature = "postgres")]
         {
@@ -2014,6 +2033,7 @@ pub async fn build_reborn_runtime(
             None
         }
     };
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let resolved_token_budgets_enabled = startup_monty_settings
         .as_ref()
         .is_some_and(|settings| settings.token_budgets_enabled);
@@ -2262,7 +2282,7 @@ pub async fn build_reborn_runtime(
     // Resolved cost table is either: the LLM-policy-derived table (real
     // LLM wired), a test override (so tests can drive deterministic
     // prices through stub gateways), or None — in which case the
-    // accountant doesn't get built (no spend, no cascade). The test
+    // accountant uses its conservative unknown-pricing fallback. The test
     // override (when set) wins over the LLM-derived table — the test is
     // being explicit about the prices it wants.
     let llm_cost_table_arc: Option<Arc<dyn brassclaw_loop_support::ModelCostTable>> =
@@ -2276,9 +2296,10 @@ pub async fn build_reborn_runtime(
     // Build the model budget accountant from the resolved cost table plus
     // the local-dev governor. `local-dev-yolo` is the explicit local
     // exception: it inherits host trust and must not pause on budget gates.
-    // When neither an LLM policy nor a test override supplies a cost table
-    // we deliberately skip the accountant — there's no spend to track and
-    // the cascade would never fire.
+    // Token mode never removes the accountant: reservations and actual usage
+    // survive live edits. The governor masks only token enforcement using the
+    // acknowledged settings source; independent cost/resource limits remain.
+    // Unknown pricing retains the accountant's conservative cost fallback.
     //
     // The accountant is wired with a seeding policy derived from the
     // caller-supplied `BudgetDefaults` (or `compiled_defaults().with_env()`
@@ -2293,17 +2314,13 @@ pub async fn build_reborn_runtime(
     // re-read by the wiring helper).
     let model_budget_accountant: Option<
         Arc<dyn brassclaw_turns::run_profile::LoopModelBudgetAccountant>,
-    > = match (
-        trusted_laptop_access,
-        resolved_token_budgets_enabled,
-        resolved_cost_table,
-    ) {
+    > = match trusted_laptop_access {
         // Skip budget enforcement for trusted-laptop-access (yolo) profiles —
         // the local user has full host access and budget limits are counterproductive.
-        (true, _, _) => None,
-        // Kill switch: budgeting disabled via MontyVmSettings — skip accountant entirely.
-        (_, false, _) => None,
-        (false, true, Some(cost_table)) => {
+        true => None,
+        false => {
+            let cost_table = resolved_cost_table
+                .unwrap_or_else(|| Arc::new(brassclaw_loop_support::StaticModelCostTable::new()));
             let resolved_budget_defaults = match budget_defaults {
                 Some(defaults) => {
                     defaults
@@ -2342,7 +2359,6 @@ pub async fn build_reborn_runtime(
             );
             Some(accountant)
         }
-        (_, _, None) => None,
     };
 
     let loop_exit_evidence = Arc::new(ThreadCheckpointLoopExitEvidencePort::new_with_thread_scope(
@@ -2534,6 +2550,13 @@ pub async fn build_reborn_runtime(
     };
     #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = None;
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    resource_governor_for_accountant
+        .bind_task_budget_settings(global_monty_owner.client().live_task_settings())
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: error.to_string(),
+        })?;
 
     #[cfg(feature = "skills-db")]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
@@ -3119,6 +3142,13 @@ pub async fn build_reborn_runtime(
         #[cfg(any(test, feature = "test-support"))]
         trigger_conversation_pairing: trigger_conversation_pairing_value,
         budget_event_projection,
+        #[cfg(any(test, feature = "test-support"))]
+        resource_governor: resource_governor_for_accountant,
+        #[cfg(any(test, feature = "test-support"))]
+        budget_gate_store: budget_gate_store_for_accountant,
+        broadcast_budget_sink,
+        #[cfg(any(test, feature = "test-support"))]
+        in_memory_budget_sink,
         poll_settings: poll,
         actor_user_id,
         source_binding_ref: validated_identity.source_binding_ref,
@@ -3146,7 +3176,7 @@ pub async fn build_reborn_runtime(
 /// Legacy settings lookup shared with startup failure acceptance. The global
 /// revision cutover must replace this startup snapshot, not reuse it as a wall
 /// timer. A missing row is the store's explicit default; a failed read is fatal.
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", any(test, not(feature = "skills-db"))))]
 async fn read_startup_monty_settings(
     pool: &Arc<brassclaw_pg::PgPool>,
 ) -> Result<brassclaw_product_workflow::MontyVmSettings, RebornRuntimeError> {
@@ -4106,7 +4136,7 @@ mod tests {
         assert_eq!(auth_header, "Bearer sess_reborn_env_token");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_yolo_records_trusted_laptop_access_audit_event() {
         let root = tempfile::tempdir().expect("tempdir");
         let host_home = root.path().join("host-home");
@@ -4169,7 +4199,7 @@ mod tests {
         shutdown_shared_runtime(runtime).await.expect("shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_readiness_reports_trigger_poller_worker() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4204,7 +4234,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_rejects_trigger_poller_without_creator_authorization() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4245,7 +4275,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_accepts_trigger_poller_with_creator_access_checker() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4279,7 +4309,7 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_disables_trigger_poller_worker_by_default() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4311,7 +4341,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_rejects_invalid_trigger_poller_worker_config() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4359,7 +4389,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_shutdown_cancels_trigger_poller_worker() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4396,7 +4426,7 @@ mod tests {
         .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_yolo_message_flow_ignores_model_budget_gate() {
         let root = tempfile::tempdir().expect("tempdir");
         let host_home = root.path().join("host-home");
@@ -4462,7 +4492,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn send_user_message_returns_completed_assistant_text_with_recording_gateway() {
         let root = tempfile::tempdir().expect("tempdir");
         let requests = Arc::new(StdMutex::new(Vec::new()));
@@ -4599,7 +4629,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancel_run_propagates_to_subagent_children() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -4764,7 +4794,7 @@ mod tests {
     }
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_global_runtime_retains_one_root_across_match_and_no_match() {
         let root = tempfile::tempdir().unwrap();
         let rig = super::test_pg::pg_rig().await;
@@ -4923,7 +4953,7 @@ mod tests {
     }
 
     #[cfg(feature = "skills-db")]
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_webui_monty_task_settings_reach_one_running_instance() {
         use axum::{
             Router,
@@ -4957,9 +4987,14 @@ mod tests {
             ) -> Result<HostManagedModelResponse, HostManagedModelError> {
                 self.entered.notify_one();
                 self.release.acquire().await.unwrap().forget();
-                Ok(HostManagedModelResponse::assistant_reply(
-                    "model result after the live edit",
-                ))
+                Ok(
+                    HostManagedModelResponse::assistant_reply("model result after the live edit")
+                        .with_usage(brassclaw_turns::run_profile::LoopModelUsage {
+                            input_tokens: 200,
+                            output_tokens: 15,
+                            ..Default::default()
+                        }),
+                )
             }
         }
         async fn request(
@@ -5034,6 +5069,31 @@ mod tests {
             initial_revision
         );
         assert_eq!(initial["runtime"]["task_budget"]["uptake"], "applied");
+        let governor = runtime.budget_resource_governor().unwrap();
+        let budget_account = brassclaw_resources::ResourceAccount::user(
+            runtime.thread_scope.tenant_id.clone(),
+            runtime.actor_user_id.clone(),
+        );
+        governor
+            .set_limit(
+                budget_account.clone(),
+                brassclaw_resources::ResourceLimits {
+                    max_input_tokens: Some(10),
+                    max_output_tokens: Some(10),
+                    max_usd: Some(rust_decimal::Decimal::ONE),
+                    period: brassclaw_resources::BudgetPeriod::Rolling24h,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let budget_scope = brassclaw_host_api::ResourceScope {
+            tenant_id: runtime.thread_scope.tenant_id.clone(),
+            user_id: runtime.actor_user_id.clone(),
+            agent_id: Some(runtime.thread_scope.agent_id.clone()),
+            project_id: None,
+            thread_id: None,
+            invocation_id: brassclaw_host_api::InvocationId::new(),
+        };
         let conversation = runtime.new_conversation().await.unwrap();
         let sending = {
             let runtime = runtime.clone();
@@ -5086,6 +5146,29 @@ mod tests {
                 .unwrap();
             assert_eq!(retrieval.revision, effective.revision);
             assert_eq!(retrieval.token_budgets_enabled, enabled);
+            let quote = brassclaw_host_api::ResourceEstimate {
+                input_tokens: Some(100),
+                ..Default::default()
+            };
+            let reservation = governor.reserve(budget_scope.clone(), quote);
+            if enabled {
+                assert!(matches!(
+                    reservation,
+                    Err(brassclaw_resources::ResourceError::LimitExceeded { .. })
+                ));
+            } else {
+                governor.release(reservation.unwrap().id).unwrap();
+            }
+            assert_eq!(
+                governor
+                    .account_snapshot(&budget_account)
+                    .unwrap()
+                    .unwrap()
+                    .limits
+                    .unwrap()
+                    .max_input_tokens,
+                Some(10)
+            );
         }
         let (code, shared) = request(
             &app,
@@ -5141,6 +5224,15 @@ mod tests {
         release.add_permits(1);
         let reply = sending.await.unwrap().unwrap();
         assert_eq!(reply.status, TurnStatus::Completed);
+        let ledger = governor
+            .account_snapshot(&budget_account)
+            .unwrap()
+            .unwrap()
+            .ledger;
+        assert_eq!(ledger.spent.input_tokens, 200);
+        assert_eq!(ledger.spent.output_tokens, 15);
+        assert!(ledger.spent.usd > rust_decimal::Decimal::ZERO);
+        assert_eq!(ledger.reserved.input_tokens, 0);
         let client = rig.pool.get().await.unwrap();
         let row = client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
             &[&reply.run_id.as_uuid()]).await.unwrap();
@@ -5205,7 +5297,7 @@ mod tests {
         restarted.shutdown().await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_exposes_host_runtime_capabilities_to_model_calls() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(ToolCallingGateway::default());
@@ -5305,7 +5397,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_maps_workspace_to_configured_root() {
         let root = tempfile::tempdir().expect("tempdir");
         let workspace_root = tempfile::tempdir().expect("workspace tempdir");
@@ -5364,7 +5456,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_runtime_webui_bundle_reuses_thread_and_turn_facades() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -5501,7 +5593,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_webui_bundle_uses_local_lifecycle_facade_for_setup_extension() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -5622,7 +5714,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn webui_route_rejects_list_automations_without_agent_binding() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
@@ -5686,7 +5778,7 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn build_webui_services_without_host_runtime_returns_503_on_list_automations() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -5742,7 +5834,7 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_webui_bundle_routes_approval_gates_into_interaction_service() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -5816,7 +5908,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_webui_bundle_routes_auth_gates_into_interaction_service() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {
@@ -5889,7 +5981,7 @@ mod tests {
             .expect("runtime shutdown");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_dev_webui_spawn_approval_emits_redacted_audit_and_grants_process() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(RecordingGateway {

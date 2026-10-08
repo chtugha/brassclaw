@@ -489,6 +489,98 @@ async fn start_context(
 }
 
 #[tokio::test]
+async fn heap_growth_resizes_the_real_backstop_without_restarting_or_resetting_state() {
+    use brassclaw_monty_host::heap::HeapSettings;
+    use brassclaw_monty_host::process::{RecipeBoundary, RecipeCommand};
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    let expanded = HeapSettings {
+        revision: 2,
+        max_vm_bytes: 96 * 1024 * 1024,
+    };
+    let grown = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 1,
+            settings: expanded,
+            automatic: true,
+        })
+        .await
+        .unwrap();
+    assert_eq!(grown.heap.effective, Some(expanded));
+    assert_eq!(grown.root, ready.root);
+    assert_eq!(grown.effective_task_settings, ready.effective_task_settings);
+    assert_eq!(process.process_id(), pid);
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: grown.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let handle = admitted.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall { key, .. }) = admitted.boundary else {
+        panic!("actual intent boundary required")
+    };
+    process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let context = open_context(&mut process, handle, None).await;
+    assert!(matches!(
+        start_context(&mut process, context, "held = 'x' * 73400320\nresult = len(held)", json!({}), &[]).await,
+        RecipeBoundary::Complete { value } if value == json!(73400320)
+    ));
+    let retained = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert!(
+        retained.vm_live_bytes > limits().hard_memory_bytes,
+        "real retained interpreter storage must exceed the original physical cap"
+    );
+    for (bytes, failure) in [
+        (16 * 1024 * 1024, VmFailure::UnsafeHeapReduction),
+        (usize::MAX, VmFailure::InvalidBounds),
+    ] {
+        let rejected = process
+            .exchange(WorkerCommand::UpdateHeap {
+                expected_revision: 2,
+                settings: HeapSettings {
+                    revision: 3,
+                    max_vm_bytes: bytes,
+                },
+                automatic: false,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(rejected.kind, ProcessFailure::Vm(failure));
+        assert_eq!(rejected.snapshot.unwrap().heap, retained.heap);
+        assert_eq!(process.process_id(), pid);
+    }
+    assert!(
+        matches!(start_context(&mut process, context, "result = len(held)", json!({}), &[]).await,
+        RecipeBoundary::Complete { value } if value == json!(73400320))
+    );
+    recipe_command(&mut process, RecipeCommand::CancelContext { context }).await;
+    let shrunk = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 2,
+            settings: HeapSettings {
+                revision: 3,
+                max_vm_bytes: 16 * 1024 * 1024,
+            },
+            automatic: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!(shrunk.heap.effective.unwrap().revision, 3);
+    assert!(shrunk.vm_live_bytes < 16 * 1024 * 1024);
+    assert_eq!(shrunk.root, ready.root);
+    assert_eq!(process.process_id(), pid);
+    // The unresolved root call is contained, not reported as completed.
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
 async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_context() {
     use brassclaw_monty_host::heap::HeapSettings;
     use brassclaw_monty_host::process::{RecipeBoundary, RecipeCommand};

@@ -53,18 +53,18 @@ fn local_dev_runtime_policy() -> EffectiveRuntimePolicy {
     }
 }
 
-/// Cost table tuned so a default-size reservation lands just above
-/// `pause_at` against the test user's $1.00 cap:
-///   estimate = 64 input × $0.05 + 20 output × $0.10 = $5.20 × 1.20 = $6.24
-/// → 624% utilization, well above pause(0.95) → ApprovalRequired.
+/// A free-input, paid-output profile isolates the money threshold from the
+/// complete runtime prefix: 50 × $0.10 × 1.20 = $6.00 against a $10 cap.
+/// This crosses pause(0.5) without crossing the hard ceiling. Input usage is
+/// still accounted; neither token mode nor a smaller prompt bypasses the gate.
 fn pause_inducing_cost_table() -> Arc<dyn ModelCostTable> {
     let mut table = StaticModelCostTable::new();
     table.insert(
         ModelProfileId::new("interactive_model").unwrap(),
         ModelCost {
-            input_per_token: dec!(0.05),
+            input_per_token: Decimal::ZERO,
             output_per_token: dec!(0.10),
-            max_output_tokens: 20,
+            max_output_tokens: 50,
             cache_write_multiplier_milli: 0,
             cache_read_multiplier_milli: 0,
         },
@@ -154,7 +154,7 @@ async fn pump_until_pending_gate(
 }
 
 /// F3: pause → user approves with an increased limit → retry succeeds.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn f3_approval_with_increased_limit_unblocks_retry() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -216,7 +216,7 @@ async fn f3_approval_with_increased_limit_unblocks_retry() {
 }
 
 /// F4: pause → user cancels → retry still fails the same way.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn f4_cancel_keeps_budget_blocked_on_retry() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -265,7 +265,7 @@ async fn f4_cancel_keeps_budget_blocked_on_retry() {
 
 /// F5: pause → no user action → admin expires stale gates → terminal
 /// state is `Expired`; retry remains blocked exactly like F4.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn f5_expiry_marks_gate_terminal_and_keeps_budget_blocked() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -322,7 +322,7 @@ async fn f5_expiry_marks_gate_terminal_and_keeps_budget_blocked() {
 /// sink must see that real id (not a phantom freshly minted at
 /// projection time), so subscribers can resolve the gate they were
 /// notified about.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn gate_opened_event_carries_id_that_matches_persisted_gate() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -375,7 +375,7 @@ async fn gate_opened_event_carries_id_that_matches_persisted_gate() {
 /// gates (one per run), which is the expected behavior because each
 /// run is a separate user-visible attempt that may want its own
 /// approval decision.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pause_in_distinct_runs_produces_distinct_pending_gates() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -407,4 +407,67 @@ async fn pause_in_distinct_runs_produces_distinct_pending_gates() {
     let _ = Decimal::ZERO; // keep the rust_decimal import live across compile shapes
 
     runtime.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_budget_gates_preserve_terminal_payloads_and_reject_corruption() {
+    use brassclaw_resources::{
+        BudgetGateStatus, BudgetGateStore, PgBudgetGateStore, ResourceApprovalNeeded,
+        ResourceDimension, ResourceValue,
+    };
+    let rig = pg_rig().await;
+    let store = PgBudgetGateStore::new(rig.pool.clone(), "gate-store-tenant");
+    let scope = brassclaw_host_api::ResourceScope::system();
+    let now = chrono::Utc::now();
+    let gate = brassclaw_resources::BudgetApprovalGate {
+        id: brassclaw_resources::BudgetGateId::new(),
+        needed: ResourceApprovalNeeded {
+            account: ResourceAccount::tenant(TenantId::new("gate-store-tenant").unwrap()),
+            dimension: ResourceDimension::Usd,
+            limit: ResourceValue::Decimal(dec!(1)),
+            current_usage: ResourceValue::Decimal(dec!(0)),
+            active_reserved: ResourceValue::Decimal(dec!(0)),
+            requested: ResourceValue::Decimal(dec!(0.95)),
+            utilization: 0.95,
+            period_end: None,
+        },
+        opened_at: now,
+        expires_at: now + chrono::Duration::seconds(60),
+        status: BudgetGateStatus::Pending,
+    };
+    store.open(&scope, gate.clone()).unwrap();
+    store.open(&scope, gate.clone()).unwrap();
+    let mut conflict = gate.clone();
+    conflict.expires_at = now;
+    assert!(store.open(&scope, conflict).is_err());
+    assert!(
+        store
+            .expire_pending_older_than(&scope, now)
+            .unwrap()
+            .is_empty()
+    );
+    let cutoff = gate.expires_at;
+    let expired = store.expire_pending_older_than(&scope, cutoff).unwrap();
+    assert_eq!(expired.len(), 1);
+    assert_eq!(expired[0].status, BudgetGateStatus::Expired { at: cutoff });
+    assert_eq!(
+        store.get(&scope, gate.id).unwrap(),
+        Some(expired[0].clone())
+    );
+    assert!(store.list_pending(&scope).unwrap().is_empty());
+    let mut pending = gate.clone();
+    pending.id = brassclaw_resources::BudgetGateId::new();
+    store.open(&scope, pending.clone()).unwrap();
+    let client = rig.pool.get().await.unwrap();
+    client
+        .execute(
+            "UPDATE brassclaw_budget_gates SET payload='{}'::jsonb WHERE id=$1",
+            &[&pending.id.to_string()],
+        )
+        .await
+        .unwrap();
+    drop(client);
+    assert!(store.list_pending(&scope).is_err());
+    assert!(store.expire_pending_older_than(&scope, cutoff).is_err());
+    assert!(store.get(&scope, pending.id).is_err());
 }

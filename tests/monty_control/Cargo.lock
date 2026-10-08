@@ -3094,7 +3094,7 @@ dependencies = [
 
 [[package]]
 name = "monty"
-version = "1.0.0-brassclaw.control.6"
+version = "1.0.0-brassclaw.control.7"
 dependencies = [
  "ahash",
  "chrono",
@@ -3133,14 +3133,14 @@ dependencies = [
 
 [[package]]
 name = "monty-alloc"
-version = "1.0.0-brassclaw.control.6"
+version = "1.0.0-brassclaw.control.7"
 dependencies = [
  "monty-types",
 ]
 
 [[package]]
 name = "monty-macros"
-version = "1.0.0-brassclaw.control.6"
+version = "1.0.0-brassclaw.control.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "monty-types"
-version = "1.0.0-brassclaw.control.6"
+version = "1.0.0-brassclaw.control.7"
 dependencies = [
  "chrono",
  "jiff",

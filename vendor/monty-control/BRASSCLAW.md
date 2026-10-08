@@ -10,10 +10,12 @@ CONTROL.patch uses zero-context hunks so blank context markers do not create
 trailing-whitespace warnings when the patch is tracked. Apply it only to the
 verified upstream files, using `git apply --unidiff-zero`.
 
-Extension version: `1.0.0-brassclaw.control.6`. The application dependency graph now uses
-these sources, including the Engine API migration and contained authoring
-utilities. Global production lifecycle acceptance remains incomplete; this API
-cutover alone does not resolve the seven composition message-flow failures.
+Extension version: `1.0.0-brassclaw.control.7`. The application dependency graph uses
+these sources, including the Engine API migration, contained authoring utilities
+and global installation worker. The original seven composition regressions have
+passed through the ordinary runtime. Complete production lifecycle, adaptive
+settings and catalogue acceptance remain open; interpreter evidence alone does
+not establish completion of those gates.
 
 `control.4` adds `ExecutionObservation`: actual VM-local coroutine identity,
 cumulative executing time and cumulative preparation time. Resource checks and
@@ -129,5 +131,20 @@ never serialized pointers or checkpoint authority. No old continuation/replay
 compatibility is asserted. Real allocation operations and actual root-plus-child
 execution are tested in `tests/monty_control`. Adaptive OS measurement, physical
 backstop resizing, production settings storage/publication and the complete
-global Recipe/catalogue cutover remain required. The current worker accepts
-logical growth only within its separately configured physical reserve.
+global Recipe/catalogue cutover remain required. That milestone still restricted logical growth to the startup physical cap;
+the control.7 resize contract below removes this limitation.
+
+
+`control.7` adds `set_worker_limits` for a serialized, quiescent worker owner.
+It validates a finite logical ceiling plus a separate non-VM reserve, rejects
+logical or physical reductions below actual allocations, and rejects arithmetic
+overflow before publishing either limit. Actual live counters and ownership tags
+are never reset, and baseline cannot absorb growing VM consumption. The worker
+can grow beyond its startup physical cap and shrink after real reclamation.
+Unsafe automatic reductions remain desired/pending and stop new admissions;
+manual denials preserve the last acknowledged worker and resource revision.
+
+Dump ABI remains `0xBC05`; this changes allocator publication, not snapshot
+layout. Private worker protocol 5 is unchanged. Real allocator and root/child
+resize acceptance is required in `tests/monty_control`; this primitive does not
+implement host-pressure measurement, adaptive settings migration or WebUI uptake.

@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 const SEND_USER_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn runtime_rejects_disabled_profile_before_local_substrate_lookup() {
     let input =
         RebornRuntimeInput::from_services(RebornBuildInput::disabled("runtime-disabled-owner"));
@@ -43,7 +43,7 @@ async fn runtime_rejects_disabled_profile_before_local_substrate_lookup() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn runtime_requires_resolved_runtime_policy_for_local_dev() {
     let root = tempfile::tempdir().unwrap();
     let input = RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
@@ -62,7 +62,7 @@ async fn runtime_requires_resolved_runtime_policy_for_local_dev() {
     assert!(reason.contains("resolved runtime policy"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stub_gateway_send_cancels_recovery_required_and_releases_conversation() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -114,7 +114,7 @@ async fn stub_gateway_send_cancels_recovery_required_and_releases_conversation()
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn send_user_message_with_cancellation_cancels_submitted_run() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -169,7 +169,7 @@ async fn send_user_message_with_cancellation_cancels_submitted_run() {
 /// the wiring (dropped `hooks_config`, wrong `extension_filesystem`, mis-threaded
 /// tenant) would surface here as a build/start failure rather than going
 /// uncovered.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn build_reborn_runtime_wires_third_party_hooks_when_enabled() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;

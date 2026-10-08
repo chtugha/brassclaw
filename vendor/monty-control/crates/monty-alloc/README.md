@@ -74,3 +74,13 @@ Neither counter measures RSS, stacks or direct mappings. The hosting adapter
 must adopt received data into VM allocations and keep unrelated frame handling
 outside the scope. See `BRASSCLAW.md` for the verified measurement boundary and
 remaining production/adaptive acceptance requirements.
+
+
+`control.7` supplies `set_worker_limits(vm_bytes, reserve_bytes)` for that same
+quiescent owner. It replaces both the logical limit and finite physical backstop
+after validating actual VM/process allocations and checked arithmetic. The
+reserve covers bounded transport/exception overhead separately; growing the VM
+does not reset either live counter or move VM allocations into baseline. Typed
+errors distinguish invalid settings/accounting from unsafe reductions. A failed
+publication leaves both limits unchanged. Concurrent allocation/execution must
+be excluded by the worker owner. This API is not an OS capacity measurement.

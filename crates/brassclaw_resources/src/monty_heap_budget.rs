@@ -70,6 +70,8 @@ pub enum MontyHeapAdjustmentReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MontyHeapBudgetDecision {
     pub target_bytes: u64,
+    /// Proposed logical limit; only worker acknowledgement can make it effective.
+    pub proposed_bytes: u64,
     pub effective_bytes: u64,
     pub pending_reduction: bool,
     pub backpressure: bool,
@@ -112,14 +114,29 @@ impl AdaptiveMontyHeapBudget {
             return Err(MontyHeapBudgetError::AccountingInvariant);
         }
         self.config = next;
-        if let Some(cap) = next.manual_ceiling_bytes {
-            self.effective_bytes = self.effective_bytes.min(cap);
+        Ok(())
+    }
+
+    /// Record a real worker acknowledgement, including the observed live heap.
+    /// A rejected publication or dropped waiter must never call this method.
+    /// Composition serializes publications; this calculator owns no VM counters.
+    pub fn acknowledge(
+        &mut self,
+        effective_bytes: u64,
+        live_heap_bytes: u64,
+    ) -> Result<(), MontyHeapBudgetError> {
+        if effective_bytes == 0 || effective_bytes == u64::MAX {
+            return Err(MontyHeapBudgetError::InvalidSettings);
         }
+        if live_heap_bytes > effective_bytes {
+            return Err(MontyHeapBudgetError::AccountingInvariant);
+        }
+        self.effective_bytes = effective_bytes;
         Ok(())
     }
 
     pub fn evaluate(
-        &mut self,
+        &self,
         live_heap_bytes: u64,
         sample: Option<MontyMemorySample>,
         now: Instant,
@@ -151,6 +168,7 @@ impl AdaptiveMontyHeapBudget {
             // capacity is known. Cold boot uses the explicit finite fallback.
             return Ok(MontyHeapBudgetDecision {
                 target_bytes: self.effective_bytes,
+                proposed_bytes: self.effective_bytes,
                 effective_bytes: self.effective_bytes,
                 pending_reduction: false,
                 backpressure: true,
@@ -160,6 +178,7 @@ impl AdaptiveMontyHeapBudget {
         if target < live_heap_bytes || target == 0 {
             return Ok(MontyHeapBudgetDecision {
                 target_bytes: target,
+                proposed_bytes: self.effective_bytes,
                 effective_bytes: self.effective_bytes,
                 pending_reduction: true,
                 backpressure: true,
@@ -167,22 +186,20 @@ impl AdaptiveMontyHeapBudget {
             });
         }
         let previous = self.effective_bytes;
+        let mut proposed = previous;
         let reason = if pressure != MontyMemoryPressure::Normal {
             // Pressure relief clamps usable headroom immediately. Rate limiting
             // cannot authorize consumption of newly unavailable host capacity.
-            self.effective_bytes = self.effective_bytes.min(target.max(1));
+            proposed = previous.min(target);
             MontyHeapAdjustmentReason::Pressure
         } else if target < self.effective_bytes {
-            self.effective_bytes = target.max(1);
+            proposed = target;
             MontyHeapAdjustmentReason::CapacityReduction
         } else if self.effective_bytes.saturating_sub(live_heap_bytes)
             <= self.config.growth_headroom_bytes
         {
-            self.effective_bytes = target.min(
-                self.effective_bytes
-                    .saturating_add(self.config.growth_step_bytes),
-            );
-            if self.effective_bytes > previous {
+            proposed = target.min(previous.saturating_add(self.config.growth_step_bytes));
+            if proposed > previous {
                 MontyHeapAdjustmentReason::CapacityGrowth
             } else {
                 MontyHeapAdjustmentReason::Unchanged
@@ -192,6 +209,7 @@ impl AdaptiveMontyHeapBudget {
         };
         Ok(MontyHeapBudgetDecision {
             target_bytes: target,
+            proposed_bytes: proposed,
             effective_bytes: self.effective_bytes,
             pending_reduction: false,
             backpressure: pressure != MontyMemoryPressure::Normal || target == 0,
@@ -223,18 +241,65 @@ mod tests {
     #[test]
     fn grows_on_demand_and_does_not_subtract_own_heap_twice() {
         let now = Instant::now();
-        let mut budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
         let unchanged = budget.evaluate(50, Some(sample(now, 1000)), now).unwrap();
         assert_eq!(unchanged.target_bytes, 950);
         assert_eq!(unchanged.effective_bytes, 200);
         let grow = budget.evaluate(190, Some(sample(now, 1000)), now).unwrap();
         assert_eq!(grow.target_bytes, 1090);
-        assert_eq!(grow.effective_bytes, 300);
+        assert_eq!(grow.proposed_bytes, 300);
+        assert_eq!(grow.effective_bytes, 200);
+    }
+    #[test]
+    fn publication_is_only_a_proposal_until_actual_worker_acknowledgement() {
+        let now = Instant::now();
+        let mut budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let proposed = budget.evaluate(190, Some(sample(now, 1000)), now).unwrap();
+        assert_eq!(proposed.proposed_bytes, 300);
+        assert_eq!(proposed.effective_bytes, 200);
+        // Rejection, a lost acknowledgement or a dropped publication waiter
+        // cannot permit an additional growth step from unacknowledged capacity.
+        assert_eq!(
+            budget.evaluate(190, Some(sample(now, 1000)), now).unwrap(),
+            proposed
+        );
+        assert_eq!(
+            budget.acknowledge(180, 190),
+            Err(MontyHeapBudgetError::AccountingInvariant)
+        );
+        assert_eq!(
+            budget.evaluate(190, Some(sample(now, 1000)), now).unwrap(),
+            proposed
+        );
+        budget.acknowledge(300, 190).unwrap();
+        let confirmed = budget.evaluate(190, Some(sample(now, 1000)), now).unwrap();
+        assert_eq!(confirmed.effective_bytes, 300);
+        assert_eq!(confirmed.proposed_bytes, 300);
+    }
+    #[test]
+    fn safe_manual_ceiling_does_not_pretend_allocator_reduction_was_applied() {
+        let now = Instant::now();
+        let mut budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let mut next = config();
+        next.manual_ceiling_bytes = Some(150);
+        budget.update_config(next, 100).unwrap();
+        let proposed = budget.evaluate(100, Some(sample(now, 1000)), now).unwrap();
+        assert_eq!(proposed.target_bytes, 150);
+        assert_eq!(proposed.proposed_bytes, 150);
+        assert_eq!(proposed.effective_bytes, 200);
+        budget.acknowledge(150, 100).unwrap();
+        assert_eq!(
+            budget
+                .evaluate(100, Some(sample(now, 1000)), now)
+                .unwrap()
+                .effective_bytes,
+            150
+        );
     }
     #[test]
     fn stale_future_and_overflowing_measurement_never_grow_budget() {
         let now = Instant::now();
-        let mut budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
         for measurement in [
             None,
             Some(sample(now - Duration::from_secs(6), 1000)),
@@ -264,14 +329,14 @@ mod tests {
             budget
                 .evaluate(190, Some(sample(now, 1000)), now)
                 .unwrap()
-                .effective_bytes,
+                .proposed_bytes,
             300
         );
     }
     #[test]
     fn insufficient_reserve_keeps_live_heap_and_marks_reduction_pending() {
         let now = Instant::now();
-        let mut budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
         let decision = budget.evaluate(150, Some(sample(now, 25)), now).unwrap();
         assert_eq!(decision.target_bytes, 75);
         assert_eq!(decision.effective_bytes, 200);
@@ -282,11 +347,12 @@ mod tests {
     #[test]
     fn pressure_never_sets_limit_below_live_heap_or_restarts_a_task() {
         let now = Instant::now();
-        let mut budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
         let mut measurement = sample(now, 1000);
         measurement.pressure = MontyMemoryPressure::Critical;
         let decision = budget.evaluate(150, Some(measurement), now).unwrap();
-        assert_eq!(decision.effective_bytes, 150);
+        assert_eq!(decision.proposed_bytes, 150);
+        assert_eq!(decision.effective_bytes, 200);
         assert!(decision.backpressure);
         assert_eq!(decision.reason, MontyHeapAdjustmentReason::Pressure);
     }

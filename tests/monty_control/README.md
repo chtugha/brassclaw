@@ -1,6 +1,6 @@
 # Monty resumable control gate
 
-Current extension: control.6 / dump ABI 0xBC05, private root-worker protocol 4.
+Current extension: control.7 / dump ABI 0xBC05, private root-worker protocol 5.
 
 `flow_host.rs` runs the actual class-10 pure prepared-flow helpers in the contained
 utility worker. Four cases cover whole-tree preflight failures, branch dominance,
@@ -22,8 +22,8 @@ workers; the host now binds admitted task accounts and protected root scopes
 explicitly. Durable finish/cancellation acknowledgement remains production work.
 The extension also prevents call/coroutine counter wrap before dispatch/ownership.
 
-This independent workspace executes the versioned extension at
-`vendor/monty-control` without changing production dependencies. Its lockfile
+This independent workspace executes the same versioned extension at
+`vendor/monty-control` used by production dependencies. Its lockfile
 pins the resolved gate dependencies. Run Cargo sequentially:
 
 ```sh
@@ -199,3 +199,12 @@ edits during real paused file I/O, expected denial without service failure and
 publication after a waiter is dropped. Physical backstop probes deliberately
 omit a soft limit only in the standalone mechanical worker; ServiceOwner refuses
 such a boot. No adaptive OS sampling or production WebUI uptake is claimed.
+
+
+The control.7 resize cases exercise the actual allocator, physical reduction
+rejection while non-VM data remains live, retained ownership across expansion,
+unsafe/overflow rejection without mutation and finite physical enforcement after
+shrink. The process case allocates and retains a 70 MiB Monty string beyond the
+original 64 MiB worker cap, preserves its locals/root/PID through rejected edits,
+and reduces the budget only after releasing that context. These are worker
+resize cases; adaptive OS measurements and WebUI policy uptake remain separate.

@@ -104,6 +104,15 @@ where
     F: RootFilesystem + 'static,
     G: ResourceGovernor + 'static,
 {
+    /// Bind the acknowledged instance task-settings source without exposing the
+    /// captured governor or changing a retained implementation/authority grant.
+    pub fn bind_task_budget_settings(
+        &self,
+        settings: brassclaw_resources::LiveMontyTaskSettings,
+    ) -> Result<(), brassclaw_resources::ResourceError> {
+        self.governor.bind_task_budget_settings(settings)
+    }
+
     /// Host-owned authority composition for a pinned registration. Replaces no
     /// handler, metadata, artifact or substrate service; grants are not issued.
     pub fn retain_native_with_authorizer(

@@ -115,6 +115,29 @@ Rules:
 
 ---
 
+### Live instance token mode and durable accounting
+
+Trusted composition binds each actual governor once to the acknowledged
+`LiveMontyTaskSettings` source shared with the global Monty worker. Disabling
+token budgets masks only input/output token caps at reservation time. Stored
+limits, reservations, estimates and measured consumption remain intact; USD
+and other resource dimensions remain independent. Re-enabling token budgets
+uses existing usage and holds. A distinct settings source cannot replace the
+bound source. Unbound standalone governors retain their existing enforcement.
+
+Default-limit installation is one conditional store mutation. An existing
+operator limit wins; a failed installation prevents model dispatch. Snapshot
+then unconditional replacement is not an atomic installation.
+
+The synchronous PostgreSQL bridge requires Tokio's multithread runtime, used
+by ordinary `serve` and CLI startup. Composition rejects a PostgreSQL runtime
+on an incompatible executor before workers start; the store returns a storage
+error rather than panicking if invoked independently on that executor. Each
+bridge operation is bounded to two seconds. A timed-out mutation has an
+uncertain outcome: callers retain its explicit reservation address, deny
+execution and fence a replacement quote until acknowledged reconciliation.
+A timeout never authorizes replay or proves that no hold exists.
+
 ## 6. Concurrency
 
 Concurrency is modeled as a resource dimension, not as a separate ad hoc lock.

@@ -2448,3 +2448,178 @@ fn thresholds_validation_rejects_pause_below_warn() {
         .is_err()
     );
 }
+
+#[test]
+fn live_token_mode_preserves_holds_usage_and_independent_limits() {
+    let directory = tempdir().unwrap();
+    let governors: Vec<Box<dyn ResourceGovernor>> = vec![
+        Box::new(InMemoryResourceGovernor::new()),
+        Box::new(PersistentResourceGovernor::new(
+            JsonFileResourceGovernorStore::new(directory.path().join("live-token-mode.json")),
+        )),
+    ];
+    for governor in governors {
+        let scope = sample_scope("live-tenant", "live-user", None);
+        let account = ResourceAccount::tenant(scope.tenant_id.clone());
+        let limits = ResourceLimits {
+            max_input_tokens: Some(10),
+            max_output_tokens: Some(10),
+            max_usd: Some(dec!(1)),
+            ..ResourceLimits::default()
+        };
+        governor.set_limit(account.clone(), limits.clone()).unwrap();
+        let settings = LiveMontyTaskSettings::new(MontyTaskSettingsRevision {
+            revision: 1,
+            limits: MontyTaskLimits {
+                max_compute_time: std::time::Duration::from_secs(600),
+                token_budgets_enabled: false,
+            },
+        })
+        .unwrap();
+        governor
+            .bind_task_budget_settings(settings.clone())
+            .unwrap();
+        governor
+            .bind_task_budget_settings(settings.clone())
+            .unwrap();
+        let other = LiveMontyTaskSettings::new(settings.current()).unwrap();
+        assert!(governor.bind_task_budget_settings(other).is_err());
+        let held = governor
+            .reserve(
+                scope.clone(),
+                ResourceEstimate {
+                    input_tokens: Some(100),
+                    output_tokens: Some(100),
+                    usd: Some(dec!(0.2)),
+                    ..ResourceEstimate::default()
+                },
+            )
+            .unwrap();
+        let snapshot = governor.account_snapshot(&account).unwrap().unwrap();
+        assert_eq!(snapshot.limits, Some(limits.clone()));
+        assert_eq!(snapshot.ledger.reserved.input_tokens, 100);
+        assert!(matches!(
+            governor.reserve(
+                scope.clone(),
+                ResourceEstimate {
+                    usd: Some(dec!(2)),
+                    ..ResourceEstimate::default()
+                }
+            ),
+            Err(ResourceError::LimitExceeded { .. })
+        ));
+        settings
+            .publish(
+                1,
+                MontyTaskSettingsRevision {
+                    revision: 2,
+                    limits: MontyTaskLimits {
+                        token_budgets_enabled: true,
+                        ..settings.current().limits
+                    },
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            governor.reserve(
+                scope.clone(),
+                ResourceEstimate {
+                    input_tokens: Some(1),
+                    ..ResourceEstimate::default()
+                }
+            ),
+            Err(ResourceError::LimitExceeded { .. })
+        ));
+        governor
+            .reconcile(
+                held.id,
+                ResourceUsage {
+                    input_tokens: 100,
+                    output_tokens: 75,
+                    usd: dec!(0.1),
+                    ..ResourceUsage::default()
+                },
+            )
+            .unwrap();
+        let snapshot = governor.account_snapshot(&account).unwrap().unwrap();
+        assert_eq!(snapshot.ledger.reserved.input_tokens, 0);
+        assert_eq!(snapshot.ledger.spent.input_tokens, 100);
+        assert_eq!(snapshot.ledger.spent.usd, dec!(0.1));
+        settings
+            .publish(
+                2,
+                MontyTaskSettingsRevision {
+                    revision: 3,
+                    limits: MontyTaskLimits {
+                        token_budgets_enabled: false,
+                        ..settings.current().limits
+                    },
+                },
+            )
+            .unwrap();
+        let next = governor
+            .reserve(
+                scope,
+                ResourceEstimate {
+                    input_tokens: Some(200),
+                    ..ResourceEstimate::default()
+                },
+            )
+            .unwrap();
+        governor.release(next.id).unwrap();
+        assert_eq!(
+            governor.account_snapshot(&account).unwrap().unwrap().limits,
+            Some(limits)
+        );
+    }
+}
+
+#[test]
+fn atomic_budget_default_does_not_replace_an_operator_limit() {
+    let governor = Arc::new(InMemoryResourceGovernor::new());
+    let account = ResourceAccount::tenant(sample_scope("seed-tenant", "seed-user", None).tenant_id);
+    let barrier = Arc::new(Barrier::new(2));
+    let seeded = {
+        let governor = governor.clone();
+        let account = account.clone();
+        let barrier = barrier.clone();
+        thread::spawn(move || {
+            barrier.wait();
+            governor
+                .set_limit_if_missing(
+                    account,
+                    ResourceLimits {
+                        max_usd: Some(dec!(5)),
+                        ..ResourceLimits::default()
+                    },
+                )
+                .unwrap();
+        })
+    };
+    barrier.wait();
+    governor
+        .set_limit(
+            account.clone(),
+            ResourceLimits {
+                max_usd: Some(dec!(2)),
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+    seeded.join().unwrap();
+    assert_eq!(
+        governor
+            .account_snapshot(&account)
+            .unwrap()
+            .unwrap()
+            .limits
+            .unwrap()
+            .max_usd,
+        Some(dec!(2))
+    );
+    assert!(
+        !governor
+            .set_limit_if_missing(account, ResourceLimits::default())
+            .unwrap()
+    );
+}

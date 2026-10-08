@@ -100,7 +100,7 @@ pub enum BudgetGateError {
     Unknown { id: BudgetGateId },
     #[error("budget gate {id} is already resolved")]
     AlreadyResolved { id: BudgetGateId },
-    #[error("budget gate storage error: {reason}")]
+    #[error("budget gate storage error")]
     Storage { reason: String },
 }
 

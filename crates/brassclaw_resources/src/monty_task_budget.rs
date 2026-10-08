@@ -81,6 +81,10 @@ impl LiveMontyTaskSettings {
         *self.sender.borrow()
     }
 
+    pub(crate) fn shares_source(&self, other: &Self) -> bool {
+        self.sender.same_channel(&other.sender)
+    }
+
     /// Atomic compare-and-publish: time and token mode cannot be
     /// observed from different revisions. No DB write or runtime await occurs
     /// while the watch value is locked. DB/effective acknowledgement is owned

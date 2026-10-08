@@ -37,7 +37,7 @@ impl HostManagedModelGateway for RecordingGateway {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dev_runtime_injects_default_system_prompt_into_model_request() {
     let root = tempfile::tempdir().expect("tempdir");
     let storage_root = super::test_pg::storage_root(root.path());
@@ -84,7 +84,7 @@ async fn local_dev_runtime_injects_default_system_prompt_into_model_request() {
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dev_runtime_uses_existing_edited_default_system_prompt() {
     let root = tempfile::tempdir().expect("tempdir");
     let storage_root = super::test_pg::storage_root(root.path());
@@ -120,7 +120,7 @@ async fn local_dev_runtime_uses_existing_edited_default_system_prompt() {
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dev_runtime_rejects_non_file_default_system_prompt() {
     let root = tempfile::tempdir().expect("tempdir");
     let storage_root = super::test_pg::storage_root(root.path());
@@ -193,4 +193,24 @@ fn local_dev_runtime_policy() -> EffectiveRuntimePolicy {
         approval_policy: ApprovalPolicy::AskDestructive,
         audit_mode: AuditMode::LocalMinimal,
     }
+}
+
+#[tokio::test]
+async fn postgres_runtime_rejects_current_thread_before_starting_workers() {
+    let root = tempfile::tempdir().unwrap();
+    let rig = super::test_pg::pg_rig().await;
+    let requests = Arc::new(StdMutex::new(Vec::new()));
+    let input = runtime_input(&rig, root.path(), requests.clone());
+    let error = match build_reborn_runtime(input).await {
+        Ok(runtime) => {
+            runtime.shutdown().await.unwrap();
+            panic!("incompatible executor must be rejected");
+        }
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, RebornRuntimeError::InvalidArgument { reason }
+        if reason.contains("multithread Tokio runtime"))
+    );
+    assert!(requests.lock().unwrap().is_empty());
 }

@@ -235,7 +235,7 @@ fn trigger_management_trust_decision() -> TrustDecision {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn trigger_poller_drives_trusted_ingress_for_due_scheduled_trigger() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -396,7 +396,7 @@ async fn trigger_poller_drives_trusted_ingress_for_due_scheduled_trigger() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn builtin_trigger_create_pairs_creator_and_poller_submits_turn() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -523,7 +523,7 @@ async fn builtin_trigger_create_pairs_creator_and_poller_submits_turn() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -557,7 +557,7 @@ async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn trigger_poller_does_not_fire_trigger_with_future_next_run_at() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -681,7 +681,7 @@ async fn trigger_poller_does_not_fire_trigger_with_future_next_run_at() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn trigger_poller_does_not_submit_turn_for_unpaired_actor() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -777,7 +777,7 @@ async fn trigger_poller_does_not_submit_turn_for_unpaired_actor() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn trigger_poller_fires_recurring_trigger_and_leaves_it_scheduled() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;

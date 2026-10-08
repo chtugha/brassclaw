@@ -54,7 +54,7 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use chrono::{DateTime, Duration, Utc};
 use fs2::FileExt;
@@ -583,12 +583,38 @@ pub struct AccountSnapshot {
 /// validation fail. Callers must treat storage failures as fail-closed and avoid
 /// starting quota-limited work without a successful reservation.
 pub trait ResourceGovernor: Send + Sync {
+    /// Trusted instance composition binds the actual acknowledged task-settings
+    /// source once. Token caps then follow that source at reservation time;
+    /// estimates, holds, usage and independent resource dimensions are retained.
+    /// An unsupported governor must fail setup instead of claiming live uptake.
+    fn bind_task_budget_settings(
+        &self,
+        _settings: LiveMontyTaskSettings,
+    ) -> Result<(), ResourceError> {
+        Err(ResourceError::Storage {
+            reason: "live task-budget binding unsupported".into(),
+        })
+    }
+
     /// Sets or replaces limits for a scoped resource account without mutating existing reservations.
     fn set_limit(
         &self,
         account: ResourceAccount,
         limits: ResourceLimits,
     ) -> Result<(), ResourceError>;
+
+    /// Atomically install a default only when no limit exists. Returning an
+    /// error prevents dispatch; implementations must never approximate this
+    /// with a snapshot followed by an unconditional replacement.
+    fn set_limit_if_missing(
+        &self,
+        _account: ResourceAccount,
+        _limits: ResourceLimits,
+    ) -> Result<bool, ResourceError> {
+        Err(ResourceError::Storage {
+            reason: "atomic default-budget installation unsupported".into(),
+        })
+    }
 
     /// Reserves estimated resources before costed/quota-limited work starts.
     ///
@@ -1035,6 +1061,7 @@ where
     /// governor stays usable without observability (parity with
     /// [`InMemoryResourceGovernor::with_event_sink`]).
     event_sink: Arc<dyn BudgetEventSink>,
+    task_settings: OnceLock<LiveMontyTaskSettings>,
 }
 
 impl<S> PersistentResourceGovernor<S>
@@ -1046,6 +1073,7 @@ where
             store,
             clock: Arc::new(SystemClock),
             event_sink: Arc::new(NoOpBudgetEventSink),
+            task_settings: OnceLock::new(),
         }
     }
 
@@ -1057,6 +1085,7 @@ where
             store,
             clock,
             event_sink: Arc::new(NoOpBudgetEventSink),
+            task_settings: OnceLock::new(),
         }
     }
 
@@ -1116,6 +1145,13 @@ impl<S> ResourceGovernor for PersistentResourceGovernor<S>
 where
     S: ResourceGovernorStore,
 {
+    fn bind_task_budget_settings(
+        &self,
+        settings: LiveMontyTaskSettings,
+    ) -> Result<(), ResourceError> {
+        bind_task_settings(&self.task_settings, settings)
+    }
+
     fn set_limit(
         &self,
         account: ResourceAccount,
@@ -1128,6 +1164,30 @@ where
                 .emit(BudgetEvent::LimitChanged { account, at: now });
         }
         outcome
+    }
+
+    fn set_limit_if_missing(
+        &self,
+        account: ResourceAccount,
+        limits: ResourceLimits,
+    ) -> Result<bool, ResourceError> {
+        let now = self.clock.now();
+        let event_account = account.clone();
+        let installed = self.store.update(move |snapshot| {
+            Ok(set_limit_if_missing_in_state(
+                &mut snapshot.state,
+                account,
+                limits,
+                now,
+            ))
+        })?;
+        if installed {
+            self.event_sink.emit(BudgetEvent::LimitChanged {
+                account: event_account,
+                at: now,
+            });
+        }
+        Ok(installed)
     }
 
     fn reserve_with_outcome(
@@ -1145,8 +1205,19 @@ where
         reservation_id: ResourceReservationId,
     ) -> Result<ReservationOutcome, ResourceError> {
         let now = self.clock.now();
+        let settings = self.task_settings.get().cloned();
         let result = self.store.update(move |snapshot| {
-            reserve_with_outcome_in_state(&mut snapshot.state, scope, estimate, reservation_id, now)
+            let token_budgets_enabled = settings
+                .as_ref()
+                .is_none_or(|settings| settings.current().limits.token_budgets_enabled);
+            reserve_with_outcome_in_state(
+                &mut snapshot.state,
+                scope,
+                estimate,
+                reservation_id,
+                now,
+                token_budgets_enabled,
+            )
         });
         emit_reserve_events(self.event_sink.as_ref(), &result, now);
         result
@@ -1215,6 +1286,7 @@ pub struct InMemoryResourceGovernor {
     /// defaults to [`NoOpBudgetEventSink`] so the governor stays usable
     /// without observability.
     event_sink: Arc<dyn BudgetEventSink>,
+    task_settings: OnceLock<LiveMontyTaskSettings>,
 }
 
 impl Default for InMemoryResourceGovernor {
@@ -1223,6 +1295,7 @@ impl Default for InMemoryResourceGovernor {
             state: Mutex::new(ResourceState::default()),
             clock: Arc::new(SystemClock),
             event_sink: Arc::new(NoOpBudgetEventSink),
+            task_settings: OnceLock::new(),
         }
     }
 }
@@ -1449,6 +1522,7 @@ impl InMemoryResourceGovernor {
             state: Mutex::new(ResourceState::default()),
             clock,
             event_sink: Arc::new(NoOpBudgetEventSink),
+            task_settings: OnceLock::new(),
         }
     }
 
@@ -1491,6 +1565,13 @@ impl InMemoryResourceGovernor {
 }
 
 impl ResourceGovernor for InMemoryResourceGovernor {
+    fn bind_task_budget_settings(
+        &self,
+        settings: LiveMontyTaskSettings,
+    ) -> Result<(), ResourceError> {
+        bind_task_settings(&self.task_settings, settings)
+    }
+
     fn set_limit(
         &self,
         account: ResourceAccount,
@@ -1501,6 +1582,21 @@ impl ResourceGovernor for InMemoryResourceGovernor {
         self.event_sink
             .emit(BudgetEvent::LimitChanged { account, at: now });
         Ok(())
+    }
+
+    fn set_limit_if_missing(
+        &self,
+        account: ResourceAccount,
+        limits: ResourceLimits,
+    ) -> Result<bool, ResourceError> {
+        let now = self.clock.now();
+        let installed =
+            set_limit_if_missing_in_state(&mut self.lock_state(), account.clone(), limits, now);
+        if installed {
+            self.event_sink
+                .emit(BudgetEvent::LimitChanged { account, at: now });
+        }
+        Ok(installed)
     }
 
     fn reserve_with_outcome(
@@ -1518,13 +1614,20 @@ impl ResourceGovernor for InMemoryResourceGovernor {
         reservation_id: ResourceReservationId,
     ) -> Result<ReservationOutcome, ResourceError> {
         let now = self.clock.now();
+        let mut state = self.lock_state();
+        let token_budgets_enabled = self
+            .task_settings
+            .get()
+            .is_none_or(|settings| settings.current().limits.token_budgets_enabled);
         let result = reserve_with_outcome_in_state(
-            &mut self.lock_state(),
+            &mut state,
             scope,
             estimate,
             reservation_id,
             now,
+            token_budgets_enabled,
         );
+        drop(state);
         emit_reserve_events(self.event_sink.as_ref(), &result, now);
         result
     }
@@ -1631,6 +1734,19 @@ fn most_specific_account(scope: &ResourceScope) -> ResourceAccount {
         .unwrap_or_else(|| ResourceAccount::tenant(scope.tenant_id.clone()))
 }
 
+fn set_limit_if_missing_in_state(
+    state: &mut ResourceState,
+    account: ResourceAccount,
+    limits: ResourceLimits,
+    now: DateTime<Utc>,
+) -> bool {
+    if state.limits.contains_key(&account) {
+        return false;
+    }
+    set_limit_in_state(state, account, limits, now);
+    true
+}
+
 fn set_limit_in_state(
     state: &mut ResourceState,
     account: ResourceAccount,
@@ -1677,12 +1793,32 @@ fn advance_period_if_rolled_over(
     }
 }
 
+fn bind_task_settings(
+    slot: &OnceLock<LiveMontyTaskSettings>,
+    settings: LiveMontyTaskSettings,
+) -> Result<(), ResourceError> {
+    match slot.set(settings) {
+        Ok(()) => Ok(()),
+        Err(settings)
+            if slot
+                .get()
+                .is_some_and(|bound| bound.shares_source(&settings)) =>
+        {
+            Ok(())
+        }
+        Err(_) => Err(ResourceError::Storage {
+            reason: "resource governor already bound to another task-settings source".into(),
+        }),
+    }
+}
+
 fn reserve_with_outcome_in_state(
     state: &mut ResourceState,
     scope: ResourceScope,
     estimate: ResourceEstimate,
     reservation_id: ResourceReservationId,
     now: DateTime<Utc>,
+    token_budgets_enabled: bool,
 ) -> Result<ReservationOutcome, ResourceError> {
     validate_estimate(&estimate)?;
 
@@ -1700,6 +1836,13 @@ fn reserve_with_outcome_in_state(
     let mut warnings = Vec::new();
     for account in &accounts {
         if let Some(limits) = state.limits.get(account) {
+            // Mask enforcement only. Stored limits and complete token estimates/
+            // tallies survive edits and reconcile, including outstanding work.
+            let mut effective_limits = limits.clone();
+            if !token_budgets_enabled {
+                effective_limits.max_input_tokens = None;
+                effective_limits.max_output_tokens = None;
+            }
             let usage = state
                 .usage_by_account
                 .get(account)
@@ -1712,7 +1855,12 @@ fn reserve_with_outcome_in_state(
                 .unwrap_or_default();
             let period_end = state.period_anchors.get(account).copied();
             match evaluate_cascade_for_account(
-                account, limits, &usage, &reserved, &requested, period_end,
+                account,
+                &effective_limits,
+                &usage,
+                &reserved,
+                &requested,
+                period_end,
             )? {
                 CascadeOutcome::Allow(mut acc_warnings) => warnings.append(&mut acc_warnings),
                 CascadeOutcome::RequiresApproval {

@@ -48,7 +48,7 @@ pub(crate) async fn start(
     .map_err(|error| invalid(error.to_string()))?;
     let catalogue = InstalledMontyCatalogue::boot(
         pool.clone(),
-        kernel,
+        kernel.clone(),
         &worker,
         scope,
         mounts,
@@ -87,6 +87,9 @@ pub(crate) async fn start(
         token_budgets_enabled: settings.token_budgets_enabled,
     };
     let live = LiveMontyTaskSettings::new(task_settings.into())
+        .map_err(|error| invalid(error.to_string()))?;
+    kernel
+        .bind_task_budget_settings(live.clone())
         .map_err(|error| invalid(error.to_string()))?;
     // Retain the existing explicit heap cap until the adaptive-settings migration.
     // This finite physical backstop is independent of task executing time.

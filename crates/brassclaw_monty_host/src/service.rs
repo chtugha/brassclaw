@@ -857,15 +857,24 @@ async fn run(
             for id in releasable {
                 let accounting = snapshot.task_accounting.iter().find(|account| account.task == id)
                     .cloned().ok_or(ServiceFailure::Protocol)?;
-                let receipt = exchange(&transport, &mut exchanges, WorkerCommand::Recipe {
+                let mut receipt = exchange(&transport, &mut exchanges, WorkerCommand::Recipe {
                     command: RecipeCommand::CloseTask { task: id },
                 }).await?;
                 if !matches!(&receipt.recipe,
                     Some(RecipeEvent::Released { task: Some(task), contexts })
-                    if *task == id && contexts.iter().all(|context| context.pending_host.is_none())) {
+                    if *task == id && contexts.iter().all(|context| context.pending_host.is_none()))
+                    || receipt.boundary.is_some() || receipt.admitted_task.is_some()
+                    || !receipt.withheld_answers.is_empty() {
                     snapshot = receipt;
                     return Err(ServiceFailure::Protocol);
                 }
+                // CloseTask releases the actual child heaps without advancing
+                // Python. Retain an unconsumed root boundary, but publish the
+                // post-release heap/accounting before acknowledging completion.
+                // An idle instance must not keep reporting freed task memory.
+                receipt.boundary = snapshot.boundary.take();
+                snapshot = receipt;
+                shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
                 let task = tasks.remove(&id).expect("selected task");
                 task.control.0.result.send_replace(Some(Ok(Arc::new(TaskReceipt {
                     root: shutdown.root,

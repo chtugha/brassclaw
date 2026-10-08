@@ -48,7 +48,7 @@ impl HostManagedModelGateway for UnusedModelGateway {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     let root = tempfile::tempdir().expect("tempdir");
     let rig = super::test_pg::pg_rig().await;
@@ -91,7 +91,7 @@ async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     runtime.shutdown().await.expect("runtime shutdown");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record_source() {
     let auth = Arc::new(InMemoryAuthProductServices::new());
     let ports = RebornProductAuthServicePorts::from_shared(auth);

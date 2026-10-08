@@ -313,7 +313,7 @@ fn webui_extension_setup_scope(extension_id: &str) -> AuthProductScope {
 
 // ─── tests ────────────────────────────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -356,7 +356,7 @@ async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
 ///   - "WebUI handlers do not directly access runtime internals or
 ///     stores" — already enforced by the architecture boundary test;
 ///     this test additionally proves the same path *works* end-to-end.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn webui_v2_http_happy_path_with_builtin_tool_call() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -465,7 +465,7 @@ async fn webui_v2_http_happy_path_with_builtin_tool_call() {
     shutdown_harness(harness).await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn webui_v2_gmail_oauth_setup_complete_allows_activation() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;

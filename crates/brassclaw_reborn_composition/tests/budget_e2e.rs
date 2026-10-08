@@ -74,10 +74,9 @@ fn local_dev_runtime_policy() -> EffectiveRuntimePolicy {
 /// Test cost table that maps the default interactive profile to a fixed
 /// per-token price. Used by every test so spend assertions are exact.
 ///
-/// `max_output_tokens = 20` keeps the reservation estimate tiny enough
-/// to fit under the seeded $5/user default cap installed by composition
-/// (review feedback High #2). Tests that want to exceed that cap raise
-/// the user limit explicitly before sending.
+/// Reservations include the complete runtime prompt, not just the user's text.
+/// Tests of accounting/events install a sufficient finite money cap explicitly;
+/// seeding, threshold and denial tests configure their own boundary conditions.
 fn interactive_cost_table(
     input_per_token: Decimal,
     output_per_token: Decimal,
@@ -121,9 +120,27 @@ fn build_input(
     .with_model_cost_table_override(cost_table)
 }
 
+fn install_accounting_cap(runtime: &brassclaw_reborn_composition::RebornRuntime, tag: &str) {
+    runtime
+        .budget_resource_governor()
+        .expect("actual model governor")
+        .set_limit(
+            ResourceAccount::user(
+                TenantId::new(format!("{tag}-tenant")).unwrap(),
+                brassclaw_host_api::UserId::new(format!("{tag}-owner")).unwrap(),
+            ),
+            ResourceLimits {
+                max_usd: Some(dec!(100)),
+                period: BudgetPeriod::Rolling24h,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+}
+
 /// F1: happy path — request fires, budget depletes by the gateway-reported
 /// token usage × cost-table price, ledger records exactly that.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn f1_happy_path_records_actual_usd_in_ledger() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -139,6 +156,7 @@ async fn f1_happy_path_records_actual_usd_in_ledger() {
     ))
     .await
     .expect("runtime builds");
+    install_accounting_cap(&runtime, "f1");
     let conversation = runtime.new_conversation().await.expect("conversation");
 
     let reply = tokio::time::timeout(
@@ -172,24 +190,22 @@ async fn f1_happy_path_records_actual_usd_in_ledger() {
 /// F2: warn threshold crossed but pause not — reservation succeeds, run
 /// completes, and a `Warned` event lands on the sink before the
 /// `Reserved` for this turn.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn f2_crossing_warn_threshold_emits_warned_event() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 10, 10));
-    // Cost-table entry with explicit `max_output_tokens` so the
-    // reservation estimate is deterministic and lands between warn=0.5
-    // and pause=0.95 against the $10 cap:
-    //   estimate = 64 input × $0.05 + 30 output × $0.10 = $6.20
-    //   × 1.20 overestimate factor = $7.44 → 74.4% utilization → warn.
+    // A free-input, paid-output profile makes the money threshold independent
+    // of the real prefix size: 60 × $0.10 × 1.20 = $7.20, between the
+    // $5 warning and $9.50 pause. Input tokens are still accounted.
     let mut cost_entries = StaticModelCostTable::new();
     cost_entries.insert(
         ModelProfileId::new("interactive_model").unwrap(),
         ModelCost {
-            input_per_token: dec!(0.05),
+            input_per_token: Decimal::ZERO,
             output_per_token: dec!(0.10),
-            max_output_tokens: 30,
+            max_output_tokens: 60,
             cache_write_multiplier_milli: 0,
             cache_read_multiplier_milli: 0,
         },
@@ -263,14 +279,14 @@ async fn f2_crossing_warn_threshold_emits_warned_event() {
 
 /// F6: hard cap denied — estimate alone exceeds the limit; the
 /// accountant returns `BudgetExceeded` before any provider call.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn f6_hard_cap_denied_before_provider_call() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("should not reach", 10, 10));
-    // High prices × default 8192-token max-output estimate easily
-    // overflows any tiny user cap.
+    // The complete prompt and explicit 20-token output quote at these prices
+    // exceed the tiny user cap before provider dispatch.
     let cost_table = interactive_cost_table(dec!(0.10), dec!(0.10));
     let runtime = build_reborn_runtime(build_input(
         &rig,
@@ -328,7 +344,7 @@ async fn f6_hard_cap_denied_before_provider_call() {
 
 /// C1: provider tokens reconcile to actual USD via the cost table, not
 /// to the (conservative) reservation estimate.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c1_provider_tokens_reconcile_to_actual_usd() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -344,8 +360,8 @@ async fn c1_provider_tokens_reconcile_to_actual_usd() {
     ))
     .await
     .expect("runtime builds");
-    // Raise the user cap above the seeded $5 default so the
-    // pre-call estimate (≈$5.50 at these prices) doesn't pause.
+    // The quote includes the whole prompt; install a sufficient finite cap so
+    // this test reaches actual usage reconciliation rather than a pause.
     let governor = runtime.budget_resource_governor().expect("governor");
     let user_account = ResourceAccount::user(
         TenantId::new("c1-tenant").unwrap(),
@@ -395,7 +411,7 @@ async fn c1_provider_tokens_reconcile_to_actual_usd() {
 /// *non-zero* spend. This is the fail-closed shape from review feedback
 /// Medium #5: a paid model missing from the cost table must NOT silently
 /// reconcile to zero.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c2_unknown_model_in_cost_table_uses_default_cost_fallback() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -446,7 +462,7 @@ async fn c2_unknown_model_in_cost_table_uses_default_cost_fallback() {
 
 /// C3: zero-cost model (Ollama / free-tier) — every turn reconciles to
 /// $0.00 even with high token counts.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c3_zero_cost_model_records_zero_spend() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -502,13 +518,13 @@ async fn c3_zero_cost_model_records_zero_spend() {
 /// "seeding fired"). It guards against regressions in the
 /// composition-level `with_seeding_policy` wiring (review feedback:
 /// High #2).
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn d3_seeding_policy_installs_default_cap_on_first_touch() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 5, 5));
-    let cost_table = interactive_cost_table(dec!(0.01), dec!(0.02));
+    let cost_table = interactive_cost_table(dec!(0.00001), dec!(0.02));
     let runtime = build_reborn_runtime(build_input(
         &rig,
         "d3",
@@ -546,12 +562,12 @@ async fn d3_seeding_policy_installs_default_cap_on_first_touch() {
         Some(dec!(5.00)),
         "first-touch seeding must install the compiled-default $5 user cap"
     );
-    // 5 × $0.01 + 5 × $0.02 = $0.15 — recorded against the seeded
+    // 5 × $0.00001 + 5 × $0.02 = $0.10005 — recorded against the seeded
     // user account.
     let usage = governor
         .usage_for(&user_account_seed_check)
         .expect("usage_for read succeeds");
-    assert_eq!(usage.usd, dec!(0.15));
+    assert_eq!(usage.usd, dec!(0.10005));
 
     runtime.shutdown().await.expect("shutdown");
 }
@@ -560,7 +576,7 @@ async fn d3_seeding_policy_installs_default_cap_on_first_touch() {
 /// hard-denies. The audit sink sees BOTH `Warned` (from the user
 /// dimension) and `Denied` (from the agent dimension) so the UI can
 /// render the warn signal that preceded the denial.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn d1_agent_deny_preserves_user_warn_event() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -570,9 +586,9 @@ async fn d1_agent_deny_preserves_user_warn_event() {
     cost_entries.insert(
         ModelProfileId::new("interactive_model").unwrap(),
         ModelCost {
-            input_per_token: dec!(0.05),
+            input_per_token: Decimal::ZERO,
             output_per_token: dec!(0.10),
-            max_output_tokens: 30,
+            max_output_tokens: 60,
             cache_write_multiplier_milli: 0,
             cache_read_multiplier_milli: 0,
         },
@@ -664,7 +680,7 @@ async fn d1_agent_deny_preserves_user_warn_event() {
 /// by `build_reborn_runtime`, plus any additional consumer that
 /// subscribes directly) receive Warned / Reserved / Reconciled events
 /// without polling.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn broadcast_sink_publishes_events_to_subscribers() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -680,6 +696,7 @@ async fn broadcast_sink_publishes_events_to_subscribers() {
     ))
     .await
     .expect("runtime builds");
+    install_accounting_cap(&runtime, "a2");
 
     // The runtime always spawns its own projection task, which holds
     // one receiver. Subscribe BEFORE the model call so we don't miss
@@ -738,7 +755,7 @@ async fn broadcast_sink_publishes_events_to_subscribers() {
 /// Scripted multi-turn smoke: two messages, two replies with different
 /// token counts → ledger accumulates the sum. Exercises the script-queue
 /// path of `BudgetTestGateway::push`.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn budget_test_gateway_scripted_replies_drive_per_turn_costs() {
     let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
@@ -813,7 +830,7 @@ async fn budget_test_gateway_scripted_replies_drive_per_turn_costs() {
 /// sees the same `Reserved` / `Reconciled` shape the in-memory sink
 /// already records. Tests the call site rather than the
 /// `BudgetEventProjection` helper alone (per the testing rule).
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn projection_delivers_budget_events_to_installed_observer() {
     use std::sync::Mutex;
 
@@ -845,6 +862,7 @@ async fn projection_delivers_budget_events_to_installed_observer() {
     .with_budget_event_observer(Arc::clone(&observer) as Arc<dyn BudgetEventObserver>);
 
     let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+    install_accounting_cap(&runtime, "proj");
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
         Duration::from_secs(10),

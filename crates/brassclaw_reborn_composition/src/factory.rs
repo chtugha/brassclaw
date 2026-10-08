@@ -387,6 +387,9 @@ pub(crate) struct PgRuntimeStores {
     pub(crate) capability_leases: Arc<brassclaw_authorization::PgCapabilityLeaseStore>,
     pub(crate) resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor>,
     pub(crate) budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore>,
+    pub(crate) budget_event_sink: Arc<dyn brassclaw_resources::BudgetEventSink>,
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) in_memory_budget_event_sink: Arc<brassclaw_resources::InMemoryBudgetEventSink>,
     pub(crate) broadcast_budget_event_sink: Arc<brassclaw_resources::BroadcastBudgetEventSink>,
     pub(crate) event_log: Arc<dyn brassclaw_events::DurableEventLog>,
     pub(crate) audit_log: Arc<dyn brassclaw_events::DurableAuditLog>,
@@ -421,18 +424,23 @@ pub(crate) async fn build_pg_runtime_stores(
         tenant_id,
     ));
     let capability_leases = Arc::new(PgCapabilityLeaseStore::new(Arc::clone(&pool), tenant_id));
+    let BudgetSinks {
+        budget_event_sink,
+        in_memory_budget_event_sink,
+        broadcast_budget_event_sink,
+        budget_gate_store: _,
+    } = build_budget_sinks();
+    #[cfg(not(any(test, feature = "test-support")))]
+    drop(in_memory_budget_event_sink);
     let pg_governor_store =
         brassclaw_resources::PgResourceGovernorStore::new(Arc::clone(&pool), tenant_id);
     let resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor> = Arc::new(
-        brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store),
+        brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store)
+            .with_event_sink(Arc::clone(&budget_event_sink)),
     );
-    // PG-backed budget-gate store: gates survive process restart and are
-    // visible across concurrent processes sharing the same pool.
     let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> = Arc::new(
         brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), tenant_id),
     );
-    let broadcast_budget_event_sink =
-        Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default());
     let event_log: Arc<dyn brassclaw_events::DurableEventLog> = Arc::new(
         brassclaw_reborn_event_store::PgDurableEventLog::new(Arc::clone(&pool), tenant_id),
     );
@@ -460,6 +468,9 @@ pub(crate) async fn build_pg_runtime_stores(
         capability_leases,
         resource_governor,
         budget_gate_store,
+        budget_event_sink,
+        #[cfg(any(test, feature = "test-support"))]
+        in_memory_budget_event_sink,
         broadcast_budget_event_sink,
         event_log,
         audit_log,
@@ -1342,6 +1353,7 @@ fn build_budget_sinks() -> BudgetSinks {
     let in_memory_budget_event_sink = Arc::new(brassclaw_resources::InMemoryBudgetEventSink::new());
     let broadcast_budget_event_sink =
         Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default());
+    #[cfg(any(test, feature = "test-support"))]
     let budget_event_sink: Arc<dyn brassclaw_resources::BudgetEventSink> =
         Arc::new(brassclaw_resources::CompositeBudgetEventSink::new(vec![
             Arc::clone(&in_memory_budget_event_sink)
@@ -1349,6 +1361,9 @@ fn build_budget_sinks() -> BudgetSinks {
             Arc::clone(&broadcast_budget_event_sink)
                 as Arc<dyn brassclaw_resources::BudgetEventSink>,
         ]));
+    #[cfg(not(any(test, feature = "test-support")))]
+    let budget_event_sink: Arc<dyn brassclaw_resources::BudgetEventSink> =
+        Arc::clone(&broadcast_budget_event_sink) as Arc<dyn brassclaw_resources::BudgetEventSink>;
     let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> =
         Arc::new(brassclaw_resources::InMemoryBudgetGateStore::new());
     BudgetSinks {

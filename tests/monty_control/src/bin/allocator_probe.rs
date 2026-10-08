@@ -31,6 +31,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _result = run.start(vec![], ResourceTracker::default(), PrintWriter::Disabled)?;
             return Err("native allocation escaped the finite hard limit".into());
         }
+        "resize" | "resized-memory" => {
+            use monty_alloc::WorkerMemoryLimitError;
+            use std::sync::atomic::Ordering;
+            monty_alloc::enable_vm_accounting()?;
+            monty_alloc::set_worker_limits(1024 * 1024, 128 * 1024)?;
+            let unrelated = vec![17_u8; 768 * 1024];
+            assert_eq!(monty_alloc::vm_live_bytes(), 0);
+            assert_eq!(
+                monty_alloc::set_worker_limits(16 * 1024, 64 * 1024),
+                Err(WorkerMemoryLimitError::PhysicalReduction)
+            );
+            assert_eq!(
+                monty_types::VM_MEMORY_LIMIT.load(Ordering::Relaxed),
+                1024 * 1024
+            );
+            drop(unrelated);
+            monty_alloc::set_worker_limits(4 * 1024 * 1024, 128 * 1024)?;
+            let owned = {
+                let _scope = monty_alloc::VmAllocationScope::enter()?;
+                vec![29_u8; 2 * 1024 * 1024]
+            };
+            let charged = monty_alloc::vm_live_bytes();
+            assert!(charged >= 2 * 1024 * 1024);
+            assert_eq!(
+                monty_alloc::set_worker_limits(1024, 128 * 1024),
+                Err(WorkerMemoryLimitError::VmReduction)
+            );
+            assert_eq!(
+                monty_alloc::set_worker_limits(usize::MAX, 128 * 1024),
+                Err(WorkerMemoryLimitError::InvalidSettings)
+            );
+            assert_eq!(monty_alloc::vm_live_bytes(), charged);
+            assert_eq!(
+                monty_types::VM_MEMORY_LIMIT.load(Ordering::Relaxed),
+                4 * 1024 * 1024
+            );
+            assert_eq!(owned[owned.len() - 1], 29);
+            drop(owned);
+            assert_eq!(monty_alloc::vm_live_bytes(), 0);
+            monty_alloc::set_worker_limits(512 * 1024, 128 * 1024)?;
+            if mode == "resized-memory" {
+                // Unowned native memory still reaches the resized physical cap.
+                std::hint::black_box(vec![71_u8; 2 * 1024 * 1024]);
+                return Err("native allocation escaped the resized hard limit".into());
+            }
+            println!("finite worker limits resized without resetting ownership");
+        }
         "ownership" => {
             monty_alloc::enable_vm_accounting()?;
             assert_eq!(monty_alloc::vm_live_bytes(), 0);

@@ -30,6 +30,10 @@ use uuid::Uuid;
 use crate::RebornBuildError;
 
 pub(crate) trait MontyKernelSnapshot: Send + Sync {
+    fn bind_task_budget_settings(
+        &self,
+        settings: brassclaw_resources::LiveMontyTaskSettings,
+    ) -> Result<(), RebornBuildError>;
     fn builtin(
         &self,
         id: &CapabilityId,
@@ -114,6 +118,14 @@ pub(crate) fn reply_package() -> Result<ExtensionPackage, RebornBuildError> {
 impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnapshot
     for FirstPartyCapabilitySnapshot<F, G>
 {
+    fn bind_task_budget_settings(
+        &self,
+        settings: brassclaw_resources::LiveMontyTaskSettings,
+    ) -> Result<(), RebornBuildError> {
+        FirstPartyCapabilitySnapshot::bind_task_budget_settings(self, settings)
+            .map_err(|error| invalid(error.to_string()))
+    }
+
     fn builtin_with_policy(
         &self,
         id: &CapabilityId,
