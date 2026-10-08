@@ -3095,3 +3095,26 @@ checks/cleanups; manifest tests/monty_control/Cargo.toml. Logs:
 ordinary runtime still needs trusted catalogue/root producers and the coordinated
 global startup cutover; the original seven failures are not resolved by these
 transport checks and were not rerun.
+
+### Shared typed bootstrap usages and exact package source (2026-10-08)
+
+The component-library crate now owns the typed reply/history draft definitions
+previously local to native behavioral fixtures. They reuse the existing Tool
+identities, explicit one-usage Skills, associated PythonCode and single-component
+Recipe steps. Skill prose follows the authoring sections; each variant has ten
+ordered input examples. The named history helper is not an incoming intent route.
+No Tool, approval, catalogue activation or fallback is created by constructing
+these drafts. Composition facade APIs still expose no lower-store handles.
+
+Source verification compares the actual retained immutable documents against
+the packaged definitions, including dependencies, association and input layout.
+Tool implementation/ABI verification and approval are separate. The new real
+PostgreSQL case verifies every reply template's typed captures, stages a changed
+code revision, rejects inherited package integrity and reads the unchanged original.
+All four focused native cases passed, including actual reply/history, live policy
+block and invalid root completion. Affected Skills and isolated consumer all-target
+strict lint passed without warnings. Manifest tests/monty_control/Cargo.toml, Rust
+1.98, serial screen checks, low-debug profiles and mandatory disk checks/cleanups.
+Logs /private/tmp/brassclaw-packaged-usage-{native,skills-lints,consumer-lints}.log.
+This supplies canonical source for the remaining bootstrap producer; it does not
+wire ordinary global startup or resolve the original seven failures.

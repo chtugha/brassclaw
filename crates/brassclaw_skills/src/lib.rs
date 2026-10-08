@@ -40,6 +40,10 @@ pub mod association_contract;
 /// do not establish review provenance, activation or Tool authority.
 pub mod component_revision;
 
+/// Packaged typed reply/history drafts and exact source-integrity comparison.
+/// Existing Tool artifacts, behavioral review, approval and activation are separate.
+pub mod global_bootstrap_components;
+
 /// Instance-wide append-only revision storage, separate from the legacy mutable
 /// component tables. Draft retention never makes a revision executable.
 #[cfg(feature = "db-store")]

@@ -9,8 +9,12 @@ use brassclaw_engine::memory::{
 use brassclaw_skills::{
     component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use uuid::Uuid;
+
+use brassclaw_skills::global_bootstrap_components::{
+    GlobalBootstrapUsage, UsageComponentIds, usage_drafts, verify_packaged_usage,
+};
 
 pub(super) async fn program(
     store: &PgComponentRevisionStore,
@@ -24,148 +28,124 @@ pub(super) async fn program(
         Uuid::new_v4(),
         Uuid::new_v4(),
     );
-    let string = json!({"type":"string","required":true,"checks":[]});
-    let (callable, capability, name, body, inputs, arguments, fixed, result, prose) = if history {
-        (
-            "host.memory_write",
-            "builtin.memory_write",
-            "memory_write",
-            "result = host.memory_write(content=inputs['content'], target='daily_log')",
-            json!({"content":string}),
-            json!({"content":"content"}),
-            json!({"target":{"type":"string","checks":[],"depends_on":[],"meaning":"Append to the daily log"}}),
-            json!({"type":"object","allow_extra_fields":false,"fields":{
-             "status":{"type":"string","required":true},"path":{"type":"string","required":true},
-             "append":{"type":"boolean","required":true},"content_length":{"type":"integer","required":true}}}),
-            "Append the supplied completed-turn record to the daily memory log.",
-        )
+    let usage = if history {
+        GlobalBootstrapUsage::SaveHistory
     } else {
-        (
-            "host.post_reply",
-            "host.post_reply",
-            "post_reply",
-            "result = host.post_reply(answer=inputs['answer'])",
-            json!({"answer":string}),
-            json!({"answer":"answer"}),
-            json!({}),
-            json!({"type":"string"}),
-            "Publish the supplied answer once to this admitted task's transcript.",
-        )
+        GlobalBootstrapUsage::PostReply
     };
-    let association =
-        json!({"format":"skill-association/1","skill_uuid":skill,"python_code_uuid":code,
-        "tool_skill_uuid":descriptor,"tool_uuid":tool,"callable":callable,"inputs":inputs,
-        "arguments":arguments,"code_arguments":fixed,"result":result,
-        "failure":{"action":"stop","max_attempts":1,"idempotency":"not_assumed",
-        "idempotency_evidence_ref":null,"retryable_outcomes":[]}})
-        .to_string();
-    let mut tool_inputs = inputs.clone();
-    if history {
-        tool_inputs["target"] = string.clone();
-    }
-    let task_inputs = if history {
-        json!({"user_input":string,"answer":string,"reply_ref":string})
-    } else {
-        inputs.clone()
+    let ids = UsageComponentIds {
+        recipe: root,
+        python_code: code,
+        tool_skill: descriptor,
+        tool,
+        skill,
+        formatter: history.then_some(formatter),
     };
-    let offset = i32::from(history);
-    let mut steps = Vec::new();
-    let mut layouts = serde_json::Map::new();
+    let drafts = usage_drafts(ids, usage).unwrap();
+    let mut tool_inputs = drafts
+        .iter()
+        .find(|draft| draft.uuid() == code)
+        .unwrap()
+        .document()["input_contract"]
+        .clone();
     if history {
-        steps.push(
-            json!({"stepnumber":1,"knowledge":"orchestrator","goal":"Format the completed turn",
-            "content":"","type":"component","include":[formatter]}),
-        );
-        layouts.insert(
-            "0:1".into(),
-            json!({
-            "user_input":{"kind":"task_input","reference":"{{vars.user_input}}"},
-            "answer":{"kind":"task_input","reference":"{{vars.answer}}"},
-            "reply_ref":{"kind":"task_input","reference":"{{vars.reply_ref}}"}}),
-        );
-        layouts.insert(
-            "0:3".into(),
-            json!({"content":{"kind":"result","step_id":"0:1","path":[]}}),
-        );
+        tool_inputs["target"] = json!({"type":"string","required":true,"checks":[]});
+    }
+    let (capability, callable) = if history {
+        ("builtin.memory_write", "host.memory_write")
     } else {
-        layouts.insert(
-            "0:2".into(),
-            json!({"answer":{"kind":"task_input","reference":"{{vars.answer}}"}}),
-        );
-    }
-    steps.push(
-        json!({"stepnumber":1+offset,"knowledge":"rust","goal":"Bind the usage",
-        "content":"","type":"component","include":[descriptor],"tool_bindings":[{
-            "tool_id":tool,"tool_name":name,"params":{},"error_policy":{"policy":"fail"}}]}),
-    );
-    steps.push(
-        json!({"stepnumber":2+offset,"knowledge":"orchestrator","goal":"Execute the usage",
-        "content":"","type":"component","include":[code]}),
-    );
-    let recipe = json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E",
-        "intent_examples":["reply %"],"variable_patterns":[{"name":"answer","pattern":null,"description":null}]}],
-        "step_descriptions":[{"desc_idx":0,"label":"Explicit typed usage","yaml_source":"","steps":steps}],
-        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":task_inputs,"steps":layouts}}});
-    let mut drafts = vec![
-        (
-            tool,
-            0,
-            json!({"capability_id":capability,"callable":callable,"input_contract":tool_inputs}),
-            vec![],
-            Value::Null,
-        ),
-        (
-            descriptor,
-            13,
-            json!({"binding":{"format":"tool-skill-binding/1","tool_uuid":tool,
-            "callable":callable,"capability_id":capability}}),
-            vec![tool],
-            Value::Null,
-        ),
-        (
-            code,
-            22,
-            json!({"content":body,"input_contract":inputs,"result_contract":result}),
-            vec![],
-            Value::Null,
-        ),
-        (
-            skill,
-            1,
-            json!({"body":prose}),
-            vec![code, descriptor, tool],
-            json!(association),
-        ),
-    ];
-    let mut dependencies = vec![descriptor, code, skill];
-    if history {
-        dependencies.push(formatter);
-        drafts.push((formatter,22,json!({"content":
-            r"result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + '\nReply: ' + inputs['reply_ref']",
-            "input_contract":task_inputs,"result_contract":{"type":"string"}}),vec![],Value::Null));
-    }
-    drafts.push((root, 21, recipe, dependencies, Value::Null));
+        ("host.post_reply", "host.post_reply")
+    };
+    // Real primitive metadata for this constrained validation kernel. Packaged
+    // usage drafts deliberately do not create or approve a replacement Tool.
+    let tool_draft = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1", "uuid":tool,"class_code":0,
+        "document":{"capability_id":capability,"callable":callable,"input_contract":tool_inputs},
+        "dependencies":[],"association":null,
+    }).to_string()).unwrap();
     let mut refs = Vec::new();
-    for (id, class, document, dependencies, association) in drafts {
-        let draft = ComponentRevisionDraft::from_json(
-            &json!({"format":"component-revision/1",
-            "uuid":id,"class_code":class,"document":document,"dependencies":dependencies,
-            "association":association})
-            .to_string(),
-        )
-        .unwrap();
+    for draft in std::iter::once(tool_draft).chain(drafts) {
         refs.push(store.stage(&draft, 0).await.unwrap());
     }
+    let snapshot = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
+    let integrity = verify_packaged_usage(ids, usage, &snapshot).unwrap();
+    assert_eq!(integrity.tool().uuid, tool);
+    assert_eq!(integrity.components().len(), refs.len());
     Arc::new(
         prepare_retained_tool_program(
-            compile_retained_recipe(
-                Arc::new(store.read_exact(&[root], &refs).await.unwrap()),
-                root,
-                "selected",
-                WorkflowClass::Deterministic,
-            )
-            .unwrap(),
+            compile_retained_recipe(snapshot, root, "selected", WorkflowClass::Deterministic)
+                .unwrap(),
         )
         .unwrap(),
     )
+}
+
+#[tokio::test]
+async fn packaged_usage_integrity_rejects_changed_code_and_retains_the_original_revision() {
+    let database = crate::native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(database.pool.clone());
+    let reply = program(&store, false).await;
+    let instruction = reply.inputs().instruction();
+    let original = instruction.snapshot();
+    let binding = &reply.bindings()["0:2"];
+    let ids = UsageComponentIds {
+        recipe: instruction.recipe().uuid,
+        python_code: binding.python().uuid,
+        tool_skill: binding.tool_skill().uuid,
+        tool: binding.tool().uuid,
+        skill: binding.skill().uuid,
+        formatter: None,
+    };
+    let integrity = verify_packaged_usage(ids, GlobalBootstrapUsage::PostReply, original).unwrap();
+    let answer = "quotes ' Ü {{vars.answer}} host.forbidden()";
+    for template in
+        original.revisions()[&ids.recipe].draft().document()["variants"][0]["intent_examples"]
+            .as_array()
+            .unwrap()
+    {
+        let template = template.as_str().unwrap();
+        let query = template.replace('%', answer);
+        let bound = reply
+            .inputs()
+            .bind_variant_example(template, &query, &json!({}))
+            .unwrap();
+        assert_eq!(bound, json!({"answer":answer}));
+    }
+    let old_code = &original.revisions()[&ids.python_code];
+    let mut document: serde_json::Value =
+        serde_json::from_str(old_code.draft().exact_bytes()).unwrap();
+    document["document"]["content"] = json!("result = 'different implementation'");
+    let changed = ComponentRevisionDraft::from_json(&document.to_string()).unwrap();
+    let changed_ref = store
+        .stage(&changed, old_code.reference().version)
+        .await
+        .unwrap();
+    let changed_refs: Vec<_> = integrity
+        .components()
+        .iter()
+        .map(|reference| {
+            if reference.uuid == ids.python_code {
+                changed_ref
+            } else {
+                *reference
+            }
+        })
+        .collect();
+    let changed_snapshot = store
+        .read_exact(&[ids.recipe], &changed_refs)
+        .await
+        .unwrap();
+    assert!(
+        verify_packaged_usage(ids, GlobalBootstrapUsage::PostReply, &changed_snapshot).is_err()
+    );
+    let retained = store
+        .read_exact(&[ids.recipe], integrity.components())
+        .await
+        .unwrap();
+    assert_eq!(
+        retained.revisions()[&ids.python_code].draft().exact_bytes(),
+        old_code.draft().exact_bytes()
+    );
+    assert!(verify_packaged_usage(ids, GlobalBootstrapUsage::PostReply, &retained).is_ok());
+    assert_eq!(changed_ref.version, old_code.reference().version + 1);
 }

@@ -48,3 +48,16 @@ history writes use the native PostgreSQL root filesystem. A live history-Tool
 block after publication records failure without replaying the reply or entering
 Tier 2. This establishes constrained whole-task behavior, not approved bootstrap,
 Tool artifact/ABI attestation or ordinary runtime cutover.
+
+The component library now supplies the same typed reply/history draft definitions
+used by these real native callers. Each Skill has explicit usage prose and an
+exact association; reply and history variants have ten ordered input examples.
+The named history helper must remain outside incoming intent routes. Draft
+construction reuses a selected Tool UUID and never creates a new primitive.
+Exact package-source comparison covers the actual retained Recipe, ToolSkill,
+Skill, PythonCode, input layout and formatter bytes. It returns their retained
+selection separately from the Tool's metadata/artifact obligations. This is source
+integrity only: it neither issues combination approval nor publishes a catalogue.
+A changed immutable code revision fails that comparison while an already retained
+original remains readable. The bootstrap owner must still supply actual required
+reviews, implementation/ABI verification and coherent activation.
