@@ -1969,7 +1969,7 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         .begin_tool_invocation(&program, "0:2", &arguments)
         .await
         .unwrap();
-    let (runtime, policy) = retained_kernel::runtime(program.bindings()["0:2"].tool().uuid);
+    let (runtime, policy) = retained_kernel::runtime(&program, "0:2").await;
     assert_eq!(
         policy
             .tool_identity(&CapabilityId::new("builtin.json").unwrap())

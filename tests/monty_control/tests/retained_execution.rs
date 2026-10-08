@@ -62,7 +62,7 @@ struct KernelPort {
     outcomes: Mutex<Vec<&'static str>>,
 }
 impl KernelPort {
-    fn new(
+    async fn new(
         deny_second: bool,
         tool: Uuid,
         task: TaskHandle,
@@ -70,7 +70,7 @@ impl KernelPort {
         prepared: Arc<RetainedToolProgram>,
         cancel_before_record: bool,
     ) -> Self {
-        let (runtime, policy) = retained_kernel::runtime(tool);
+        let (runtime, policy) = retained_kernel::runtime(&prepared, "0:2").await;
         Self {
             runtime,
             policy,
@@ -258,7 +258,8 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             admitted_fixture.clone(),
             prepared.clone(),
             invalid_output,
-        );
+        )
+        .await;
         let root = progress(&transport, admitted).await;
         let Some(ProcessBoundary::HostCall {
             key,
@@ -700,7 +701,8 @@ async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
             admitted_fixture.clone(),
             prepared.clone(),
             false,
-        );
+        )
+        .await;
         for step in &prepared.program().steplist {
             let Some(ProcessBoundary::HostCall {
                 key,

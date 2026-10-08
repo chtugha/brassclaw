@@ -44,8 +44,9 @@ mod first_party;
 mod first_party_tools;
 mod http_body;
 mod invocation_services;
-mod native_image;
 pub mod memory_context;
+mod native_image;
+mod native_registration;
 mod obligations;
 mod planner;
 mod process_aliases;
@@ -92,18 +93,19 @@ pub use first_party_tools::{
     WRITE_FILE_CAPABILITY_ID, builtin_first_party_handlers,
     builtin_first_party_handlers_from_tools_with_trigger,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
-    extract_md_section, sha256_hex,
+    builtin_native_first_party_handlers, extract_md_section, sha256_hex,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{
     TriggerManagementClock, builtin_first_party_handlers_with_trigger_clock,
 };
 pub use http_body::{RuntimeHttpBodyStore, RuntimeHttpBodyStoreError};
-pub use native_image::{NativeExecutableImage, NativeImageError};
 pub use invocation_services::{
     InvocationServices, InvocationServicesError, InvocationServicesResolutionRequest,
     InvocationServicesResolver, LocalInvocationServicesResolver, ToolCallHttpEgress,
 };
+pub use native_image::{NativeExecutableImage, NativeImageError};
+pub use native_registration::{NativeImplementationRef, NativeRegistrationError};
 pub use obligations::{
     BuiltinObligationHandler, BuiltinObligationServices, LEAK_REDACT_FAILED_CODE,
     ProcessObligationLifecycleStore, RuntimeCredentialAccessSecret,

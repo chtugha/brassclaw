@@ -3335,3 +3335,29 @@ across restart, certify semantics/approval or activate the ordinary global
 runtime. Required handler/ABI association and drain/reconciliation across
 incompatible upgrades remain. Original seven ordinary caller failures remain
 unresolved.
+
+### 2026-10-08 — Bind native builtin handlers to exact Tool selections
+
+The concrete builtin constructor now records the verified running executable
+artifact together with each actual capability declaration, resolved input schema
+and in-process `FirstPartyCapabilityHandler/1` adapter contract. Immutable Tool
+metadata can name that exact identity; retained kernel selection compares it
+against the actual registration. Deserializing an expected identity cannot issue
+a registration. Generic handler replacement removes the new entry's native
+qualification, while already selected handlers retain their original artifact
+and contract. Current instance Tool policy remains checked at invocation.
+
+Evidence: the isolated `tests/monty_control/Cargo.toml` all-target native matrix
+passed 131 actual cases, including real Monty/PostgreSQL/kernel selection,
+wrong adapter/artifact rejection, registration replacement, live-policy denial
+and failures after completed effects. Root HostRuntime and isolated consumer
+all-target strict Clippy also passed. Rust 1.98, established shared target/profile,
+serial background screen; logs
+`/private/tmp/brassclaw-native-binding-{native,host-lints,consumer-lints}.log`.
+
+This covers the concrete linked base builtin registry, not arbitrary callbacks,
+task-specific reply adapters or dynamically loaded code. It is not component or
+combination approval, catalogue activation or cross-binary ABI loading. Bundled
+installation seeds need no additional external maintainer/human-Q2 approval;
+their controlled qualification and ordinary global-runtime wiring remain
+implementation work. The original seven ordinary failures remain unresolved.

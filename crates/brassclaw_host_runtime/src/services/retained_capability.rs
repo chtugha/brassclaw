@@ -1,5 +1,6 @@
 //! Actual retained first-party implementation through the ordinary kernel path.
-//! This supplies execution ownership, not catalogue approval or artifact trust.
+//! Native builtin registrations additionally retain checked image/adapter data;
+//! catalogue and exact component-combination approval remain separate.
 use super::{
     DefaultHostRuntime, FirstPartyCapabilityRegistry, FirstPartyRuntimeAdapter,
     HostRuntimeServices, InvocationServicesResolver, ProcessResultStore, ProcessStore,
@@ -27,6 +28,10 @@ pub enum RetainedCapabilityError {
     WrongRuntime,
     #[error("selected capability and package declaration disagree")]
     InconsistentDeclaration,
+    #[error("selected native executable or adapter contract does not match")]
+    NativeIdentity,
+    #[error("selected capability has no verified native registration")]
+    MissingNativeRegistration,
 }
 
 /// One actual host catalogue snapshot plus immutable handler registrations.
@@ -55,10 +60,30 @@ where
 pub struct RetainedFirstPartyCapability {
     descriptor: CapabilityDescriptor,
     runtime: Arc<DefaultHostRuntime>,
+    native: Option<Arc<crate::native_registration::NativeBuiltinRegistration>>,
 }
 impl RetainedFirstPartyCapability {
     pub fn descriptor(&self) -> &CapabilityDescriptor {
         &self.descriptor
+    }
+
+    pub fn native_identity(&self) -> Option<crate::NativeImplementationRef> {
+        self.native.as_ref().map(|entry| entry.reference())
+    }
+
+    /// Exact resolved schema registered with the retained builtin, independent
+    /// of later catalogue/schema-reference replacement. No approval inference.
+    pub fn native_input_schema(&self) -> Option<&serde_json::Value> {
+        self.native.as_ref().map(|entry| entry.input_schema())
+    }
+
+    pub async fn verify_native_artifact(&self) -> Result<(), crate::NativeImageError> {
+        self.native
+            .as_ref()
+            .ok_or(crate::NativeImageError::Identity)?
+            .image()
+            .verify()
+            .await
     }
 
     pub async fn invoke(
@@ -107,6 +132,13 @@ where
             .registrations
             .retain_binding(capability)
             .ok_or(RetainedCapabilityError::MissingRegistration)?;
+        let native = selected.native_registration();
+        if native
+            .as_ref()
+            .is_some_and(|entry| entry.descriptor() != descriptor)
+        {
+            return Err(RetainedCapabilityError::NativeIdentity);
+        }
         let handlers = Arc::new(
             FirstPartyCapabilityRegistry::new()
                 .with_handler(capability.clone(), Arc::new(selected)),
@@ -129,11 +161,29 @@ where
         }
         Ok(RetainedFirstPartyCapability {
             descriptor: descriptor.clone(),
+            native,
             runtime: Arc::new(
                 self.kernel
                     .retain_dispatch(self.registry.clone(), Arc::new(dispatcher)),
             ),
         })
+    }
+
+    /// Select the exact registered native implementation expected by immutable
+    /// Tool metadata. This does not read latest or create an approval/grant.
+    pub fn retain_native(
+        &self,
+        capability: &CapabilityId,
+        expected: crate::NativeImplementationRef,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let selected = self.retain(capability)?;
+        let actual = selected
+            .native_identity()
+            .ok_or(RetainedCapabilityError::MissingNativeRegistration)?;
+        if actual != expected {
+            return Err(RetainedCapabilityError::NativeIdentity);
+        }
+        Ok(selected)
     }
 }
 

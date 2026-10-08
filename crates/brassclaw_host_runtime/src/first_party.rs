@@ -279,10 +279,16 @@ pub trait FirstPartyCapabilityHandler: Send + Sync {
 pub struct RetainedFirstPartyBinding {
     capability_id: CapabilityId,
     handler: Arc<dyn FirstPartyCapabilityHandler>,
+    native: Option<Arc<crate::native_registration::NativeBuiltinRegistration>>,
 }
 impl RetainedFirstPartyBinding {
     pub fn capability_id(&self) -> &CapabilityId {
         &self.capability_id
+    }
+    pub(crate) fn native_registration(
+        &self,
+    ) -> Option<Arc<crate::native_registration::NativeBuiltinRegistration>> {
+        self.native.clone()
     }
 }
 #[async_trait]
@@ -307,6 +313,7 @@ impl FirstPartyCapabilityHandler for RetainedFirstPartyBinding {
 #[derive(Clone, Default)]
 pub struct FirstPartyCapabilityRegistry {
     handlers: HashMap<CapabilityId, Arc<dyn FirstPartyCapabilityHandler>>,
+    native: HashMap<CapabilityId, Arc<crate::native_registration::NativeBuiltinRegistration>>,
 }
 
 impl FirstPartyCapabilityRegistry {
@@ -327,6 +334,7 @@ impl FirstPartyCapabilityRegistry {
         T: FirstPartyCapabilityHandler + 'static,
     {
         let handler: Arc<dyn FirstPartyCapabilityHandler> = handler;
+        self.native.remove(&capability_id);
         self.handlers.insert(capability_id, handler);
     }
 
@@ -347,7 +355,31 @@ impl FirstPartyCapabilityRegistry {
         Some(RetainedFirstPartyBinding {
             capability_id: capability_id.clone(),
             handler: self.get(capability_id)?,
+            native: self.native.get(capability_id).cloned(),
         })
+    }
+
+    /// Observed registration identity, not approval or permission. Missing
+    /// means this entry did not pass the native builtin constructor.
+    pub fn native_identity(
+        &self,
+        capability_id: &CapabilityId,
+    ) -> Option<crate::NativeImplementationRef> {
+        self.native
+            .get(capability_id)
+            .map(|entry| entry.reference())
+    }
+
+    pub(crate) fn record_native(
+        &mut self,
+        registration: crate::native_registration::NativeBuiltinRegistration,
+    ) -> Result<(), crate::NativeRegistrationError> {
+        let id = registration.descriptor().id.clone();
+        if !self.handlers.contains_key(&id) || self.native.contains_key(&id) {
+            return Err(crate::NativeRegistrationError::Declaration);
+        }
+        self.native.insert(id, Arc::new(registration));
+        Ok(())
     }
 
     pub fn contains_handler(&self, capability_id: &CapabilityId) -> bool {

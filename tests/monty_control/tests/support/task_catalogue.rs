@@ -159,7 +159,7 @@ impl MontyTaskCatalogue for ValidationCatalogue {
                     .inputs()
                     .bind_variant_example(input_text, query, &json!({}))
                     .map_err(|_| failure())?;
-                let (runtime, _) = retained_kernel::runtime(program.bindings()["0:2"].tool().uuid);
+                let (runtime, _) = retained_kernel::runtime(&program, "0:2").await;
                 let tools = Arc::new(JsonPort {
                     runtime,
                     program: program.clone(),

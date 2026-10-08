@@ -704,7 +704,7 @@ pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserve
         );
         let mut execution =
             RetainedRecipeExecution::new_for_behavioral_validation(task, inspected).unwrap();
-        let (runtime, _) = retained_kernel::runtime(prepared.bindings()["0:2"].tool().uuid);
+        let (runtime, _) = retained_kernel::runtime(&prepared, "0:2").await;
         let port = ObservedJsonPort {
             runtime,
             prepared: prepared.clone(),

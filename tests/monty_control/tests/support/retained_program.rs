@@ -41,6 +41,17 @@ pub(super) async fn program_with_source(
         Uuid::new_v4(),
         Uuid::new_v4(),
     );
+    // Definition pins the real linked implementation before this immutable
+    // draft is retained. It does not assert approval or catalogue activation.
+    let registrations = brassclaw_host_runtime::builtin_native_first_party_handlers(
+        brassclaw_host_runtime::BuiltinFirstPartyTools::default(),
+        1_073_741_824,
+    )
+    .await
+    .unwrap();
+    let native = registrations
+        .native_identity(&brassclaw_host_api::CapabilityId::new("builtin.json").unwrap())
+        .unwrap();
     let inputs = json!({"data":{"type":"string","required":true,"checks":[]}});
     let result = json!({"type":"object","allow_extra_fields":false,"fields":{"text":{"type":"string","required":true}}});
     let association = json!({"format":"skill-association/1","skill_uuid":skill,"python_code_uuid":code,"tool_skill_uuid":descriptor,"tool_uuid":tool,
@@ -64,7 +75,7 @@ pub(super) async fn program_with_source(
         draft(
             tool,
             0,
-            json!({"capability_id":"builtin.json","callable":"host.json","input_contract":{
+            json!({"capability_id":"builtin.json","callable":"host.json","native_implementation":native,"input_contract":{
             "operation":{"type":"string","required":true,"checks":[]},"data":{"type":"string","required":true,"checks":[]}}}),
             &[],
             Value::Null,

@@ -214,6 +214,41 @@ pub fn builtin_first_party_handlers(
     Ok(registry)
 }
 
+/// Register the concrete linked builtin implementation with its actual native
+/// image and input/adapter contracts. Trigger handlers/callbacks are not part of
+/// this base registration and require their own registration contract. This
+/// neither approves components nor makes an installation catalogue active.
+pub async fn builtin_native_first_party_handlers(
+    tools: BuiltinFirstPartyTools,
+    max_artifact_bytes: u64,
+) -> Result<FirstPartyCapabilityRegistry, crate::NativeRegistrationError> {
+    let image = crate::NativeExecutableImage::capture(max_artifact_bytes).await?;
+    let mut registry = builtin_first_party_registry_from_tools(tools)
+        .map_err(|_| crate::NativeRegistrationError::Declaration)?;
+    let package =
+        builtin_first_party_package().map_err(|_| crate::NativeRegistrationError::Declaration)?;
+    for descriptor in package.capabilities {
+        if !registry.contains_handler(&descriptor.id) {
+            continue; // This concrete base constructor did not register it.
+        }
+        let name = descriptor
+            .id
+            .as_str()
+            .strip_prefix("builtin.")
+            .ok_or(crate::NativeRegistrationError::Declaration)?
+            .replace('.', "-");
+        let schema =
+            resolve_builtin_input_schema_ref(&format!("schemas/builtin/{name}.input.v1.json"))
+                .ok_or(crate::NativeRegistrationError::Declaration)?;
+        registry.record_native(crate::native_registration::NativeBuiltinRegistration::new(
+            image.clone(),
+            descriptor,
+            schema,
+        )?)?;
+    }
+    Ok(registry)
+}
+
 /// Create handlers for all built-in first-party capabilities using an
 /// explicitly composed trigger repository and trigger-create lifecycle hook.
 pub fn builtin_first_party_handlers_with_trigger_create_hook(
