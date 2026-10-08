@@ -49,6 +49,7 @@ argon2 = "0.5"
 async-trait = "0.1"
 brassclaw_embeddings = { path = "../brassclaw_embeddings" }
 brassclaw_memory = { path = "../brassclaw_memory" }
+brassclaw_monty_host = { path = "../brassclaw_monty_host" }
 brassclaw_interceptor = { path = "../brassclaw_interceptor" }
 base64 = "0.22"
 chrono = "0.4"
@@ -138,7 +139,6 @@ aws-sdk-bedrockruntime = { version = "1", default-features = false, features = [
 aws-smithy-types       = { version = "1", optional = true }
 
 [dev-dependencies]
-brassclaw_monty_host = { path = "../brassclaw_monty_host" }
 brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
 async-trait = "0.1"
 hmac = "0.12"

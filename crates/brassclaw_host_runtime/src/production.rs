@@ -76,6 +76,15 @@ pub struct DefaultHostRuntime {
 }
 
 impl DefaultHostRuntime {
+    pub(crate) fn retain_authorizer(
+        &self,
+        authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer>,
+    ) -> Self {
+        let mut retained = self.clone();
+        retained.authorizer = authorizer;
+        retained
+    }
+
     /// Host-runtime-internal composition only. The selected registry and real
     /// dispatcher remain fixed, while the same live authorizer, trust policy,
     /// obligations and substrate services still mediate every invocation.

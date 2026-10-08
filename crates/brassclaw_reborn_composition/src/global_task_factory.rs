@@ -52,6 +52,7 @@ struct RetainedTask {
 /// Transfers the real host, private admission address, child/Tool port state
 /// and service receipt together to a trusted reconciliation owner. This does
 /// not authorize retry or declare any external effect reconciled.
+#[cfg(test)]
 pub(crate) type OwnedMontySettlement = (
     Arc<MontyTaskHost>,
     Arc<PgMontyAdmission>,
@@ -101,6 +102,7 @@ impl OwnedGlobalTaskFactory {
             .map_err(|_| failed("monty_task_registry_failed"))
     }
 
+    #[cfg(test)]
     pub(crate) fn take_failed_settlement(
         &self,
         attempt: MontyTaskAttempt,

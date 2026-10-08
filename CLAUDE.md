@@ -456,14 +456,15 @@ artificial token caps, including hardcoded retrieval/assembly constants.
 Token accounting remains observability; model context/output limits remain
 technical constraints. Time, allocation and memory limits are independent.
 
-**Implementation status (2026-10-06):** this section specifies the binding target,
-not completed functionality. Shared verified component boot, exact accepted-input
-lookup, admission-pending recovery, attempt-addressed cancellation, parent/child
-snapshot links and native PostgreSQL fixtures provide prerequisites. The instance
-policy authorizer and prepared-dispatch recheck are initial infrastructure; they
-do not establish a complete production/global-settings cutover. Global Monty,
-live task/adaptive memory budgets, intent CRUD/preview and removal of legacy
-operator scopes/operation approvals still require implementation and acceptance.
+**Implementation status (2026-10-08):** ordinary `skills-db` runtime startup now
+owns one supervised global Monty service. The original seven composition callers
+and a matched/unmatched multi-turn regression pass through that service with
+opaque conversation IDs, typed IBS inputs, pinned packaged reply/history workflows
+and retained VM identity. The per-chat lazy driver has been removed. This is
+limited production-path evidence, not completion of the full v3 plan. Authored
+catalogue activation, complete library prefix compilation, adaptive memory,
+live settings uptake and the remaining legacy authorization cutover still need
+implementation and acceptance.
 See `docs/plans/simplified-v3-implementation.md`; never mark the full plan complete
 or claim improved speed without the production-path tests and measurements.
 
@@ -602,11 +603,14 @@ block the events needed to resume them or unrelated admitted work. Rust hosts
 the VM, transports work and enforces kernel boundaries; Python/Recipes sequence
 the work. A Rust queue consumer must not become a second recipe/agent loop.
 
-**Implementation gap:** current code creates chat-keyed sessions on first use
-(`PersistentMontyDriver` + `MontySessionRegistry<TurnScope, MontySession>`).
-That lifecycle must be replaced as specified in `simplified_v3.md` Phase 3a.
-This target contract supersedes older lifecycle descriptions in crate docs and
-plans; the current implementation is not evidence that per-chat VMs are desired.
+**Current wiring:** the ordinary `skills-db` runtime starts and retains
+`GlobalMontyOwner` before turn workers and trigger producers. `GlobalMontyDriver`
+delivers admitted tasks to that service; it does not create a per-chat VM or run a
+Rust-loop fallback. Installation-owned reply/history workflows are qualified from
+exact packaged documents and retained native implementations. The full authored
+catalogue/resource/settings cutover remains governed by `simplified_v3.md`
+Phase 3a and its acceptance gates. Older per-chat lifecycle descriptions are
+historical, not an alternative execution architecture.
 
 Only the **basic mode's beginning** is built-in (boot the global orchestrator,
 receive an admitted work item, establish its task context, hand off to Phase 2).

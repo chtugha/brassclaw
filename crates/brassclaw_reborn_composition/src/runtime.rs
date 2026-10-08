@@ -202,6 +202,13 @@ impl From<DefaultPlannedRuntimeBuildError> for RebornRuntimeError {
 /// or worker machinery: it talks to the runtime through task-level methods.
 pub struct RebornRuntime {
     services: RebornServices,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    global_monty_owner: crate::global_monty_owner::GlobalMontyOwner,
+    #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+    monty_test_controls: (
+        Arc<crate::global_monty_driver::GlobalMontyDriver>,
+        Arc<crate::global_task_factory::OwnedGlobalTaskFactory>,
+    ),
     turn_coordinator: Arc<dyn TurnCoordinator>,
     turn_tree_store: Arc<dyn TurnSpawnTreeStateStore>,
     thread_service: Arc<dyn SessionThreadService>,
@@ -1163,7 +1170,7 @@ impl RebornRuntime {
                 .wait_for_terminal(&scope, run_id, &cancellation)
                 .await?;
             let assistant_text = self
-                .read_latest_assistant_text(&conversation.0, run_id)
+                .read_latest_assistant_text(&thread_scope, &conversation.0, run_id)
                 .await?;
 
             Ok(AssistantReply {
@@ -1216,15 +1223,28 @@ impl RebornRuntime {
                 tracing::debug!(%error, "reborn worker task was cancelled during shutdown");
             }
         }
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        {
+            let mut owner = self.global_monty_owner;
+            owner.request_shutdown();
+            let exit = owner
+                .join()
+                .await
+                .map_err(|error| RebornRuntimeError::InvalidArgument {
+                    reason: error.to_string(),
+                })?;
+            crate::global_monty_startup::check_shutdown(exit)?;
+        }
         Ok(())
     }
 
     fn turn_scope_for(&self, thread_id: &ThreadId) -> TurnScope {
-        TurnScope::new(
+        TurnScope::new_with_owner(
             self.thread_scope.tenant_id.clone(),
             Some(self.thread_scope.agent_id.clone()),
             self.thread_scope.project_id.clone(),
             thread_id.clone(),
+            self.thread_scope.owner_user_id.clone(),
         )
     }
     async fn send_lock_for(&self, conversation: &ConversationId) -> Arc<Mutex<()>> {
@@ -1437,13 +1457,14 @@ impl RebornRuntime {
 
     async fn read_latest_assistant_text(
         &self,
+        scope: &ThreadScope,
         thread_id: &ThreadId,
         run_id: TurnRunId,
     ) -> Result<Option<String>, RebornRuntimeError> {
         let history = self
             .thread_service
             .list_thread_history(ThreadHistoryRequest {
-                scope: self.thread_scope.clone(),
+                scope: scope.clone(),
                 thread_id: thread_id.clone(),
             })
             .await
@@ -2591,8 +2612,8 @@ pub async fn build_reborn_runtime(
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
             })?;
-        // Clone the builder so both PgOrchestratorLookup and PersistentMontyDriver
-        // can hold a reference (Arc::clone — no deep copy).
+        // Retain the legacy lookup adapter for its explicit consumers. Ordinary
+        // turns are dispatched through the global Monty service below.
         let executor_builder_for_lookup = Arc::clone(&tier_zero_executor_builder);
         Some(Arc::new(
             crate::orchestrator_lookup_impl::PgOrchestratorLookup::new(
@@ -2608,148 +2629,72 @@ pub async fn build_reborn_runtime(
     let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> =
         None;
 
-    // C.6 slice 4d — build the cross-turn-persistent Monty orchestrator driver.
-    // Under `skills-db` the driver is wired into `TurnRunnerWorker` directly so
-    // every production turn bypasses the canonical stage pipeline (C6-1=B / C6-3=B).
-    // Under the default feature set the slot stays `None` (pre-C.6 path remains active).
-
-    /// No-pool fallback for OrchestratorCodePort. Returns NotFound immediately.
-    /// Used when no Postgres pool is available at driver-construction time.
-    #[cfg(feature = "skills-db")]
-    struct FallbackOrchestratorCodePort;
-
-    #[cfg(feature = "skills-db")]
-    #[async_trait::async_trait]
-    impl brassclaw_engine::executor::OrchestratorCodePort for FallbackOrchestratorCodePort {
-        async fn load_orchestrator_code(
-            &self,
-            _allow_self_modify: bool,
-        ) -> Result<String, brassclaw_engine::executor::OrchestratorCodeError> {
-            Err(brassclaw_engine::executor::OrchestratorCodeError::NotFound)
-        }
-    }
-
-    #[cfg(feature = "skills-db")]
-    let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = {
-        use brassclaw_engine::{
-            CancellingGateController,
-            capability::{lease::LeaseManager, policy::PolicyEngine},
-        };
-        let thread_store_for_driver: Arc<dyn brassclaw_engine::Store> =
-            Arc::new(crate::pg_thread_engine_store::PgThreadEngineStore::new(
-                Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
-                validated_identity.tenant_id.as_str(),
-            ));
-        // C.6 slice 4d-3 — wire the composition port (host.compose_orchestrator)
-        // and the Kohai port (host.kohai_complete = the production LLM path per
-        // the Kohai K2 re-arch). Both need a Postgres pool; Kohai additionally
-        // needs the root-llm-provider gateway. When either backing is absent the
-        // port stays `None` and the host arm returns *_unavailable (the driver
-        // still constructs and degrades gracefully).
-        type MontyPortPair = (
-            Option<Arc<dyn brassclaw_engine::executor::ComponentPort>>,
-            Option<Arc<dyn brassclaw_engine::executor::KohaiPort>>,
-        );
-        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-        let (component_port, kohai_port): MontyPortPair = {
-            // Build PgBasicPromptStore once and share it between PgCompositionPort
-            // (for mark_stale on Q2 graduation — §K.1.4 / Phase N) and PgKohaiPort.
-            let shared_basic_prompt = services.pg_pool.as_ref().map(|pool| {
-                Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
-                    Arc::clone(pool),
-                    validated_identity.tenant_id.as_str(),
-                    validated_identity.agent_id.as_str(),
-                ))
-            });
-            let component_port = services.pg_pool.as_ref().map(|pool| {
-                Arc::new(crate::pg_composition_port::PgCompositionPort::new(
-                    Arc::clone(pool),
-                    Some(Arc::clone(&thread_store_for_driver)),
-                    shared_basic_prompt.clone(),
-                )) as Arc<dyn brassclaw_engine::executor::ComponentPort>
-            });
-            let kohai_port = services.pg_pool.as_ref().and_then(|pool| {
-                let interceptor = Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
-                    Arc::clone(pool),
-                    validated_identity.tenant_id.as_str(),
-                ))
-                    as Arc<dyn brassclaw_interceptor::InterceptorStore>;
-                let basic_prompt = shared_basic_prompt.clone().unwrap_or_else(|| {
-                    Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
-                        Arc::clone(pool),
-                        validated_identity.tenant_id.as_str(),
-                        validated_identity.agent_id.as_str(),
-                    ))
-                });
-                match crate::pg_kohai_port::PgKohaiPort::new(
-                    interceptor,
-                    basic_prompt,
-                    Arc::clone(&model_gateway),
-                ) {
-                    Ok(port) => {
-                        Some(Arc::new(port) as Arc<dyn brassclaw_engine::executor::KohaiPort>)
-                    }
-                    Err(reason) => {
-                        tracing::debug!(
-                            "PgKohaiPort construction failed; kohai_port stays None: {reason}"
-                        );
-                        None
-                    }
-                }
-            });
-            (component_port, kohai_port)
-        };
-        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
-        let (component_port, kohai_port): MontyPortPair = (None, None);
-
-        // Wire PgOrchestratorCodePort — postgres builds use the DB-backed port;
-        // non-postgres builds fall back to a stub that returns NotFound.
-        // The module pg_orchestrator_code_port is gated on (postgres + skills-db)
-        // and we are already inside the skills-db block, so the two #[cfg] bindings
-        // here mirror that combined gate.
-        #[cfg(feature = "postgres")]
-        let orchestrator_code_port: Arc<
-            dyn brassclaw_engine::executor::OrchestratorCodePort,
-        > = if let Some(pool) = services.pg_pool.as_ref() {
-            Arc::new(
-                crate::pg_orchestrator_code_port::PgOrchestratorCodePort::new(
-                    Arc::clone(pool),
-                    validated_identity.tenant_id.as_str(),
-                ),
-            )
-        } else {
-            tracing::warn!(
-                "no Postgres pool available; orchestrator will fail to load \
-                     (run `brassclaw serve` to start Postgres)"
-            );
-            Arc::new(FallbackOrchestratorCodePort)
-        };
-        #[cfg(not(feature = "postgres"))]
-        let orchestrator_code_port: Arc<
-            dyn brassclaw_engine::executor::OrchestratorCodePort,
-        > = Arc::new(FallbackOrchestratorCodePort);
-
-        let driver = crate::persistent_monty_driver::PersistentMontyDriver::new(
-            Arc::new(crate::session_registry::MontySessionRegistry::new()),
-            Arc::new(crate::persistent_monty_driver::SignalBroker::new()),
-            thread_store_for_driver,
-            tier_zero_executor_builder,
-            Arc::new(LeaseManager::new()),
-            Arc::new(PolicyEngine::new()),
-            None, // event_tx — v3 host.* arms don't emit ThreadEvents (retired in C.7)
-            CancellingGateController::arc(),
-            None, // dynamic_tools — no cdylib tools wired yet (C.3 deferred)
-            component_port,
-            kohai_port,
-            orchestrator_code_port,
-            startup_monty_settings
+    #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+    let monty_test_controls;
+    // Global Monty is ready before any turn worker or trigger producer starts.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let (global_monty_owner, installed_catalogue, monty_driver) = {
+        let pool = services
+            .pg_pool
+            .clone()
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "global Monty requires PostgreSQL".into(),
+            })?;
+        let scope = brassclaw_engine::memory::intent_system::IntentScope {
+            tenant_id: validated_identity.tenant_id.to_string(),
+            user_id: actor_user_id.to_string(),
+            agent_id: validated_identity.agent_id.to_string(),
+            project_id: thread_scope
+                .project_id
                 .as_ref()
-                .map(|settings| settings.max_duration_secs),
-            Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "default".into()),
+        };
+        let (owner, catalogue) = crate::global_monty_startup::start(
+            pool.clone(),
+            services
+                .monty_kernel
+                .clone()
+                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                    reason: "global Monty requires its captured kernel".into(),
+                })?,
+            &scope,
+            substrate_memory_mounts.clone(),
+        )
+        .await?;
+        let ports = Arc::new(
+            crate::global_task_factory::OwnedGlobalTaskFactory::new(
+                pool,
+                owner.ownership_check(),
+                Arc::new(catalogue.clone()),
+                256,
+            )
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?,
         );
-        Some(Arc::new(driver) as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>)
+        let driver = Arc::new(
+            crate::global_monty_driver::GlobalMontyDriver::new(
+                owner.client(),
+                thread_service.clone(),
+                ports.clone(),
+                256,
+            )
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?,
+        );
+        #[cfg(test)]
+        {
+            monty_test_controls = (driver.clone(), ports);
+        }
+        (
+            owner,
+            catalogue,
+            Some(driver as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>),
+        )
     };
-    #[cfg(not(feature = "skills-db"))]
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
     let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = None;
 
     // v3 Phase E.0 / plan §H3: wire SkillActivationMessageTextResolver so the
@@ -2805,14 +2750,22 @@ pub async fn build_reborn_runtime(
             )) as Arc<dyn brassclaw_interceptor::SempaiProposalSink>
         });
 
-    // Wire PgBasicPromptStore as SystemBundleSource (§K.1.5).
-    // Each Kohai context load and Sempai review call prepends the stored
-    // bundle as System message [0] for KV-cache reuse.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    #[cfg(all(
+        feature = "postgres",
+        feature = "root-llm-provider",
+        feature = "skills-db"
+    ))]
+    let system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>> =
+        Some(installed_catalogue);
+    #[cfg(all(
+        feature = "postgres",
+        feature = "root-llm-provider",
+        not(feature = "skills-db")
+    ))]
     let system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>> =
         services.pg_pool.as_ref().map(|pool| {
             Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
-                Arc::clone(pool),
+                pool.clone(),
                 validated_identity.tenant_id.as_str(),
                 validated_identity.agent_id.as_str(),
             )) as Arc<dyn brassclaw_loop_support::SystemBundleSource>
@@ -3118,6 +3071,10 @@ pub async fn build_reborn_runtime(
 
     Ok(RebornRuntime {
         services,
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        global_monty_owner,
+        #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+        monty_test_controls,
         turn_coordinator,
         turn_tree_store: turn_state_store,
         thread_service,
@@ -4770,6 +4727,165 @@ mod tests {
         shutdown_shared_runtime(runtime)
             .await
             .expect("runtime shutdown");
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
+    async fn native_global_runtime_retains_one_root_across_match_and_no_match() {
+        let root = tempfile::tempdir().unwrap();
+        let rig = super::test_pg::pg_rig().await;
+        let _db_guard = rig.lock_db().await;
+        let requests = Arc::new(StdMutex::new(Vec::new()));
+        let input = RebornRuntimeInput::from_services(
+            rig.build_input("global-runtime-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_model_gateway_override(Arc::new(RecordingGateway {
+            reply: "model response for an unmatched input".into(),
+            requests: requests.clone(),
+        }))
+        .with_poll_settings(PollSettings {
+            interval: Duration::from_millis(10),
+            max_total: RUNTIME_SEND_TIMEOUT,
+        });
+        let runtime = build_reborn_runtime(input).await.unwrap();
+        let conversation = runtime.new_conversation().await.unwrap();
+        assert!(
+            uuid::Uuid::parse_str(conversation.0.as_str()).is_err(),
+            "production conversation ID must stay opaque"
+        );
+        let literal = "quoted ' Unicode ü and {{not_source}}";
+        let mut outcomes = Vec::new();
+        for text in [
+            "unmatched first input".to_string(),
+            format!("reply {literal}"),
+            "unmatched follow-up input".to_string(),
+        ] {
+            let reply = runtime
+                .send_user_message(&conversation, &text)
+                .await
+                .unwrap();
+            let state = runtime
+                .turn_coordinator
+                .get_run_state(GetRunStateRequest {
+                    scope: runtime.turn_scope_for(&conversation.0),
+                    run_id: reply.run_id,
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                reply.status,
+                TurnStatus::Completed,
+                "failure category: {:?}",
+                state.failure.as_ref().map(|failure| failure.category())
+            );
+            if text.starts_with("reply ") {
+                assert_eq!(reply.text.as_deref(), Some(literal));
+            }
+            let client = rig.pool.get().await.unwrap();
+            let row=client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",&[&reply.run_id.as_uuid()]).await.unwrap();
+            outcomes.push(row.get::<_, serde_json::Value>(0));
+        }
+        let root_id = &outcomes[0]["execution"]["root"]["vm_id"];
+        assert!(root_id.is_string());
+        assert!(
+            outcomes
+                .iter()
+                .all(|outcome| &outcome["execution"]["root"]["vm_id"] == root_id)
+        );
+        assert_eq!(
+            outcomes[1]["execution"]["recipes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2,
+            "matched reply and history must both run through IBS/Monty"
+        );
+        let recorded = requests.lock().unwrap().clone();
+        assert_eq!(
+            recorded.len(),
+            2,
+            "deterministic matched Recipe must not call the model"
+        );
+        assert!(
+            recorded[1]
+                .messages
+                .iter()
+                .any(|message| message.content == literal),
+            "eligible prior reply survives the Monty handoff"
+        );
+        // A live block changes dispatch permission without replacing the pinned
+        // Recipe or replaying its failure through the model path.
+        let client = rig.pool.get().await.unwrap();
+        let changed=client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=false,revision=revision+1
+            WHERE tool_id IN (SELECT id FROM reborn_tools WHERE tenant_id=$1 AND capability_id='host.post_reply')",
+            &[&runtime.thread_scope.tenant_id.as_str()]).await.unwrap();
+        assert_eq!(changed, 1);
+        drop(client);
+        let blocked = runtime
+            .send_user_message(&conversation, "reply must not publish")
+            .await
+            .unwrap();
+        assert_eq!(blocked.status, TurnStatus::Failed);
+        let (driver, factory) = &runtime.monty_test_controls;
+        let host = driver
+            .retained_host_for_run(blocked.run_id)
+            .unwrap()
+            .unwrap();
+        assert!(host.finalized_reply_ref().is_none());
+        assert!(
+            crate::pg_monty_admission::PgMontyAdmission::reserve(
+                rig.pool.clone(),
+                host.run_context(),
+                host.attempt()
+            )
+            .await
+            .is_err(),
+            "a failed attempt cannot acquire a replacement admission"
+        );
+        let (original, receipt, control) = driver.take_settlement(host.attempt()).unwrap().unwrap();
+        let (owned, _, ports, owned_receipt) = factory
+            .take_failed_settlement(host.attempt())
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(&host, &original) && Arc::ptr_eq(&original, &owned));
+        assert!(Arc::ptr_eq(&receipt, &owned_receipt));
+        assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
+        let report = ports.settlement_report(&receipt).await.unwrap();
+        assert_eq!(report["root_completed"], false);
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            2,
+            "failed matched workflow must not replay as Tier 2"
+        );
+        // The internal-turn facade's trusted marker also remains effective on
+        // the global path, independently of whether a matching Recipe exists.
+        let internal = runtime
+            .new_internal_conversation(
+                runtime.thread_scope.tenant_id.as_str(),
+                runtime.actor_user_id.as_str(),
+                "internal-project",
+            )
+            .await
+            .unwrap();
+        let denied = runtime
+            .send_internal_user_message(
+                &internal,
+                "unmatched internal task",
+                super::InternalTurnOptions {
+                    hard_fail_on_recipe_miss: true,
+                    allow_tier_two: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(denied.status, TurnStatus::Failed);
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            2,
+            "internal No-Match must not call a model"
+        );
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]

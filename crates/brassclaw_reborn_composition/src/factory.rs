@@ -238,6 +238,8 @@ where
 }
 
 pub struct RebornServices {
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) monty_kernel: Option<Arc<dyn crate::monty_kernel::MontyKernelSnapshot>>,
     pub host_runtime: Option<Arc<dyn brassclaw_host_runtime::HostRuntime>>,
     pub turn_coordinator: Option<Arc<dyn brassclaw_turns::TurnCoordinator>>,
     pub product_auth: Option<Arc<RebornProductAuthServices>>,
@@ -503,6 +505,8 @@ impl std::fmt::Debug for RebornServices {
 impl RebornServices {
     pub fn disabled() -> Self {
         Self {
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            monty_kernel: None,
             host_runtime: None,
             turn_coordinator: None,
             product_auth: None,
@@ -1082,7 +1086,8 @@ async fn build_local_dev(
         trigger_create_hook,
         component_db_backend,
         prefix_bundle_backends,
-    )?;
+    )
+    .await?;
     register_bundled_gsuite_first_party_handlers(
         &mut first_party_registry,
         product_auth.credential_account_service(),
@@ -1121,7 +1126,12 @@ async fn build_local_dev(
     let host_runtime: Arc<dyn brassclaw_host_runtime::HostRuntime> =
         Arc::new(services.host_runtime_for_local_testing());
 
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let monty_kernel = crate::monty_kernel::capture(&services)?;
+
     Ok(RebornServices {
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        monty_kernel: Some(monty_kernel),
         host_runtime: Some(host_runtime),
         turn_coordinator: Some(turn_coordinator),
         // Local-dev always composes a safe in-memory product-auth boundary when
@@ -1763,7 +1773,7 @@ pub(crate) fn builtin_extension_registry() -> Result<ExtensionRegistry, RebornBu
     Ok(registry)
 }
 
-fn builtin_first_party_registry_with_trigger_create_hook(
+async fn builtin_first_party_registry_with_trigger_create_hook(
     trigger_repository: Arc<dyn TriggerRepository>,
     trigger_create_hook: Arc<dyn TriggerCreateHook>,
     component_db_backend: Option<Arc<dyn brassclaw_host_runtime::ComponentDbBackend>>,
@@ -1772,6 +1782,25 @@ fn builtin_first_party_registry_with_trigger_create_hook(
         Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
     )>,
 ) -> Result<FirstPartyCapabilityRegistry, RebornBuildError> {
+    if cfg!(feature = "skills-db") {
+        let mut tools = brassclaw_host_runtime::BuiltinFirstPartyTools::default();
+        if let Some(backend) = component_db_backend {
+            tools = tools.with_component_db(backend);
+        }
+        if let Some((sweep, store)) = prefix_bundle_backends {
+            tools = tools.with_prefix_bundle_backends(sweep, store);
+        }
+        return brassclaw_host_runtime::builtin_native_first_party_handlers_with_trigger(
+            tools,
+            trigger_repository,
+            trigger_create_hook,
+            1024 * 1024 * 1024,
+        )
+        .await
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("native builtin registration failed: {error}"),
+        });
+    }
     let map_err = |error: brassclaw_host_api::HostApiError| RebornBuildError::InvalidConfig {
         reason: format!("built-in first-party handlers are invalid: {error}"),
     };

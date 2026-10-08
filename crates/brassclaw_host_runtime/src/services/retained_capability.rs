@@ -104,6 +104,74 @@ where
     F: RootFilesystem + 'static,
     G: ResourceGovernor + 'static,
 {
+    /// Host-owned authority composition for a pinned registration. Replaces no
+    /// handler, metadata, artifact or substrate service; grants are not issued.
+    pub fn retain_native_with_authorizer(
+        &self,
+        capability: &CapabilityId,
+        expected: crate::NativeImplementationRef,
+        authorizer: Arc<dyn brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let bound = Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self.kernel.retain_authorizer(authorizer),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: self.services.clone(),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        };
+        bound.retain_native(capability, expected)
+    }
+
+    /// Trusted host composition of an admitted task's implementation. The
+    /// package and handler are retained together; this neither qualifies native
+    /// provenance nor approves a component. The supplied live authorizer and
+    /// trust policy mediate the new registration through the original substrate.
+    pub fn retain_bound_handler<T: crate::FirstPartyCapabilityHandler + 'static>(
+        &self,
+        package: brassclaw_extensions::ExtensionPackage,
+        capability: &CapabilityId,
+        handler: Arc<T>,
+        authorizer: Arc<dyn brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer>,
+        trust: Arc<dyn brassclaw_trust::TrustPolicy>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        if !package
+            .capabilities
+            .iter()
+            .any(|entry| &entry.id == capability)
+            || self
+                .registry
+                .snapshot()
+                .get_capability(capability)
+                .is_some()
+        {
+            return Err(RetainedCapabilityError::InconsistentDeclaration);
+        }
+        let mut registry = (*self.registry.snapshot()).clone();
+        registry
+            .insert(package)
+            .map_err(|_| RetainedCapabilityError::InconsistentDeclaration)?;
+        let registry = Arc::new(SharedExtensionRegistry::new(registry));
+        let mut registrations = (*self.registrations).clone();
+        registrations.insert_handler(capability.clone(), handler);
+        let bound = Self {
+            registry: registry.clone(),
+            registrations: Arc::new(registrations),
+            kernel: self
+                .kernel
+                .retain_authorizer(authorizer)
+                .with_trust_policy_dyn(trust),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: self.services.clone(),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        };
+        bound.retain(capability)
+    }
+
     pub fn retain(
         &self,
         capability: &CapabilityId,

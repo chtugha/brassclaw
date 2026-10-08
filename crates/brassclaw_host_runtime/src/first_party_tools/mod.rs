@@ -284,6 +284,24 @@ pub fn builtin_first_party_handlers_from_tools_with_trigger(
     Ok(registry)
 }
 
+/// Native base implementations with the ordinary trigger repository/hook.
+/// Trigger callbacks are registered separately and receive no native stamp.
+pub async fn builtin_native_first_party_handlers_with_trigger(
+    tools: BuiltinFirstPartyTools,
+    trigger_repository: Arc<dyn brassclaw_triggers::TriggerRepository>,
+    trigger_create_hook: Arc<dyn TriggerCreateHook>,
+    max_artifact_bytes: u64,
+) -> Result<FirstPartyCapabilityRegistry, crate::NativeRegistrationError> {
+    let mut registry = builtin_native_first_party_handlers(tools, max_artifact_bytes).await?;
+    trigger_management::insert_handlers_with_create_hook(
+        &mut registry,
+        trigger_repository,
+        trigger_create_hook,
+    )
+    .map_err(|_| crate::NativeRegistrationError::Declaration)?;
+    Ok(registry)
+}
+
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub fn builtin_first_party_handlers_with_trigger_clock(

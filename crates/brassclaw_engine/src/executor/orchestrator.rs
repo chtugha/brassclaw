@@ -948,24 +948,14 @@ impl MontySession {
     }
 }
 
-/// Construct a fresh cross-turn-persistent [`MontySession`] for one
-/// conversation (C.6 slice 4a). This is the *fresh-session* half of the
-/// persistent-Monty turn bootstrap: it loads the versioned orchestrator code
-/// and the runtime checkpoint's `persisted_state`, then parses + starts the
-/// script up to the first host call via [`MontySession::new`].
+/// Construct a compatibility [`MontySession`] from versioned orchestrator code
+/// and the supplied runtime checkpoint, up to its first host call.
 ///
-/// The per-turn half (load the `Thread` from the store, transition it to
-/// `Running`, hand the new turn's input to a checked-out session via
-/// [`MontySession::drive_to_yield`]) is owned by the composition-side
-/// `PersistentMontyDriver`, which calls this inside the session registry's
-/// `checkout_or_create` init closure so a session is built only when no parked
-/// session exists for the conversation.
+/// This legacy engine helper does not host the instance orchestrator. Ordinary
+/// skills-db composition starts the supervised global Monty service at startup;
+/// its task driver delivers admitted work to that existing service.
 ///
-/// Deliberately minimal vs the retired `ExecutionLoop::run` bootstrap: the
-/// orchestrator (`basic_mode.py`) assembles every LLM prompt itself via
-/// `host.*` and persists history via `host.save_history`, so the Model-A
-/// `refresh_system_prompt` / `persist_runtime_state` / `store_runtime_checkpoint`
-/// steps are NOT replicated here.
+/// The loaded Python program owns prompt assembly and history calls via `host.*`.
 pub async fn prepare_monty_session(
     thread: &Thread,
     orchestrator_port: &Arc<dyn crate::executor::OrchestratorCodePort>,

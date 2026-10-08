@@ -71,7 +71,7 @@ mod local_runtime_profile;
 mod manual_token_flow;
 mod mcp;
 mod mcp_discovery;
-#[cfg(all(test, feature = "postgres"))]
+#[cfg(feature = "postgres")]
 mod monty_instance_owner;
 #[cfg(feature = "root-llm-provider")]
 mod nearai_login_serve;
@@ -112,7 +112,6 @@ mod monty_task_input;
 pub(crate) mod orchestrator_lookup_impl;
 /// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
 pub mod orchestrator_mcp_server;
-pub(crate) mod persistent_monty_driver;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_association_review;
 #[cfg(feature = "postgres")]
@@ -136,8 +135,6 @@ pub(crate) mod pg_kohai_port;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_monty_vm_settings;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_orchestrator_code_port;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_prefix_bundle_backends;
 #[cfg(feature = "postgres")]
@@ -183,7 +180,6 @@ pub mod secrets_master;
 pub mod seed_builtin_host;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
-pub(crate) mod session_registry;
 #[cfg(feature = "postgres")]
 pub(crate) mod system_seed;
 #[cfg(feature = "test-support")]
@@ -1025,3 +1021,27 @@ mod two_tenant_isolation_tests {
         assert_eq!(material_b.expose_secret(), "bob-secret");
     }
 }
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod global_monty_owner;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod global_monty_driver;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod global_recipe_ports;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod global_task_factory;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pg_monty_admission;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod monty_kernel;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod installed_monty_catalogue;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod global_monty_startup;

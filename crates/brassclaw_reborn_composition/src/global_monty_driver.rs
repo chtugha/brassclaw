@@ -82,9 +82,26 @@ pub(crate) struct GlobalMontyDriver {
 /// Private host ownership plus its actual service receipt for reconciliation.
 // Control retains the actual TaskPorts, including child failures and Tool answers.
 // Transferring only the host/receipt would discard that reconciliation evidence.
+#[cfg(test)]
 pub(crate) type MontySettlement = (Arc<MontyTaskHost>, Arc<TaskReceipt>, TaskControl);
 
 impl GlobalMontyDriver {
+    /// Trusted fixture inspection of the original host, never a reconstructed
+    /// claim or permission. Used by real cancellation/policy acceptance.
+    #[cfg(test)]
+    pub(crate) fn retained_host_for_run(
+        &self,
+        run: brassclaw_turns::TurnRunId,
+    ) -> Result<Option<Arc<MontyTaskHost>>, AgentLoopDriverError> {
+        let attempts = self
+            .attempts
+            .lock()
+            .map_err(|_| failed("monty_attempt_registry_failed"))?;
+        Ok(attempts
+            .iter()
+            .find(|(attempt, _)| attempt.run_id == run)
+            .map(|(_, entry)| entry.host.clone()))
+    }
     pub(crate) fn new(
         service: ServiceClient,
         threads: Arc<dyn SessionThreadService>,
@@ -182,6 +199,7 @@ impl GlobalMontyDriver {
     /// Trusted supervisor receipt for a dropped turn waiter or failed attempt.
     /// The service's real outcome and late answers stay attached to the host.
     /// Removing this entry transfers reconciliation responsibility to the caller.
+    #[cfg(test)]
     pub(crate) fn take_settlement(
         &self,
         attempt: MontyTaskAttempt,

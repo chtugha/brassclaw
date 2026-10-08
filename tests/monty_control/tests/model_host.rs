@@ -1219,6 +1219,12 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         let attempt = actual_host.attempt();
         driver.stop_attempt(attempt).await.unwrap();
         assert!(driver.take_settlement(attempt).unwrap().is_none());
+        assert!(
+            driver
+                .retained_host_for_run(attempt.run_id)
+                .unwrap()
+                .is_none()
+        );
         let admission = database
             .pool
             .get()

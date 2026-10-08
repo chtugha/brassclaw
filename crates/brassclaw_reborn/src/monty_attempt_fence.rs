@@ -69,6 +69,14 @@ impl MontyTaskFence {
         self.state.changed.notify_waiters();
     }
 
+    pub(crate) fn check_open(&self) -> Result<(), AgentLoopHostError> {
+        if self.state.calls.lock().fenced {
+            Err(cancelled())
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn begin_call(&self) -> Result<MontyHostCall, AgentLoopHostError> {
         let mut calls = self.state.calls.lock();
         if calls.fenced {

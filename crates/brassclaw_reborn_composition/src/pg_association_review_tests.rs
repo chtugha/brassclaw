@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-#[path = "../../../tests/monty_control/tests/q1_review_host.rs"]
+#[path = "../../../tests/monty_control/tests/support/q1_review_fixture.rs"]
 mod native_evidence;
 
 struct ReviewOperator;

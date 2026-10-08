@@ -254,6 +254,11 @@ impl GlobalRecipePorts {
                 let selected = self.catalogue.resolve_intent(&self.user_input).await?;
                 self.check_fence()?;
                 match selected {
+                    MontyIntentSelection::NoMatch
+                        if self.host.run_context().trusted_internal_turn =>
+                    {
+                        Err(failure("non_match_instruction_unavailable"))
+                    }
                     MontyIntentSelection::NoMatch => Ok(json!({"status":"no_match"})),
                     MontyIntentSelection::Disambiguation => Ok(json!({"status":"disambiguation"})),
                     MontyIntentSelection::Match(selected) => {

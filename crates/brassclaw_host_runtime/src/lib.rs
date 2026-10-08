@@ -93,7 +93,8 @@ pub use first_party_tools::{
     WRITE_FILE_CAPABILITY_ID, builtin_first_party_handlers,
     builtin_first_party_handlers_from_tools_with_trigger,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
-    builtin_native_first_party_handlers, extract_md_section, sha256_hex,
+    builtin_native_first_party_handlers, builtin_native_first_party_handlers_with_trigger,
+    extract_md_section, sha256_hex,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{

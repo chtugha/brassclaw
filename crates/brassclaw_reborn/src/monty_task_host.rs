@@ -52,6 +52,7 @@ pub enum WithheldTaskPortValue {
     CapabilityResultReference(LoopMessageRef),
     FinalizedReplyReference(LoopMessageRef),
     PublishedReplyContent(String),
+    RetainedToolOutcome(brassclaw_host_runtime::RuntimeCapabilityOutcome),
 }
 
 // Keep only the current finalized reply; durable transcript storage remains
@@ -98,6 +99,29 @@ impl MontyTaskHost {
     /// and effect reconciliation. This is never a completed-cancellation receipt.
     pub fn fence_dispatch(&self) {
         self.fence.close();
+    }
+
+    /// Attempt freshness, separate from the kernel's current Tool permission.
+    pub fn check_dispatch_open(&self) -> Result<(), AgentLoopHostError> {
+        self.check_cancellation()?;
+        self.fence.check_open()
+    }
+
+    /// One retained primitive through the existing kernel, under this attempt's
+    /// acknowledgement barrier. Late outcomes stay available for reconciliation.
+    pub async fn invoke_retained_tool(
+        &self,
+        capability: &brassclaw_host_runtime::RetainedFirstPartyCapability,
+        request: brassclaw_host_runtime::RuntimeCapabilityRequest,
+    ) -> Result<brassclaw_host_runtime::RuntimeCapabilityOutcome, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = capability.invoke(request).await.map_err(|_| {
+            AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unavailable,
+                "retained kernel invocation failed",
+            )
+        });
+        self.finish_call(call, result, WithheldTaskPortValue::RetainedToolOutcome)
     }
 
     fn begin_call(&self) -> Result<MontyHostCall, AgentLoopHostError> {
@@ -184,6 +208,12 @@ impl MontyTaskHost {
         &self,
         request: LoopModelRequest,
     ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        if self.run_context().trusted_internal_turn {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::PolicyDenied,
+                "trusted internal turns require deterministic execution",
+            ));
+        }
         self.check_cancellation()?;
         // This field is a trusted Sempai bypass, not a Python prompt API. Monty
         // must use the run-scoped prompt refs issued by build_prompt_bundle.

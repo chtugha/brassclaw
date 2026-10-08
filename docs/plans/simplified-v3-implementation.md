@@ -3361,3 +3361,71 @@ combination approval, catalogue activation or cross-binary ABI loading. Bundled
 installation seeds need no additional external maintainer/human-Q2 approval;
 their controlled qualification and ordinary global-runtime wiring remain
 implementation work. The original seven ordinary failures remain unresolved.
+
+
+### 2026-10-08 — Original seven composition regressions resolved
+
+Ordinary `skills-db` runtime startup now starts and retains the supervised global
+Monty service after verified component boot and before turn workers/trigger
+producers. The admitted task carries its opaque conversation/message/run/attempt
+address into the existing service. The lazy per-conversation driver, session
+registry and its orchestrator-code adapter have been removed; there is no Rust
+agent-loop fallback. Python sequences matching, IBS composition, execution and
+reply/history workflows.
+
+The installation-owned catalogue retains exact packaged typed reply/history
+components, their complete dependency references, inspected executable programs
+and actual native Tool/adapter identities. Its immutable database generation and
+component references are verified in a consistent task-start snapshot. Matching
+and IBS use the retained selection; child execution does not read latest again.
+Runtime data stays separate from Python source. Packaged installation components
+need no external maintainer/human-Q2 approval; post-install authored components
+still use their distinct approval/activation path. The knowledge prefix is derived
+from this limited packaged catalogue, not the full component library.
+
+The real captured kernel handles task-bound replies and retained memory dispatch.
+Current instance Tool rules are revisioned and checked before dispatch, including
+blocked selected workflows. Durable invocation intent precedes effects; late
+outcomes and failed receipts remain retained without effect replay. Owner-aware
+turn scope fixes accepted-transcript lookup for ordinary facade callers. Internal
+reply readback also preserves its actual conversation scope, and trusted internal
+No-Match cannot call a model. The shared native review fixture now reuses the
+production admission module instead of loading duplicate copies.
+
+Evidence for the final relevant diff, Rust 1.98 on macOS, serial background screen
+execution with `/Users/ollama/brassclaw-target`, incremental/debug info disabled:
+
+- Root `cargo test -p brassclaw_reborn_composition --features skills-db --lib
+  --no-run --message-format=json` built the actual test executable. Each of the
+  original seven unchanged tests passed individually, with their existing
+  assertions and deadlines: default prompt injection, edited default prompt,
+  model Tool dispatch, workspace mapping, WebUI facade reuse, disabled model
+  budget gating and completed assistant text.
+- `native_global_runtime_retains_one_root_across_match_and_no_match` passed:
+  one actual root identity across successive unmatched/matched/unmatched turns,
+  typed quotes/Unicode/marker input, both composed reply/history workflows,
+  eligible prior reply in the next prompt, live Tool block without publication or
+  Tier-2 replay, original failed-attempt receipt retention/replacement rejection,
+  and internal No-Match without a model call.
+- Root composition all-target strict Clippy with `skills-db` passed.
+- Isolated `tests/monty_control/Cargo.toml` all-target matrix passed 131 real tests,
+  zero failures/ignored; its all-target strict Clippy passed. This includes
+  worker containment, opaque task handoff, cancellation acknowledgement,
+  admission/attempt fencing, actual kernel policy and retained effect outcomes.
+- Root HostRuntime and Reborn all-target strict Clippy passed with
+  `brassclaw_host_runtime/postgres,brassclaw_reborn/root-llm-provider`. Formatting
+  and `git diff --check` passed. No warning suppression was added.
+
+Logs: `/private/tmp/brassclaw-global-runtime-{worker,original-seven,case-1,case-2,
+case-3,case-4,case-5,case-6,case-7,case-8,composition-lints,native,native-lints,
+host-lints}.log`. Each case log records one selected test, not a zero-test filter.
+Earlier failure entries above remain historical evidence and are superseded for
+these seven regressions by this passing batch.
+
+This resolves the original seven failures; it does not complete the v3 plan.
+Authored catalogue activation, complete Kohai library-prefix compilation, adaptive
+heap settings, live WebUI duration/budget publication, the remaining legacy
+authorization cutover and complete fatal-effect reconciliation still need their
+existing implementation and production acceptance gates. The current explicit
+heap setting is retained during that migration. CI, Linux execution and the full
+workspace acceptance matrix are unverified by this local evidence.
