@@ -3268,3 +3268,32 @@ or active catalogue is inferred from them. These pending requests do not execute
 the eight validator Recipes or implement the immutable controlled system-seed
 evidence adapter. Ordinary runtime still constructs the legacy driver, so no
 original-seven success or global production acceptance is claimed.
+
+### 2026-10-08 — Retain the exact global-root review subject
+
+Shared component startup now attaches an immutable class-10 review submission to
+the already retained packaged root. `submit_retained` verifies the actual stored
+candidate, predecessor and complete selected graph without allocating another
+revision or moving its head. Exact retries retain their original subject even
+after newer drafts exist; conflicting actors and absent candidates fail.
+`read_revision` resolves an explicitly named historical revision for authoring,
+not active/latest task selection. The package actor is an origin label, not
+system-seed approval. Source retention followed by a lost review commit is
+repaired by identical startup retry before workers are enabled.
+
+Evidence: root workspace Composition `--features skills-db --lib` ran three
+real native shared-boot cases and, under the corrected
+`pg_review_submission::tests::native_` filter, three actual PostgreSQL/operator
+submission cases. The earlier `pg_review_submission_tests::` filter selected zero
+tests and is not passing evidence. Composition all-target strict Clippy passed.
+The isolated `tests/monty_control/Cargo.toml` actual worker/database handoff case
+passed, including successor/predecessor retention, unchanged live root, review
+retry, actor conflict and missing-candidate rollback; Skills and isolated
+consumer all-target strict Clippy passed. All used Rust 1.98, the established
+shared target/profile and serial background screen execution. Logs:
+`/private/tmp/brassclaw-root-review-{subject-native,authored-corrected,subject-composition-lints,subject-worker,subject-skills-lints,subject-consumer-lints}.log`.
+
+These are draft/review-subject and candidate-worker results, not Q1/semantic
+approval, controlled system-seed provenance, active catalogue publication or
+ordinary global-runtime acceptance. The original seven ordinary composition
+failures remain unresolved; their caller is unchanged.

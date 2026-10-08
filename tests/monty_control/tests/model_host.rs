@@ -967,6 +967,12 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     assert_eq!(root_ref.version, 1);
     assert_eq!(definition.source(), SOURCE);
     assert!(!definition.ports().contains("post_reply"));
+    let root_review =
+        global_root_seed::retain_packaged_root_review(database.pool.clone(), &definition)
+            .await
+            .unwrap();
+    assert_eq!(root_review.candidate, root_ref);
+    assert!(root_review.base.is_none());
     // Concurrent boots retain exactly one original revision, not new versions
     // or trust records. Use real pool transactions rather than a fake store.
     for retained in futures::future::join_all(
@@ -1084,6 +1090,73 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         store.retain_packaged_draft(&package_upgrade).await.unwrap(),
         upgrade_ref
     );
+    let upgrade = store
+        .read_revision(upgrade_ref.uuid, upgrade_ref.version)
+        .await
+        .unwrap();
+    let upgrade_definition =
+        brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(&upgrade)
+            .unwrap();
+    let upgrade_review =
+        global_root_seed::retain_packaged_root_review(database.pool.clone(), &upgrade_definition)
+            .await
+            .unwrap();
+    assert_eq!(upgrade_review.candidate, upgrade_ref);
+    assert_eq!(upgrade_review.base, Some(successor_ref));
+    assert_ne!(root_review.id, upgrade_review.id);
+    // Attaching or retrying a review cannot allocate a revision, select latest,
+    // change the subject after an authored edit or turn its actor into approval.
+    let repeated =
+        global_root_seed::retain_packaged_root_review(database.pool.clone(), &definition)
+            .await
+            .unwrap();
+    assert_eq!(repeated.id, root_review.id);
+    assert_eq!(repeated.subject_bytes, root_review.subject_bytes);
+    let heads: i64 = database
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT last_version FROM reborn_component_revision_heads WHERE component_id=$1",
+            &[&root_uuid],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(heads as u64, upgrade_ref.version);
+    let reviews = brassclaw_skills::review_submission_store::PgReviewSubmissionStore::new(
+        database.pool.clone(),
+    );
+    let changed_actor = brassclaw_skills::review_submission_store::ReviewSubmissionDraft::new(
+        root_review.id,
+        "different-author",
+        root_draft.clone(),
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(matches!(
+        reviews.submit_retained(&changed_actor).await,
+        Err(brassclaw_skills::review_submission_store::SubmissionStoreError::Conflict)
+    ));
+    let missing_draft = brassclaw_skills::orchestrator_contract::global_root_draft(
+        uuid::Uuid::new_v4(),
+        SOURCE,
+        definition.ports(),
+    )
+    .unwrap();
+    let missing_id = uuid::Uuid::new_v4();
+    let missing = brassclaw_skills::review_submission_store::ReviewSubmissionDraft::new(
+        missing_id,
+        "packaged-global-root",
+        missing_draft,
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(reviews.submit_retained(&missing).await.is_err());
+    assert!(reviews.read(missing_id).await.unwrap().is_none());
     // Reusing an identity for a different class is still a conflict, not a seed
     // override. This rejected retention must leave the existing root readable.
     let wrong_class = brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(

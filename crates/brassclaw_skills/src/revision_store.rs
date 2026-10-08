@@ -9,7 +9,9 @@ use uuid::Uuid;
 
 use crate::{
     association_contract::ComponentRevisionRef,
-    component_revision::{ComponentRevisionDraft, RetainedComponentSnapshot, RevisionError},
+    component_revision::{
+        ComponentRevisionDraft, RetainedComponentRevision, RetainedComponentSnapshot, RevisionError,
+    },
 };
 
 const MAX_SNAPSHOT_REVISIONS: usize = 4096;
@@ -51,6 +53,40 @@ pub struct PgComponentRevisionStore {
 impl PgComponentRevisionStore {
     pub fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
+    }
+
+    /// Resolve one explicitly named historical revision for authoring/review.
+    /// This is not an active selection, approval or a latest-version lookup.
+    pub async fn read_revision(
+        &self,
+        id: Uuid,
+        version: u64,
+    ) -> Result<RetainedComponentRevision, RevisionStoreError> {
+        if id.is_nil() || version == 0 {
+            return Err(RevisionStoreError::Integrity);
+        }
+        let version = i64::try_from(version).map_err(|_| RevisionStoreError::Integrity)?;
+        let client = self.pool.get().await.map_err(database)?;
+        let row = client
+            .query_opt(
+                "SELECT class_code,version,revision_bytes,checksum FROM reborn_component_revisions
+                 WHERE component_id=$1 AND version=$2",
+                &[&id, &version],
+            )
+            .await
+            .map_err(database)?
+            .ok_or(RevisionStoreError::Integrity)?;
+        let bytes: String = row.get(2);
+        let revision = ComponentRevisionDraft::from_json(&bytes)?.at_version(version as u64)?;
+        let actual = revision.reference();
+        if actual.uuid != id
+            || actual.class_code != i32::from(row.get::<_, i16>(0))
+            || actual.version != row.get::<_, i64>(1) as u64
+            || digest_hex(actual.checksum) != row.get::<_, String>(3)
+        {
+            return Err(RevisionStoreError::Integrity);
+        }
+        Ok(revision)
     }
 
     /// Version zero means a new identity. Existing edits supply the observed

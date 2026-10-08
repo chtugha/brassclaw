@@ -199,6 +199,12 @@ pub struct RetainedReviewSubmission {
 pub struct PgReviewSubmissionStore {
     pool: Arc<PgPool>,
 }
+
+enum CandidateRetention {
+    Stage,
+    Existing,
+}
+
 impl PgReviewSubmissionStore {
     pub fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
@@ -222,11 +228,40 @@ impl PgReviewSubmissionStore {
         Ok(retained)
     }
 
+    /// Attach a review to an already retained exact draft, without allocating
+    /// another revision or moving its head. The subject still validates its
+    /// base, complete selected graph and exact stored bytes. Identical retry
+    /// recovers a committed submission; a conflicting/concurrent write errors
+    /// and must be retried with the same subject, never a changed candidate.
+    pub async fn submit_retained(
+        &self,
+        draft: &ReviewSubmissionDraft,
+    ) -> Result<RetainedReviewSubmission, SubmissionStoreError> {
+        let mut client = self.pool.get().await.map_err(database)?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(database)?;
+        let retained = Self::retain_subject(&tx, draft, CandidateRetention::Existing).await?;
+        tx.commit().await.map_err(database)?;
+        Ok(retained)
+    }
+
     /// Join an author-owned repeatable-read transaction. The owner must roll
     /// back on error and acknowledge success only after the actual commit.
     pub async fn submit_in_transaction(
         tx: &Transaction<'_>,
         draft: &ReviewSubmissionDraft,
+    ) -> Result<RetainedReviewSubmission, SubmissionStoreError> {
+        Self::retain_subject(tx, draft, CandidateRetention::Stage).await
+    }
+
+    async fn retain_subject(
+        tx: &Transaction<'_>,
+        draft: &ReviewSubmissionDraft,
+        retention: CandidateRetention,
     ) -> Result<RetainedReviewSubmission, SubmissionStoreError> {
         require_snapshot(tx).await?;
         if let Some(existing) = read(tx, draft.id).await? {
@@ -245,12 +280,17 @@ impl PgReviewSubmissionStore {
                 return Err(SubmissionStoreError::Conflict);
             }
         }
-        let staged = PgComponentRevisionStore::stage_in_transaction(
-            tx,
-            &draft.candidate,
-            draft.base.map_or(0, |base| base.version),
-        )
-        .await?;
+        let staged = match retention {
+            CandidateRetention::Stage => {
+                PgComponentRevisionStore::stage_in_transaction(
+                    tx,
+                    &draft.candidate,
+                    draft.base.map_or(0, |base| base.version),
+                )
+                .await?
+            }
+            CandidateRetention::Existing => draft.reference,
+        };
         if staged != draft.reference {
             return Err(SubmissionStoreError::Invalid);
         }

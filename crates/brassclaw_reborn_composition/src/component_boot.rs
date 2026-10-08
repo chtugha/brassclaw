@@ -68,14 +68,21 @@ pub(crate) async fn initialize_runtime_components(
     // class-10 row or changing any active/operator selection. Approval and the
     // coordinated global lifecycle cutover remain independent prerequisites.
     #[cfg(feature = "skills-db")]
-    crate::global_root_seed::retain_packaged_global_root(
-        booted_db.pool().clone(),
-        crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
-    )
-    .await
-    .map_err(|error| RebornBuildError::InvalidConfig {
-        reason: format!("global orchestrator draft retention failed: {error}"),
-    })?;
+    {
+        let definition = crate::global_root_seed::retain_packaged_global_root(
+            booted_db.pool().clone(),
+            crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
+        )
+        .await
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("global orchestrator draft retention failed: {error}"),
+        })?;
+        crate::global_root_seed::retain_packaged_root_review(booted_db.pool().clone(), &definition)
+            .await
+            .map_err(|error| RebornBuildError::InvalidConfig {
+                reason: format!("global orchestrator review subject retention failed: {error}"),
+            })?;
+    }
 
     // Load every required prompt before mutating process-wide OnceLocks. A
     // failed database read must not leave a partially initialized prompt set.
@@ -259,6 +266,28 @@ mod tests {
                 include_str!("../../brassclaw_engine/orchestrator/global_mode.py")
             );
             assert!(!root.ports().contains("post_reply"));
+            let submission: uuid::Uuid = pool
+                .get()
+                .await
+                .unwrap()
+                .query_one(
+                    "SELECT submission_id FROM reborn_component_review_submissions
+                     WHERE component_id=$1 AND candidate_version=$2",
+                    &[&root.reference().uuid, &retained_version],
+                )
+                .await
+                .expect("ordinary startup retained the exact immutable root review subject")
+                .get(0);
+            let reviewed = brassclaw_skills::review_submission_store::PgReviewSubmissionStore::new(
+                pool.clone(),
+            )
+            .read(submission)
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(reviewed.candidate, root.reference());
+            assert!(reviewed.base.is_none());
+            assert!(reviewed.dependencies.is_empty());
         }
         let expected = load_required_prompt(&booted, tenant, "failure_explanation")
             .await
