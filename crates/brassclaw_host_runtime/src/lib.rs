@@ -44,6 +44,7 @@ mod first_party;
 mod first_party_tools;
 mod http_body;
 mod invocation_services;
+mod native_image;
 pub mod memory_context;
 mod obligations;
 mod planner;
@@ -98,6 +99,7 @@ pub use first_party_tools::{
     TriggerManagementClock, builtin_first_party_handlers_with_trigger_clock,
 };
 pub use http_body::{RuntimeHttpBodyStore, RuntimeHttpBodyStoreError};
+pub use native_image::{NativeExecutableImage, NativeImageError};
 pub use invocation_services::{
     InvocationServices, InvocationServicesError, InvocationServicesResolutionRequest,
     InvocationServicesResolver, LocalInvocationServicesResolver, ToolCallHttpEgress,

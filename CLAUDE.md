@@ -51,6 +51,23 @@ execution and incomplete immutable version manifests/binding preparation. The
 new typed inputs interface and strict single-component validation require
 implementation and production-path acceptance; do not claim these are shipped.
 
+### Installation seeds and post-installation changes
+
+Code and first-party components developed and shipped with BrassClaw, including
+installation seeds, use the controlled `system_seed` bootstrap path. They need
+development review, automated structural/behavioral checks and exact package/
+artifact integrity, but **no additional external maintainer approval or human
+Q2 action on the installed instance**. This applies to bundled Tools, Recipes,
+Skills, PythonCode, validators and the global orchestrator root. Bootstrap
+qualification must be noncircular and implemented by the installation owner.
+
+Components added or edited on an installed instance use the authored Q1/behavior/
+human-Q2 path. Shipping a reviewed successor with an installation upgrade is
+distinct from an operator or Sempai edit; it must preserve overrides and retained
+old task selections. A `source: system` label cannot turn a post-installation edit
+into a bundled seed. Missing bootstrap machinery is implementation work, not a
+request for external approval.
+
 ### Required authoring and startup checks
 
 1. **Define the usage and workflow separately.** A Skill is one Tool usage:

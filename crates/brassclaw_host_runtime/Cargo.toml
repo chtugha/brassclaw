@@ -53,14 +53,18 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
+tempfile = "3"
 tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+security-framework = "3"
+
 [dev-dependencies]
 brassclaw_event_projections = { path = "../brassclaw_event_projections" }
-tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-postgres = "0.7"
 zeroize = "1"

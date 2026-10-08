@@ -3297,3 +3297,41 @@ These are draft/review-subject and candidate-worker results, not Q1/semantic
 approval, controlled system-seed provenance, active catalogue publication or
 ordinary global-runtime acceptance. The original seven ordinary composition
 failures remain unresolved; their caller is unchanged.
+
+### 2026-10-08 — Running native executable identity and seed approval scope
+
+The installation bootstrap does not depend on external maintainer or human Q2
+approval for bundled code/components. The operator clarified this distinction:
+development review, automated checks and package/artifact integrity qualify
+installation seeds; authored additions/edits on an installed instance use Q2.
+AGENTS.md, CLAUDE.md and validator_v3 step 11 now state this explicitly. Missing
+qualification/activation machinery remains implementation work.
+
+HostRuntime's new `NativeExecutableImage` owns a private, size-bounded streaming
+copy and SHA-256 of the executable actually running in the host. Linux opens
+`/proc/self/exe`; its pathname is not reread through `current_exe`. macOS obtains
+the running SecCode, validates the retained signed artifact, and requires that
+its exact CDHash match the actual running code. The system codesign display call
+has bounded output, a deadline and acknowledged termination on failure. An
+ad-hoc signature establishes identity, not developer/installation provenance.
+The actual [Apple dynamic validity contract](https://developer.apple.com/documentation/security/seccodecheckvalidity(_:_:_:))
+and [Linux proc interface](https://www.kernel.org/doc/html/latest/filesystems/proc.html)
+were consulted. No custom native parser, unsafe code or external signer approval
+is introduced. Artifact paths and OS diagnostics stay private; a retained file
+descriptor supports checksum verification after source-path changes.
+
+Evidence on this macOS host: three actual HostRuntime OS regressions passed,
+including retained-file corruption, capacity rejection and another signed
+executable failing the current-process identity requirement. Root HostRuntime
+and isolated Monty consumer all-target strict Clippy passed, with their actual
+Cargo manifests and updated lockfiles. Rust 1.98, established shared target/
+profile, serial background screen; logs `/private/tmp/brassclaw-native-image-{os,host-lints,consumer-lints}.log`.
+Linux execution, other platforms and universal Mach-O acceptance are unverified;
+unsupported/unverifiable images fail explicitly.
+
+This artifact primitive is not yet attached to exact Tool metadata/adapter
+registrations. It does not cover dynamically loaded code, persist artifacts
+across restart, certify semantics/approval or activate the ordinary global
+runtime. Required handler/ABI association and drain/reconciliation across
+incompatible upgrades remain. Original seven ordinary caller failures remain
+unresolved.

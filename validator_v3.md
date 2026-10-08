@@ -404,6 +404,13 @@ task continues its original code, while a live Tool block affects its next dispa
 
 ### Step 11 — Bootstrap, migration, upgrade and recovery
 
+Bundled installation components, including validator and global-root code, do
+not require an additional maintainer/human-Q2 approval. Development review and
+the controlled seed integrity/automated behavioral qualification establish their
+bootstrap provenance. Authored edits on an installed instance retain human Q2.
+Missing seed producer/reader support must be implemented, not treated as an
+external approval dependency.
+
 Implementation evidence (2026-10-08): ordinary shared startup now retains the
 exact packaged global-root draft idempotently. Both legacy seeders retain pending
 review requests, preserve existing review state/feedback and recover missing
