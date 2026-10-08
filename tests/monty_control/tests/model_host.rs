@@ -45,6 +45,7 @@ use brassclaw_turns::{
     runner::{ClaimRunRequest, TurnRunTransitionPort},
 };
 use serde_json::{Value, json};
+use sha2::Digest;
 
 #[path = "support/admission_integrity.rs"]
 mod admission_integrity;
@@ -989,6 +990,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     let driver =
         global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone(), 1)
             .unwrap();
+    let mut observed_root = None;
     for name in ["driver-first", "driver-second"] {
         let (input, handoff, threads, scope, _) = admitted(
             database.pool.clone(),
@@ -1028,10 +1030,23 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
             .await
             .unwrap();
         assert_eq!(admission.get::<_, String>(0), "settled");
-        assert_settlement_outcome(
+        let report = assert_settlement_outcome(
             admission.get::<_, Value>(1),
             json!({"status":"completed", "reply_ref":exit.reply_message_refs[0].as_str()}),
         );
+        let root = factory.last_receipt.lock().unwrap().as_ref().unwrap().root;
+        assert_eq!(root.source_checksum(), support::boot(SOURCE).checksum);
+        assert_eq!(report["root"]["format"], "monty-root-execution/1");
+        assert_eq!(report["root"]["vm_id"], root.vm_id().to_string());
+        assert_eq!(
+            report["root"]["source_checksum"],
+            format!("{:x}", sha2::Sha256::digest(SOURCE.as_bytes()))
+        );
+        assert_eq!(report["root"]["workers"], 2);
+        if let Some(original) = observed_root {
+            assert_eq!(root, original);
+        }
+        observed_root = Some(root);
         let duplicate = pg_monty_admission::PgMontyAdmission::reserve(
             database.pool.clone(),
             actual_host.run_context(),
@@ -1080,6 +1095,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         }
     }
     let service = exit.service.unwrap();
+    assert_eq!(Some(service.root), observed_root);
     assert_eq!(service.failure, None);
     assert!(service.tasks.is_empty());
     assert_eq!(service.transport.unwrap().kind, StopKind::Graceful);

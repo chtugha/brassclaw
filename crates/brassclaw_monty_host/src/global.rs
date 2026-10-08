@@ -392,6 +392,42 @@ struct Pending {
     context: Option<u32>,
 }
 
+/// Actual interpreter generation and code/binding bytes. Passive observation,
+/// not protected-root approval, an implementation artifact or Tool authority.
+/// Only GlobalVm construction issues this identity; the private pipe transports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RootExecutionIdentity {
+    vm_id: Uuid,
+    source_checksum: [u8; 32],
+    aliases_checksum: [u8; 32],
+    workers: u32,
+}
+impl RootExecutionIdentity {
+    pub fn vm_id(&self) -> Uuid {
+        self.vm_id
+    }
+    pub fn source_checksum(&self) -> [u8; 32] {
+        self.source_checksum
+    }
+    pub fn aliases_checksum(&self) -> [u8; 32] {
+        self.aliases_checksum
+    }
+    pub fn workers(&self) -> u32 {
+        self.workers
+    }
+}
+pub(crate) fn root_aliases_checksum(aliases: &BTreeSet<String>) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    digest.update(b"monty-root-port-bindings/1\0");
+    digest.update((aliases.len() as u64).to_be_bytes());
+    for alias in aliases {
+        digest.update((alias.len() as u64).to_be_bytes());
+        digest.update(alias.as_bytes());
+    }
+    digest.finalize().into()
+}
+
 /// Exactly one owned global interpreter. Tracked admission charges root execution
 /// to the same task account as its child VMs; boot/service work remains separate.
 /// Protected scopes support task-local interruption and correlated resume
@@ -404,6 +440,7 @@ pub struct GlobalVm {
     aliases: BTreeSet<String>,
     receiver: MontyUuid,
     vm_id: Uuid,
+    identity: RootExecutionIdentity,
     ordinal: u64,
     lifecycle: Lifecycle,
     bounds: GlobalBounds,
@@ -519,6 +556,12 @@ impl GlobalVm {
             aliases: aliases.clone(),
             receiver,
             vm_id,
+            identity: RootExecutionIdentity {
+                vm_id,
+                source_checksum: checksum,
+                aliases_checksum: root_aliases_checksum(&aliases),
+                workers: bounds.workers,
+            },
             ordinal: 0,
             lifecycle: Lifecycle::Starting,
             bounds,
@@ -534,6 +577,10 @@ impl GlobalVm {
         let boundary = vm.accept(result)?;
         Ok((vm, boundary))
     }
+    pub fn execution_identity(&self) -> RootExecutionIdentity {
+        self.identity
+    }
+
     pub fn lifecycle(&self) -> Lifecycle {
         self.lifecycle
     }

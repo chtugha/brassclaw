@@ -116,3 +116,16 @@ owners, retained implementation identity, shared live resource wiring and durabl
 continuation/recovery supervision. The original seven composition failures
 remain open while it constructs `PersistentMontyDriver`. This task factory is a
 prerequisite, not a Rust-loop fallback or proof that the v3 cutover has shipped.
+
+
+The actual interpreter now issues a root execution identity containing its VM
+generation, verified source checksum, ordered port-binding checksum and worker
+count. Worker protocol 5 carries that identity in every snapshot. Startup compares
+it with the requested code and parked continuations; subsequent replies must
+retain it. A mismatch is contained with the actual command/snapshot retained.
+Task receipts, queued cancellation receipts, instance exit and durable execution
+reports retain the same root identity. A queued receipt with no task account
+still means that task never entered the VM. These are code/lifecycle observations,
+not protected-root semantic approval, Tool artifact attestation or catalogue
+activation. Replace the companion worker together with the host; older wire
+versions are rejected rather than decoded as compatible.

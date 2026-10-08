@@ -79,10 +79,17 @@ async fn replacement_retains_exact_recipe_layout_and_transitive_code_bytes() {
         new_selection.revisions()[&code].draft().exact_bytes(),
         replacement.exact_bytes()
     );
-    for sql in [
-        "UPDATE reborn_component_revisions SET revision_bytes=revision_bytes",
-        "DELETE FROM reborn_component_revisions",
-        "TRUNCATE reborn_component_revisions",
+    // Review evidence has foreign keys into retained revisions. PostgreSQL
+    // rejects plain TRUNCATE before running statement triggers; CASCADE reaches
+    // the immutable trigger and must also leave every old/new revision intact.
+    for (sql, expected_code) in [
+        (
+            "UPDATE reborn_component_revisions SET revision_bytes=revision_bytes",
+            "23514",
+        ),
+        ("DELETE FROM reborn_component_revisions", "23514"),
+        ("TRUNCATE reborn_component_revisions", "0A000"),
+        ("TRUNCATE reborn_component_revisions CASCADE", "23514"),
     ] {
         let error = rig
             .pool
@@ -92,9 +99,21 @@ async fn replacement_retains_exact_recipe_layout_and_transitive_code_bytes() {
             .execute(sql, &[])
             .await
             .unwrap_err();
-        assert_eq!(error.code().unwrap().code(), "23514");
+        assert_eq!(error.code().unwrap().code(), expected_code);
+        let retained = store.read_exact(&[recipe], &refs).await.unwrap();
+        assert_eq!(
+            retained.revisions()[&code].draft().exact_bytes(),
+            code_draft.exact_bytes()
+        );
+        let retained_new = store
+            .read_exact(&[recipe], &[recipe_ref, newer_code, helper_ref])
+            .await
+            .unwrap();
+        assert_eq!(
+            retained_new.revisions()[&code].draft().exact_bytes(),
+            replacement.exact_bytes()
+        );
     }
-    assert!(store.read_exact(&[recipe], &refs).await.is_ok());
 }
 
 #[tokio::test]

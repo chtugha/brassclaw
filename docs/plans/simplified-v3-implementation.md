@@ -3149,3 +3149,40 @@ These are actual candidate-path observations using unapproved validation drafts.
 They do not establish controlled bootstrap approvals, active catalogue publication
 or ordinary runtime cutover. The original seven remain unresolved because the
 ordinary factory still constructs the legacy per-chat driver.
+
+
+### 2026-10-08 — Actual root code and generation in execution evidence
+
+The contained interpreter issues `RootExecutionIdentity` from its actually
+compiled, checksum-verified source and registered port names. It retains the
+VM generation and worker count. Worker protocol 5 carries the identity in every
+snapshot; startup verifies requested source/bindings/workers and continuation
+ownership, and all later transport replies retain that same identity. A conflicting
+reply is a contained protocol failure retaining its actual snapshot and command.
+No task/model JSON can change the running root. Companion host/worker upgrades
+require the same protocol; no old-wire or interpreter-state compatibility is claimed.
+
+Actual task receipts, pre-admission cancellation receipts and instance exit retain
+that identity. Durable task reports bind the original outcome and selected Recipe
+progress to it. Cancellation before admission still has no task accounting; its
+root identity identifies the instance queue, not fictitious task execution. These
+observations establish no protected-root approval or Tool implementation artifact.
+
+All **131** isolated Monty-control acceptance cases passed serially in screen in
+`/private/tmp/brassclaw-root-identity-native-complete.log`, with Rust 1.98, native
+PostgreSQL, actual companion worker and existing constrained provider fixtures.
+Strict affected Host and all-target consumer lint checks passed in
+`...-root-identity-host-lints.log` and `...-root-identity-consumer-lints.log`.
+The first compilation caught an external test reaching a private continuation-key
+field; that test access was removed without exposing the key. The subsequent
+full run exposed an older revision-store assertion: new review foreign keys make
+plain TRUNCATE return PostgreSQL 0A000 before the trigger. Exact separate expected
+codes now cover UPDATE/DELETE, TRUNCATE and TRUNCATE CASCADE; the last exercises
+the immutable trigger. Old and new exact revisions remain readable after every
+rejected operation. Both initial diagnostics remain in the earlier
+`...-root-identity-native.log` and `...-root-identity-native-final.log`.
+
+The ordinary factory still constructs PersistentMontyDriver. Controlled seed
+provenance/review, Tool artifact/ABI retention, coherent catalogue activation and
+ordinary global startup/live-resource/continuation cutover remain required; no
+original-seven success or CI acceptance is claimed.

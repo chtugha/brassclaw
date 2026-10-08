@@ -434,6 +434,8 @@ async fn queued_cancellation_passes_fifo_front_without_a_free_worker_or_capacity
             reason_kind: "task_cancelled".into()
         }
     );
+    let queued_root = receipt.root;
+    assert_eq!(queued_root.source_checksum(), boot(FILE_ROOT).checksum);
     assert!(receipt.accounting.is_none());
     assert!(receipt.withheld.is_empty());
     assert!(tail.fenced.load(Ordering::Acquire));
@@ -477,6 +479,7 @@ async fn queued_cancellation_passes_fifo_front_without_a_free_worker_or_capacity
             .await
             .unwrap()
             .unwrap();
+        assert_eq!(receipt.root, queued_root);
         assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
         assert!(receipt.accounting.is_some());
     }

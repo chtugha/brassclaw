@@ -170,6 +170,15 @@ impl GlobalRecipePorts {
         {
             return Err(failure("task_completion_invalid"));
         }
+        let hex = |checksum: [u8; 32]| {
+            checksum
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        };
+        let root = json!({"format":"monty-root-execution/1",
+            "vm_id":receipt.root.vm_id(), "source_checksum":hex(receipt.root.source_checksum()),
+            "aliases_checksum":hex(receipt.root.aliases_checksum()), "workers":receipt.root.workers()});
         let account = receipt.accounting.as_ref().map(|account| {
             json!({
                 "effective_revision":account.effective_revision,
@@ -177,7 +186,7 @@ impl GlobalRecipePorts {
             })
         });
         Ok(
-            json!({"format":"monty-task-execution/1", "root_completed":completed,
+            json!({"format":"monty-task-execution/1", "root":root, "root_completed":completed,
             "all_selected_recipes_complete":complete, "recipes":progress,
             "accounting":account, "withheld_root_answers":receipt.withheld.len(),
             "withheld_host_answers":self.host.has_withheld_results(),

@@ -28,6 +28,14 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
     let pid = process.process_id().unwrap();
     assert_eq!(ready.lifecycle, Lifecycle::Ready);
     assert_eq!(ready.work_waits.len(), 2);
+    let root = ready.root.unwrap();
+    assert_eq!(
+        root.source_checksum(),
+        <[u8; 32]>::from(Sha256::digest(SOURCE.as_bytes()))
+    );
+    assert_eq!(root.workers(), 2);
+    assert!(!root.vm_id().is_nil());
+
     let first_wait = ready.work_waits[0].1;
     // A second Boot cannot replace the already-running global VM.
     let replacement = process
@@ -38,7 +46,9 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         replacement.kind,
         ProcessFailure::Vm(VmFailure::WrongBoundary)
     );
-    assert_eq!(replacement.snapshot.unwrap().work_waits, ready.work_waits);
+    let replacement = replacement.snapshot.unwrap();
+    assert_eq!(replacement.root, Some(root));
+    assert_eq!(replacement.work_waits, ready.work_waits);
     let mut invalid = task();
     invalid["lease_token"] = json!("private-claim-must-not-enter-python");
     let rejected = process
@@ -54,7 +64,9 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         rejected.command.as_deref(),
         Some(WorkerCommand::Admit { .. })
     ));
-    assert_eq!(rejected.snapshot.unwrap().work_waits, ready.work_waits);
+    let rejected = rejected.snapshot.unwrap();
+    assert_eq!(rejected.root, Some(root));
+    assert_eq!(rejected.work_waits, ready.work_waits);
     let mut oversized = task();
     oversized["user_input"] = json!("x".repeat(limits().max_frame_bytes));
     let overflow = process
@@ -105,6 +117,7 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         })
         .await
         .unwrap();
+    assert_eq!(admitted.root, Some(root));
     let task_handle = admitted.admitted_task.unwrap();
     let Some(ProcessBoundary::HostCall {
         key,
@@ -128,6 +141,7 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         .exchange(WorkerCommand::Defer { key })
         .await
         .unwrap();
+    assert_eq!(pending.root, Some(root));
     assert_eq!(pending.outstanding.len(), 2);
     assert_eq!(pending.work_waits.len(), 1);
     // Only a real port failure is supplied; no intent/model/Recipe success is
@@ -141,6 +155,7 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         })
         .await
         .unwrap();
+    assert_eq!(failed.root, Some(root));
     let Some(ProcessBoundary::HostCall { name, args, .. }) = failed.boundary else {
         panic!("root must report its task failure through the actual finish boundary");
     };
@@ -151,6 +166,19 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
     assert!(process.terminate().await.is_some());
     // Killing this worker proves neither a durable finish nor an external
     // effect's cancellation; the test deliberately leaves that port unresolved.
+}
+
+#[tokio::test]
+async fn worker_rejects_wrong_root_checksum_before_issuing_execution_identity() {
+    let mut requested = boot(SOURCE);
+    requested.checksum[0] ^= 1;
+    let failure = match GlobalProcess::start(worker(), requested, limits()).await {
+        Ok(_) => panic!("wrong root source integrity must prevent startup"),
+        Err(failure) => failure,
+    };
+    assert_eq!(failure.kind, ProcessFailure::Vm(VmFailure::Integrity));
+    assert!(failure.snapshot.unwrap().root.is_none());
+    assert!(failure.exit_status.is_some());
 }
 
 #[tokio::test]

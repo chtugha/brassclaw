@@ -27,7 +27,7 @@ use tokio::{
 
 use crate::{
     ContinuationKey,
-    global::Lifecycle,
+    global::{Lifecycle, RootExecutionIdentity},
     heap::{HeapSettings, HeapStatus},
     process::{
         PortAnswer, ProcessBoundary, ProcessFailure, ProcessLimits, ProcessSnapshot, RecipeCommand,
@@ -181,6 +181,9 @@ struct Control {
 /// Actual task completion plus any root answers withheld after fencing.
 /// Payloads stay private to the trusted caller, never ordinary Python state.
 pub struct TaskReceipt {
+    /// The instance root that owned this queue/attempt. accounting=None still
+    /// means this particular task never entered the interpreter.
+    pub root: RootExecutionIdentity,
     pub outcome: TaskOutcome,
     pub withheld: Vec<crate::global::WithheldHostAnswer>,
     /// The worker's actual shared root/child account. None only when a queued
@@ -445,6 +448,7 @@ pub struct AdmissionEvidence {
     pub ports: Arc<dyn TaskPorts>,
 }
 pub struct ServiceExit {
+    pub root: RootExecutionIdentity,
     pub failure: Option<ServiceFailure>,
     pub transport: Result<ActorExit, ServiceFailure>,
     pub tasks: Vec<TaskEvidence>,
@@ -502,6 +506,7 @@ impl ServiceOwner {
         let values = boot.bounds.values;
         let (owner, ready) = TransportOwner::start(executable, boot, process, actor).await?;
         let worker_process_id = owner.worker_process_id();
+        let root = ready.root.expect("transport verified root identity");
         // start_ready proves every live worker is parked before returning.
         let (admissions, rx) = mpsc::channel(queue_capacity);
         let admission_credits = Arc::new(Semaphore::new(queue_capacity));
@@ -529,6 +534,7 @@ impl ServiceOwner {
             changed,
             closed,
             ShutdownBounds {
+                root,
                 admission_credits,
                 workers,
                 boundary_timeout: process.response_timeout,
@@ -587,6 +593,7 @@ struct PortResult {
 }
 type Calls = FuturesUnordered<BoxFuture<'static, PortResult>>;
 struct ShutdownBounds {
+    root: RootExecutionIdentity,
     admission_credits: Arc<Semaphore>,
     workers: u32,
     boundary_timeout: Duration,
@@ -713,6 +720,7 @@ async fn run(
                 if !admission.control.0.cancelled.load(Ordering::Acquire) { return true; }
                 admission.control.0.ports.fence();
                 admission.control.0.result.send_replace(Some(Ok(Arc::new(TaskReceipt {
+                    root: shutdown.root,
                     outcome: TaskOutcome::Failed { reason_kind: "task_cancelled".into() },
                     withheld: Vec::new(), accounting: None,
                 }))));
@@ -860,6 +868,7 @@ async fn run(
                 }
                 let task = tasks.remove(&id).expect("selected task");
                 task.control.0.result.send_replace(Some(Ok(Arc::new(TaskReceipt {
+                    root: shutdown.root,
                     outcome: task.outcome.expect("finished task"), withheld: task.withheld,
                     accounting: Some(accounting),
                 }))));
@@ -1077,6 +1086,7 @@ async fn run(
         });
     }
     ServiceExit {
+        root: shutdown.root,
         failure,
         transport: transport_exit,
         tasks: evidence,

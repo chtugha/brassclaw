@@ -26,7 +26,10 @@ use tokio::{
 
 use crate::{
     ContinuationKey, HostAnswer, ValueBudget, VmBounds, VmFailure,
-    global::{GlobalBoundary, GlobalBounds, GlobalVm, Lifecycle, WithheldHostAnswer},
+    global::{
+        GlobalBoundary, GlobalBounds, GlobalVm, Lifecycle, RootExecutionIdentity,
+        WithheldHostAnswer, root_aliases_checksum,
+    },
 };
 
 use crate::heap::{HeapSettings, HeapStatus, WorkerHeap};
@@ -36,7 +39,7 @@ pub use crate::process_recipe::{
     TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 4;
+const PROTOCOL: u32 = 5;
 const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
@@ -219,6 +222,8 @@ pub struct ProcessSnapshot {
     /// Real shared allocator ownership, never a serialized-frame estimate or
     /// process-baseline subtraction. Includes root and task-owned child state.
     pub vm_live_bytes: usize,
+    /// Issued by the actual compiled root, absent only before root construction.
+    pub root: Option<RootExecutionIdentity>,
     pub heap: HeapStatus,
     pub lifecycle: Lifecycle,
     pub boundary: Option<ProcessBoundary>,
@@ -323,6 +328,7 @@ pub struct GlobalProcess {
     interrupted_command: Option<Box<WorkerCommand>>,
     kill_error: Option<io::Error>,
     reap_error: Option<io::Error>,
+    root: Option<RootExecutionIdentity>,
 }
 impl GlobalProcess {
     pub async fn start(
@@ -354,6 +360,8 @@ impl GlobalProcess {
         let stdout = child.stdout.take();
         let workers = boot.bounds.workers;
         let expected_heap = boot.heap_settings;
+        let expected_source = boot.checksum;
+        let expected_aliases = root_aliases_checksum(&boot.aliases);
         let values = boot.bounds.values;
         let mut process = Self {
             child,
@@ -367,6 +375,7 @@ impl GlobalProcess {
             interrupted_command: None,
             kill_error: None,
             reap_error: None,
+            root: None,
         };
         let snapshot = match process.exchange(WorkerCommand::Boot { boot }).await {
             Ok(snapshot) => snapshot,
@@ -378,7 +387,20 @@ impl GlobalProcess {
                 return Err(error);
             }
         };
-        if snapshot.lifecycle != Lifecycle::Ready
+        if snapshot.root.is_none_or(|root| {
+            root.vm_id().is_nil()
+                || root.source_checksum() != expected_source
+                || root.aliases_checksum() != expected_aliases
+                || root.workers() != workers
+                || snapshot
+                    .work_waits
+                    .iter()
+                    .any(|(_, key)| key.vm_id != root.vm_id())
+                || snapshot
+                    .outstanding
+                    .iter()
+                    .any(|key| key.vm_id != root.vm_id())
+        }) || snapshot.lifecycle != Lifecycle::Ready
             || snapshot.heap.desired != expected_heap
             || snapshot.heap.effective != expected_heap
             || snapshot.heap.pending_reduction
@@ -397,6 +419,7 @@ impl GlobalProcess {
             process.attach_failures(&mut error);
             return Err(error);
         }
+        process.root = snapshot.root;
         Ok((process, snapshot))
     }
 
@@ -516,6 +539,21 @@ impl GlobalProcess {
         };
         guard.owner.sequence = sequence;
         guard.armed = false;
+        // Code and generation cannot change during this process lifetime,
+        // including errors, child operations and shutdown. Preserve a conflicting
+        // real reply for reconciliation and contain the worker before more work.
+        if guard.owner.root.is_some() && reply.snapshot.root != guard.owner.root {
+            guard.owner.interrupt();
+            let mut error = ProcessError::new(ProcessFailure::Protocol);
+            error.command = guard
+                .request
+                .take()
+                .map(|request| Box::new(request.command));
+            error.snapshot = Some(Box::new(reply.snapshot));
+            error.exit_status = guard.owner.terminate().await;
+            guard.owner.attach_failures(&mut error);
+            return Err(error);
+        }
         if reply.snapshot.lifecycle == Lifecycle::Failed {
             // A failed root is an instance failure, even when the framed VM
             // error arrived correctly. Fence further transport immediately;
@@ -960,6 +998,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
         let snapshot = match vm.as_mut() {
             Some(root) => ProcessSnapshot {
                 vm_live_bytes: 0,
+                root: Some(root.execution_identity()),
                 heap: heap.status(),
                 lifecycle: root.lifecycle(),
                 boundary,
@@ -974,6 +1013,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             },
             None => ProcessSnapshot {
                 vm_live_bytes: 0,
+                root: None,
                 heap: heap.status(),
                 lifecycle: Lifecycle::Failed,
                 boundary,
