@@ -214,6 +214,9 @@ pub struct UpdateMontyVmSettingsRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmSettingsResponse {
     pub settings: MontyVmSettings,
+    /// Actual runtime observation; absent for a persistence-only store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<MontyVmStatusResponse>,
 }
 
 // ── Monty VM restart ──────────────────────────────────────────────────────────
@@ -255,6 +258,30 @@ pub struct MontyVmStatusResponse {
     /// SHA-256 hash (hex) of the settings row as applied to the running
     /// instance — lets the operator detect drift vs the DB values.
     pub settings_hash: Option<String>,
+    #[serde(default)]
+    pub restart_supported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_budget: Option<MontyTaskBudgetStatus>,
+}
+
+/// Uptake covers task compute time and token mode, not catalogue activation or
+/// adaptive heap policy. Effective values come from the worker acknowledgement.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MontyTaskBudgetStatus {
+    pub desired_revision: u64,
+    pub effective_revision: u64,
+    pub max_duration_secs: u64,
+    pub token_budgets_enabled: bool,
+    pub uptake: MontyBudgetUptake,
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MontyBudgetUptake {
+    Applied,
+    Pending,
+    Failed,
 }
 
 // ── Chat preference ───────────────────────────────────────────────────────────
@@ -309,6 +336,16 @@ pub enum MontyVmSettingsError {
 /// the `default_monty_vm_settings()` function provides compiled-in defaults.
 #[async_trait]
 pub trait MontyVmSettingsStore: Send + Sync {
+    /// Describe actual runtime uptake of this desired generation. Persistence
+    /// alone must not report Running or claim an effective settings revision.
+    fn runtime_observation(&self, _desired: &MontyVmSettings) -> Option<MontyVmStatusResponse> {
+        None
+    }
+
+    async fn runtime_status(&self) -> Result<Option<MontyVmStatusResponse>, MontyVmSettingsError> {
+        Ok(None)
+    }
+
     /// Load settings for `(user_id, project_id)`.
     /// Returns compiled-in defaults when no DB row exists (first-run).
     async fn get(

@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("hi", {
+  "montyVm.desiredRevision": "वांछित कार्य संशोधन",
+  "montyVm.effectiveRevision": "प्रभावी कार्य संशोधन",
+  "montyVm.uptake.applied": "लागू किया गया",
+  "montyVm.uptake.pending": "पुष्टि लंबित",
+  "montyVm.uptake.failed": "लागू करने में विफल",
+  "montyVm.lifecycleDesc": "कार्य अवधि और टोकन मोड तुरंत लागू होते हैं। पुनः आरंभ केवल रनटाइम के समर्थन पर उपलब्ध है।",
   "language.name": "हिन्दी",
   "language.switch": "भाषा बदल दी गई",
 

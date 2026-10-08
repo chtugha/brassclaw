@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("ko", {
+  "montyVm.desiredRevision": "요청한 작업 리비전",
+  "montyVm.effectiveRevision": "적용된 작업 리비전",
+  "montyVm.uptake.applied": "적용됨",
+  "montyVm.uptake.pending": "확인 대기 중",
+  "montyVm.uptake.failed": "적용 실패",
+  "montyVm.lifecycleDesc": "작업 시간과 토큰 모드는 실행 중에 적용됩니다. 재시작은 런타임이 지원하는 경우에만 사용할 수 있습니다.",
   "language.name": "한국어",
   "language.switch": "언어가 변경되었습니다",
 

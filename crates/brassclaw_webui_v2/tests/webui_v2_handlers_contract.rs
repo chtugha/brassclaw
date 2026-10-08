@@ -848,6 +848,7 @@ impl RebornServicesApi for StubServices {
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<MontyVmSettingsResponse, RebornServicesError> {
         Ok(MontyVmSettingsResponse {
+            runtime: None,
             settings: MontyVmSettings {
                 revision: 0,
                 max_duration_secs: 300,
@@ -871,6 +872,7 @@ impl RebornServicesApi for StubServices {
         _request: UpdateMontyVmSettingsRequest,
     ) -> Result<MontyVmSettingsResponse, RebornServicesError> {
         Ok(MontyVmSettingsResponse {
+            runtime: None,
             settings: MontyVmSettings {
                 revision: 0,
                 max_duration_secs: 300,
@@ -906,6 +908,8 @@ impl RebornServicesApi for StubServices {
             state: MontyVmState::Running,
             orchestrator_version: None,
             settings_hash: None,
+            restart_supported: true,
+            task_budget: None,
         })
     }
 

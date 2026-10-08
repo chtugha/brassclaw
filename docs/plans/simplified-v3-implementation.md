@@ -3429,3 +3429,78 @@ authorization cutover and complete fatal-effect reconciliation still need their
 existing implementation and production acceptance gates. The current explicit
 heap setting is retained during that migration. CI, Linux execution and the full
 workspace acceptance matrix are unverified by this local evidence.
+
+
+### 2026-10-08 — Live instance task settings reach Rust and global Monty
+
+The ordinary `skills-db` runtime now owns one durable Monty task-settings
+publisher. WebUI bundles reuse that owner through the existing settings port;
+creating a bundle or abandoning an HTTP waiter does not start/stop publication.
+Startup passes the exact boot settings snapshot into the owner before workers
+start. Duration and token-mode changes publish through the existing service
+control lane: the actual worker acknowledges the limits before Rust publishes
+the same effective revision. Publication preserves existing task consumption.
+The settings row used by ordinary global startup is also the instance-wide
+WebUI row; callers cannot select another scope through these endpoints.
+
+Persisted desired edits and actual effective revisions are returned separately.
+CAS rejects stale edits; bounded persistence/publication failures remain explicit.
+The owner retries durable desired state independently of the browser and joins
+on shutdown. Retrieval receives the complete acknowledged settings snapshot;
+history/prompt assembly reads the actual shared token-mode watch. Persistence-only
+stores never fabricate runtime liveness. Restart is advertised only when supported.
+Heap/orchestrator edits are rejected until their separate live publication paths
+exist; this batch does not claim uptake of the entire settings row.
+
+The frontend displays desired/effective task revisions and pending/failed uptake,
+uses serial status requests, and retains settings when status is unavailable.
+All eleven language packs contain the new uptake labels. Preexisting invalid
+English/German translation entries were moved into their registration objects.
+
+The full architecture matrix exposed an existing guard misclassification of the
+native executable retention primitive. The guard now recognizes only its three
+inspected OS-image/private-artifact open sites in their owning functions, rather
+than exempting the module. A negative regression retains rejection of config
+reads, other read APIs and unrelated open sites. Application state still belongs
+in PostgreSQL; executable retention is not a settings persistence mechanism.
+
+Evidence for this relevant diff on macOS/Rust 1.98, serial background `screen`,
+`CARGO_TARGET_DIR=/Users/ollama/brassclaw-target`, incremental/debug info disabled:
+
+- Actual `monty_worker` binary build and composition `skills-db` library test
+  executable build passed. The unchanged original seven regressions passed again.
+- `native_global_runtime_retains_one_root_across_match_and_no_match` passed.
+- `native_webui_monty_task_settings_reach_one_running_instance` passed through
+  ordinary runtime construction, real PostgreSQL and the real WebUI router:
+  live edits during a controlled model wait, both token-mode directions, shared
+  instance settings, stale CAS rejection, unattended durable reconciliation,
+  actual settled task accounting revision, retained root identity, shutdown
+  observation and restart with the persisted revision. Its controlled gateway
+  establishes infrastructure acceptance, not external inference-provider proof.
+- Strict all-target Clippy passed for composition/product workflow/Reborn/WebUI
+  with `brassclaw_reborn_composition/skills-db`.
+- Isolated `tests/monty_control/Cargo.toml` all-target tests passed: 131 tests,
+  zero failures/ignored. Its strict all-target Clippy passed.
+- Product `inbound_turn_contract` and `reborn_services_contract`: 123 passed;
+  WebUI `webui_v2_handlers_contract`: 58 passed.
+- Architecture all-target checks: 30 passed; strict all-target Clippy passed.
+  The initial library-only architecture command ran zero tests and is not
+  acceptance evidence. The first actual matrix failure and its corrective
+  boundary change remain recorded in the validation results.
+- Changed frontend and all eleven packs passed `node --check`; formatting and
+  `git diff --check` passed. No warnings were suppressed.
+
+Logs: `/private/tmp/brassclaw-live-settings-{worker,original-seven,case-1..case-9,
+composition-lints,native,native-lints,product-contracts,http-contracts,
+architecture-all-targets,architecture-lints}.log`.
+
+**Remaining implementation:** adaptive pressure sampling and heap publication;
+complete disabled-token propagation (the model accountant still has a startup
+construction/omission switch); complete authored immutable catalogue/association
+activation and override rules; remaining instance authorization/policy cutover;
+complete fatal-effect reconciliation and full-library Kohai prefix compilation.
+For the accountant follow-up, retain usage observability and outstanding
+reservations across live edits, including isolated model work and cancellation;
+do not simply bypass all resource/cost accounting or drop reservations when the
+mode changes. Full workspace/CI/Linux and external model acceptance are unverified.
+This batch completes the task-settings bridge, not the full v3 cutover.

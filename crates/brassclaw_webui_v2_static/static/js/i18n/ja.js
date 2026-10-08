@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("ja", {
+  "montyVm.desiredRevision": "タスクの設定リビジョン",
+  "montyVm.effectiveRevision": "タスクの適用済みリビジョン",
+  "montyVm.uptake.applied": "適用済み",
+  "montyVm.uptake.pending": "確認待ち",
+  "montyVm.uptake.failed": "適用失敗",
+  "montyVm.lifecycleDesc": "タスクの実行時間とトークンモードは稼働中に適用されます。再起動はランタイムが対応している場合のみ利用できます。",
   "language.name": "日本語",
   "language.switch": "言語を変更しました",
 

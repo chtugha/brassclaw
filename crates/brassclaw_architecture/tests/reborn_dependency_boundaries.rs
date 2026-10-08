@@ -2662,10 +2662,13 @@ fn collect_forbidden_uses_detects_violation() {
 /// non-migration production path.
 ///
 /// After Phase 6 (libSQL removal), all persistent state lives in Postgres.
-/// The only legitimate filesystem reads in production code are:
+/// Legitimate filesystem reads include:
 /// - The `migrate-from-libsql` migration module (reads legacy config.toml /
 ///   providers.json to migrate them into the DB).
 /// - The architecture tests themselves (which read source files).
+/// - Explicitly classified host/operator boundaries below. Native executable
+///   retention permits only the inspected OS-image/artifact opens, never a
+///   whole-module exception for configuration or application-state reads.
 ///
 /// Any other use of the blocking filesystem-read APIs is either dead code or
 /// a regression that re-introduces file-based state. This test enforces the
@@ -2904,6 +2907,16 @@ fn scan_for_direct_fs_reads(
             }
             for (pattern, reason) in patterns {
                 if line.contains(pattern) {
+                    if *pattern == "File::open"
+                        && is_native_executable_artifact_read(
+                            relative,
+                            production,
+                            line_number,
+                            line,
+                        )
+                    {
+                        continue;
+                    }
                     violations.push(format!(
                         "{}:{} contains `{}` ({})",
                         relative.display(),
@@ -2915,6 +2928,79 @@ fn scan_for_direct_fs_reads(
             }
         }
     }
+}
+
+/// The native-image primitive opens the actual OS-identified running image and
+/// its private retained copy. These are executable artifacts, not persisted
+/// application state. Keep other read APIs and other open sites under the guard.
+fn is_native_executable_artifact_read(
+    relative: &std::path::Path,
+    production: &str,
+    line_number: usize,
+    line: &str,
+) -> bool {
+    if relative != std::path::Path::new("crates/brassclaw_host_runtime/src/native_image.rs") {
+        return false;
+    }
+    let enclosing = production
+        .lines()
+        .take(line_number + 1)
+        .filter(|line| line.starts_with("fn "))
+        .last();
+    match enclosing {
+        Some("fn loaded_file() -> Result<File, NativeImageError> {") => matches!(
+            line.trim(),
+            "File::open(\"/proc/self/exe\").map_err(|_| NativeImageError::Identity)"
+                | "File::open(path).map_err(|_| NativeImageError::Identity)"
+        ),
+        Some("fn stage(max_bytes: u64) -> Result<NativeExecutableImage, NativeImageError> {") => {
+            line.trim()
+                == "let artifact = File::open(path).map_err(|_| NativeImageError::Storage)?;"
+        }
+        _ => false,
+    }
+}
+
+#[test]
+fn native_executable_artifact_boundary_keeps_unrelated_reads_forbidden() {
+    let root = std::env::temp_dir().join(format!(
+        "brassclaw-native-image-boundary-test-{}",
+        std::process::id()
+    ));
+    let src = root.join("crates/brassclaw_host_runtime/src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(
+        src.join("native_image.rs"),
+        concat!(
+            "fn loaded_file() -> Result<File, NativeImageError> {\n",
+            "File::open(\"/proc/self/exe\").map_err(|_| NativeImageError::Identity)\n",
+            "File::open(path).map_err(|_| NativeImageError::Identity)\n",
+            "File::open(\"config.toml\").map_err(|_| NativeImageError::Identity)\n",
+            "std::fs::read_to_string(path)\n}\n",
+            "fn stage(max_bytes: u64) -> Result<NativeExecutableImage, NativeImageError> {\n",
+            "let artifact = File::open(path).map_err(|_| NativeImageError::Storage)?;\n}\n",
+            "fn other() {\nFile::open(path).map_err(|_| NativeImageError::Identity)\n}\n",
+        ),
+    )
+    .unwrap();
+    let mut violations = Vec::new();
+    scan_for_direct_fs_reads(
+        &src,
+        &root,
+        &root.join("skip-a"),
+        &root.join("skip-b"),
+        &[
+            ("File::open", "unclassified open"),
+            ("std::fs::read_to_string", "state read"),
+        ],
+        &[],
+        &mut violations,
+    );
+    std::fs::remove_dir_all(root).unwrap();
+    assert_eq!(violations.len(), 3, "{violations:?}");
+    assert!(violations.iter().any(|v| v.contains(":4 contains")));
+    assert!(violations.iter().any(|v| v.contains(":5 contains")));
+    assert!(violations.iter().any(|v| v.contains(":11 contains")));
 }
 
 /// Return the production-only slice of `contents`, with any `#[cfg(test)]`

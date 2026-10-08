@@ -1174,6 +1174,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         old.revisions()[&root_uuid].draft().exact_bytes(),
         root_draft.exact_bytes()
     );
+    assert!(!owner.ownership_check().is_closed());
     let factory = Arc::new(
         NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
     );

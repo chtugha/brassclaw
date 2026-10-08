@@ -31,7 +31,14 @@ pub(crate) async fn start(
     kernel: Arc<dyn MontyKernelSnapshot>,
     scope: &IntentScope,
     mounts: MountView,
-) -> Result<(GlobalMontyOwner, Arc<InstalledMontyCatalogue>), RebornRuntimeError> {
+) -> Result<
+    (
+        GlobalMontyOwner,
+        Arc<InstalledMontyCatalogue>,
+        brassclaw_product_workflow::MontyVmSettings,
+    ),
+    RebornRuntimeError,
+> {
     let worker = installed_worker().map_err(|error| invalid(error.to_string()))?;
     let root = crate::global_root_seed::retain_packaged_global_root(
         pool.clone(),
@@ -142,7 +149,7 @@ pub(crate) async fn start(
     )
     .await
     .map_err(|error| invalid(error.to_string()))?;
-    Ok((owner, catalogue))
+    Ok((owner, catalogue, settings))
 }
 pub(crate) fn check_shutdown(exit: GlobalServiceExit) -> Result<(), RebornRuntimeError> {
     let released = match exit.ownership {

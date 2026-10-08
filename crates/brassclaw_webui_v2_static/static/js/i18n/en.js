@@ -1,4 +1,6 @@
-import {
+import { registerPack } from "../lib/i18n.js";
+
+registerPack("en", {
   "componentSubmission.title": "Retain a proposed component revision",
   "componentSubmission.scope": "Keep a proposed revision and its exact dependencies together. This saves an unreviewed subject; it does not start validation or activate the component.",
   "componentSubmission.editor": "Advanced revision editor",
@@ -13,11 +15,7 @@ import {
   "componentSubmission.retained": "Submission {id} retained. Validation and activation remain separate.",
   "componentSubmission.component": "Retained component {index}",
   "componentSubmission.capacity": "The request exceeds the 14 MiB transport limit.",
-  "componentSubmission.conflict": "The retained subject differs from the pending proposal. Keep the original request for recovery.",
- registerPack } from "../lib/i18n.js";
-
-registerPack("en", {
-  "associationReview.noteTooLarge": "Review notes must fit within 16 KiB of UTF-8 text.",
+  "componentSubmission.conflict": "The retained subject differs from the pending proposal. Keep the original request for recovery.",  "associationReview.noteTooLarge": "Review notes must fit within 16 KiB of UTF-8 text.",
   "associationReview.another": "Review another usage",
   "associationReview.title": "Review an exact Skill usage",
   "associationReview.scope": "Review the retained instructions, executable code, Tool binding and validation evidence together. Q2 records approval of this usage; catalogue activation is a separate step.",
@@ -1232,6 +1230,11 @@ registerPack("en", {
   // Settings — Monty VM tab (Phase 6).
   "montyVm.failedLoad": "Failed to load Monty VM settings: {message}",
   "montyVm.status": "Runtime status",
+  "montyVm.desiredRevision": "Desired task revision",
+  "montyVm.effectiveRevision": "Effective task revision",
+  "montyVm.uptake.applied": "Applied",
+  "montyVm.uptake.pending": "Pending acknowledgement",
+  "montyVm.uptake.failed": "Uptake failed",
   "montyVm.state": "State",
   "montyVm.polling": "polling…",
   "montyVm.orchVersion": "Orchestrator version",
@@ -1252,7 +1255,7 @@ registerPack("en", {
   "montyVm.forensicRetentionDaysDesc": "How long full forensic packets are retained.",
   "montyVm.saved": "Saved",
   "montyVm.lifecycle": "Lifecycle",
-  "montyVm.lifecycleDesc": "Restart the Monty VM runtime to apply new settings or recover from an error state.",
+  "montyVm.lifecycleDesc": "Task duration and token mode apply live. Restart controls are available only when supported by the runtime.",
   "montyVm.restart": "Restart Monty VM",
   "montyVm.restarting": "Restarting…",
   "montyVm.confirmTitle": "Restart Monty VM?",

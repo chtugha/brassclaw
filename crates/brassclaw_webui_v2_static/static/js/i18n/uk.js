@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("uk", {
+  "montyVm.desiredRevision": "Бажана ревізія завдання",
+  "montyVm.effectiveRevision": "Чинна ревізія завдання",
+  "montyVm.uptake.applied": "Застосовано",
+  "montyVm.uptake.pending": "Очікується підтвердження",
+  "montyVm.uptake.failed": "Не вдалося застосувати",
+  "montyVm.lifecycleDesc": "Тривалість завдання та режим токенів застосовуються наживо. Перезапуск доступний лише за підтримки середовища виконання.",
   "language.name": "Українська",
   "language.switch": "Мову змінено",
 

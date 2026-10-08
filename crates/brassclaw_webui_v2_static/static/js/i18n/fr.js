@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("fr", {
+  "montyVm.desiredRevision": "Révision de tâche souhaitée",
+  "montyVm.effectiveRevision": "Révision de tâche effective",
+  "montyVm.uptake.applied": "Appliqué",
+  "montyVm.uptake.pending": "Confirmation en attente",
+  "montyVm.uptake.failed": "Échec de l’application",
+  "montyVm.lifecycleDesc": "La durée de tâche et le mode de jetons sont appliqués en direct. Le redémarrage est disponible seulement si le runtime le prend en charge.",
   "language.name": "Français",
   "language.switch": "Langue modifiée",
 

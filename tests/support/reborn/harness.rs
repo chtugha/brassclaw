@@ -990,6 +990,7 @@ impl RebornBinaryE2EHarness {
             input_queue: None,
             identity_context_source,
             model_policy_guard: None,
+            token_budget_mode: None,
             model_budget_accountant: None,
             safety_context: None,
             hook_dispatcher_builder_factory: None,

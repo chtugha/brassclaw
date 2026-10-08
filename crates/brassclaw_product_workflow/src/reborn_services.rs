@@ -4338,7 +4338,11 @@ impl RebornServicesApi for RebornServices {
         } else {
             crate::settings::default_monty_vm_settings()
         };
-        Ok(crate::settings::MontyVmSettingsResponse { settings })
+        let runtime = self
+            .monty_vm_settings
+            .as_ref()
+            .and_then(|store| store.runtime_observation(&settings));
+        Ok(crate::settings::MontyVmSettingsResponse { settings, runtime })
     }
 
     async fn update_monty_vm_settings(
@@ -4359,7 +4363,11 @@ impl RebornServicesApi for RebornServices {
             .upsert(&user_id, &project_id, &request)
             .await
             .map_err(map_monty_vm_error)?;
-        Ok(crate::settings::MontyVmSettingsResponse { settings })
+        let runtime = self
+            .monty_vm_settings
+            .as_ref()
+            .and_then(|store| store.runtime_observation(&settings));
+        Ok(crate::settings::MontyVmSettingsResponse { settings, runtime })
     }
 
     async fn get_security_settings(
@@ -4401,13 +4409,20 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::MontyVmStatusResponse, RebornServicesError> {
-        // Persisted desired settings are neither liveness nor effective runtime
-        // configuration. Fail explicitly while the runtime-status port is absent.
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            503,
-            false,
-        ))
+        let store = self.monty_vm_settings.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 503, false)
+        })?;
+        store
+            .runtime_status()
+            .await
+            .map_err(map_monty_vm_error)?
+            .ok_or_else(|| {
+                RebornServicesError::from_status(
+                    RebornServicesErrorCode::InvalidRequest,
+                    503,
+                    false,
+                )
+            })
     }
 
     async fn update_chat_preference(

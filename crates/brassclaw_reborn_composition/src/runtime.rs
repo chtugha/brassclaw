@@ -204,6 +204,8 @@ pub struct RebornRuntime {
     services: RebornServices,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     global_monty_owner: crate::global_monty_owner::GlobalMontyOwner,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    monty_settings_owner: crate::live_monty_settings::MontySettingsOwner,
     #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
     monty_test_controls: (
         Arc<crate::global_monty_driver::GlobalMontyDriver>,
@@ -763,6 +765,13 @@ impl RebornRuntime {
         self.thread_scope.agent_id.as_str()
     }
 
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) fn webui_monty_settings_store(
+        &self,
+    ) -> Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore> {
+        self.monty_settings_owner.store()
+    }
+
     pub(crate) fn webui_thread_service(&self) -> Arc<dyn SessionThreadService> {
         self.thread_service.clone()
     }
@@ -1225,6 +1234,7 @@ impl RebornRuntime {
         }
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         {
+            let settings_result = self.monty_settings_owner.shutdown().await;
             let mut owner = self.global_monty_owner;
             owner.request_shutdown();
             let exit = owner
@@ -1234,6 +1244,9 @@ impl RebornRuntime {
                     reason: error.to_string(),
                 })?;
             crate::global_monty_startup::check_shutdown(exit)?;
+            settings_result.map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?;
         }
         Ok(())
     }
@@ -2444,6 +2457,95 @@ pub async fn build_reborn_runtime(
         )
         .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?
     };
+    #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+    let monty_test_controls;
+    // Global Monty is ready before any turn worker or trigger producer starts.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let (global_monty_owner, installed_catalogue, monty_driver, monty_settings_owner) = {
+        let pool = services
+            .pg_pool
+            .clone()
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "global Monty requires PostgreSQL".into(),
+            })?;
+        let scope = brassclaw_engine::memory::intent_system::IntentScope {
+            tenant_id: validated_identity.tenant_id.to_string(),
+            user_id: actor_user_id.to_string(),
+            agent_id: validated_identity.agent_id.to_string(),
+            project_id: thread_scope
+                .project_id
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "default".into()),
+        };
+        let (owner, catalogue, initial_settings) = crate::global_monty_startup::start(
+            pool.clone(),
+            services
+                .monty_kernel
+                .clone()
+                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                    reason: "global Monty requires its captured kernel".into(),
+                })?,
+            &scope,
+            substrate_memory_mounts.clone(),
+        )
+        .await?;
+        let settings_owner = crate::live_monty_settings::MontySettingsOwner::start(
+            pool.clone(),
+            owner.client(),
+            owner.ownership_check(),
+            initial_settings,
+        )
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: error.to_string(),
+        })?;
+        let ports = Arc::new(
+            crate::global_task_factory::OwnedGlobalTaskFactory::new(
+                pool,
+                owner.ownership_check(),
+                Arc::new(catalogue.clone()),
+                256,
+            )
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?,
+        );
+        let driver = Arc::new(
+            crate::global_monty_driver::GlobalMontyDriver::new(
+                owner.client(),
+                thread_service.clone(),
+                ports.clone(),
+                256,
+            )
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?,
+        );
+        #[cfg(test)]
+        {
+            monty_test_controls = (driver.clone(), ports);
+        }
+        (
+            owner,
+            catalogue,
+            Some(driver as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>),
+            settings_owner,
+        )
+    };
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+    let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = None;
+
+    #[cfg(feature = "skills-db")]
+    let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
+        services.pg_pool.as_ref().map(|pool| {
+            Arc::new(
+                crate::retrieval_lookup_impl::PgRetrievalLookup::new(Arc::new(
+                    brassclaw_engine::memory::PostgresSource::new(Arc::clone(pool)),
+                ))
+                .with_token_settings(monty_settings_owner.store().effective_view())
+                .with_skill_activation_observer(Arc::clone(&skill_activation_observer_arc)),
+            ) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
+        });
     // v3 Phase H.12.5: clone the per-run Tier-0 EffectExecutor builder out of
     // the capability wiring before any of its sibling fields are moved, so the
     // OrchestratorLookup bridge (built below near `retrieval_lookup`) can hand
@@ -2565,23 +2667,6 @@ pub async fn build_reborn_runtime(
     // that compile without the feature. v3 Phase P.1 Step C wires the
     // skill-activation observer so intent matches emit live WebUI projection
     // events via the same publisher as the milestone sink.
-    #[cfg(feature = "skills-db")]
-    let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
-        services.pg_pool.as_ref().map(|pool| {
-            Arc::new(
-                crate::retrieval_lookup_impl::PgRetrievalLookup::new(Arc::new(
-                    brassclaw_engine::memory::PostgresSource::new(Arc::clone(pool)),
-                ))
-                .with_token_settings(Arc::new(
-                    crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
-                        Arc::clone(pool),
-                        validated_identity.tenant_id.as_str(),
-                        validated_identity.agent_id.as_str(),
-                    ),
-                ))
-                .with_skill_activation_observer(Arc::clone(&skill_activation_observer_arc)),
-            ) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
-        });
     #[cfg(not(feature = "skills-db"))]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> = None;
 
@@ -2628,74 +2713,6 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "skills-db"))]
     let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> =
         None;
-
-    #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
-    let monty_test_controls;
-    // Global Monty is ready before any turn worker or trigger producer starts.
-    #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    let (global_monty_owner, installed_catalogue, monty_driver) = {
-        let pool = services
-            .pg_pool
-            .clone()
-            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
-                reason: "global Monty requires PostgreSQL".into(),
-            })?;
-        let scope = brassclaw_engine::memory::intent_system::IntentScope {
-            tenant_id: validated_identity.tenant_id.to_string(),
-            user_id: actor_user_id.to_string(),
-            agent_id: validated_identity.agent_id.to_string(),
-            project_id: thread_scope
-                .project_id
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "default".into()),
-        };
-        let (owner, catalogue) = crate::global_monty_startup::start(
-            pool.clone(),
-            services
-                .monty_kernel
-                .clone()
-                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
-                    reason: "global Monty requires its captured kernel".into(),
-                })?,
-            &scope,
-            substrate_memory_mounts.clone(),
-        )
-        .await?;
-        let ports = Arc::new(
-            crate::global_task_factory::OwnedGlobalTaskFactory::new(
-                pool,
-                owner.ownership_check(),
-                Arc::new(catalogue.clone()),
-                256,
-            )
-            .map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: error.to_string(),
-            })?,
-        );
-        let driver = Arc::new(
-            crate::global_monty_driver::GlobalMontyDriver::new(
-                owner.client(),
-                thread_service.clone(),
-                ports.clone(),
-                256,
-            )
-            .map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: error.to_string(),
-            })?,
-        );
-        #[cfg(test)]
-        {
-            monty_test_controls = (driver.clone(), ports);
-        }
-        (
-            owner,
-            catalogue,
-            Some(driver as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>),
-        )
-    };
-    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
-    let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = None;
 
     // v3 Phase E.0 / plan §H3: wire SkillActivationMessageTextResolver so the
     // production host can resolve the raw accepted-message body via the
@@ -2826,6 +2843,21 @@ pub async fn build_reborn_runtime(
         ),
         model_policy_guard: None,
         model_budget_accountant,
+        token_budget_mode: {
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            {
+                let live = global_monty_owner.client().live_task_settings();
+                Some(
+                    Arc::new(move || live.current().limits.token_budgets_enabled)
+                        as Arc<dyn Fn() -> bool + Send + Sync>,
+                )
+            }
+            #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+            {
+                Some(Arc::new(move || resolved_token_budgets_enabled)
+                    as Arc<dyn Fn() -> bool + Send + Sync>)
+            }
+        },
         safety_context: None,
         hook_security_audit_sink: Some(Arc::new(brassclaw_events::TracingSecurityAuditSink)),
         turn_event_sink: None,
@@ -3073,6 +3105,8 @@ pub async fn build_reborn_runtime(
         services,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         global_monty_owner,
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        monty_settings_owner,
         #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
         monty_test_controls,
         turn_coordinator,
@@ -4886,6 +4920,289 @@ mod tests {
             "internal No-Match must not call a model"
         );
         runtime.shutdown().await.unwrap();
+    }
+
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn native_webui_monty_task_settings_reach_one_running_instance() {
+        use axum::{
+            Router,
+            body::{Body, to_bytes},
+            http::{Method, Request, StatusCode},
+        };
+        use brassclaw_product_workflow::{MontyBudgetUptake, MontyVmSettingsStore};
+        use tower::ServiceExt;
+        struct Operator;
+        #[async_trait]
+        impl crate::WebuiAuthenticator for Operator {
+            async fn authenticate(&self, token: &str) -> Option<UserId> {
+                match token {
+                    "settings-a" | "settings-b" => Some(UserId::new(token).unwrap()),
+                    _ => None,
+                }
+            }
+            fn allows_operator_webui_config(&self) -> bool {
+                true
+            }
+        }
+        struct WaitingGateway {
+            entered: Arc<tokio::sync::Notify>,
+            release: Arc<tokio::sync::Semaphore>,
+        }
+        #[async_trait]
+        impl HostManagedModelGateway for WaitingGateway {
+            async fn stream_model(
+                &self,
+                _request: HostManagedModelRequest,
+            ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+                self.entered.notify_one();
+                self.release.acquire().await.unwrap().forget();
+                Ok(HostManagedModelResponse::assistant_reply(
+                    "model result after the live edit",
+                ))
+            }
+        }
+        async fn request(
+            app: &Router,
+            method: Method,
+            token: &str,
+            path: &str,
+            body: serde_json::Value,
+        ) -> (StatusCode, serde_json::Value) {
+            let bytes = if method == Method::GET {
+                String::new()
+            } else {
+                body.to_string()
+            };
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .header("Authorization", format!("Bearer {token}"))
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(bytes))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+            (status, serde_json::from_slice(&bytes).unwrap())
+        }
+        let root = tempfile::tempdir().unwrap();
+        let rig = super::test_pg::pg_rig().await;
+        let _db_guard = rig.lock_db().await;
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let input = RebornRuntimeInput::from_services(
+            rig.build_input("live-settings-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_model_gateway_override(Arc::new(WaitingGateway {
+            entered: entered.clone(),
+            release: release.clone(),
+        }))
+        .with_poll_settings(PollSettings {
+            interval: Duration::from_millis(10),
+            max_total: RUNTIME_SEND_TIMEOUT,
+        });
+        let runtime = Arc::new(build_reborn_runtime(input).await.unwrap());
+        let bundle = build_webui_services(runtime.clone(), None).await.unwrap();
+        let app = crate::webui_v2_app(
+            bundle,
+            crate::WebuiServeConfig::new(
+                runtime.thread_scope.tenant_id.clone(),
+                Arc::new(Operator),
+                Vec::new(),
+            ),
+        )
+        .unwrap();
+        let (code, initial) = request(
+            &app,
+            Method::GET,
+            "settings-a",
+            "/api/settings/monty-vm",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        let initial_revision = initial["settings"]["revision"].as_u64().unwrap();
+        assert_eq!(
+            initial["runtime"]["task_budget"]["effective_revision"],
+            initial_revision
+        );
+        assert_eq!(initial["runtime"]["task_budget"]["uptake"], "applied");
+        let conversation = runtime.new_conversation().await.unwrap();
+        let sending = {
+            let runtime = runtime.clone();
+            let conversation = conversation.clone();
+            tokio::spawn(async move {
+                runtime
+                    .send_user_message(&conversation, "unmatched task waiting for its model")
+                    .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(5), entered.notified())
+            .await
+            .unwrap();
+        // The task is in an external provider wait. Both edits must reach the
+        // existing VM and its Rust watch without charging that wait or restarting.
+        for (offset, duration, enabled) in [(1, 900, true), (2, 600, false)] {
+            let (code, result) = request(
+                &app,
+                Method::PUT,
+                "settings-a",
+                "/api/settings/monty-vm",
+                serde_json::json!({"expected_revision":initial_revision + offset - 1,
+                    "max_duration_secs":duration,"token_budgets_enabled":enabled}),
+            )
+            .await;
+            assert_eq!(code, StatusCode::OK, "{result}");
+            assert_eq!(result["runtime"]["task_budget"]["uptake"], "applied");
+            assert_eq!(
+                result["runtime"]["task_budget"]["effective_revision"],
+                initial_revision + offset
+            );
+            assert_eq!(
+                result["runtime"]["task_budget"]["max_duration_secs"],
+                duration
+            );
+            let effective = runtime
+                .global_monty_owner
+                .client()
+                .live_task_settings()
+                .current();
+            assert_eq!(effective.revision, initial_revision + offset);
+            assert_eq!(effective.limits.token_budgets_enabled, enabled);
+            assert_eq!(effective.limits.max_compute_time.as_secs(), duration);
+            let retrieval = runtime
+                .monty_settings_owner
+                .store()
+                .effective_view()
+                .get("another-user", "another-project")
+                .await
+                .unwrap();
+            assert_eq!(retrieval.revision, effective.revision);
+            assert_eq!(retrieval.token_budgets_enabled, enabled);
+        }
+        let (code, shared) = request(
+            &app,
+            Method::GET,
+            "settings-b",
+            "/api/settings/monty-vm",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(
+            shared["settings"]["revision"],
+            initial_revision + 2,
+            "settings must be instance-wide"
+        );
+        let (code, _) = request(
+            &app,
+            Method::PUT,
+            "settings-b",
+            "/api/settings/monty-vm",
+            serde_json::json!({"expected_revision":initial_revision,"max_duration_secs":300}),
+        )
+        .await;
+        assert_eq!(code, StatusCode::CONFLICT);
+        // Persist without any browser waiter/notification. The runtime owner
+        // must still reconcile this durable edit through its bounded source lane.
+        let durable = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        );
+        let update = serde_json::from_value(
+            serde_json::json!({"expected_revision":initial_revision+2,"max_duration_secs":777}),
+        )
+        .unwrap();
+        let desired = durable.upsert("default", "default", &update).await.unwrap();
+        let mut changed = runtime
+            .global_monty_owner
+            .client()
+            .live_task_settings()
+            .subscribe();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let current = changed.borrow_and_update().revision;
+                if current == desired.revision {
+                    break;
+                }
+                changed.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        release.add_permits(1);
+        let reply = sending.await.unwrap().unwrap();
+        assert_eq!(reply.status, TurnStatus::Completed);
+        let client = rig.pool.get().await.unwrap();
+        let row = client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+            &[&reply.run_id.as_uuid()]).await.unwrap();
+        let first: serde_json::Value = row.get(0);
+        assert_eq!(
+            first["execution"]["accounting"]["effective_revision"],
+            desired.revision
+        );
+        drop(client);
+        let matched = runtime
+            .send_user_message(&conversation, "reply after the live edit")
+            .await
+            .unwrap();
+        assert_eq!(matched.status, TurnStatus::Completed);
+        let client = rig.pool.get().await.unwrap();
+        let row = client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+            &[&matched.run_id.as_uuid()]).await.unwrap();
+        let second: serde_json::Value = row.get(0);
+        assert_eq!(
+            first["execution"]["root"]["vm_id"],
+            second["execution"]["root"]["vm_id"]
+        );
+        drop(client);
+        let store = runtime.webui_monty_settings_store();
+        let status = store.runtime_status().await.unwrap().unwrap();
+        assert_eq!(
+            status.task_budget.unwrap().uptake,
+            MontyBudgetUptake::Applied
+        );
+        drop(app);
+        Arc::try_unwrap(runtime)
+            .ok()
+            .expect("runtime references released")
+            .shutdown()
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .runtime_observation(&desired)
+                .unwrap()
+                .task_budget
+                .unwrap()
+                .uptake,
+            MontyBudgetUptake::Failed
+        );
+        let input = RebornRuntimeInput::from_services(
+            rig.build_input("live-settings-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_model_gateway_override(Arc::new(RecordingGateway {
+            reply: "restart did not request inference".into(),
+            requests: Arc::new(StdMutex::new(Vec::new())),
+        }));
+        let restarted = build_reborn_runtime(input).await.unwrap();
+        let effective = restarted
+            .global_monty_owner
+            .client()
+            .live_task_settings()
+            .current();
+        assert_eq!(effective.revision, desired.revision);
+        assert_eq!(effective.limits.max_compute_time.as_secs(), 777);
+        restarted.shutdown().await.unwrap();
     }
 
     #[tokio::test]

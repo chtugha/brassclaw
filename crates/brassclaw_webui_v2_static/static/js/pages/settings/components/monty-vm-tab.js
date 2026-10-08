@@ -2,12 +2,9 @@
  * MontyVmTab — Settings tab for Monty VM resource limits, orchestrator
  * selection, and lifecycle controls (spec §3.10, Phase 6 Step 6.2).
  *
- * Monty VM restart flow:
- * 1. Operator changes settings and clicks Save — `PUT /api/settings/monty-vm`.
- * 2. Operator clicks "Restart Monty" — confirmation dialog appears.
- * 3. On confirm, `POST /api/settings/monty-vm/restart` is called.
- * 4. Status indicator polls `GET /api/settings/monty-vm/status` every 3s
- *    while state is `draining` or `restarting`; stops on `running`/`error`.
+ * Duration and token-mode edits apply live. Saved desired revisions and actual
+ * worker acknowledgements are shown separately; restart is an optional service
+ * capability, never a prerequisite for applying budgets.
  */
 import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
@@ -37,6 +34,7 @@ export function MontyVmTab({ searchQuery = "" }) {
 
   // Status state.
   const [status, setStatus] = React.useState(null);
+  const [statusError, setStatusError] = React.useState(null);
   const [isPolling, setIsPolling] = React.useState(false);
 
   // Restart state.
@@ -48,15 +46,18 @@ export function MontyVmTab({ searchQuery = "" }) {
   React.useEffect(() => {
     let cancelled = false;
     setIsLoadingSettings(true);
-    Promise.all([fetchMontyVmSettings(), fetchMontyVmStatus()])
+    Promise.allSettled([fetchMontyVmSettings(), fetchMontyVmStatus()])
       .then(([s, st]) => {
-        if (!cancelled) {
-          setSettings(s.settings);
-          setStatus(st);
+        if (cancelled) return;
+        if (s.status === "fulfilled") {
+          setSettings(s.value.settings);
+          if (s.value.runtime) setStatus(s.value.runtime);
         }
-      })
-      .catch((err) => {
-        if (!cancelled) setSettingsError(err);
+        else setSettingsError(s.reason);
+        if (st.status === "fulfilled") {
+          setStatus(st.value);
+          setIsPolling(st.value.state === "running" && st.value.task_budget?.uptake !== "applied");
+        } else setStatusError(st.reason.message || String(st.reason));
       })
       .finally(() => {
         if (!cancelled) setIsLoadingSettings(false);
@@ -66,30 +67,32 @@ export function MontyVmTab({ searchQuery = "" }) {
     };
   }, []);
 
-  // Poll status while restarting.
+  // Serial polling while a saved revision awaits acknowledgement.
   React.useEffect(() => {
     if (!isPolling) return;
     let cancelled = false;
+    let timer;
     const poll = async () => {
       try {
         const st = await fetchMontyVmStatus();
         if (!cancelled) {
           setStatus(st);
-          if (st.state === "running" || st.state === "stopped" || st.state === "error") {
+          setStatusError(null);
+          if ((st.state === "running" && st.task_budget?.uptake === "applied") || st.state === "stopped" || st.state === "error") {
             setIsPolling(false);
-          }
+          } else timer = setTimeout(poll, STATUS_POLL_MS);
         }
       } catch (err) {
         if (!cancelled) {
           setIsPolling(false);
-          setRestartError(err.message || String(err));
+          setStatusError(err.message || String(err));
         }
       }
     };
-    const timer = setInterval(poll, STATUS_POLL_MS);
+    timer = setTimeout(poll, STATUS_POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [isPolling]);
 
@@ -109,6 +112,11 @@ export function MontyVmTab({ searchQuery = "" }) {
         forensic_packet_retention_days: settings.forensic_packet_retention_days,
       });
       if (updated?.settings) setSettings(updated.settings);
+      if (updated?.runtime) {
+        setStatus(updated.runtime);
+        setStatusError(null);
+        setIsPolling(updated.runtime.state === "running" && updated.runtime.task_budget?.uptake !== "applied");
+      }
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
     } catch (err) {
@@ -153,6 +161,7 @@ export function MontyVmTab({ searchQuery = "" }) {
       ${/* Status indicator */ ""}
       ${status && html`<${StatusCard} status=${status} isPolling=${isPolling} t=${t} />`}
 
+      ${statusError && html`<div role="alert" className="text-sm text-red-200">${statusError}</div>`}
       ${/* Error banners */ ""}
       ${saveError && html`
         <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -217,6 +226,14 @@ function StatusCard({ status, isPolling, t }) {
               ${t("montyVm.polling")}
             </span>`}
         </div>
+        ${status.task_budget && html`
+          <div className="text-sm text-[var(--v2-text-muted)]">
+            ${t("montyVm.desiredRevision")}: ${status.task_budget.desired_revision}
+            · ${t("montyVm.effectiveRevision")}: ${status.task_budget.effective_revision}
+            · ${t("montyVm.maxDuration")}: ${status.task_budget.max_duration_secs}
+            · ${t(`montyVm.uptake.${status.task_budget.uptake}`)}
+          </div>
+        `}
         ${status.orchestrator_version &&
           html`
             <div className="flex items-center gap-2">
@@ -316,7 +333,7 @@ function RestartSection({
   onCancelRestart,
   t,
 }) {
-  const canRestart = status?.state === "running" || status?.state === "stopped";
+  const canRestart = status?.restart_supported && (status.state === "running" || status.state === "stopped");
 
   return html`
     <${Card} padding="none" className="p-4 sm:p-5">
@@ -330,10 +347,10 @@ function RestartSection({
         <${Button}
           variant="secondary"
           size="sm"
-          disabled=${isRestarting || isPolling || !canRestart}
+          disabled=${isRestarting || !canRestart}
           onClick=${onRequestRestart}
         >
-          ${isRestarting || isPolling ? t("montyVm.restarting") : t("montyVm.restart")}
+          ${isRestarting ? t("montyVm.restarting") : t("montyVm.restart")}
         <//>
       `}
       ${showConfirm && html`

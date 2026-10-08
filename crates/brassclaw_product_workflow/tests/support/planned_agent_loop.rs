@@ -302,6 +302,7 @@ impl ProductLiveAgentLoopHarness {
             input_queue: Some(Arc::new(EmptyInputQueue)),
             identity_context_source: Arc::new(EmptyIdentityContextSource),
             model_policy_guard: Some(Arc::new(NoOpPolicyGuard)),
+            token_budget_mode: None,
             model_budget_accountant: Some(Arc::new(NoOpBudgetAccountant)),
             safety_context: Some(test_safety_context()),
             hook_dispatcher_builder_factory: None,

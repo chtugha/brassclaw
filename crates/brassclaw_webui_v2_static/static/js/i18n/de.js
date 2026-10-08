@@ -1,4 +1,12 @@
-import {
+import { registerPack } from "../lib/i18n.js";
+
+registerPack("de", {
+  "montyVm.desiredRevision": "Gewünschte Task-Revision",
+  "montyVm.effectiveRevision": "Wirksame Task-Revision",
+  "montyVm.uptake.applied": "Übernommen",
+  "montyVm.uptake.pending": "Bestätigung ausstehend",
+  "montyVm.uptake.failed": "Übernahme fehlgeschlagen",
+  "montyVm.lifecycleDesc": "Task-Laufzeit und Tokenmodus werden live übernommen. Neustartsteuerung ist nur bei Unterstützung durch die Runtime verfügbar.",
   "componentSubmission.title": "Vorgeschlagene Komponentenrevision sichern",
   "componentSubmission.scope": "Eine vorgeschlagene Revision zusammen mit ihren exakten Abhängigkeiten sichern. Der Gegenstand bleibt ungeprüft; Validierung und Aktivierung werden dadurch nicht gestartet.",
   "componentSubmission.editor": "Erweiterter Revisionseditor",
@@ -13,10 +21,7 @@ import {
   "componentSubmission.retained": "Einreichung {id} gesichert. Validierung und Aktivierung erfolgen separat.",
   "componentSubmission.component": "Gesicherte Komponente {index}",
   "componentSubmission.capacity": "Die Anfrage überschreitet die Transportgrenze von 14 MiB.",
-  "componentSubmission.conflict": "Der gesicherte Gegenstand weicht vom ausstehenden Vorschlag ab. Ursprüngliche Anfrage zur Wiederherstellung aufbewahren.",
- registerPack } from "../lib/i18n.js";
-
-registerPack("de", {
+  "componentSubmission.conflict": "Der gesicherte Gegenstand weicht vom ausstehenden Vorschlag ab. Ursprüngliche Anfrage zur Wiederherstellung aufbewahren.","montyVm.tokenBudgetsEnabled": "Tokenbudgets aktivieren",
   "associationReview.noteTooLarge": "Review-Notizen dürfen höchstens 16 KiB UTF-8-Text enthalten.",
   "associationReview.another": "Weitere Verwendung prüfen",
   "associationReview.title": "Exakte Skill-Verwendung prüfen",
@@ -620,4 +625,3 @@ registerPack("de", {
   "prefix.regenerate": "Neu generieren",
   "prefix.regenerating": "Generiere neu…",
 });
-  "montyVm.tokenBudgetsEnabled": "Tokenbudgets aktivieren",

@@ -138,6 +138,8 @@ where
     /// `None`, matching the cancellation/identity contract.
     pub model_policy_guard: Option<Arc<dyn LoopModelPolicyGuard>>,
     pub model_budget_accountant: Option<Arc<dyn LoopModelBudgetAccountant>>,
+    /// Effective token mode, sampled at each history/prompt assembly.
+    pub token_budget_mode: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     pub safety_context: Option<InstructionSafetyContext>,
     pub hook_security_audit_sink: Option<Arc<dyn SecurityAuditSink>>,
     pub turn_event_sink: Option<Arc<dyn TurnEventSink>>,
@@ -583,6 +585,9 @@ where
     }
     if let Some(guard) = parts.model_policy_guard {
         host_factory = host_factory.with_model_policy_guard(guard);
+    }
+    if let Some(mode) = parts.token_budget_mode {
+        host_factory = host_factory.with_token_budget_mode(move || mode());
     }
     if let Some(accountant) = parts.model_budget_accountant {
         host_factory = host_factory.with_model_budget_accountant(accountant);

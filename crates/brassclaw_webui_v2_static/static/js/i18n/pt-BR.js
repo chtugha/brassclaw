@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("pt-BR", {
+  "montyVm.desiredRevision": "Revisão de tarefa desejada",
+  "montyVm.effectiveRevision": "Revisão de tarefa efetiva",
+  "montyVm.uptake.applied": "Aplicado",
+  "montyVm.uptake.pending": "Aguardando confirmação",
+  "montyVm.uptake.failed": "Falha na aplicação",
+  "montyVm.lifecycleDesc": "A duração da tarefa e o modo de tokens são aplicados em tempo real. A reinicialização só está disponível se o runtime oferecer suporte.",
   "language.name": "Português (Brasil)",
   "language.switch": "Idioma alterado",
 

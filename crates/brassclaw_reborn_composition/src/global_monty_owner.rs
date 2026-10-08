@@ -62,6 +62,10 @@ pub(crate) struct GlobalOwnerCheck {
     closed: Arc<AtomicBool>,
 }
 impl GlobalOwnerCheck {
+    pub(crate) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+
     pub(crate) async fn check(&self) -> Result<(), OwnershipError> {
         if self.closed.load(Ordering::Acquire) {
             return Err(OwnershipError::Lost);

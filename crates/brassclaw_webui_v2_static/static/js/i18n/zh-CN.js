@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("zh-CN", {
+  "montyVm.desiredRevision": "任务目标修订",
+  "montyVm.effectiveRevision": "任务生效修订",
+  "montyVm.uptake.applied": "已应用",
+  "montyVm.uptake.pending": "等待确认",
+  "montyVm.uptake.failed": "应用失败",
+  "montyVm.lifecycleDesc": "任务时长和令牌模式会实时生效。仅在运行时支持的情况下提供重启控制。",
   "language.name": "简体中文",
   "language.switch": "语言已更改",
 

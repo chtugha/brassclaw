@@ -1,6 +1,12 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("ar", {
+  "montyVm.desiredRevision": "مراجعة المهمة المطلوبة",
+  "montyVm.effectiveRevision": "مراجعة المهمة الفعلية",
+  "montyVm.uptake.applied": "تم التطبيق",
+  "montyVm.uptake.pending": "بانتظار التأكيد",
+  "montyVm.uptake.failed": "فشل التطبيق",
+  "montyVm.lifecycleDesc": "تُطبّق مدة المهمة ووضع الرموز مباشرة. تتوفر إعادة التشغيل فقط إذا كانت بيئة التشغيل تدعمها.",
   "language.name": "العربية",
   "language.switch": "تم تغيير اللغة",
 
