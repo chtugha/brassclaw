@@ -57,6 +57,8 @@ mod global_monty_driver;
 mod global_monty_owner;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_recipe_ports.rs"]
 mod global_recipe_ports;
+#[path = "../../../crates/brassclaw_reborn_composition/src/global_root_seed.rs"]
+mod global_root_seed;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_task_factory.rs"]
 mod global_task_factory;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_instance_owner.rs"]
@@ -957,21 +959,30 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     // draft validation; no seed/root approval is inferred from source integrity.
     let store =
         brassclaw_skills::revision_store::PgComponentRevisionStore::new(database.pool.clone());
-    let original_boot = support::boot(SOURCE);
-    let root_uuid = uuid::Uuid::new_v4();
+    let definition = global_root_seed::retain_packaged_global_root(database.pool.clone(), SOURCE)
+        .await
+        .unwrap();
+    let root_ref = definition.reference();
+    let root_uuid = root_ref.uuid;
+    assert_eq!(root_ref.version, 1);
+    assert_eq!(definition.source(), SOURCE);
+    assert!(!definition.ports().contains("post_reply"));
+    // Concurrent boots retain exactly one original revision, not new versions
+    // or trust records. Use real pool transactions rather than a fake store.
+    for retained in futures::future::join_all(
+        (0..8)
+            .map(|_| global_root_seed::retain_packaged_global_root(database.pool.clone(), SOURCE)),
+    )
+    .await
+    {
+        assert_eq!(retained.unwrap().reference(), root_ref);
+    }
     let root_draft = brassclaw_skills::orchestrator_contract::global_root_draft(
         root_uuid,
         SOURCE,
-        &original_boot.aliases,
+        definition.ports(),
     )
     .unwrap();
-    let root_ref = store.stage(&root_draft, 0).await.unwrap();
-    let roots = store.read_exact(&[root_uuid], &[root_ref]).await.unwrap();
-    let definition = brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(
-        &roots.revisions()[&root_uuid],
-    )
-    .unwrap();
-    assert_eq!(definition.reference(), root_ref);
     let mut malformed: Value = serde_json::from_str(root_draft.exact_bytes()).unwrap();
     malformed["document"]["input_symbols"] = json!(["host", "thread"]);
     let malformed = brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(
@@ -1035,6 +1046,61 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     )
     .unwrap();
     assert_eq!(successor.reference().version, root_ref.version + 1);
+    // Boot after an authored successor must retain the original package without
+    // moving its allocation head backward or replacing the successor's bytes.
+    assert_eq!(
+        global_root_seed::retain_packaged_global_root(database.pool.clone(), SOURCE)
+            .await
+            .unwrap()
+            .reference(),
+        root_ref
+    );
+    assert_eq!(
+        store.retain_packaged_draft(&replacement).await.unwrap(),
+        successor_ref
+    );
+    let head: i64 = database
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT last_version FROM reborn_component_revision_heads WHERE component_id=$1",
+            &[&root_uuid],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(head as u64, successor_ref.version);
+    let package_upgrade = brassclaw_skills::orchestrator_contract::global_root_draft(
+        root_uuid,
+        &format!("{SOURCE}\n# packaged successor\n"),
+        definition.ports(),
+    )
+    .unwrap();
+    let upgrade_ref = store.retain_packaged_draft(&package_upgrade).await.unwrap();
+    assert_eq!(upgrade_ref.version, successor_ref.version + 1);
+    assert_eq!(
+        store.retain_packaged_draft(&package_upgrade).await.unwrap(),
+        upgrade_ref
+    );
+    // Reusing an identity for a different class is still a conflict, not a seed
+    // override. This rejected retention must leave the existing root readable.
+    let wrong_class = brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(
+        &json!({"format":"component-revision/1","uuid":root_uuid,"class_code":22,
+            "document":{"body":"result = None"},"dependencies":[],"association":null})
+        .to_string(),
+    )
+    .unwrap();
+    assert!(matches!(
+        store.retain_packaged_draft(&wrong_class).await,
+        Err(brassclaw_skills::revision_store::RevisionStoreError::Conflict)
+    ));
+    let old = store.read_exact(&[root_uuid], &[root_ref]).await.unwrap();
+    assert_eq!(
+        old.revisions()[&root_uuid].draft().exact_bytes(),
+        root_draft.exact_bytes()
+    );
     let factory = Arc::new(
         NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
     );

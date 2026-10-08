@@ -79,6 +79,12 @@ const SEED_PROJECT: &str = "system";
 pub(crate) const DEFAULT_ORCHESTRATOR_SEED: &str =
     include_str!("../../brassclaw_engine/orchestrator/basic_mode.py");
 
+// A separately retained, unapproved class-10 draft. This seed must not become
+// a runtime fallback or inherit the legacy orchestrator's validated label.
+#[cfg(feature = "skills-db")]
+pub(crate) const GLOBAL_ORCHESTRATOR_SEED: &str =
+    include_str!("../../brassclaw_engine/orchestrator/global_mode.py");
+
 /// Seed content for the codeact_preamble (class 10).
 pub(crate) const CODEACT_PREAMBLE_SEED: &str =
     include_str!("../../brassclaw_engine/prompts/codeact_preamble.md");

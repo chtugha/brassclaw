@@ -64,6 +64,19 @@ pub(crate) async fn initialize_runtime_components(
         }
     }
 
+    // Retain the exact new global-root draft without graduating the legacy
+    // class-10 row or changing any active/operator selection. Approval and the
+    // coordinated global lifecycle cutover remain independent prerequisites.
+    #[cfg(feature = "skills-db")]
+    crate::global_root_seed::retain_packaged_global_root(
+        booted_db.pool().clone(),
+        crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
+    )
+    .await
+    .map_err(|error| RebornBuildError::InvalidConfig {
+        reason: format!("global orchestrator draft retention failed: {error}"),
+    })?;
+
     // Load every required prompt before mutating process-wide OnceLocks. A
     // failed database read must not leave a partially initialized prompt set.
     let failure = load_required_prompt(booted_db, host_tenant_id, "failure_explanation").await?;
@@ -218,6 +231,35 @@ mod tests {
         initialize_runtime_components(&booted, tenant)
             .await
             .expect("repeated boot preserves validated components");
+        #[cfg(feature = "skills-db")]
+        {
+            let retained_version: i64 = pool
+                .get()
+                .await
+                .expect("boot verification connection")
+                .query_one(
+                    "SELECT version FROM reborn_component_revisions
+                     WHERE class_code=10 AND
+                     revision_bytes::jsonb #>> '{document,name}'='orchestrator:global'",
+                    &[],
+                )
+                .await
+                .expect("shared startup retained one root before any review/VM caller")
+                .get(0);
+            assert_eq!(retained_version, 1);
+            let root = crate::global_root_seed::retain_packaged_global_root(
+                pool.clone(),
+                crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
+            )
+            .await
+            .expect("boot retained the exact packaged root draft");
+            assert_eq!(root.reference().version, 1);
+            assert_eq!(
+                root.source(),
+                include_str!("../../brassclaw_engine/orchestrator/global_mode.py")
+            );
+            assert!(!root.ports().contains("post_reply"));
+        }
         let expected = load_required_prompt(&booted, tenant, "failure_explanation")
             .await
             .expect("verified prompt");

@@ -46,6 +46,8 @@ mod extension_lifecycle;
 mod extension_lifecycle_capabilities;
 mod extension_lifecycle_command;
 mod factory;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod global_root_seed;
 mod google_oauth;
 mod gsuite;
 #[cfg(all(test, feature = "postgres"))]

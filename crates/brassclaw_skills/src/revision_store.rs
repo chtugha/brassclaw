@@ -68,6 +68,75 @@ impl PgComponentRevisionStore {
         Ok(reference)
     }
 
+    /// Retain exact packaged authoring bytes once, including after an unknown
+    /// commit. This is draft retention, not trusted seed evidence or activation.
+    /// A matching older revision is reused without moving the version counter;
+    /// newer authored revisions and all active selections remain untouched.
+    /// Ordinary edits must still use `stage` with their observed base version.
+    pub async fn retain_packaged_draft(
+        &self,
+        draft: &ComponentRevisionDraft,
+    ) -> Result<ComponentRevisionRef, RevisionStoreError> {
+        let mut client = self.pool.get().await.map_err(database)?;
+        let tx = client.transaction().await.map_err(database)?;
+        let id = draft.uuid();
+        let class = i16::try_from(draft.class_code()).map_err(|_| RevisionStoreError::Integrity)?;
+        tx.execute(
+            "INSERT INTO reborn_component_revision_heads (component_id,class_code)
+             VALUES ($1,$2) ON CONFLICT (component_id) DO NOTHING",
+            &[&id, &class],
+        )
+        .await
+        .map_err(database)?;
+        // Serialize first boot, concurrent authoring and package upgrades on the
+        // existing allocation row. Read-committed observes the winner's commit.
+        let head = tx
+            .query_one(
+                "SELECT class_code,last_version FROM reborn_component_revision_heads
+                 WHERE component_id=$1 FOR UPDATE",
+                &[&id],
+            )
+            .await
+            .map_err(database)?;
+        if head.get::<_, i16>(0) != class {
+            return Err(RevisionStoreError::Conflict);
+        }
+        let previous =
+            u64::try_from(head.get::<_, i64>(1)).map_err(|_| RevisionStoreError::Integrity)?;
+        let checksum = digest_hex(draft.checksum());
+        let existing = tx
+            .query_opt(
+                "SELECT class_code,version,revision_bytes,checksum
+                 FROM reborn_component_revisions WHERE component_id=$1 AND checksum=$2
+                 ORDER BY version LIMIT 1",
+                &[&id, &checksum],
+            )
+            .await
+            .map_err(database)?;
+        let reference = if let Some(row) = existing {
+            let version =
+                u64::try_from(row.get::<_, i64>(1)).map_err(|_| RevisionStoreError::Integrity)?;
+            if row.get::<_, i16>(0) != class
+                || version == 0
+                || version > previous
+                || row.get::<_, String>(2) != draft.exact_bytes()
+                || row.get::<_, String>(3) != checksum
+            {
+                return Err(RevisionStoreError::Integrity);
+            }
+            ComponentRevisionRef {
+                uuid: id,
+                class_code: i32::from(class),
+                version,
+                checksum: draft.checksum(),
+            }
+        } else {
+            Self::stage_in_transaction(&tx, draft, previous).await?
+        };
+        tx.commit().await.map_err(database)?;
+        Ok(reference)
+    }
+
     /// Allows the trusted author/review owner to retain a revision atomically
     /// with its own supported records. This still supplies no review evidence.
     pub async fn stage_in_transaction(

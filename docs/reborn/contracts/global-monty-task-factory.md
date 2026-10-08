@@ -140,3 +140,14 @@ owner caller loads its source from that PostgreSQL revision and compares the
 actual worker identity with it. A staged successor cannot change the running
 root. Production must separately verify protected-root approval and pin the
 definition reference alongside its execution identity before enabling ingress.
+
+With `postgres` and `skills-db`, the shared component startup path now retains
+the packaged global-root draft after integrity verification and before workers.
+The seed source remains in `builtin_bootstrap.rs`; execution loads the retained
+definition rather than using a compiled source fallback. The stable new UUID is
+distinct from the legacy per-chat root. Exact package bytes are reused even when
+an authored successor exists. A package upgrade appends a draft; it neither
+activates it nor changes the running VM or any operator selection. Allocation
+uses the existing revision-head lock. Repeating after a lost commit reuses the
+same exact revision. Current-package lookup here is authoring retention, not a
+latest lookup during task execution. No controlled seed approval is established.

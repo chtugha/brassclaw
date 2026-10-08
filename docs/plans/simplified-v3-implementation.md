@@ -3209,3 +3209,30 @@ This is draft-definition/runtime-integrity evidence. It supplies no semantic Q1,
 controlled seed approval, Tool artifact attestation or catalogue activation.
 Ordinary runtime still constructs the legacy driver; the seven failures remain
 open pending the coordinated production cutover.
+
+### 2026-10-08 — Retain the packaged root in ordinary shared component boot
+
+The shared startup path with `postgres`/`skills-db` now retains the exact
+packaged class-10 global-root draft before workers. The new stable UUID is
+separate from the legacy root. `PgComponentRevisionStore::retain_packaged_draft`
+uses the existing allocation lock and exact byte comparison for concurrent
+boot and unknown-commit retry. Reusing the original package preserves newer
+authored revisions and the allocation counter; changed package bytes append a
+draft without approval, activation or changes to operator selections. The
+root's port manifest excludes the rejected raw `post_reply` root call.
+
+The actual shared startup regression passed, including repeated boot and
+changed-prompt rejection (`...-root-boot-retention-native.log`). The real worker/
+PostgreSQL/owned-driver regression passed with eight concurrent retentions,
+an authored successor, repeated package upgrade, rejected class collision and
+two opaque tasks on the original root (`...-root-boot-retention-worker.log`).
+Affected Composition library, Skills all-target and isolated consumer strict
+lints passed in the corresponding `root-boot-retention-*-lints.log` files.
+Commands ran serially in screen on Rust 1.98 with the established NVMe target
+and debug-free profile. Ordinary startup was tested from the root workspace;
+worker behavior used `tests/monty_control/Cargo.toml`.
+
+This connects draft retention to an ordinary startup caller. It does not start
+the global service there or supply protected-root/controlled-seed approvals,
+active catalogue publication, Tool artifact identity or the resource/continuation
+cutover. The original seven ordinary message-flow failures remain unresolved.
