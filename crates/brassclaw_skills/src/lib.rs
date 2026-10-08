@@ -44,6 +44,10 @@ pub mod component_revision;
 /// Existing Tool artifacts, behavioral review, approval and activation are separate.
 pub mod global_bootstrap_components;
 
+/// Immutable class-10 root source/compiler/port definitions. Parsing is neither
+/// protected-root review nor a system-seed provenance/activation shortcut.
+pub mod orchestrator_contract;
+
 /// Instance-wide append-only revision storage, separate from the legacy mutable
 /// component tables. Draft retention never makes a revision executable.
 #[cfg(feature = "db-store")]

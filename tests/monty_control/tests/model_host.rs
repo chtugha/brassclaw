@@ -953,7 +953,51 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     let database = native_pg::NativePostgres::start().await;
     let provider = Arc::new(RecordingProvider::default());
     let prefix = Arc::new(SelectedPrefix("selected driver prefix".into()));
-    let boot = support::boot(SOURCE);
+    // Root bytes come from an actual immutable class-10 definition. This is
+    // draft validation; no seed/root approval is inferred from source integrity.
+    let store =
+        brassclaw_skills::revision_store::PgComponentRevisionStore::new(database.pool.clone());
+    let original_boot = support::boot(SOURCE);
+    let root_uuid = uuid::Uuid::new_v4();
+    let root_draft = brassclaw_skills::orchestrator_contract::global_root_draft(
+        root_uuid,
+        SOURCE,
+        &original_boot.aliases,
+    )
+    .unwrap();
+    let root_ref = store.stage(&root_draft, 0).await.unwrap();
+    let roots = store.read_exact(&[root_uuid], &[root_ref]).await.unwrap();
+    let definition = brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(
+        &roots.revisions()[&root_uuid],
+    )
+    .unwrap();
+    assert_eq!(definition.reference(), root_ref);
+    let mut malformed: Value = serde_json::from_str(root_draft.exact_bytes()).unwrap();
+    malformed["document"]["input_symbols"] = json!(["host", "thread"]);
+    let malformed = brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(
+        &malformed.to_string(),
+    )
+    .unwrap()
+    .at_version(1)
+    .unwrap();
+    assert!(
+        brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(&malformed)
+            .is_err()
+    );
+    let mut bad_digest: Value = serde_json::from_str(root_draft.exact_bytes()).unwrap();
+    bad_digest["document"]["source_checksum"] = json!("0".repeat(64));
+    let bad_digest = brassclaw_skills::component_revision::ComponentRevisionDraft::from_json(
+        &bad_digest.to_string(),
+    )
+    .unwrap()
+    .at_version(1)
+    .unwrap();
+    assert!(
+        brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(&bad_digest)
+            .is_err()
+    );
+    let mut boot = support::boot(definition.source());
+    boot.aliases = definition.ports().clone();
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
@@ -973,6 +1017,24 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     )
     .await
     .unwrap();
+    // Staging a newer definition cannot replace this generation or the source
+    // reference retained before startup. New roots require their own review.
+    let replacement = brassclaw_skills::orchestrator_contract::global_root_draft(
+        root_uuid,
+        &format!("{SOURCE}\n# staged successor\n"),
+        definition.ports(),
+    )
+    .unwrap();
+    let successor_ref = store.stage(&replacement, root_ref.version).await.unwrap();
+    let successors = store
+        .read_exact(&[root_uuid], &[successor_ref])
+        .await
+        .unwrap();
+    let successor = brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(
+        &successors.revisions()[&root_uuid],
+    )
+    .unwrap();
+    assert_eq!(successor.reference().version, root_ref.version + 1);
     let factory = Arc::new(
         NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
     );
@@ -1036,6 +1098,11 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         );
         let root = factory.last_receipt.lock().unwrap().as_ref().unwrap().root;
         assert_eq!(root.source_checksum(), support::boot(SOURCE).checksum);
+        assert!(root.matches_definition(definition.source_checksum(), definition.ports()));
+        assert!(!root.matches_definition(successor.source_checksum(), successor.ports()));
+        let mut wrong_ports = definition.ports().clone();
+        wrong_ports.insert("unreviewed_port".into());
+        assert!(!root.matches_definition(definition.source_checksum(), &wrong_ports));
         assert_eq!(report["root"]["format"], "monty-root-execution/1");
         assert_eq!(report["root"]["vm_id"], root.vm_id().to_string());
         assert_eq!(

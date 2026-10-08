@@ -3186,3 +3186,26 @@ The ordinary factory still constructs PersistentMontyDriver. Controlled seed
 provenance/review, Tool artifact/ABI retention, coherent catalogue activation and
 ordinary global startup/live-resource/continuation cutover remain required; no
 original-seven success or CI acceptance is claimed.
+
+### 2026-10-08 — Immutable global-root definition and actual worker comparison
+
+Added the exact class-10 `monty-global-orchestrator/1` document contract in the
+existing immutable revision store. Source, source checksum, compiler inputs and
+host-port names are retained together. Strict parsing rejects changed inputs,
+unexpected fields, invalid/duplicate ports and source-integrity failures. This
+definition is separate from Skill associations and protected-root approval.
+
+The actual native owner/driver case now starts the worker from source read from
+the exact PostgreSQL revision. Two opaque admitted tasks use the same root;
+staging a successor does not change it. The receipt's actual source/port identity
+matches the original definition and rejects both the successor and changed ports.
+The focused case passed in `/private/tmp/brassclaw-root-definition-native.log`;
+Skills, Monty host and isolated consumer strict all-target lint checks passed in
+the corresponding `root-definition-*-lints.log` files. Rust 1.98, native PostgreSQL,
+isolated manifest `tests/monty_control/Cargo.toml`, serial screen execution and
+the established debug-free target profile were used.
+
+This is draft-definition/runtime-integrity evidence. It supplies no semantic Q1,
+controlled seed approval, Tool artifact attestation or catalogue activation.
+Ordinary runtime still constructs the legacy driver; the seven failures remain
+open pending the coordinated production cutover.

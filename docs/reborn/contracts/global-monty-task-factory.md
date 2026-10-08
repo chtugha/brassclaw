@@ -129,3 +129,14 @@ still means that task never entered the VM. These are code/lifecycle observation
 not protected-root semantic approval, Tool artifact attestation or catalogue
 activation. Replace the companion worker together with the host; older wire
 versions are rejected rather than decoded as compatible.
+
+The immutable class-10 definition uses `monty-global-orchestrator/1` inside the
+existing component-revision envelope. It records exact source and its SHA-256,
+the compiler inputs `host` and `worker_count`, and the complete host-port names.
+`GlobalRootDefinition` rejects altered compiler inputs, source/checksum mismatch,
+duplicate ports and unexpected fields. It resolves an exact retained revision;
+it supplies no latest lookup, review, activation or Tool authority. The native
+owner caller loads its source from that PostgreSQL revision and compares the
+actual worker identity with it. A staged successor cannot change the running
+root. Production must separately verify protected-root approval and pin the
+definition reference alongside its execution identity before enabling ingress.

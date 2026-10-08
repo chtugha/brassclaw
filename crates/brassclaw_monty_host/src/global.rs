@@ -416,6 +416,12 @@ impl RootExecutionIdentity {
     pub fn workers(&self) -> u32 {
         self.workers
     }
+    /// Compare actual code/binding observations with an already retained
+    /// definition. A match proves neither protected-root review nor activation.
+    pub fn matches_definition(&self, source_checksum: [u8; 32], ports: &BTreeSet<String>) -> bool {
+        self.source_checksum == source_checksum
+            && self.aliases_checksum == root_aliases_checksum(ports)
+    }
 }
 pub(crate) fn root_aliases_checksum(aliases: &BTreeSet<String>) -> [u8; 32] {
     let mut digest = Sha256::new();
