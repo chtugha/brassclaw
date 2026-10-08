@@ -88,8 +88,11 @@ settlements without a root service receipt do not receive such a report.
 This operational report is separate from `WorkflowReview` expectations and their
 observed value fingerprints. It sets semantic approval and catalogue activation
 to false; neither a complete execution nor a failed negative case supplies Q2,
-protected-root trust or association-combination approval. Empty selected-Recipe
-lists on genuine No-Match are distinct from skipped selected workflows.
+protected-root trust or association-combination approval. A genuine No-Match obtains model content, then explicitly selects and executes
+the retained named `host-post-reply` Recipe through IBS. Its publication is a
+journaled Tool dispatch through the current kernel policy. The root cannot call
+the lower `post_reply` transcript transport directly. Missing composition or a
+live reply-Tool block fails the task without model replay or duplicate publication.
 
 V107 also protects admission identity and terminal outcome in PostgreSQL.
 Admissions begin reserved, may start once and settle monotonically; queued

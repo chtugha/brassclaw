@@ -42,19 +42,31 @@ pub struct ValidationCatalogue {
     host: Arc<MontyTaskHost>,
     draft: Option<Arc<RetainedToolProgram>>,
     admission: Arc<PgMontyAdmission>,
+    reply: crate::reply_workflows::PreparedNamedReply,
 }
 impl ValidationCatalogue {
-    pub fn new(
+    pub async fn new(
         pool: Arc<PgPool>,
         host: Arc<MontyTaskHost>,
         draft: Option<Arc<RetainedToolProgram>>,
         admission: Arc<PgMontyAdmission>,
+        reply: Arc<RetainedToolProgram>,
+        block_reply: bool,
     ) -> Self {
+        let reply = crate::reply_workflows::prepare_named_reply(
+            host.clone(),
+            admission.clone(),
+            reply,
+            pool.clone(),
+            block_reply,
+        )
+        .await;
         Self {
             pool,
             host,
             draft,
             admission,
+            reply,
         }
     }
 }
@@ -173,7 +185,10 @@ impl MontyTaskCatalogue for ValidationCatalogue {
         tx.commit().await.map_err(|_| failure())?;
         Ok(result)
     }
-    async fn resolve_named_recipe(&self, _name: &str) -> Result<SelectedMontyRecipe, PortFailure> {
+    async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure> {
+        if name == "host-post-reply" {
+            return Ok(self.reply.select());
+        }
         // This validation catalogue has no approved named history workflow.
         Err(PortFailure::new("history_persistence_failed").unwrap())
     }

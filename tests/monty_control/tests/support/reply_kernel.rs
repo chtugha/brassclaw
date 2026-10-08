@@ -32,45 +32,58 @@ pub(super) struct Kernel {
     pub policy: Arc<LiveStableToolPolicy>,
     pub mounts: MountView,
     reply_tool: Uuid,
-    memory_tool: Uuid,
+    memory_tool: Option<Uuid>,
 }
 impl Kernel {
     pub fn block_memory(&self) {
-        self.policy.publish(2, self.snapshot(3, false)).unwrap();
+        assert!(self.memory_tool.is_some());
+        self.policy
+            .publish(2, self.snapshot(3, false, true))
+            .unwrap();
     }
-    fn snapshot(&self, revision: u64, memory_enabled: bool) -> StableToolPolicySnapshot {
+    pub fn block_reply(&self) {
+        self.policy
+            .publish(2, self.snapshot(3, true, false))
+            .unwrap();
+    }
+    fn snapshot(
+        &self,
+        revision: u64,
+        memory_enabled: bool,
+        reply_enabled: bool,
+    ) -> StableToolPolicySnapshot {
+        let mut tools = HashMap::from([(
+            self.reply_tool,
+            rule(
+                revision,
+                reply_enabled,
+                vec![EffectKind::ExternalWrite],
+                MountView::default(),
+            ),
+        )]);
+        let mut capabilities = HashMap::from([(
+            CapabilityId::new(POST_REPLY_CAPABILITY_ID).unwrap(),
+            self.reply_tool,
+        )]);
+        if let Some(memory_tool) = self.memory_tool {
+            tools.insert(
+                memory_tool,
+                rule(
+                    revision,
+                    memory_enabled,
+                    vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
+                    self.mounts.clone(),
+                ),
+            );
+            capabilities.insert(
+                CapabilityId::new("builtin.memory_write").unwrap(),
+                memory_tool,
+            );
+        }
         StableToolPolicySnapshot {
             revision,
-            tools: HashMap::from([
-                (
-                    self.reply_tool,
-                    rule(
-                        revision,
-                        true,
-                        vec![EffectKind::ExternalWrite],
-                        MountView::default(),
-                    ),
-                ),
-                (
-                    self.memory_tool,
-                    rule(
-                        revision,
-                        memory_enabled,
-                        vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
-                        self.mounts.clone(),
-                    ),
-                ),
-            ]),
-            capabilities: HashMap::from([
-                (
-                    CapabilityId::new(POST_REPLY_CAPABILITY_ID).unwrap(),
-                    self.reply_tool,
-                ),
-                (
-                    CapabilityId::new("builtin.memory_write").unwrap(),
-                    self.memory_tool,
-                ),
-            ]),
+            tools,
+            capabilities,
         }
     }
 }
@@ -111,6 +124,21 @@ pub(super) fn kernel(
     host: Arc<MontyTaskHost>,
     reply_tool: Uuid,
     memory_tool: Uuid,
+    filesystem: Arc<PostgresRootFilesystem>,
+) -> Kernel {
+    build_kernel(host, reply_tool, Some(memory_tool), filesystem)
+}
+pub(super) fn reply_only_kernel(
+    host: Arc<MontyTaskHost>,
+    reply_tool: Uuid,
+    filesystem: Arc<PostgresRootFilesystem>,
+) -> Kernel {
+    build_kernel(host, reply_tool, None, filesystem)
+}
+fn build_kernel(
+    host: Arc<MontyTaskHost>,
+    reply_tool: Uuid,
+    memory_tool: Option<Uuid>,
     filesystem: Arc<PostgresRootFilesystem>,
 ) -> Kernel {
     let reply_id = CapabilityId::new(POST_REPLY_CAPABILITY_ID).unwrap();
@@ -167,12 +195,16 @@ pub(super) fn kernel(
     ))
     .unwrap();
     handlers.insert_handler(reply_id.clone(), host.reply_capability());
-    let mounts = MountView::new(vec![MountGrant::new(
-        MountAlias::new("/memory").unwrap(),
-        VirtualPath::new("/memory").unwrap(),
-        MountPermissions::read_write_list_delete(),
-    )])
-    .unwrap();
+    let mounts = if memory_tool.is_some() {
+        MountView::new(vec![MountGrant::new(
+            MountAlias::new("/memory").unwrap(),
+            VirtualPath::new("/memory").unwrap(),
+            MountPermissions::read_write_list_delete(),
+        )])
+        .unwrap()
+    } else {
+        MountView::default()
+    };
     let mut kernel = Kernel {
         handles: HashMap::new(),
         policy: Arc::new(
@@ -187,7 +219,10 @@ pub(super) fn kernel(
         reply_tool,
         memory_tool,
     };
-    kernel.policy.publish(1, kernel.snapshot(2, true)).unwrap();
+    kernel
+        .policy
+        .publish(1, kernel.snapshot(2, true, true))
+        .unwrap();
     let trust_policy = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
         AdminEntry::for_local_manifest(
             PackageId::new("builtin").unwrap(),
@@ -230,7 +265,11 @@ pub(super) fn kernel(
         audit_mode: brassclaw_host_api::runtime_policy::AuditMode::LocalMinimal,
     });
     let snapshot = runtime.capture_first_party_capabilities().unwrap();
-    for id in [reply_id, CapabilityId::new("builtin.memory_write").unwrap()] {
+    let mut retained = vec![reply_id];
+    if memory_tool.is_some() {
+        retained.push(CapabilityId::new("builtin.memory_write").unwrap());
+    }
+    for id in retained {
         kernel
             .handles
             .insert(id.to_string(), Arc::new(snapshot.retain(&id).unwrap()));

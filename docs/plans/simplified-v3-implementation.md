@@ -3118,3 +3118,34 @@ strict lint passed without warnings. Manifest tests/monty_control/Cargo.toml, Ru
 Logs /private/tmp/brassclaw-packaged-usage-{native,skills-lints,consumer-lints}.log.
 This supplies canonical source for the remaining bootstrap producer; it does not
 wire ordinary global startup or resolve the original seven failures.
+
+
+### 2026-10-08 — No-Match publication through the retained reply Recipe
+
+The candidate global Python root now returns typed model content from its
+No-Match loop and requests the retained named `host-post-reply` Recipe. IBS
+composition and Monty child execution publish through the actual kernel-mediated
+Tool and durable invocation journal. `GlobalRecipePorts` rejects raw root
+`post_reply` transport calls, preventing a root from skipping that dispatch path.
+Matching/composition/policy failures never become No-Match or replay the model.
+
+The two former direct-transcript native fixtures now use the actual global
+instance owner, task factory, retained draft Recipe and reply kernel. Their
+original prompt/history, opaque conversation, provider replay and mounted Tool
+assertions remain. A new real PostgreSQL/worker case blocks the live reply Tool
+after the model answers: no assistant message is written, exactly one invocation
+is recorded as an authorization failure, actual child/accounting evidence is
+settled, and ownership is released after actual worker shutdown.
+
+Serial screen validation with Rust 1.98 and the isolated Monty control manifest:
+11 global-root cases and 17 existing model-host cases passed in
+`/private/tmp/brassclaw-no-match-reply-native.log`. The initial new assertion
+expected dispatcher policy-denial rather than the kernel's authorization category;
+its original diagnostic remains in that log. After tracing the real mapping,
+the corrected case passed in `...-no-match-reply-policy-final.log`; strict
+all-target consumer linting passed in `...-no-match-reply-consumer-lints.log`.
+
+These are actual candidate-path observations using unapproved validation drafts.
+They do not establish controlled bootstrap approvals, active catalogue publication
+or ordinary runtime cutover. The original seven remain unresolved because the
+ordinary factory still constructs the legacy per-chat driver.

@@ -404,6 +404,10 @@ impl GlobalRecipePorts {
                 self.check_fence()?;
                 Ok(json!({"ok":true,"return_value":value}))
             }
+            // Root publication must use its retained reply Recipe. A changed
+            // root cannot bypass binding, live Tool policy and invocation intent
+            // by calling the lower transcript adapter as a transport port.
+            "post_reply" => Err(failure("task_port_invalid")),
             _ => {
                 let [payload] = args.as_slice() else {
                     return Err(failure("task_port_invalid"));

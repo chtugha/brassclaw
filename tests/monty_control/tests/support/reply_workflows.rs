@@ -50,6 +50,64 @@ mod programs;
 #[path = "reply_kernel.rs"]
 mod reply_kernel;
 
+pub(crate) async fn reply_program(pool: Arc<PgPool>) -> Arc<RetainedToolProgram> {
+    programs::program(&PgComponentRevisionStore::new(pool), false).await
+}
+
+pub(crate) struct PreparedNamedReply {
+    selected: SelectedMontyRecipe,
+    kernel: Arc<reply_kernel::Kernel>,
+    block_on_selection: std::sync::atomic::AtomicBool,
+}
+impl PreparedNamedReply {
+    pub(crate) fn select(&self) -> SelectedMontyRecipe {
+        if self
+            .block_on_selection
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
+        {
+            // Actual settings publication after the model has answered; the
+            // retained implementation must still consult this current rule.
+            self.kernel.block_reply();
+        }
+        copy_selection(&self.selected)
+    }
+}
+pub(crate) async fn prepare_named_reply(
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    pool: Arc<PgPool>,
+    block_reply: bool,
+) -> PreparedNamedReply {
+    let filesystem = Arc::new(PostgresRootFilesystem::new((*pool).clone()));
+    let kernel = Arc::new(reply_kernel::reply_only_kernel(
+        host.clone(),
+        program.bindings()["0:2"].tool().uuid,
+        filesystem,
+    ));
+    let tools = Arc::new(Tools {
+        host,
+        program: program.clone(),
+        admission,
+        kernel: kernel.clone(),
+        block_history: block_reply,
+    });
+    let selected = SelectedMontyRecipe {
+        inspected: Arc::new(
+            InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
+                .await
+                .unwrap(),
+        ),
+        inputs: None,
+        tools: Some(tools),
+    };
+    PreparedNamedReply {
+        selected,
+        kernel,
+        block_on_selection: std::sync::atomic::AtomicBool::new(block_reply),
+    }
+}
+
 struct DraftProvider {
     pool: Arc<PgPool>,
     reply: Arc<RetainedToolProgram>,
@@ -61,6 +119,7 @@ struct DraftProvider {
 struct Catalogue {
     query: String,
     selected: MontyIntentSelection,
+    reply: SelectedMontyRecipe,
     history: SelectedMontyRecipe,
     kernel: Arc<reply_kernel::Kernel>,
     block_history: bool,
@@ -203,6 +262,7 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
                 },
             );
         }
+        let reply = copy_selection(&inspected[&self.reply.inputs().instruction().recipe().uuid]);
         let selected = match matched {
             IntentResolution::NoMatch => MontyIntentSelection::NoMatch,
             IntentResolution::Disambiguation { .. } => MontyIntentSelection::Disambiguation,
@@ -226,6 +286,7 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
         Ok(Arc::new(Catalogue {
             query: input.user_input.clone(),
             selected,
+            reply,
             history: inspected
                 .remove(&self.history.inputs().instruction().recipe().uuid)
                 .unwrap(),
@@ -249,6 +310,9 @@ impl MontyTaskCatalogue for Catalogue {
         })
     }
     async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure> {
+        if name == "host-post-reply" {
+            return Ok(copy_selection(&self.reply));
+        }
         if name != "host-save-history" {
             return Err(failure());
         }

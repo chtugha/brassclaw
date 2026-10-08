@@ -330,7 +330,9 @@ async def _non_match(task_token):
             reply = output["assistant_reply"]
             if not isinstance(reply, dict) or not isinstance(reply.get("content"), str):
                 raise RuntimeError("model_output_invalid")
-            return await host.post_reply(task_token, {"answer": reply["content"]})
+            # Return typed content to the caller. Publication uses the pinned
+            # reply Recipe below, with its Tool binding, kernel and effect record.
+            return reply["content"]
         calls = output.get("capability_calls")
         if not isinstance(calls, list) or len(calls) == 0:
             raise RuntimeError("model_output_invalid")
@@ -393,10 +395,20 @@ async def _execute_task(task):
         recipe_id = intent.get("component_id")
         step_link = intent.get("step_link")
     elif status == "no_match":
-        reply_ref = await _non_match(task_token)
+        answer = await _non_match(task_token)
+        reply_recipe = await host.resolve_component_by_name(task_token, "host-post-reply", 21)
+        if not isinstance(reply_recipe, dict):
+            raise RuntimeError("recipe_composition_failed")
+        reply_id = reply_recipe.get("id")
+        reply_link = reply_recipe.get("step_link")
+        if not isinstance(reply_id, str) or reply_id == "":
+            raise RuntimeError("recipe_composition_failed")
+        if not isinstance(reply_link, str) or reply_link == "":
+            raise RuntimeError("recipe_composition_failed")
+        reply_ref = await _execute_recipe(task_token, reply_id, reply_link, {"answer": answer})
         if not isinstance(reply_ref, str) or not reply_ref.startswith("msg:"):
             raise RuntimeError("recipe_reply_invalid")
-        # post_reply persists the real scoped transcript. Verify its actual
+        # The reply Recipe persists the real scoped transcript. Verify its actual
         # finalization before completing; no duplicate reply or history replay.
         answer = await host.resolve_reply(task_token, reply_ref)
         if not isinstance(answer, str):
