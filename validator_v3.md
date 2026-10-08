@@ -46,7 +46,7 @@ class-1/2/3 route. Their coordinated review is an explicit dependency below.
 | Association/schema parsers and evidence readers exist | `association_contract.rs`, `value_contract.rs`, `association_review_store.rs`, V102 | Reuse structured formats; connect actual trusted producers and activation. Parsing declarations is not approval. |
 | New structural/behavior producers exist separately | `pg_retained_q1.rs`, `retained_source.rs`, retained executor | Reuse observations and persistence; do not claim these execute the eight Recipes or establish human/semantic approval. |
 | Working-tree human association review additions exist | `pg_association_review.rs`, `association_review_store.rs`, product facade and WebUI association-review panel | Reuse exact displayed-view checksums and transactional Q2/association writes after verifying their real ingress and tests. Their declared scope is one Tool usage; `catalogue_activated` remains false. They do not establish eight-class review or production activation. |
-| Seed auditing directly records a trusted-root result and tolerates errors | `builtin_bootstrap.rs::audit_builtin_graduation`, `zencoder_bootstrap.rs` | Replace apparent bootstrap approval with verified seed provenance and required actual evidence. Review startup/recovery effects before tightening failures. |
+| Legacy seed review requests now stay pending and persistence errors fail boot | `builtin_bootstrap.rs::record_seed_review`, `zencoder_bootstrap.rs`, `ValidationQueueStore::retain_pending_request`, `boot_integrity.rs` (2026-10-08) | Fabricated Q1/builtin graduation was removed. The controlled immutable system-seed evidence producer/reader is still required; pending requests and historical validated labels establish no v3 approval. |
 
 The principal integration files are:
 
@@ -403,6 +403,17 @@ Gate: concurrent activation yields one complete old/new generation; an old waiti
 task continues its original code, while a live Tool block affects its next dispatch.
 
 ### Step 11 — Bootstrap, migration, upgrade and recovery
+
+Implementation evidence (2026-10-08): ordinary shared startup now retains the
+exact packaged global-root draft idempotently. Both legacy seeders retain pending
+review requests, preserve existing review state/feedback and recover missing
+requests after an earlier component insert. They no longer manufacture Q1 passes
+or builtin Q2 receipts. Protected Skill-table records retain their actual class.
+Queue recovery propagates write errors. Three real native startup/recovery cases,
+twenty PostgreSQL review cases and affected strict all-target linting passed;
+details are in `docs/plans/simplified-v3-implementation.md`. This is a partial
+step-11 repair, not the controlled seed evidence adapter, activation or global
+runtime cutover. Historical receipts remain immutable legacy records.
 
 1. Establish the controlled seed trust anchor: exact packaged validator/primitive
    manifests, verified source/artifact integrity and required observed behavior.

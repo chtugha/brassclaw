@@ -290,4 +290,184 @@ mod tests {
         drop(pool);
         drop(rig); // supervised shutdown precedes temporary-directory removal
     }
+
+    #[tokio::test]
+    async fn native_seed_requests_recover_without_fabricated_q1_or_builtin_approval() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(rig.pool.clone())
+            .await
+            .unwrap();
+        let tenant = "seed-recovery-test";
+        let client = rig.pool.get().await.unwrap();
+        // Actual PostgreSQL failure after a legacy component insert. No fake
+        // successful validator or approval is used to exercise recovery.
+        client
+            .batch_execute(
+                "CREATE FUNCTION fail_seed_request() RETURNS trigger LANGUAGE plpgsql AS $$
+                 BEGIN
+                   IF NEW.tenant_id='seed-recovery-test' AND NEW.component_class=0 THEN
+                     RAISE EXCEPTION 'injected persistence failure' USING ERRCODE='23514';
+                   END IF;
+                   RETURN NEW;
+                 END $$;
+                 CREATE TRIGGER fail_seed_request BEFORE INSERT ON reborn_validation_queue
+                 FOR EACH ROW EXECUTE FUNCTION fail_seed_request()",
+            )
+            .await
+            .unwrap();
+        drop(client);
+        assert!(matches!(
+            initialize_runtime_components(&booted, tenant).await,
+            Err(RebornBuildError::InvalidConfig { reason })
+                if reason.contains("seed review retention")
+        ));
+        let client = rig.pool.get().await.unwrap();
+        let missing: i64 = client
+            .query_one(
+                "SELECT count(*) FROM reborn_tools t WHERE tenant_id=$1 AND NOT EXISTS
+                 (SELECT 1 FROM reborn_validation_queue q WHERE q.component_id=t.id)",
+                &[&tenant],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert!(
+            missing > 0,
+            "failure retained the already inserted legacy rows"
+        );
+        client.batch_execute("DROP TRIGGER fail_seed_request ON reborn_validation_queue; DROP FUNCTION fail_seed_request()").await.unwrap();
+        drop(client);
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .unwrap();
+        let client = rig.pool.get().await.unwrap();
+        let fabricated: i64 = client
+            .query_one(
+                "SELECT count(*) FROM reborn_component_graduation_receipts WHERE tenant_id=$1",
+                &[&tenant],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(fabricated, 0);
+        let nonpending: i64 = client.query_one(
+            "SELECT count(*) FROM reborn_validation_queue WHERE tenant_id=$1 AND
+             (state<>1 OR q2_actor IS NOT NULL OR q1_component_bytes IS NOT NULL OR q1_queue_bytes IS NOT NULL)",
+            &[&tenant],
+        ).await.unwrap().get(0);
+        assert_eq!(nonpending, 0);
+        let wrong_class: i64 = client.query_one(
+            "SELECT count(*) FROM reborn_validation_queue q JOIN reborn_skills s ON s.id=q.component_id
+             WHERE q.tenant_id=$1 AND q.component_class<>s.class_code",
+            &[&tenant],
+        ).await.unwrap().get(0);
+        assert_eq!(wrong_class, 0);
+        for (table, name, class) in [
+            ("reborn_skills", "orchestrator:main", 10_i16),
+            ("reborn_tools", "zencoder-api", 0_i16),
+        ] {
+            // These table names are the fixed test literals above.
+            let sql = format!(
+                "SELECT q.component_class FROM reborn_validation_queue q
+                JOIN {table} c ON c.id=q.component_id WHERE q.tenant_id=$1 AND c.name=$2"
+            );
+            let actual: i16 = client
+                .query_one(&sql, &[&tenant, &name])
+                .await
+                .unwrap()
+                .get(0);
+            assert_eq!(actual, class);
+        }
+        let request: uuid::Uuid = client.query_one(
+            "SELECT q.id FROM reborn_validation_queue q JOIN reborn_skills s ON s.id=q.component_id
+             WHERE q.tenant_id=$1 AND s.name='orchestrator:main'",
+            &[&tenant],
+        ).await.unwrap().get(0);
+        // A pre-existing rejected review is fixture data, not an approval.
+        // Seeding must preserve its identity, state and operator feedback.
+        client.execute(
+            "UPDATE reborn_validation_queue SET state=3,counter=2,review_feedback='keep this review'
+             WHERE id=$1", &[&request],
+        ).await.unwrap();
+        drop(client);
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .unwrap();
+        let client = rig.pool.get().await.unwrap();
+        let retained = client.query_one(
+            "SELECT state,counter,review_feedback,q2_actor,q1_component_bytes FROM reborn_validation_queue WHERE id=$1",
+            &[&request],
+        ).await.unwrap();
+        assert_eq!(retained.get::<_, i16>(0), 3);
+        assert_eq!(retained.get::<_, i32>(1), 2);
+        assert_eq!(retained.get::<_, String>(2), "keep this review");
+        assert!(retained.get::<_, Option<String>>(3).is_none());
+        assert!(retained.get::<_, Option<String>>(4).is_none());
+    }
+
+    #[tokio::test]
+    async fn native_queue_recovery_failure_prevents_successful_component_boot() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(rig.pool.clone())
+            .await
+            .unwrap();
+        let tenant = "recovery-boot-test";
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .unwrap();
+        let client = rig.pool.get().await.unwrap();
+        let orphan: uuid::Uuid = client.query_one(
+            "INSERT INTO reborn_notes (tenant_id,user_id,agent_id,project_id,name,validation_status)
+             VALUES ('orphan-recovery','author','default','system','recovery-note','pending') RETURNING id", &[],
+        ).await.unwrap().get(0);
+        client
+            .batch_execute(
+                "CREATE FUNCTION fail_orphan_request() RETURNS trigger LANGUAGE plpgsql AS $$
+             BEGIN
+               IF NEW.tenant_id='orphan-recovery' THEN
+                 RAISE EXCEPTION 'injected recovery failure' USING ERRCODE='23514';
+               END IF;
+               RETURN NEW;
+             END $$;
+             CREATE TRIGGER fail_orphan_request BEFORE INSERT ON reborn_validation_queue
+             FOR EACH ROW EXECUTE FUNCTION fail_orphan_request()",
+            )
+            .await
+            .unwrap();
+        drop(client);
+        assert!(matches!(
+            initialize_runtime_components(&booted, tenant).await,
+            Err(RebornBuildError::InvalidConfig { reason })
+                if reason.starts_with("component validation queue recovery failed")
+        ));
+        let client = rig.pool.get().await.unwrap();
+        let requests: i64 = client
+            .query_one(
+                "SELECT count(*) FROM reborn_validation_queue WHERE component_id=$1",
+                &[&orphan],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(requests, 0);
+        client.batch_execute("DROP TRIGGER fail_orphan_request ON reborn_validation_queue; DROP FUNCTION fail_orphan_request()").await.unwrap();
+        drop(client);
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .unwrap();
+        let client = rig.pool.get().await.unwrap();
+        let pending = client.query_one(
+            "SELECT state,q1_component_bytes,q2_actor FROM reborn_validation_queue WHERE component_id=$1", &[&orphan],
+        ).await.unwrap();
+        assert_eq!(pending.get::<_, i16>(0), 1);
+        assert!(pending.get::<_, Option<String>>(1).is_none());
+        assert!(pending.get::<_, Option<String>>(2).is_none());
+        drop(client);
+        assert_eq!(
+            crate::boot_integrity::run_boot_integrity_check(&booted)
+                .await
+                .unwrap(),
+            0
+        );
+    }
 }

@@ -81,8 +81,12 @@ impl ZencoderStores {
         }
     }
 
-    async fn audit(&self, id: Uuid, class_code: i32, name: &str) {
-        use crate::validation_queue::ValidationQueueError;
+    async fn record_seed_review(
+        &self,
+        id: Uuid,
+        class_code: i32,
+        name: &str,
+    ) -> Result<(), SeedBuiltinBootstrapError> {
         use brassclaw_engine::memory::retrieval_source::ComponentScope;
         let scope = ComponentScope {
             tenant_id: self.tenant.clone(),
@@ -90,32 +94,13 @@ impl ZencoderStores {
             agent_id: SEED_AGENT.to_string(),
             project_id: SEED_PROJECT.to_string(),
         };
-        match self.queue.submit(&scope, id, class_code, None).await {
-            Ok(()) => {}
-            Err(ValidationQueueError::AlreadyQueued { .. }) => return,
-            Err(e) => {
-                tracing::debug!(component_id=%id, class_code, name, error=%e,
-                    "zencoder audit: submit failed (non-fatal)");
-                return;
-            }
-        }
-        let review = match self.queue.capture_q1_candidate(&scope, id).await {
-            Ok(review) => review,
-            Err(error) => {
-                tracing::error!(component_id=%id, class_code, name, error=%error,
-                    "trusted seed audit could not capture its actual candidate");
-                return;
-            }
-        };
-        if let Err(e) = self.queue.gate1_pass_reviewed(&scope, &review, &[]).await {
-            tracing::debug!(component_id=%id, class_code, name, error=%e,
-                "zencoder audit: gate1_pass failed (non-fatal)");
-            return;
-        }
-        if let Err(e) = self.queue.approve_builtin_seed(&scope, id).await {
-            tracing::debug!(component_id=%id, class_code, name, error=%e,
-                "zencoder audit: approve failed (non-fatal)");
-        }
+        self.queue
+            .retain_pending_request(&scope, id, class_code)
+            .await
+            .map(|_| ())
+            .map_err(|error| SeedBuiltinBootstrapError::Db {
+                reason: format!("zencoder seed review retention for {name} failed: {error}"),
+            })
     }
 
     async fn upsert_tool(
@@ -127,7 +112,7 @@ impl ZencoderStores {
             reason: e.to_string(),
         };
         if let Some(id) = self.tool.insert(row).await.map_err(map)? {
-            self.audit(id, 0, name).await;
+            self.record_seed_review(id, 0, name).await?;
             return Ok(id);
         }
         let id = self
@@ -138,6 +123,7 @@ impl ZencoderStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool `{name}` not found"),
             })?;
+        self.record_seed_review(id, 0, name).await?;
         Ok(id)
     }
 
@@ -151,7 +137,7 @@ impl ZencoderStores {
                 reason: e.to_string(),
             };
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
-            self.audit(id, 13, name).await;
+            self.record_seed_review(id, 13, name).await?;
             return Ok(id);
         }
         let id = self
@@ -162,6 +148,7 @@ impl ZencoderStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool_skill `{name}` not found"),
             })?;
+        self.record_seed_review(id, 13, name).await?;
         Ok(id)
     }
 
@@ -170,21 +157,24 @@ impl ZencoderStores {
         row: NewPgSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let class_code = i32::from(row.class_code);
         let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinBootstrapError::Db {
             reason: e.to_string(),
         };
         if let Some(id) = self.skill.insert(row).await.map_err(map)? {
-            self.audit(id, 1, name).await;
+            self.record_seed_review(id, class_code, name).await?;
             return Ok(id);
         }
-        let id = self
+        let (id, stored_class) = self
             .skill
-            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .get_identity_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("skill `{name}` not found"),
             })?;
+        self.record_seed_review(id, i32::from(stored_class), name)
+            .await?;
         Ok(id)
     }
 
@@ -204,10 +194,11 @@ impl ZencoderStores {
             .await
             .map_err(map)?
         {
+            self.record_seed_review(existing.id, 22, name).await?;
             return Ok(existing.id);
         }
         let id = self.python_code.insert(row).await.map_err(map)?;
-        self.audit(id, 22, name).await;
+        self.record_seed_review(id, 22, name).await?;
         Ok(id)
     }
 
@@ -225,10 +216,11 @@ impl ZencoderStores {
             .await
             .map_err(map)?
         {
+            self.record_seed_review(existing.id, 21, name).await?;
             return Ok(existing.id);
         }
         let id = self.recipe.insert(row).await.map_err(map)?;
-        self.audit(id, 21, name).await;
+        self.record_seed_review(id, 21, name).await?;
         Ok(id)
     }
 
@@ -264,10 +256,11 @@ impl ZencoderStores {
             .await
             .map_err(map)?
         {
+            self.record_seed_review(existing.id, 23, name).await?;
             return Ok(existing.id);
         }
         let id = self.catalogue.insert(row).await.map_err(map)?;
-        self.audit(id, 23, name).await;
+        self.record_seed_review(id, 23, name).await?;
         Ok(id)
     }
 

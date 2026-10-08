@@ -33,7 +33,8 @@
 //! Requires the `postgres` feature.
 
 // Phase A.5 wiring is complete (Phase B/C + Phase N). Phase P.0 adds the
-// q2_actor audit column and the builtin bootstrap audit path.
+// q2_actor audit column. Historical builtin markers remain readable; startup
+// now retains pending requests and cannot manufacture Q1/Q2 graduation.
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
 
@@ -57,11 +58,6 @@ use crate::pg_basic_prompt_store::PgBasicPromptStore;
 /// [`ValidationQueueStore::with_reject_threshold`] (Q2 answer — construction-time
 /// field; Phase K/N can later wire it from `reborn_monty_vm_settings`).
 pub const DEFAULT_REJECT_THRESHOLD: u8 = 3;
-
-enum GraduationActor {
-    Human,
-    Builtin,
-}
 
 /// State: just submitted, awaiting Gate 1.
 pub const STATE_Q1_PENDING: i16 = 1;
@@ -142,9 +138,9 @@ pub struct QueueRow {
     pub proposed_payload: Option<Value>,
     pub submitted_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
-    /// Phase P.0: who performed the Q2 graduation. `None` = pending (not yet
-    /// approved). `Some("human")` = operator via WebUI. `Some("builtin")` =
-    /// bootstrap seeder (exempt from human-Q2; audit label only).
+    /// Legacy audit metadata. `None` is pending; `Some("human")` records the
+    /// operator path. Historical `Some("builtin")` values remain readable but
+    /// cannot establish v3 controlled-seed provenance or combination approval.
     pub q2_actor: Option<String>,
 }
 
@@ -221,6 +217,47 @@ impl ValidationQueueStore {
             proposed_payload,
         )
         .await
+    }
+
+    /// Retain a missing legacy review request, without a Q1 verdict or Q2.
+    /// Existing review state, feedback and authored upgrade payloads remain
+    /// untouched. A class mismatch or uncertain commit is an error, not a
+    /// successful audit. Returns whether this transaction created the request.
+    pub(crate) async fn retain_pending_request(
+        &self,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        component_class: i32,
+    ) -> Result<bool, ValidationQueueError> {
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+        let created = match Self::submit_on(&*tx, scope, component_id, component_class, None).await
+        {
+            Ok(()) => true,
+            Err(ValidationQueueError::AlreadyQueued { .. }) => false,
+            Err(error) => return Err(error),
+        };
+        let row = tx
+            .query_opt(
+                "SELECT component_class FROM reborn_validation_queue
+                 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
+                 AND component_id=$5 FOR UPDATE",
+                &[
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    &component_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?
+            .ok_or(ValidationQueueError::NotFound { component_id })?;
+        if i32::from(row.get::<_, i16>(0)) != component_class {
+            return Err(ValidationQueueError::InvalidPayload { component_id });
+        }
+        tx.commit().await.map_err(map_pg)?;
+        Ok(created)
     }
 
     /// Enqueue on the component author's transaction. The caller must roll back
@@ -413,7 +450,6 @@ impl ValidationQueueStore {
     ///
     /// Returns `Ok(component_id)` on success.
     /// `q2_actor` must be `Some("human")` on this public operator path.
-    /// Compiled-in bootstrap audits use the separate crate-private method.
     /// This marker is legacy audit metadata, not authenticated identity or
     /// v3 exact-combination approval evidence.
     pub async fn approve(
@@ -425,32 +461,6 @@ impl ValidationQueueStore {
         if q2_actor != Some("human") {
             return Err(ValidationQueueError::InvalidQ2Actor { component_id });
         }
-        self.approve_with_actor(scope, component_id, GraduationActor::Human)
-            .await
-    }
-
-    /// Internal checked-in bootstrap audit only. This legacy receipt is not a
-    /// v3 system-seed combination approval, Q1/behavior evidence or Tool grant.
-    /// Ordinary operator/component authoring cannot select this audit path.
-    pub(crate) async fn approve_builtin_seed(
-        &self,
-        scope: &ComponentScope,
-        component_id: Uuid,
-    ) -> Result<Uuid, ValidationQueueError> {
-        self.approve_with_actor(scope, component_id, GraduationActor::Builtin)
-            .await
-    }
-
-    async fn approve_with_actor(
-        &self,
-        scope: &ComponentScope,
-        component_id: Uuid,
-        actor: GraduationActor,
-    ) -> Result<Uuid, ValidationQueueError> {
-        let q2_actor = Some(match actor {
-            GraduationActor::Human => "human",
-            GraduationActor::Builtin => "builtin",
-        });
         let mut client = self.pool.get().await.map_err(map_pool)?;
 
         // Queue-before-component lock order is shared with invalidation and

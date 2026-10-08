@@ -185,9 +185,7 @@ struct BootstrapStores {
     skill: PgSkillStore,
     recipe: PgRecipeStore,
     catalogue: PgExtensionCatalogueStore,
-    /// Phase P.0 audit queue — records a `q2_actor='builtin'` graduation row
-    /// for each freshly inserted builtin component (new inserts only; re-runs
-    /// that hit the get-then-insert early-return skip the audit path).
+    /// Legacy pending review requests; seeding cannot produce Q1/Q2 evidence.
     queue: ValidationQueueStore,
 }
 
@@ -206,77 +204,28 @@ impl BootstrapStores {
         }
     }
 
-    /// Phase P.0 audit path: submit a freshly-inserted builtin component to the
-    /// validation queue, run Q1 (graceful-defer path — no validator Recipes
-    /// seeded yet), then approve with `q2_actor = "builtin"`.
-    ///
-    /// Called only for *new* inserts (re-runs skip via the early-return in each
-    /// `upsert_*` method). The component row is already `validated` (direct
-    /// insert); this path purely adds the audit trail to the queue table.
-    ///
-    /// Errors are logged at `debug!` and suppressed — a missing audit record
-    /// must never block a seeder boot (the component itself is already valid).
-    async fn audit_builtin_graduation(&self, component_id: Uuid, class_code: i32, name: &str) {
+    /// Seeding is not validation. Keep a pending request, including recovery of
+    /// a row inserted before a failed queue write. Historical validated labels
+    /// remain legacy data; no trusted v3 approval is inferred from them.
+    async fn record_seed_review(
+        &self,
+        component_id: Uuid,
+        class_code: i32,
+        name: &str,
+    ) -> Result<(), SeedBuiltinBootstrapError> {
         let scope = ComponentScope {
             tenant_id: self.tenant.clone(),
             user_id: SEED_USER.to_string(),
             agent_id: SEED_AGENT.to_string(),
             project_id: SEED_PROJECT.to_string(),
         };
-        // submit → state 1
-        match self
-            .queue
-            .submit(&scope, component_id, class_code, None)
+        self.queue
+            .retain_pending_request(&scope, component_id, class_code)
             .await
-        {
-            Ok(()) => {}
-            Err(crate::validation_queue::ValidationQueueError::AlreadyQueued { .. }) => {
-                // A stale queue row exists (e.g. crash-recovery left it). Skip
-                // the rest of the audit path — the component is already validated.
-                return;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    component_id = %component_id,
-                    class_code,
-                    name,
-                    error = %e,
-                    "builtin audit: submit failed (non-fatal)"
-                );
-                return;
-            }
-        }
-        // Legacy trusted-seed audit: retain the exact checked-in candidate and
-        // submission before recording its trusted-root result. This is not an
-        // ordinary authored-component Q1 review or exact-combination approval.
-        let review = match self.queue.capture_q1_candidate(&scope, component_id).await {
-            Ok(review) => review,
-            Err(error) => {
-                tracing::error!(component_id=%component_id, class_code, name, error=%error,
-                    "trusted seed audit could not capture its actual candidate");
-                return;
-            }
-        };
-        if let Err(e) = self.queue.gate1_pass_reviewed(&scope, &review, &[]).await {
-            tracing::debug!(
-                component_id = %component_id,
-                class_code,
-                name,
-                error = %e,
-                "builtin audit: gate1_pass failed (non-fatal)"
-            );
-            return;
-        }
-        // Q2 approve with actor = "builtin"
-        if let Err(e) = self.queue.approve_builtin_seed(&scope, component_id).await {
-            tracing::debug!(
-                component_id = %component_id,
-                class_code,
-                name,
-                error = %e,
-                "builtin audit: approve failed (non-fatal)"
-            );
-        }
+            .map(|_| ())
+            .map_err(|error| SeedBuiltinBootstrapError::Db {
+                reason: format!("seed review retention for {name} failed: {error}"),
+            })
     }
 
     /// Insert-or-recover a Tool id (class 0). `insert` is ON-CONFLICT, so
@@ -290,8 +239,8 @@ impl BootstrapStores {
             reason: e.to_string(),
         };
         if let Some(id) = self.tool.insert(row).await.map_err(map)? {
-            // New insert — record the builtin audit graduation.
-            self.audit_builtin_graduation(id, 0, name).await;
+            // Retain a pending request; no validation or approval is fabricated.
+            self.record_seed_review(id, 0, name).await?;
             return Ok(id);
         }
         let id = self
@@ -302,6 +251,7 @@ impl BootstrapStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool `{name}` insert no-op but not found"),
             })?;
+        self.record_seed_review(id, 0, name).await?;
         Ok(id)
     }
 
@@ -316,8 +266,8 @@ impl BootstrapStores {
                 reason: e.to_string(),
             };
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
-            // New insert — record the builtin audit graduation.
-            self.audit_builtin_graduation(id, 13, name).await;
+            // Retain a pending request; no validation or approval is fabricated.
+            self.record_seed_review(id, 13, name).await?;
             return Ok(id);
         }
         let id = self
@@ -328,31 +278,36 @@ impl BootstrapStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool_skill `{name}` insert no-op but not found"),
             })?;
+        self.record_seed_review(id, 13, name).await?;
         Ok(id)
     }
 
-    /// Insert-or-recover a leaf Skill id (class 1). Same ON-CONFLICT pattern.
+    /// Insert-or-recover a Skill-table row, retaining its actual class for
+    /// review (including protected Orchestrator/Scaffold records).
     async fn upsert_skill(
         &self,
         row: NewPgSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let class_code = i32::from(row.class_code);
         let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinBootstrapError::Db {
             reason: e.to_string(),
         };
         if let Some(id) = self.skill.insert(row).await.map_err(map)? {
-            // New insert — record the builtin audit graduation.
-            self.audit_builtin_graduation(id, 1, name).await;
+            // Retain a pending request; no validation or approval is fabricated.
+            self.record_seed_review(id, class_code, name).await?;
             return Ok(id);
         }
-        let id = self
+        let (id, stored_class) = self
             .skill
-            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .get_identity_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("skill `{name}` insert no-op but not found"),
             })?;
+        self.record_seed_review(id, i32::from(stored_class), name)
+            .await?;
         Ok(id)
     }
 
@@ -360,7 +315,7 @@ impl BootstrapStores {
     /// ON-CONFLICT, so get-then-insert via [`PgPythonCodeStore::get_by_name`].
     /// System rows are inserted directly with `validation_status='validated'`;
     /// user-authored rows remain pending for Q1/Q2.
-    /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
+    /// Review requests remain pending until actual validation and approval.
     async fn upsert_python_code(
         &self,
         row: NewPgPythonCode,
@@ -377,17 +332,18 @@ impl BootstrapStores {
             .await
             .map_err(map)?
         {
+            self.record_seed_review(existing.id, 22, name).await?;
             return Ok(existing.id);
         }
         let id = self.python_code.insert(row).await.map_err(map)?;
-        // New insert — record the builtin audit graduation.
-        self.audit_builtin_graduation(id, 22, name).await;
+        // Retain a pending request; no validation or approval is fabricated.
+        self.record_seed_review(id, 22, name).await?;
         Ok(id)
     }
 
     /// Insert-or-recover a Recipe id (class 21). `insert` is not ON-CONFLICT,
     /// so get-then-insert via [`PgRecipeStore::get_by_name`].
-    /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
+    /// Review requests remain pending until actual validation and approval.
     async fn upsert_recipe(
         &self,
         row: NewPgRecipe,
@@ -402,17 +358,18 @@ impl BootstrapStores {
             .await
             .map_err(map)?
         {
+            self.record_seed_review(existing.id, 21, name).await?;
             return Ok(existing.id);
         }
         let id = self.recipe.insert(row).await.map_err(map)?;
-        // New insert — record the builtin audit graduation.
-        self.audit_builtin_graduation(id, 21, name).await;
+        // Retain a pending request; no validation or approval is fabricated.
+        self.record_seed_review(id, 21, name).await?;
         Ok(id)
     }
 
-    /// Get-or-insert an ExtensionCatalogue (class 23) row and graduate it to
-    /// `validated` directly (builtins bypass Q1). Returns the catalogue id.
-    /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
+    /// Get-or-insert an ExtensionCatalogue (class 23) legacy row. Its existing
+    /// validated label is not Q1/Q2 evidence or v3 catalogue activation.
+    /// Review requests remain pending until actual validation and approval.
     async fn upsert_catalogue(
         &self,
         row: NewPgExtensionCatalogue,
@@ -429,11 +386,12 @@ impl BootstrapStores {
             .await
             .map_err(map)?
         {
+            self.record_seed_review(existing.id, 23, name).await?;
             return Ok(existing.id);
         }
         let id = self.catalogue.insert(row).await.map_err(map)?;
-        // New insert — record the builtin audit graduation.
-        self.audit_builtin_graduation(id, 23, name).await;
+        // Retain a pending request; no validation or approval is fabricated.
+        self.record_seed_review(id, 23, name).await?;
         Ok(id)
     }
 
@@ -499,7 +457,7 @@ impl BootstrapStores {
     /// Insert-or-recover an Action id (class 16). There is no `PgActionStore`,
     /// so this method uses raw SQL against `self.pool`.  The Action row is
     /// inserted with `source = 'system'` and `validation_status = 'validated'`
-    /// (builtins bypass Q1).  On conflict the existing `id` is returned via a
+    /// (legacy classification, not Q1/Q2 evidence). On conflict the existing `id` is returned via a
     /// follow-up `SELECT`.
     ///
     /// # Parameters
@@ -560,8 +518,8 @@ impl BootstrapStores {
             })?;
 
         if inserted == 1 {
-            // New row — record builtin audit graduation.
-            self.audit_builtin_graduation(id, 16, name).await;
+            drop(client);
+            self.record_seed_review(id, 16, name).await?;
             return Ok(id);
         }
 
@@ -578,7 +536,10 @@ impl BootstrapStores {
                 reason: e.to_string(),
             })?;
 
-        Ok(row.get(0))
+        let id = row.get(0);
+        drop(client);
+        self.record_seed_review(id, 16, name).await?;
+        Ok(id)
     }
 
     /// Mark a seeded recipe row as Tier-0 eligible. `NewPgRecipe` cannot set
@@ -942,9 +903,6 @@ async fn seed_prefix_bundle_group(
         dependency_registry: None, validates_class_code: None,
     }, recipe_name).await?;
     stores.mark_recipe_tier0(recipe_id).await?;
-    stores
-        .audit_builtin_graduation(recipe_id, 21, recipe_name)
-        .await;
 
     let cat_id = stores
         .upsert_catalogue(

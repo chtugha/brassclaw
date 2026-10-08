@@ -3236,3 +3236,35 @@ This connects draft retention to an ordinary startup caller. It does not start
 the global service there or supply protected-root/controlled-seed approvals,
 active catalogue publication, Tool artifact identity or the resource/continuation
 cutover. The original seven ordinary message-flow failures remain unresolved.
+
+### 2026-10-08 — Remove fabricated bootstrap graduation and surface recovery errors
+
+Removed the builtin/Zencoder seeders' unconditional Q1 pass and builtin approval
+writes, including the private builtin graduation API. Seeding now retains a
+pending legacy review request and propagates failures. Repeated boot repairs a
+missing request after a component insert but preserves existing review identity,
+state, counters, feedback and upgrade payloads. Skill-table records retain their
+actual class; protected class-10/50 records are no longer submitted as class 1.
+The Action seeder releases its database checkout before retaining the request.
+Boot integrity recovery now propagates request-write errors instead of reporting
+success after logging them, and counts only requests it actually created.
+
+Real native PostgreSQL startup tests covered queue-write failure after legacy
+insertion, successful recovery, absence of fabricated Q1/Q2/graduation records,
+builtin and Zencoder requests, correct root class, retained operator feedback,
+orphan recovery failure and idempotent recovery. All three startup cases passed
+in `/private/tmp/brassclaw-bootstrap-review-native-final.log`; all twenty native
+review/immutable-receipt/human-Q2 cases passed in
+`...-bootstrap-review-queue-native.log`. Affected Composition `skills-db`
+all-target strict linting passed in `...-bootstrap-review-composition-lints.log`.
+Root workspace, Rust 1.98, native PostgreSQL, established debug-free NVMe profile
+and serial screen execution were used. The first compiler diagnostic is retained
+in `...-bootstrap-review-native.log`: the pooled transaction needed explicit
+dereferencing for the generic tokio-postgres client API; it was corrected without
+changing the transaction boundary.
+
+Historical component labels and receipts remain legacy data; no new trusted seed
+or active catalogue is inferred from them. These pending requests do not execute
+the eight validator Recipes or implement the immutable controlled system-seed
+evidence adapter. Ordinary runtime still constructs the legacy driver, so no
+original-seven success or global production acceptance is claimed.

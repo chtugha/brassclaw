@@ -7,7 +7,7 @@
 //!
 //! Such rows are *inconsistent*: they are not validated but are also not tracked
 //! by the queue, so Q1/Q2 will never run for them.  The check finds them, logs a
-//! warning for each, and calls `submit()` to re-enqueue them at state 1 so the
+//! warning for each, and retains a pending request at state 1 so the
 //! normal Q1→Q2 graduation path can proceed.
 //!
 //! # Scope
@@ -125,14 +125,14 @@ fn build_integrity_query() -> String {
 /// Finds every component row that is not `'validated'` and has no matching
 /// `reborn_validation_queue` entry for its scope.  For each such row:
 /// - logs a `WARN` with component ID, class, and source table
-/// - calls `ValidationQueueStore::submit` to re-enqueue at state 1
+/// - retains the request in a transaction, checking any concurrent row's class
 ///
 /// All errors are surfaced; partial recovery (some submits succeed, some fail)
 /// is acceptable — the next boot will retry the remaining rows.
 ///
 /// # Performance
 ///
-/// One DB round-trip for the UNION ALL scan, then one `submit` per missing row.
+/// One DB round-trip for the UNION ALL scan, then one request transaction per missing row.
 /// In steady state (V077 populate ran successfully) there should be zero missing
 /// rows and the function returns immediately after the scan.
 pub(crate) async fn run_boot_integrity_check(
@@ -199,27 +199,11 @@ pub(crate) async fn run_boot_integrity_check(
             tenant_id     = %comp.tenant_id,
             "boot integrity: re-queuing missing component at Q1_pending"
         );
-        match store
-            .submit(
-                &scope,
-                comp.id,
-                comp.class_code.into(),
-                None, // no upgrade payload — this is a recovery submission
-            )
-            .await
+        if store
+            .retain_pending_request(&scope, comp.id, comp.class_code.into())
+            .await?
         {
-            Ok(()) => recovered += 1,
-            Err(ValidationQueueError::AlreadyQueued { .. }) => {
-                // Race: another process submitted it between our scan and now.
-                recovered += 1;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    component_id = %comp.id,
-                    error = %e,
-                    "boot integrity: failed to re-queue component (will retry on next boot)"
-                );
-            }
+            recovered += 1;
         }
     }
 

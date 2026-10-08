@@ -199,10 +199,26 @@ impl PgSkillStore {
         project_id: &str,
         name: &str,
     ) -> Result<Option<Uuid>, PgSkillStoreError> {
+        Ok(self
+            .get_identity_by_name(tenant_id, user_id, agent_id, project_id, name)
+            .await?
+            .map(|(id, _)| id))
+    }
+
+    /// Retain the actual class with the identity: this table also owns protected
+    /// class-10/50 records and cannot route all rows through class-1 review.
+    pub(crate) async fn get_identity_by_name(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+        name: &str,
+    ) -> Result<Option<(Uuid, i16)>, PgSkillStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(
-                "SELECT id FROM reborn_skills
+                "SELECT id,class_code FROM reborn_skills
                  WHERE name = $1
                    AND tenant_id = $2 AND user_id = $3
                    AND agent_id  = $4 AND project_id = $5
@@ -211,6 +227,6 @@ impl PgSkillStore {
             )
             .await
             .map_err(map_pg)?;
-        Ok(row.map(|r| r.get(0)))
+        Ok(row.map(|r| (r.get(0), r.get(1))))
     }
 }
