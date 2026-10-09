@@ -3,7 +3,10 @@
 //! and kernel ports. This type owns one VM, not a queue or Recipe workflow.
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -77,7 +80,7 @@ impl std::fmt::Debug for GlobalBoundary {
 #[derive(Debug)]
 struct RootControl {
     account: Mutex<RootAccount>,
-    slice: Duration,
+    slice_nanos: AtomicU64,
     max_contexts: usize,
 }
 #[derive(Debug, Default)]
@@ -241,7 +244,7 @@ impl RootControl {
         let delta = elapsed
             .checked_sub(account.last_yield)
             .ok_or(ExecutionControlError::AccountingUnavailable)?;
-        if delta >= self.slice {
+        if delta >= Duration::from_nanos(self.slice_nanos.load(Ordering::Acquire)) {
             account.last_yield = elapsed;
             Ok(ExecutionControlAction::Yield)
         } else {
@@ -455,6 +458,13 @@ pub struct GlobalVm {
     withheld: BTreeMap<ContinuationKey, HostAnswer>,
 }
 impl GlobalVm {
+    pub(crate) fn update_bounds(&mut self, values: VmBounds) {
+        self.control
+            .slice_nanos
+            .store(values.execution_slice.as_nanos() as u64, Ordering::Release);
+        self.bounds.values = values;
+    }
+
     /// Perform the real work-wait handshake before returning a usable root.
     /// Startup control yields are resumed until all configured workers await
     /// work. The deadline covers compilation and execution, but synchronous
@@ -539,7 +549,7 @@ impl GlobalVm {
         let mut tracker = ResourceTracker::new(ResourceLimits::default());
         let control = Arc::new(RootControl {
             account: Mutex::new(RootAccount::default()),
-            slice: bounds.values.execution_slice,
+            slice_nanos: AtomicU64::new(bounds.values.execution_slice.as_nanos() as u64),
             // The verified root has a main coroutine, bounded workers, and
             // discarded-context service work. Unexpected coroutine growth
             // must fail closed instead of growing this lifetime map forever.

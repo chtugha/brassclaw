@@ -260,11 +260,18 @@ pub struct TransportClient {
     control_tx: mpsc::Sender<Envelope>,
     inbox: CompletionInbox,
     limits: ActorLimits,
-    values: VmBounds,
+    values: watch::Receiver<VmBounds>,
     frame: usize,
     stopped: watch::Receiver<Option<StopKind>>,
 }
 impl TransportClient {
+    pub(crate) fn frame_limit(&self) -> usize {
+        self.frame
+    }
+    pub fn live_vm_bounds(&self) -> watch::Receiver<VmBounds> {
+        self.values.clone()
+    }
+
     pub fn completions(&self) -> CompletionInbox {
         self.inbox.clone()
     }
@@ -315,7 +322,7 @@ impl TransportClient {
             return Err(submit(ActorFailure::Backpressure, command));
         }
         drop(ledger);
-        let wire = match retain_command(&command, self.values, self.frame) {
+        let wire = match retain_command(&command, *self.values.borrow(), self.frame) {
             Ok(wire) => wire,
             Err(kind) => return Err(submit(ActorFailure::Transport(kind), command)),
         };
@@ -453,16 +460,19 @@ impl TransportOwner {
                 closed: false,
             })),
         };
+        let (values_tx, values_rx) = watch::channel(values);
         let client = TransportClient {
             tx,
             control_tx,
             inbox: inbox.clone(),
             limits,
-            values,
+            values: values_rx,
             frame: process_limits.max_frame_bytes,
             stopped: observed_stop,
         };
-        let join = tokio::spawn(run(process, rx, control_rx, stop_rx, inbox, stopped));
+        let join = tokio::spawn(run(
+            process, rx, control_rx, stop_rx, inbox, stopped, values_tx,
+        ));
         Ok((
             Self {
                 client,
@@ -514,6 +524,7 @@ async fn run(
     mut stop: watch::Receiver<bool>,
     inbox: CompletionInbox,
     stopped: watch::Sender<Option<StopKind>>,
+    values: watch::Sender<VmBounds>,
 ) -> ActorExit {
     let mut shutdown_failure = None;
     let mut control_burst = 0usize;
@@ -549,6 +560,11 @@ async fn run(
         // retain a second decoded copy on a failed exchange.
         if let Err(error) = &mut outcome {
             error.command = None;
+        }
+        if let Ok(snapshot) = &outcome
+            && let Some(bounds) = snapshot.vm_bounds
+        {
+            values.send_replace(bounds);
         }
         let graceful = outcome
             .as_ref()

@@ -3623,3 +3623,48 @@ service observation; it does not measure OS RSS reclamation or complete the
 production WebUI/adaptive memory/platform acceptance. The deterministic budget
 tests establish that repeated proposals, rejected acknowledgements and safe
 manual ceilings do not fabricate a changed effective allocator budget.
+
+### 2026-10-09 — Live execution-limit publication
+
+The existing instance Monty settings path now includes an `execution_limits`
+group: source bytes per feed, cumulative compiled bytes, feed count, captured
+output bytes, execution slice, and typed-value depth/node/byte limits. V109 adds
+this group with the previous startup defaults and advances existing settings
+revisions without modifying historical migrations or operator values. Stored
+invalid JSON is an error, rather than a replacement default.
+
+A combined serialized worker operation updates task settings and these bounds
+at one VM boundary. Existing root and child contexts keep their locals, selected
+artifacts, continuations, feed/compiled-byte consumption and compute accounts.
+The actor publishes the actual acknowledged bounds before exposing the receipt;
+service admission and queued admission use those observations. Private worker
+protocol 6 carries the actual bounds with every snapshot; the root identity is
+still immutable for that worker lifetime.
+
+Queued inputs are rechecked before VM entry. A newly oversized input is rejected
+explicitly without trimming history or ending the instance. A completed host
+result exceeding the new transport/value bounds is retained verbatim in trusted
+withheld evidence; its task aborts without replaying the effect or killing the
+root. Values must fit the current transport, native representation and response
+settings; source reductions cannot make the retained root unbootable.
+
+The existing WebUI tab submits the group with its expected revision and displays
+its own desired/effective uptake. Numeric edits reject values that JavaScript
+cannot represent exactly. This is one execution-limit family, not completed
+adaptive-memory, transport/concurrency or full-plan acceptance.
+
+Local Rust 1.98 validation passed with the stable NVMe target, incremental and
+debug data disabled: the protocol-6 worker build; all 14 real service tests in
+`tests/monty_control`, including retained child state, queued-input rechecks and
+oversized completed-result containment; the actual native PostgreSQL/WebUI
+settings caller; PostgreSQL settings tests; and the retained global root across
+Match and No-Match. Strict all-target control-harness Clippy and affected
+composition/WebUI/host-API/product Clippy passed, as did all 26 architecture
+checks. Two earlier native runs exposed a wrong shutdown helper and an incorrect
+task-error route; both were corrected before the passing service/caller checks.
+Logs are recorded as `execution-*` in the local validation receipts. No
+performance or Windows runtime acceptance is claimed by this entry.
+
+The paired application/CLI version is `1.7.0-rc.1`; the release workflow builds
+locked Linux/macOS application and worker artifacts and labels tagged
+prereleases accordingly. Builds on the separate test machine were not used.

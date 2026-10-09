@@ -13,7 +13,7 @@ use std::{
     fmt,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -41,7 +41,7 @@ use uuid::Uuid;
 const HOST_TYPE: MontyUuid = MontyUuid::from_u128(0x484f_5354_5459_5045);
 
 /// Explicit technical bounds, separate from artificial token budgets.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VmBounds {
     pub max_source_bytes: usize,
@@ -54,12 +54,13 @@ pub struct VmBounds {
     pub max_value_bytes: usize,
 }
 impl VmBounds {
-    fn valid(self) -> bool {
+    pub fn valid(self) -> bool {
         self.max_source_bytes > 0
             && self.max_source_bytes <= self.max_compiled_source_bytes
             && self.max_feeds > 0
             && self.max_stdout_bytes > 0
             && self.execution_slice > Duration::ZERO
+            && self.execution_slice.as_nanos() <= u128::from(u64::MAX)
             && self.max_value_depth > 0
             && self.max_value_nodes > 0
             && self.max_value_bytes > 0
@@ -245,7 +246,7 @@ struct TaskControl {
     clock: Mutex<MontyTaskClock>,
     cancelled: AtomicBool,
     last_yield: Mutex<Duration>,
-    slice: Duration,
+    slice_nanos: AtomicU64,
 }
 impl ExecutionControl for TaskControl {
     fn checkpoint(
@@ -270,7 +271,7 @@ impl ExecutionControl for TaskControl {
         let delta = elapsed
             .checked_sub(*last)
             .ok_or(ExecutionControlError::AccountingUnavailable)?;
-        if delta >= self.slice {
+        if delta >= Duration::from_nanos(self.slice_nanos.load(Ordering::Acquire)) {
             *last = elapsed;
             Ok(ExecutionControlAction::Yield)
         } else {
@@ -314,6 +315,15 @@ pub struct RecipeVm {
     stdout: String,
 }
 impl RecipeVm {
+    /// Called only at the serialized worker boundary after complete validation.
+    /// Existing locals, continuations, feed counts and compute clocks survive.
+    pub(crate) fn update_bounds(&mut self, bounds: VmBounds) {
+        self.control
+            .slice_nanos
+            .store(bounds.execution_slice.as_nanos() as u64, Ordering::Release);
+        self.bounds = bounds;
+    }
+
     pub fn new(budget: SharedMontyTaskBudget, bounds: VmBounds) -> Result<Self, VmError> {
         if !bounds.valid() {
             return Err(VmError::kind(VmFailure::InvalidBounds));
@@ -323,7 +333,7 @@ impl RecipeVm {
             budget,
             cancelled: AtomicBool::new(false),
             last_yield: Mutex::new(Duration::ZERO),
-            slice: bounds.execution_slice,
+            slice_nanos: AtomicU64::new(bounds.execution_slice.as_nanos() as u64),
         });
         let mut tracker = ResourceTracker::new(ResourceLimits::default());
         tracker.set_execution_control(control.clone());

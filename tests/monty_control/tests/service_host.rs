@@ -68,6 +68,7 @@ struct FilePorts {
     panic_after_read: bool,
     retain_child_heap: bool,
     retained_vm_bytes: AtomicUsize,
+    resume_child_after_edit: bool,
 }
 impl FilePorts {
     fn new(root: &std::path::Path, label: &str, pause_read: bool) -> Arc<Self> {
@@ -92,6 +93,7 @@ impl FilePorts {
             panic_after_read: false,
             retain_child_heap: false,
             retained_vm_bytes: AtomicUsize::new(0),
+            resume_child_after_edit: false,
         })
     }
     fn input(&self) -> TaskInput {
@@ -160,6 +162,71 @@ impl FilePorts {
                 }) => {
                     self.retained_vm_bytes
                         .store(progress.vm_live_bytes, Ordering::Release);
+                    if self.resume_child_after_edit {
+                        self.started.notify_one();
+                        self.release.notified().await;
+                        let followup =
+                            "result = inputs['content'] if len(held) == 2097152 else 'lost state'";
+                        let mut next = exchange(RecipeCommand::Start {
+                            context,
+                            selected: SelectedPython {
+                                source: followup.into(),
+                                checksum: Sha256::digest(followup.as_bytes()).into(),
+                                aliases: Default::default(),
+                            },
+                            inputs: json!({"content": content}),
+                        })
+                        .await?;
+                        loop {
+                            match next.recipe {
+                                Some(RecipeEvent::Progress {
+                                    boundary: RecipeBoundary::ControlYield { key },
+                                    ..
+                                }) => {
+                                    next = exchange(RecipeCommand::ResumeControl { context, key })
+                                        .await?;
+                                }
+                                Some(RecipeEvent::Progress {
+                                    boundary:
+                                        RecipeBoundary::Complete {
+                                            value: Value::String(value),
+                                        },
+                                    ..
+                                }) => {
+                                    // A third feed must fail: the live reduction must not
+                                    // reset the first feed already consumed by this child.
+                                    let exhausted = transport
+                                        .try_submit(WorkerCommand::Recipe {
+                                            command: RecipeCommand::Start {
+                                                context,
+                                                selected: SelectedPython {
+                                                    source: followup.into(),
+                                                    checksum: Sha256::digest(followup.as_bytes())
+                                                        .into(),
+                                                    aliases: Default::default(),
+                                                },
+                                                inputs: json!({"content": "must never execute"}),
+                                            },
+                                        })
+                                        .unwrap()
+                                        .wait()
+                                        .await
+                                        .unwrap();
+                                    assert!(matches!(
+                                        exhausted.outcome,
+                                        Err(brassclaw_monty_host::process::ProcessError {
+                                            kind: brassclaw_monty_host::process::ProcessFailure::Vm(
+                                                brassclaw_monty_host::VmFailure::SourceLimit
+                                            ),
+                                            ..
+                                        })
+                                    ));
+                                    return Ok(value);
+                                }
+                                _ => return Err(failure("child_execution_failed")),
+                            }
+                        }
+                    }
                     return Ok(content);
                 }
                 _ => return Err(failure("child_execution_failed")),
@@ -890,5 +957,184 @@ async fn normal_completion_releases_child_heap_before_receipt_and_keeps_global_r
     ));
     assert_eq!(next.reads.load(Ordering::Acquire), 1);
     assert_eq!(next.writes.load(Ordering::Acquire), 1);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn live_bounds_reach_retained_children_without_resetting_feeds_or_recipe_locals() {
+    use brassclaw_monty_host::process::TaskSettings;
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let pid = owner.worker_process_id();
+    let client = owner.client();
+    let mut ports = FilePorts::new(directory.path(), "live-child-limits", false);
+    let port = Arc::get_mut(&mut ports).unwrap();
+    port.retain_child_heap = true;
+    port.resume_child_after_edit = true;
+    let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), ports.started.notified())
+        .await
+        .unwrap();
+    let mut bounds = client.vm_bounds();
+    bounds.max_feeds = 2;
+    bounds.execution_slice = Duration::from_millis(1);
+    let update = client
+        .publish_runtime_settings(
+            1,
+            TaskSettings {
+                revision: 2,
+                max_compute_time: Duration::from_secs(30),
+                token_budgets_enabled: false,
+            },
+            bounds,
+        )
+        .await
+        .unwrap();
+    assert_eq!(client.vm_bounds(), bounds);
+    assert_eq!(update.accounting.len(), 1);
+    assert!(update.accounting[0].compute_time.unwrap() > Duration::ZERO);
+    assert_eq!(owner.worker_process_id(), pid);
+    let mut invalid = bounds;
+    invalid.max_source_bytes = 1;
+    assert!(matches!(
+        client
+            .publish_runtime_settings(
+                2,
+                TaskSettings {
+                    revision: 3,
+                    max_compute_time: Duration::from_secs(30),
+                    token_budgets_enabled: false,
+                },
+                invalid
+            )
+            .await,
+        Err(ServiceFailure::InvalidLimits)
+    ));
+    assert_eq!(client.live_task_settings().current().revision, 2);
+    assert_eq!(client.vm_bounds(), bounds);
+    ports.release.notify_one();
+    let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+    assert_eq!(
+        std::fs::read(&ports.reply).unwrap(),
+        std::fs::read(&ports.input).unwrap()
+    );
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn reduced_value_limit_preserves_completed_host_result_and_fails_only_its_task() {
+    use brassclaw_monty_host::{HostAnswer, process::TaskSettings};
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let pid = owner.worker_process_id();
+    let client = owner.client();
+    let ports = FilePorts::new(directory.path(), "large-result", true);
+    let content = "actual file payload Ü".repeat(512);
+    std::fs::write(&ports.input, &content).unwrap();
+    let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), ports.started.notified())
+        .await
+        .unwrap();
+    let mut bounds = client.vm_bounds();
+    bounds.max_value_bytes = 1024;
+    client
+        .publish_runtime_settings(
+            1,
+            TaskSettings {
+                revision: 2,
+                max_compute_time: Duration::from_secs(30),
+                token_budgets_enabled: false,
+            },
+            bounds,
+        )
+        .await
+        .unwrap();
+    ports.release.notify_one();
+    let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(receipt.outcome, TaskOutcome::Failed { .. }));
+    assert_eq!(receipt.withheld.len(), 1);
+    assert!(
+        matches!(&receipt.withheld[0].answer, HostAnswer::Return(Value::String(value)) if value == &content)
+    );
+    assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+    assert_eq!(ports.writes.load(Ordering::Acquire), 0);
+    let next = FilePorts::new(directory.path(), "bounded-next", false);
+    let next_ticket = client.submit(next.input(), next.clone()).unwrap();
+    let next_receipt = tokio::time::timeout(Duration::from_secs(10), next_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        next_receipt.outcome,
+        TaskOutcome::Completed { .. }
+    ));
+    assert_eq!(next_receipt.root, receipt.root);
+    assert_eq!(owner.worker_process_id(), pid);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn queued_input_is_rechecked_after_live_reduction_without_truncation_or_instance_failure() {
+    use brassclaw_monty_host::process::TaskSettings;
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let first = FilePorts::new(directory.path(), "queued-first", true);
+    let second = FilePorts::new(directory.path(), "queued-second", true);
+    let a = client.submit(first.input(), first.clone()).unwrap();
+    let b = client.submit(second.input(), second.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        first.started.notified().await;
+        second.started.notified().await;
+    })
+    .await
+    .unwrap();
+    let mut large = FilePorts::new(directory.path(), "queued-large", false);
+    Arc::get_mut(&mut large).unwrap().expected["user_input"] = json!("queued original".repeat(256));
+    let queued = client.submit(large.input(), large.clone()).unwrap();
+    let mut bounds = client.vm_bounds();
+    bounds.max_value_bytes = 1024;
+    client
+        .publish_runtime_settings(
+            1,
+            TaskSettings {
+                revision: 2,
+                max_compute_time: Duration::from_secs(30),
+                token_budgets_enabled: false,
+            },
+            bounds,
+        )
+        .await
+        .unwrap();
+    first.release.notify_one();
+    second.release.notify_one();
+    for ticket in [a, b] {
+        let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+    }
+    let rejected = tokio::time::timeout(Duration::from_secs(10), queued.wait())
+        .await
+        .unwrap();
+    assert!(matches!(rejected, Err(ServiceFailure::InvalidInput)));
+    assert_eq!(large.reads.load(Ordering::Acquire), 0);
+    assert_eq!(large.writes.load(Ordering::Acquire), 0);
+    let next = FilePorts::new(directory.path(), "queue-next", false);
+    let receipt = client
+        .submit(next.input(), next)
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
     graceful(&mut owner).await;
 }

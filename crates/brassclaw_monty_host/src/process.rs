@@ -39,7 +39,7 @@ pub use crate::process_recipe::{
     TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 5;
+const PROTOCOL: u32 = 6;
 const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
@@ -233,6 +233,7 @@ pub struct ProcessSnapshot {
     pub admitted_task: Option<TaskHandle>,
     pub recipe: Option<RecipeEvent>,
     pub effective_task_settings: Option<TaskSettings>,
+    pub vm_bounds: Option<VmBounds>,
     pub task_accounting: Vec<TaskAccounting>,
     pub withheld_answers: Vec<WithheldHostAnswer>,
 }
@@ -542,7 +543,12 @@ impl GlobalProcess {
         // Code and generation cannot change during this process lifetime,
         // including errors, child operations and shutdown. Preserve a conflicting
         // real reply for reconciliation and contain the worker before more work.
-        if guard.owner.root.is_some() && reply.snapshot.root != guard.owner.root {
+        if (guard.owner.root.is_some()
+            && (reply.snapshot.root != guard.owner.root || reply.snapshot.vm_bounds.is_none()))
+            || reply.snapshot.vm_bounds.is_some_and(|values| {
+                !runtime_bounds_supported(values, guard.owner.limits.max_frame_bytes)
+            })
+        {
             guard.owner.interrupt();
             let mut error = ProcessError::new(ProcessFailure::Protocol);
             error.command = guard
@@ -553,6 +559,9 @@ impl GlobalProcess {
             error.exit_status = guard.owner.terminate().await;
             guard.owner.attach_failures(&mut error);
             return Err(error);
+        }
+        if let Some(values) = reply.snapshot.vm_bounds {
+            guard.owner.values = values;
         }
         if reply.snapshot.lifecycle == Lifecycle::Failed {
             // A failed root is an instance failure, even when the framed VM
@@ -703,11 +712,25 @@ pub(crate) fn recover_command(bytes: &[u8]) -> Result<WorkerCommand, ProcessFail
         .map(|request| request.command)
         .map_err(|_| ProcessFailure::Protocol)
 }
+pub(crate) fn runtime_bounds_supported(bounds: VmBounds, frame: usize) -> bool {
+    bounds.valid()
+        && bounds.max_value_depth <= MAX_TRANSPORT_DEPTH
+        && bounds.max_value_bytes <= frame
+        && bounds.max_source_bytes <= frame
+        && bounds.max_stdout_bytes <= frame
+}
 fn validate_command_data(
     command: &WorkerCommand,
     bounds: VmBounds,
     limit: usize,
 ) -> Result<(), ProcessFailure> {
+    if let WorkerCommand::Recipe {
+        command: RecipeCommand::UpdateRuntimeSettings { values, .. },
+    } = command
+        && !runtime_bounds_supported(*values, limit)
+    {
+        return Err(ProcessFailure::Vm(VmFailure::InvalidBounds));
+    }
     let data = match command {
         WorkerCommand::Admit { task, .. } => Some(task),
         WorkerCommand::Resolve {
@@ -935,6 +958,11 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                         WorkerCommand::Admit { key, task } => registry
                             .admit(root, key, task, &mut admitted_task)
                             .map(Some),
+                        WorkerCommand::Recipe {
+                            command: RecipeCommand::UpdateRuntimeSettings { values, .. },
+                        } if !runtime_bounds_supported(values, max_frame_bytes) => {
+                            Err(crate::VmError::kind(VmFailure::InvalidBounds))
+                        }
                         WorkerCommand::Recipe { command } => {
                             registry.apply(command, root).map(|event| {
                                 recipe = Some(event);
@@ -1009,6 +1037,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 admitted_task,
                 recipe,
                 effective_task_settings,
+                vm_bounds: recipes.as_ref().map(WorkerRecipes::bounds),
                 task_accounting,
                 withheld_answers: root.take_withheld_answers(),
             },
@@ -1024,6 +1053,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 admitted_task,
                 recipe,
                 effective_task_settings,
+                vm_bounds: recipes.as_ref().map(WorkerRecipes::bounds),
                 task_accounting,
                 withheld_answers: Vec::new(),
             },

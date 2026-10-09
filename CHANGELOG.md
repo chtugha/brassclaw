@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.1] - 2026-10-09
+
+This development prerelease checkpoints the v3 migration; it does not certify
+completion of the full plan. Install the application and Monty worker from the
+same release: the private worker protocol is now version 6.
+
+### Release changes
+
+- Start ordinary turns through one instance-owned Monty orchestrator, retaining
+  the selected Recipe and typed step data. The original seven composition
+  regressions pass without a Rust-loop fallback.
+- Publish task-duration and token-budget settings to Rust and Monty through
+  acknowledged revisions. Disabling token budgets preserves accounting while
+  removing artificial retrieval, history and task-token limits.
+- Add eight live execution-limit settings to the WebUI and PostgreSQL (V109),
+  including source, feed, stdout, execution-slice and typed-value limits. Existing
+  child state, invocation counts and consumed compute survive updates; unsafe or
+  unsupported reductions are rejected before persistence.
+- Recheck queued inputs after a live reduction. Preserve oversized completed
+  host results as evidence and fail only the affected task, without replaying
+  its effects or replacing the global orchestrator.
+- Release completed child state after acknowledged handoff, and resize worker
+  memory without resetting allocation accounting or imposing the old startup
+  allocator ceiling. Production adaptive memory sampling and the remaining
+  hosting-limit controls are still unfinished.
+- Package paired application/worker binaries for Linux and macOS. Windows
+  production hosting and the full platform acceptance matrix remain unfinished.
+
+### Development milestones
+
+The entries below retain intermediate evidence and limitations from development
+since 1.6.0. Their pending notes describe their respective stage; current rollout
+status and acceptance evidence are tracked in
+`docs/plans/simplified-v3-implementation.md`.
+
 ### Added
 
 - *(components / contracts)* Add recursive value and exact association declaration validators, typed IBS input preparation and regression coverage. Parsing declarations does not establish trusted combination approval or complete immutable catalogue selection.

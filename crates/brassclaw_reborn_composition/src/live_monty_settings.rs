@@ -3,11 +3,13 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use brassclaw_monty_host::{process::TaskSettings, service::ServiceClient};
+use brassclaw_host_api::MontyExecutionLimits;
+use brassclaw_monty_host::{VmBounds, process::TaskSettings, service::ServiceClient};
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::{
-    MontyBudgetUptake, MontyTaskBudgetStatus, MontyVmSettings, MontyVmSettingsError,
-    MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse, UpdateMontyVmSettingsRequest,
+    MontyBudgetUptake, MontyExecutionLimitsStatus, MontyTaskBudgetStatus, MontyVmSettings,
+    MontyVmSettingsError, MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse,
+    UpdateMontyVmSettingsRequest,
 };
 use tokio::{
     sync::{Notify, watch},
@@ -48,7 +50,9 @@ impl MontySettingsOwner {
         ownership: GlobalOwnerCheck,
         initial: MontyVmSettings,
     ) -> Result<Self, MontyVmSettingsError> {
-        if task_settings(&initial) != TaskSettings::from(service.live_task_settings().current()) {
+        if task_settings(&initial) != TaskSettings::from(service.live_task_settings().current())
+            || execution_bounds(initial.execution_limits)? != service.vm_bounds()
+        {
             return Err(MontyVmSettingsError::Internal(
                 "initial task revision mismatch".into(),
             ));
@@ -90,6 +94,41 @@ impl Drop for MontySettingsOwner {
     }
 }
 
+pub(crate) fn execution_bounds(
+    limits: MontyExecutionLimits,
+) -> Result<VmBounds, MontyVmSettingsError> {
+    limits
+        .validate()
+        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+    let native = |value: u64| {
+        usize::try_from(value).map_err(|_| {
+            MontyVmSettingsError::Invalid("execution limit exceeds native representation".into())
+        })
+    };
+    Ok(VmBounds {
+        max_source_bytes: native(limits.max_source_bytes)?,
+        max_compiled_source_bytes: native(limits.max_compiled_source_bytes)?,
+        max_feeds: native(limits.max_feeds)?,
+        max_stdout_bytes: native(limits.max_stdout_bytes)?,
+        execution_slice: Duration::from_millis(limits.execution_slice_millis),
+        max_value_depth: native(u64::from(limits.max_value_depth))?,
+        max_value_nodes: native(limits.max_value_nodes)?,
+        max_value_bytes: native(limits.max_value_bytes)?,
+    })
+}
+fn observed_limits(bounds: VmBounds) -> MontyExecutionLimits {
+    MontyExecutionLimits {
+        max_source_bytes: bounds.max_source_bytes as u64,
+        max_compiled_source_bytes: bounds.max_compiled_source_bytes as u64,
+        max_feeds: bounds.max_feeds as u64,
+        max_stdout_bytes: bounds.max_stdout_bytes as u64,
+        execution_slice_millis: bounds.execution_slice.as_millis() as u64,
+        max_value_depth: bounds.max_value_depth as u32,
+        max_value_nodes: bounds.max_value_nodes as u64,
+        max_value_bytes: bounds.max_value_bytes as u64,
+    }
+}
+
 fn task_settings(settings: &MontyVmSettings) -> TaskSettings {
     TaskSettings {
         revision: settings.revision,
@@ -128,18 +167,28 @@ impl LiveMontySettingsStore {
             .await
             .map_err(|_| (revision, "runtime_unavailable"))?;
         let effective = self.service.live_task_settings().current();
+        let values = execution_bounds(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_execution_limits"))?;
+        self.service
+            .validate_vm_bounds(values)
+            .map_err(|_| (revision, "unsupported_execution_limits"))?;
         if desired.revision < effective.revision {
             return Err((revision, "settings_revision_regressed"));
         }
         if desired.revision == effective.revision {
-            if task_settings(&desired) != TaskSettings::from(effective) {
+            if task_settings(&desired) != TaskSettings::from(effective)
+                || values != self.service.vm_bounds()
+            {
                 return Err((revision, "settings_revision_conflict"));
             }
         } else {
             tokio::time::timeout(
                 UPTAKE_BOUND,
-                self.service
-                    .publish_settings(effective.revision, task_settings(&desired)),
+                self.service.publish_runtime_settings(
+                    effective.revision,
+                    task_settings(&desired),
+                    values,
+                ),
             )
             .await
             .map_err(|_| (revision, "settings_publication_deadline"))?
@@ -175,7 +224,28 @@ impl LiveMontySettingsStore {
         } else {
             MontyBudgetUptake::Pending
         };
+        let limits = observed_limits(self.service.vm_bounds());
+        let limits_uptake = if closed {
+            MontyBudgetUptake::Failed
+        } else if desired.revision == effective.revision && desired.execution_limits == limits {
+            MontyBudgetUptake::Applied
+        } else if failure.is_some() {
+            MontyBudgetUptake::Failed
+        } else {
+            MontyBudgetUptake::Pending
+        };
         MontyVmStatusResponse {
+            execution_limits: Some(MontyExecutionLimitsStatus {
+                desired_revision: desired.revision,
+                effective_revision: effective.revision,
+                limits,
+                uptake: limits_uptake,
+                failure_reason: if limits_uptake == MontyBudgetUptake::Failed {
+                    failure.map(str::to_owned)
+                } else {
+                    None
+                },
+            }),
             state: if closed {
                 MontyVmState::Error
             } else {
@@ -229,6 +299,15 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         _project: &str,
         update: &UpdateMontyVmSettingsRequest,
     ) -> Result<MontyVmSettings, MontyVmSettingsError> {
+        if let Some(limits) = update.execution_limits {
+            self.service
+                .validate_vm_bounds(execution_bounds(limits)?)
+                .map_err(|_| {
+                    MontyVmSettingsError::Invalid(
+                        "execution limits exceed current transport or response settings".into(),
+                    )
+                })?;
+        }
         if update.max_memory_bytes.is_some() || update.active_orchestrator_id.is_some() {
             return Err(MontyVmSettingsError::Invalid(
                 "heap and orchestrator edits require their separate live publication paths".into(),

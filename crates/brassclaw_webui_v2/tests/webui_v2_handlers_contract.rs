@@ -850,6 +850,7 @@ impl RebornServicesApi for StubServices {
         Ok(MontyVmSettingsResponse {
             runtime: None,
             settings: MontyVmSettings {
+                execution_limits: Default::default(),
                 revision: 0,
                 max_duration_secs: 300,
                 max_allocations: None,
@@ -874,6 +875,7 @@ impl RebornServicesApi for StubServices {
         Ok(MontyVmSettingsResponse {
             runtime: None,
             settings: MontyVmSettings {
+                execution_limits: Default::default(),
                 revision: 0,
                 max_duration_secs: 300,
                 max_allocations: None,
@@ -910,6 +912,7 @@ impl RebornServicesApi for StubServices {
             settings_hash: None,
             restart_supported: true,
             task_budget: None,
+            execution_limits: None,
         })
     }
 

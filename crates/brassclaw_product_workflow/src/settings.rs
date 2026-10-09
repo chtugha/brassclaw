@@ -159,6 +159,9 @@ pub struct SettingsComponentGraph {
 /// (gated: only `Validated` orchestrators are accepted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmSettings {
+    /// Live execution limits, distinct from shared heap and task compute time.
+    #[serde(default)]
+    pub execution_limits: brassclaw_host_api::MontyExecutionLimits,
     /// Durable desired settings revision; zero denotes an absent row.
     /// This is not evidence of runtime uptake.
     pub revision: u64,
@@ -194,6 +197,7 @@ pub struct MontyVmSettings {
 /// Request body for `PUT /api/settings/monty-vm`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMontyVmSettingsRequest {
+    pub execution_limits: Option<brassclaw_host_api::MontyExecutionLimits>,
     /// Compare-and-set revision from GET. Required by durable stores.
     pub expected_revision: Option<u64>,
     pub max_duration_secs: Option<u64>,
@@ -252,6 +256,8 @@ pub enum MontyVmState {
 /// Response for `GET /api/settings/monty-vm/status`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmStatusResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_limits: Option<MontyExecutionLimitsStatus>,
     pub state: MontyVmState,
     /// Version of the currently active orchestrator (e.g. `"1.2.3"`).
     pub orchestrator_version: Option<String>,
@@ -262,6 +268,15 @@ pub struct MontyVmStatusResponse {
     pub restart_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_budget: Option<MontyTaskBudgetStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MontyExecutionLimitsStatus {
+    pub desired_revision: u64,
+    pub effective_revision: u64,
+    pub limits: brassclaw_host_api::MontyExecutionLimits,
+    pub uptake: MontyBudgetUptake,
+    pub failure_reason: Option<String>,
 }
 
 /// Uptake covers task compute time and token mode, not catalogue activation or
@@ -371,6 +386,7 @@ fn default_false() -> bool {
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
 pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
+        execution_limits: Default::default(),
         revision: 0,
         max_duration_secs: 600,
         max_allocations: None,

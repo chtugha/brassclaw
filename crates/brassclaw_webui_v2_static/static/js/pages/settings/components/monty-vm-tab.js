@@ -20,6 +20,12 @@ import {
 
 // ── Poll interval for live status while restarting ────────────────────────────
 const STATUS_POLL_MS = 3000;
+const EXECUTION_FIELDS = [
+  "max_source_bytes", "max_compiled_source_bytes", "max_feeds", "max_stdout_bytes",
+  "execution_slice_millis", "max_value_depth", "max_value_nodes", "max_value_bytes",
+];
+const pendingSettings = (status) => status.state === "running" &&
+  (status.task_budget?.uptake !== "applied" || status.execution_limits?.uptake !== "applied");
 
 export function MontyVmTab({ searchQuery = "" }) {
   const t = useT();
@@ -56,7 +62,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         else setSettingsError(s.reason);
         if (st.status === "fulfilled") {
           setStatus(st.value);
-          setIsPolling(st.value.state === "running" && st.value.task_budget?.uptake !== "applied");
+          setIsPolling(pendingSettings(st.value));
         } else setStatusError(st.reason.message || String(st.reason));
       })
       .finally(() => {
@@ -78,7 +84,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         if (!cancelled) {
           setStatus(st);
           setStatusError(null);
-          if ((st.state === "running" && st.task_budget?.uptake === "applied") || st.state === "stopped" || st.state === "error") {
+          if ((st.state === "running" && !pendingSettings(st)) || st.state === "stopped" || st.state === "error") {
             setIsPolling(false);
           } else timer = setTimeout(poll, STATUS_POLL_MS);
         }
@@ -102,7 +108,14 @@ export function MontyVmTab({ searchQuery = "" }) {
     setSaveError(null);
     setSavedOk(false);
     try {
+      const executionLimits = {};
+      for (const key of EXECUTION_FIELDS) {
+        const value = Number(settings.execution_limits?.[key]);
+        if (!Number.isSafeInteger(value) || value <= 0) throw new Error(t("montyVm.executionLimitsInvalid"));
+        executionLimits[key] = value;
+      }
       const updated = await updateMontyVmSettings({
+        execution_limits: executionLimits,
         expected_revision: settings.revision,
         token_budgets_enabled: settings.token_budgets_enabled,
         max_duration_secs: settings.max_duration_secs,
@@ -115,7 +128,7 @@ export function MontyVmTab({ searchQuery = "" }) {
       if (updated?.runtime) {
         setStatus(updated.runtime);
         setStatusError(null);
-        setIsPolling(updated.runtime.state === "running" && updated.runtime.task_budget?.uptake !== "applied");
+        setIsPolling(pendingSettings(updated.runtime));
       }
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
@@ -124,7 +137,7 @@ export function MontyVmTab({ searchQuery = "" }) {
     } finally {
       setIsSaving(false);
     }
-  }, [settings]);
+  }, [settings, t]);
 
   const handleRestart = React.useCallback(async () => {
     setShowConfirm(false);
@@ -234,6 +247,15 @@ function StatusCard({ status, isPolling, t }) {
             · ${t(`montyVm.uptake.${status.task_budget.uptake}`)}
           </div>
         `}
+        ${status.execution_limits && html`
+          <div className="text-sm text-[var(--v2-text-muted)]">
+            ${t("montyVm.executionLimitsTitle")}
+            · ${t("montyVm.desiredRevision")}: ${status.execution_limits.desired_revision}
+            · ${t("montyVm.effectiveRevision")}: ${status.execution_limits.effective_revision}
+            · ${t(`montyVm.uptake.${status.execution_limits.uptake}`)}
+            ${status.execution_limits.failure_reason && html`<span role="alert"> · ${status.execution_limits.failure_reason}</span>`}
+          </div>
+        `}
         ${status.orchestrator_version &&
           html`
             <div className="flex items-center gap-2">
@@ -305,6 +327,24 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       ${field("prior_knowledge_token_budget", t("montyVm.tokenBudget"), t("montyVm.tokenBudgetDesc"))}
       ${field("q4_retention_days", t("montyVm.q4RetentionDays"), t("montyVm.q4RetentionDaysDesc"))}
       ${field("forensic_packet_retention_days", t("montyVm.forensicRetentionDays"), t("montyVm.forensicRetentionDaysDesc"))}
+      <details className="mt-4 border-t border-[var(--v2-panel-border)] pt-3">
+        <summary className="cursor-pointer text-sm font-medium">${t("montyVm.executionLimitsTitle")}</summary>
+        <p className="mt-2 text-xs text-[var(--v2-text-muted)]">${t("montyVm.executionLimitsDesc")}</p>
+        ${EXECUTION_FIELDS.map((key) => html`
+          <div key=${key} className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
+            <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
+            <input id=${`monty-${key}`} type="number" min="1" step="1"
+              className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
+              value=${settings.execution_limits?.[key] ?? ""} disabled=${isSaving}
+              onInput=${(event) => {
+                const value = event.target.value;
+                onChange((previous) => ({ ...previous,
+                  execution_limits: { ...previous.execution_limits, [key]: value },
+                }));
+              }} />
+          </div>
+        `)}
+      </details>
       <div className="mt-4 flex items-center gap-2">
         <${Button}
           variant="primary"

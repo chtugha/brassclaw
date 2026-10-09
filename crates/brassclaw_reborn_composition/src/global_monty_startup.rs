@@ -11,7 +11,6 @@ use crate::{
 use brassclaw_engine::memory::intent_system::IntentScope;
 use brassclaw_host_api::MountView;
 use brassclaw_monty_host::{
-    VmBounds,
     global::GlobalBounds,
     heap::HeapSettings,
     process::{ProcessLimits, RootBoot, TaskSettings, installed_worker},
@@ -103,16 +102,8 @@ pub(crate) async fn start(
     let hard = soft
         .checked_add(2 * frame + 4 * 1024 * 1024)
         .ok_or_else(|| invalid("Monty physical backstop overflow"))?;
-    let values = VmBounds {
-        max_source_bytes: 1024 * 1024,
-        max_compiled_source_bytes: 2 * 1024 * 1024,
-        max_feeds: 128,
-        max_stdout_bytes: 1024 * 1024,
-        execution_slice: Duration::from_millis(5),
-        max_value_depth: 48,
-        max_value_nodes: 1024 * 1024,
-        max_value_bytes: frame,
-    };
+    let values = crate::live_monty_settings::execution_bounds(settings.execution_limits)
+        .map_err(|error| invalid(error.to_string()))?;
     let boot = RootBoot {
         heap_settings: Some(HeapSettings {
             revision: 1,

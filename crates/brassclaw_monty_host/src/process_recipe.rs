@@ -103,6 +103,11 @@ pub enum RecipeCommand {
     CloseTask {
         task: TaskHandle,
     },
+    UpdateRuntimeSettings {
+        expected_revision: u64,
+        settings: TaskSettings,
+        values: VmBounds,
+    },
     UpdateSettings {
         expected_revision: u64,
         settings: TaskSettings,
@@ -204,6 +209,10 @@ pub(crate) struct WorkerRecipes {
     bounds: VmBounds,
 }
 impl WorkerRecipes {
+    pub(crate) fn bounds(&self) -> VmBounds {
+        self.bounds
+    }
+
     pub(crate) fn new(
         settings: TaskSettings,
         max_tasks: u32,
@@ -320,7 +329,7 @@ impl WorkerRecipes {
     pub(crate) fn apply(
         &mut self,
         command: RecipeCommand,
-        root: &GlobalVm,
+        root: &mut GlobalVm,
     ) -> Result<RecipeEvent, VmError> {
         let lifecycle = root.lifecycle();
         if !matches!(lifecycle, Lifecycle::Ready | Lifecycle::Stopping)
@@ -517,6 +526,29 @@ impl WorkerRecipes {
                     task: Some(task),
                     contexts,
                 })
+            }
+            RecipeCommand::UpdateRuntimeSettings {
+                expected_revision,
+                settings,
+                values,
+            } => {
+                if !values.valid() {
+                    return Err(VmError::kind(VmFailure::InvalidBounds));
+                }
+                // Publish first: failed validation/CAS leaves every VM unchanged.
+                self.apply(
+                    RecipeCommand::UpdateSettings {
+                        expected_revision,
+                        settings,
+                    },
+                    root,
+                )?;
+                root.update_bounds(values);
+                for context in self.contexts.values_mut() {
+                    context.vm.update_bounds(values);
+                }
+                self.bounds = values;
+                Ok(RecipeEvent::SettingsUpdated)
             }
             RecipeCommand::UpdateSettings {
                 expected_revision,

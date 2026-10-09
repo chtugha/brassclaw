@@ -73,9 +73,19 @@ mod inner {
             .transpose()
     }
 
-    fn settings_from_row(row: &tokio_postgres::Row) -> MontyVmSettings {
+    fn settings_from_row(
+        row: &tokio_postgres::Row,
+    ) -> Result<MontyVmSettings, MontyVmSettingsError> {
+        let execution_limits: brassclaw_host_api::MontyExecutionLimits =
+            serde_json::from_value(row.get(10)).map_err(|_| {
+                MontyVmSettingsError::Internal("invalid stored execution limits".into())
+            })?;
+        execution_limits
+            .validate()
+            .map_err(|reason| MontyVmSettingsError::Internal(reason.into()))?;
         // Schema constraints guarantee these signed values are nonnegative.
-        MontyVmSettings {
+        Ok(MontyVmSettings {
+            execution_limits,
             revision: row.get::<_, i64>(9) as u64,
             max_duration_secs: row.get::<_, i32>(0) as u64,
             max_allocations: None,
@@ -88,7 +98,7 @@ mod inner {
             q4_retention_days: row.get::<_, i32>(6) as u32,
             forensic_packet_retention_days: row.get::<_, i32>(7) as u32,
             token_budgets_enabled: row.get(8),
-        }
+        })
     }
 
     #[async_trait]
@@ -104,7 +114,7 @@ mod inner {
                     "SELECT max_duration_secs, retired_max_allocations, max_memory_bytes,
                             failure_rollback_threshold, active_orchestrator_id,
                             prior_knowledge_token_budget, q4_retention_days,
-                            forensic_packet_retention_days, token_budgets_enabled, revision
+                            forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits
                      FROM reborn_monty_vm_settings
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
@@ -119,7 +129,7 @@ mod inner {
                 .map_err(Self::map_pg)?;
 
             match row {
-                Some(r) => Ok(settings_from_row(&r)),
+                Some(r) => settings_from_row(&r),
                 None => {
                     debug!(
                         user_id,
@@ -149,6 +159,17 @@ mod inner {
                     "revision is exhausted".into(),
                 ));
             }
+            let execution_limits = update
+                .execution_limits
+                .map(|limits| {
+                    limits
+                        .validate()
+                        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+                    serde_json::to_value(limits).map_err(|_| {
+                        MontyVmSettingsError::Internal("execution limits encoding failed".into())
+                    })
+                })
+                .transpose()?;
             let duration = checked_i32(update.max_duration_secs, "max_duration_secs")?;
             if duration.is_some_and(|value| !(30..=3600).contains(&value)) {
                 return Err(MontyVmSettingsError::Invalid(
@@ -231,13 +252,14 @@ mod inner {
                  q4_retention_days = COALESCE($10, q4_retention_days),
                  forensic_packet_retention_days = COALESCE($11, forensic_packet_retention_days),
                  token_budgets_enabled = COALESCE($12, token_budgets_enabled),
+                 execution_limits = COALESCE($14, execution_limits),
                  revision = revision + 1
                  WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
                    AND revision=$13
                  RETURNING max_duration_secs, retired_max_allocations, max_memory_bytes,
                    failure_rollback_threshold, active_orchestrator_id,
                    prior_knowledge_token_budget, q4_retention_days,
-                   forensic_packet_retention_days, token_budgets_enabled, revision",
+                   forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits",
                     &[
                         &self.tenant_id,
                         &user_id,
@@ -252,6 +274,7 @@ mod inner {
                         &forensic_retention,
                         &update.token_budgets_enabled,
                         &expected_revision,
+                        &execution_limits,
                     ],
                 )
                 .await
@@ -260,7 +283,7 @@ mod inner {
                 transaction.rollback().await.map_err(Self::map_pg)?;
                 return Err(MontyVmSettingsError::RevisionConflict);
             };
-            let settings = settings_from_row(&row);
+            let settings = settings_from_row(&row)?;
             transaction.commit().await.map_err(Self::map_pg)?;
             // Return this transaction's generation, not a later concurrent edit.
             Ok(settings)

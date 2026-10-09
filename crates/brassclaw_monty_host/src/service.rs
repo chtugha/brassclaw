@@ -122,6 +122,7 @@ pub enum ServiceFailure {
 struct TaskSettingsPublication {
     expected: u64,
     settings: TaskSettings,
+    values: Option<crate::VmBounds>,
     result: watch::Sender<Option<Result<Arc<SettingsReceipt>, ServiceFailure>>>,
 }
 struct HeapPublication {
@@ -256,7 +257,10 @@ pub struct ServiceClient {
     admission_credits: Arc<Semaphore>,
     changed: Arc<Notify>,
     closed: Arc<AtomicBool>,
-    values: crate::VmBounds,
+    values: watch::Receiver<crate::VmBounds>,
+    response_timeout: Duration,
+    root_source_bytes: usize,
+    root: RootExecutionIdentity,
     frame: usize,
     settings: mpsc::Sender<SettingsPublication>,
     effective_settings: LiveMontyTaskSettings,
@@ -285,6 +289,43 @@ impl ServiceClient {
         expected: u64,
         settings: TaskSettings,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        self.publish_runtime(expected, settings, None).await
+    }
+
+    pub fn root_identity(&self) -> RootExecutionIdentity {
+        self.root
+    }
+
+    pub fn vm_bounds(&self) -> crate::VmBounds {
+        *self.values.borrow()
+    }
+
+    pub fn validate_vm_bounds(&self, values: crate::VmBounds) -> Result<(), ServiceFailure> {
+        if !crate::process::runtime_bounds_supported(values, self.frame)
+            || values.execution_slice >= self.response_timeout
+            || values.max_source_bytes < self.root_source_bytes
+        {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        Ok(())
+    }
+
+    pub async fn publish_runtime_settings(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: crate::VmBounds,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        self.validate_vm_bounds(values)?;
+        self.publish_runtime(expected, settings, Some(values)).await
+    }
+
+    async fn publish_runtime(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: Option<crate::VmBounds>,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
         if self.closed.load(Ordering::Acquire) {
             return Err(ServiceFailure::Closed);
         }
@@ -293,6 +334,7 @@ impl ServiceClient {
             .try_send(SettingsPublication::Task(TaskSettingsPublication {
                 expected,
                 settings,
+                values,
                 result,
             }))
             .map_err(|error| match error {
@@ -381,7 +423,8 @@ impl ServiceClient {
         {
             return Err(ServiceFailure::InvalidInput);
         }
-        if input.history.len() > self.values.max_value_nodes
+        let observed_values = self.vm_bounds();
+        if input.history.len() > observed_values.max_value_nodes
             || [
                 &input.conversation_id,
                 &input.message_id,
@@ -390,18 +433,18 @@ impl ServiceClient {
                 &input.user_input,
             ]
             .iter()
-            .any(|value| value.len() > self.values.max_value_bytes)
+            .any(|value| value.len() > observed_values.max_value_bytes)
             || input
                 .history
                 .iter()
-                .any(|value| !crate::process::transport_value(value, self.values, self.frame))
+                .any(|value| !crate::process::transport_value(value, observed_values, self.frame))
         {
             return Err(ServiceFailure::InvalidInput);
         }
         let input = serde_json::to_value(input).map_err(|_| ServiceFailure::InvalidInput)?;
         // Reserve the worker-added task token before admission. Serialization
         // uses the largest possible continuation ordinal and a fixed-size UUID.
-        let mut values = self.values;
+        let mut values = observed_values;
         values.max_value_nodes = values.max_value_nodes.saturating_sub(2);
         values.max_value_bytes = values.max_value_bytes.saturating_sub(64);
         let probe = WorkerCommand::Admit {
@@ -502,8 +545,15 @@ impl ServiceOwner {
                 crate::transport_actor::ActorFailure::InvalidLimits,
             ));
         }
+        if !crate::process::runtime_bounds_supported(boot.bounds.values, process.max_frame_bytes)
+            || boot.bounds.values.execution_slice >= process.response_timeout
+        {
+            return Err(StartError::Actor(
+                crate::transport_actor::ActorFailure::InvalidLimits,
+            ));
+        }
+        let root_source_bytes = boot.source.len();
         let workers = boot.bounds.workers;
-        let values = boot.bounds.values;
         let (owner, ready) = TransportOwner::start(executable, boot, process, actor).await?;
         let worker_process_id = owner.worker_process_id();
         let root = ready.root.expect("transport verified root identity");
@@ -520,7 +570,10 @@ impl ServiceOwner {
             admission_credits: admission_credits.clone(),
             changed: changed.clone(),
             closed: closed.clone(),
-            values,
+            values: owner.client().live_vm_bounds(),
+            response_timeout: process.response_timeout,
+            root_source_bytes,
+            root,
             frame: process.max_frame_bytes,
             settings,
             effective_settings: live.clone(),
@@ -777,8 +830,13 @@ async fn run(
                             publication.result.send_replace(Some(Err(ServiceFailure::InvalidLimits)));
                         } else {
                             let update = exchange(&transport, &mut exchanges, WorkerCommand::Recipe {
-                                command: RecipeCommand::UpdateSettings {
-                                    expected_revision: publication.expected, settings: publication.settings,
+                                command: match publication.values {
+                                    Some(values) => RecipeCommand::UpdateRuntimeSettings {
+                                        expected_revision: publication.expected, settings: publication.settings, values,
+                                    },
+                                    None => RecipeCommand::UpdateSettings {
+                                        expected_revision: publication.expected, settings: publication.settings,
+                                    },
                                 },
                             }).await;
                             let mut receipt = match update {
@@ -790,6 +848,7 @@ async fn run(
                             };
                             if !matches!(receipt.recipe, Some(RecipeEvent::SettingsUpdated))
                                 || receipt.effective_task_settings != Some(publication.settings)
+                                || publication.values.is_some_and(|values| receipt.vm_bounds != Some(values))
                                 || receipt.boundary.is_some() {
                                 snapshot = receipt;
                                 publication.result.send_replace(Some(Err(ServiceFailure::Protocol)));
@@ -965,6 +1024,16 @@ async fn run(
                     drop(reject(admission, ServiceFailure::Backpressure));
                     continue;
                 }
+                // Recheck the complete typed input at the actual dispatch boundary:
+                // queued input retains its original history; it is never truncated.
+                let probe = WorkerCommand::Admit { key, task: admission.input.clone() };
+                let mut values = transport.live_vm_bounds().borrow().to_owned();
+                values.max_value_nodes = values.max_value_nodes.saturating_sub(2);
+                values.max_value_bytes = values.max_value_bytes.saturating_sub(64);
+                if crate::process::retain_command(&probe, values, transport.frame_limit()).is_err() {
+                    drop(reject(admission, ServiceFailure::InvalidInput));
+                    continue;
+                }
                 pending_admission = Some(admission);
                 snapshot = exchange(&transport, &mut exchanges, WorkerCommand::Admit {
                     key, task: pending_admission.as_ref().expect("retained admission").input.clone(),
@@ -1006,7 +1075,21 @@ async fn run(
                         }
                     }
                     let answer = match result.result {
-                        Ok(value) => PortAnswer::Return { value },
+                        Ok(value) => {
+                            let probe = WorkerCommand::Resolve { key: result.key,
+                                answer: PortAnswer::Return { value } };
+                            let accepted = crate::process::retain_command(&probe, *transport.live_vm_bounds().borrow(), transport.frame_limit()).is_ok();
+                            let WorkerCommand::Resolve { answer: PortAnswer::Return { value }, .. } = probe else { unreachable!() };
+                            if !accepted {
+                                // The effect has already happened. Preserve its exact
+                                // result for reconciliation; fail this task instead
+                                // of truncating it or killing/replaying the instance.
+                                record.withheld.push(crate::global::WithheldHostAnswer {
+                                    continuation: result.key, answer: crate::HostAnswer::Return(value),
+                                });
+                                PortAnswer::DomainError { reason_kind: "task_value_limit".into() }
+                            } else { PortAnswer::Return { value } }
+                        },
                         Err(error) => PortAnswer::DomainError { reason_kind: error.reason },
                     };
                     snapshot = exchange(&transport, &mut exchanges, WorkerCommand::Resolve { key: result.key, answer }).await?;

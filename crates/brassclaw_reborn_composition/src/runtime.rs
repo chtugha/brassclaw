@@ -5107,20 +5107,37 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), entered.notified())
             .await
             .unwrap();
+        let mut execution_limits = initial["settings"]["execution_limits"].clone();
+        let root_identity = runtime.global_monty_owner.client().root_identity();
         // The task is in an external provider wait. Both edits must reach the
         // existing VM and its Rust watch without charging that wait or restarting.
         for (offset, duration, enabled) in [(1, 900, true), (2, 600, false)] {
+            execution_limits["max_feeds"] = serde_json::json!(128 + offset);
+            execution_limits["execution_slice_millis"] = serde_json::json!(5 + offset);
             let (code, result) = request(
                 &app,
                 Method::PUT,
                 "settings-a",
                 "/api/settings/monty-vm",
                 serde_json::json!({"expected_revision":initial_revision + offset - 1,
-                    "max_duration_secs":duration,"token_budgets_enabled":enabled}),
+                    "max_duration_secs":duration,"token_budgets_enabled":enabled,
+                    "execution_limits": execution_limits}),
             )
             .await;
             assert_eq!(code, StatusCode::OK, "{result}");
             assert_eq!(result["runtime"]["task_budget"]["uptake"], "applied");
+            assert_eq!(result["runtime"]["execution_limits"]["uptake"], "applied");
+            assert_eq!(
+                result["runtime"]["execution_limits"]["limits"],
+                execution_limits
+            );
+            assert_eq!(
+                runtime.global_monty_owner.client().root_identity(),
+                root_identity
+            );
+            let bounds = runtime.global_monty_owner.client().vm_bounds();
+            assert_eq!(bounds.max_feeds as u64, 128 + offset);
+            assert_eq!(bounds.execution_slice.as_millis() as u64, 5 + offset);
             assert_eq!(
                 result["runtime"]["task_budget"]["effective_revision"],
                 initial_revision + offset
