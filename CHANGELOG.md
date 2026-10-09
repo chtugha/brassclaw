@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve exact budget-gate amounts with migration V110, restoring only proven
+  historical rounding. Verify indexed gate identity, status, deadline and amount
+  against the payload; resolve under one row lock and roll back inconsistent
+  expiry batches.
+- Update the historical planned-loop test fixture to the owned Monty handoff
+  interface and verify addressed future termination before cancellation
+  acknowledgement. These fixtures provide substrate evidence; production
+  execution remains on the global Monty worker path.
+
 ## [1.7.0-rc.1] - 2026-10-09
 
 This development prerelease checkpoints the v3 migration; it does not certify

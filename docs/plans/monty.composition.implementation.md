@@ -12,6 +12,25 @@ The snippets are concrete design examples, not proof of pinned Monty acceptance 
 
 Source references and older changes are in the main tables. Each Skill subsection below deliberately points to its canonical executable; do not duplicate code because several Skills share an operation. A Recipe sequences binding/execution and pure components with the input-layout forms in main §10.2. Shell Recipes are Tier 1. Whole-file inverse operations, complete security verdicts, absent/malformed probes and missing adapters must not be replaced with partial successful approximations.
 
+
+### Audited schema and association completion gates
+
+**The draft prose and semantic input descriptions are not complete insertable component documents.** Before implementation admission, replace every generic Skill draft with its exact one-usage purpose, actual local parameters/defaults, prerequisites, computed/fixed arguments, success/error/wait/effect contract and examples. Follow skills.md §§5–7 rather than copying a shared paragraph unchanged. Specialize single/all patch (replace_all=False/True), file-new/template/replace (preconditions and overwrite semantics), recursive directory (recursive=True and explicit depth), grep content/count/files/case/glob and authenticated HTTP usages separately. A writer that always overwrites cannot claim create-only behavior merely after a non-atomic existence read. Missing conditional-create/concurrency guarantees are adapter gaps. Tail/read-filter/name-removal descriptions belong to Recipes; associated Skills describe only their actual single read/list/remove usage with precomputed inputs. Pure-only wrappers remain documentation.
+
+For **every one-Tool usage**, complete the exact `skill-association/1` document, not only a name pairing. Use exactly format, skill_uuid, python_code_uuid, tool_skill_uuid, tool_uuid, callable, inputs, arguments, code_arguments, result and failure. Direct arguments map real parameter names to local inputs; remaining fixed/computed arguments declare supported recursive schemas, checks, depends_on and meaning. Verify the actual computed values against Tool schema/transport before dispatch. Stop-default failure is exactly action=stop, max_attempts=1, idempotency=not_assumed, idempotency_evidence_ref=null, retryable_outcomes=[]. Refuse duplicate/unknown keys, nil/wrong-class IDs or incomplete argument maps.
+
+A separate trusted `skill-association-approval/1` record contains exactly format, approval_id, association_checksum, components, validation_mode, q1_ref, q2_ref and behavioral_refs. Its unique UUID/class/version/checksum references cover the complete exact code/Skill/ToolSkill/Tool closure and retained actual Tool artifact; its evidence must resolve successfully for that combination. Authored requires trusted Q1, behavioral evidence and human Q2; verified installation-owned system_seed requires noncircular Q1/integrity/behavior evidence and permits q2_ref=null. A label, self-issued record or task manifest is insufficient. IBS verifies the committed exact combination then pins the approval_id; activation is coherent and old references remain valid for retained tasks. Unchanged Skill prose need not get an artificial new revision merely to pair it with a newly reviewed code revision.
+
+V3 value schemas are finite inline trees of one declared type per node, with homogeneous list items; **no any, unions, arbitrary JSON, recursive schema references, enum/pattern/max_length/max_items extension fields or inferred object fields**. Use separately qualified exact-shape profiles; enforce additional semantic/technical bounds through supported preflight/code/adapter checks. Top-level inputs require required:boolean and checks:list; optional top-level inputs require a validated default. Object fields require presence rules; result roots/list items forbid root presence/defaults, and result fields never have defaults. Persist actual interfaces using these contracts, not JSON-Schema properties/oneOf copied from Tool manifests. The Tool's registered JSON Schema and the v3 usage schema are different contracts that must agree.
+
+Where a snippet selects a dynamic field/path/method, each approved usage restricts it to an explicit concrete schema/selector and validates even empty collections. A shared implementation does not provide an unlimited generic contract. Arbitrary JSON parse/query/serialization, dynamic record projection, mixed path segments and HTTP body alternatives require separate exact profiles or explicit schema/adapter work before admission; never silently weaken the final v3 architecture.
+
+**Review data is untrusted.** The trusted review owner resolves complete checksum-bound parser facts, dependency/Tool-artifact manifests and successful evidence before handing typed facts to pure checkers. No candidate-supplied compatible/complete/retry_evidence_verified flag can satisfy a trusted requirement. Keep infrastructure failure, invalid candidate and incomplete review distinct. Partial N08–N14 examples report complete=False and passed=False; N07 covers only its explicitly narrow predicate. N15 is pure aggregation, not trusted evidence persistence, semantic approval, human Q2 or activation. Diagnostic records use one concrete list-of-objects schema with path:list[string] and code:string; evidence refs are homogeneous strings with a verified owner/subject contract.
+
+**Security and result boundaries:** verify conversion at the Rust typed Monty-node boundary before lossy repr/cycle/depth placeholder conversion; rejecting strings by appearance cannot distinguish lossy values from legitimate identical data. Check exact source and Tool parameter/result constraints, subject ownership, current global policy and resource limits at each effect. Monty input isolation alone does not make filesystem/API operations race-free. A Tool payload, class-22 local result and run_program ok/return_value/error envelope are distinct; Recipe layouts bind the validated payload value. HTTP output uses status, headers:list[{name,value,...}], optional text body/saved_body and explicit truncation metadata. Never claim successful parse/full coverage from truncated HTTP/list/read output. Shell output uses output, exit_code, success and sandboxed; it does not promise separate stdout/stderr fields.
+
+Prepared-input examples in L019 and N16–N20, the existence classifier in L010, partial validator examples and the class-10 excerpt are **not deployable completed executors**. They stay blocked/draft in the conversion ledger until their actual operation/result contracts and complete behavior exist. Unknown host callables are never guessed. Current legacy scoped authorization code is an implementation cutover dependency, not a v3 tenant/project role requirement; preserve technical enforcement while moving to instance-global policy.
+
 ## Legacy entries
 
 ### L001. pc-exec-read-file
@@ -34,7 +53,7 @@ result = host.read_file(path=inputs["path"])
 
 #### skill-read-file
 
-**Usage prose to store:** “Use the host boundary to read a file via builtin.read_file. Supply the typed inputs described for `pc-exec-read-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to read a file via builtin.read_file. Supply the typed inputs described for `pc-exec-read-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-read-file`'s block above.
 
@@ -58,19 +77,19 @@ result = host.write_file(path=inputs["path"], content=inputs["content"])
 
 #### skill-write-file-new
 
-**Usage prose to store:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above.
 
 #### skill-write-file-template
 
-**Usage prose to store:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above.
 
 #### skill-write-file-replace
 
-**Usage prose to store:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above.
 
@@ -94,13 +113,13 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 #### skill-list-dir
 
-**Usage prose to store:** “Use the host boundary to list a directory via builtin.list_dir. Supply the typed inputs described for `pc-exec-list-dir`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to list a directory via builtin.list_dir. Supply the typed inputs described for `pc-exec-list-dir`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-list-dir`'s block above.
 
 #### skill-list-dir-recursive
 
-**Usage prose to store:** “Use the host boundary to list a directory via builtin.list_dir. Supply the typed inputs described for `pc-exec-list-dir`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to list a directory via builtin.list_dir. Supply the typed inputs described for `pc-exec-list-dir`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-list-dir`'s block above.
 
@@ -124,19 +143,19 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 #### skill-glob-by-extension
 
-**Usage prose to store:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above.
 
 #### skill-glob-by-name
 
-**Usage prose to store:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above.
 
 #### skill-glob-in-subdir
 
-**Usage prose to store:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above.
 
@@ -160,31 +179,31 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 #### skill-grep-files
 
-**Usage prose to store:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
 
 #### skill-grep-content
 
-**Usage prose to store:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
 
 #### skill-grep-count
 
-**Usage prose to store:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
 
 #### skill-grep-case-insensitive
 
-**Usage prose to store:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
 
 #### skill-grep-type-filtered
 
-**Usage prose to store:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
 
@@ -208,13 +227,13 @@ result = host.apply_patch(path=inputs["path"], old_string=inputs["old_string"], 
 
 #### skill-apply-patch-single
 
-**Usage prose to store:** “Use the host boundary to apply a targeted patch via builtin.apply_patch. Supply the typed inputs described for `pc-exec-apply-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to apply a targeted patch via builtin.apply_patch. Supply the typed inputs described for `pc-exec-apply-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-apply-patch`'s block above.
 
 #### skill-apply-patch-all
 
-**Usage prose to store:** “Use the host boundary to apply a targeted patch via builtin.apply_patch. Supply the typed inputs described for `pc-exec-apply-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to apply a targeted patch via builtin.apply_patch. Supply the typed inputs described for `pc-exec-apply-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-apply-patch`'s block above.
 
@@ -242,7 +261,7 @@ for line in inputs["content"].split("\n"):
 
 #### skill-grep-invert
 
-**Usage prose to store:** “Use the host boundary for an inverted grep via builtin.grep. Supply the typed inputs described for `pc-exec-grep-invert`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an inverted grep via builtin.grep. Supply the typed inputs described for `pc-exec-grep-invert`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -273,13 +292,13 @@ result = {"entries": filtered, "entry_type": inputs["entry_type"], "count": len(
 
 #### skill-list-dir-files-only
 
-**Usage prose to store:** “filters a list_dir result to only entries of a given type. Supply the typed inputs described for `pc-exec-list-filter-by-type`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “filters a list_dir result to only entries of a given type. Supply the typed inputs described for `pc-exec-list-filter-by-type`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
 #### skill-list-dir-dirs-only
 
-**Usage prose to store:** “filters a list_dir result to only entries of a given type. Supply the typed inputs described for `pc-exec-list-filter-by-type`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “filters a list_dir result to only entries of a given type. Supply the typed inputs described for `pc-exec-list-filter-by-type`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -307,7 +326,7 @@ result = {"offset": max(1, total - count + 1), "limit": min(count, total)}
 
 #### skill-read-file-tail
 
-**Usage prose to store:** “reads the last 50 lines of a file (lines -50 onward). Supply the typed inputs described for `pc-exec-read-file-tail`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “reads the last 50 lines of a file (lines -50 onward). Supply the typed inputs described for `pc-exec-read-file-tail`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -339,7 +358,7 @@ else:
 
 #### skill-file-exists
 
-**Usage prose to store:** “checks whether a file exists by attempting to read line 1. Supply the typed inputs described for `pc-exec-file-exists`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “checks whether a file exists by attempting to read line 1. Supply the typed inputs described for `pc-exec-file-exists`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -367,7 +386,7 @@ for line in inputs["content"].split("\n"):
 
 #### skill-read-and-grep
 
-**Usage prose to store:** “reads a file then greps the content for a pattern. Supply the typed inputs described for `pc-exec-read-then-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “reads a file then greps the content for a pattern. Supply the typed inputs described for `pc-exec-read-then-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -386,15 +405,17 @@ for line in inputs["content"].split("\n"):
 **Recipe wiring:** `pc-exec-list-dir` → `proposed-filter-records`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
 ```python
+if inputs["mode"] not in ("equals", "contains"):
+    raise ValueError("unsupported predicate")
 result = []
 for row in inputs["rows"]:
     value = row[inputs["field"]]
     if inputs["mode"] == "equals":
-        matched = value == inputs["value"]
-    elif inputs["mode"] == "contains":
-        matched = inputs["value"] in value
+        matched = type(value) is type(inputs["value"]) and value == inputs["value"]
     else:
-        raise ValueError("unsupported predicate")
+        if type(value) is not str or type(inputs["value"]) is not str:
+            raise ValueError("contains requires strings")
+        matched = inputs["value"] in value
     if matched:
         result.append(row)
 ```
@@ -403,7 +424,7 @@ for row in inputs["rows"]:
 
 #### skill-list-and-filter
 
-**Usage prose to store:** “lists directory entries then filters by name substring. Supply the typed inputs described for `pc-exec-list-then-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “lists directory entries then filters by name substring. Supply the typed inputs described for `pc-exec-list-then-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -496,7 +517,7 @@ result = host.http(method="GET", url=inputs["url"], response_body_limit=inputs["
 
 #### skill-http-get
 
-**Usage prose to store:** “Use the host boundary for an HTTP GET request via builtin.http. Supply the typed inputs described for `pc-exec-http-get`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an HTTP GET request via builtin.http. Supply the typed inputs described for `pc-exec-http-get`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-get`'s block above.
 
@@ -520,7 +541,7 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 
 #### skill-http-post
 
-**Usage prose to store:** “Use the host boundary for an HTTP POST request via builtin.http. Supply the typed inputs described for `pc-exec-http-post`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an HTTP POST request via builtin.http. Supply the typed inputs described for `pc-exec-http-post`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-post`'s block above.
 
@@ -546,7 +567,7 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 
 #### skill-http-save-download
 
-**Usage prose to store:** “Use the host boundary for builtin.http.save. Supply the typed inputs described for `pc-exec-http-save`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for builtin.http.save. Supply the typed inputs described for `pc-exec-http-save`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -570,7 +591,7 @@ result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], heade
 
 #### skill-http-patch
 
-**Usage prose to store:** “Use the host boundary for an HTTP PATCH request via builtin.http. Supply the typed inputs described for `pc-exec-http-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an HTTP PATCH request via builtin.http. Supply the typed inputs described for `pc-exec-http-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-patch`'s block above.
 
@@ -594,7 +615,7 @@ result = host.http(method="HEAD", url=inputs["url"])
 
 #### skill-http-head
 
-**Usage prose to store:** “Use the host boundary for an HTTP HEAD request via builtin.http. Supply the typed inputs described for `pc-exec-http-head`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an HTTP HEAD request via builtin.http. Supply the typed inputs described for `pc-exec-http-head`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-head`'s block above.
 
@@ -618,7 +639,7 @@ result = host.http(method="GET", url=inputs["url"], headers={"Authorization": in
 
 #### skill-http-authenticated
 
-**Usage prose to store:** “Use the host boundary for an authenticated HTTP GET via builtin.http. Supply the typed inputs described for `pc-exec-http-get-authenticated`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an authenticated HTTP GET via builtin.http. Supply the typed inputs described for `pc-exec-http-get-authenticated`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-get-authenticated`'s block above.
 
@@ -642,7 +663,7 @@ result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers
 
 #### skill-http-put
 
-**Usage prose to store:** “Use the host boundary for an HTTP PUT request via builtin.http. Supply the typed inputs described for `pc-exec-http-put`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an HTTP PUT request via builtin.http. Supply the typed inputs described for `pc-exec-http-put`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-put`'s block above.
 
@@ -666,7 +687,7 @@ result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"]
 
 #### skill-http-delete
 
-**Usage prose to store:** “Use the host boundary for an HTTP DELETE request via builtin.http. Supply the typed inputs described for `pc-exec-http-delete`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for an HTTP DELETE request via builtin.http. Supply the typed inputs described for `pc-exec-http-delete`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-delete`'s block above.
 
@@ -693,24 +714,36 @@ result = {"is_success": 200 <= status < 300, "status_code": status}
 
 ### L025. pc-json-extract-field
 
+**Audit correction:** There is no heterogeneous list[string|integer], union, any or unconstrained recursive JSON schema in skills.md. Compile each selected path/profile against the actual producer schema; optional/null parents and list bounds require explicit handling. Reject all malformed path segments before traversal, including ones following a missing field.
+
 **Prose description:** extracts a value from a JSON object by dot-separated path.
 
 **Implementation:** Receive structured data and a typed selector; distinguish an existing null value from a missing path. Reject negative/out-of-range list indices and invalid traversals, and declare the exact found/value contract rather than swallowing all lookup failures.
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** data: recursive JSON; segments: bounded list of string object keys or nonnegative integer indices (not bool). Output value may be null; found remains true for present null. Empty path selects the root. Replace ambiguous dotted-string path with this typed path in successor Recipes.
+**Typed inputs/result:** data: one exact finite per-usage recursive schema; segments: homogeneous list of exact objects {kind:string,key:nullable string,index:nullable nonnegative integer}, all fields required and no extras. kind=key requires index=null; kind=index requires key=null. Result value: one declared per-usage type made nullable for absence/present null; found:boolean. Empty path selects root.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
 ```python
 current = inputs["data"]
+for segment in inputs["segments"]:
+    kind = segment["kind"]
+    if kind == "key":
+        if type(segment["key"]) is not str or segment["index"] is not None:
+            raise ValueError("invalid key segment")
+    elif kind == "index":
+        if type(segment["index"]) is not int or segment["index"] < 0 or segment["key"] is not None:
+            raise ValueError("invalid index segment")
+    else:
+        raise ValueError("invalid segment kind")
 found = True
 for segment in inputs["segments"]:
-    if isinstance(current, dict) and type(segment) is str and segment in current:
-        current = current[segment]
-    elif isinstance(current, list) and type(segment) is int and 0 <= segment < len(current):
-        current = current[segment]
+    if segment["kind"] == "key" and isinstance(current, dict) and segment["key"] in current:
+        current = current[segment["key"]]
+    elif segment["kind"] == "index" and isinstance(current, list) and segment["index"] < len(current):
+        current = current[segment["index"]]
     else:
         found = False
         current = None
@@ -788,13 +821,13 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 
 #### skill-memory-search
 
-**Usage prose to store:** “Use the host boundary to search persistent memory via builtin.memory_search. Supply the typed inputs described for `pc-exec-memory-search`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search persistent memory via builtin.memory_search. Supply the typed inputs described for `pc-exec-memory-search`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-search`'s block above.
 
 #### skill-memory-search-broad
 
-**Usage prose to store:** “Use the host boundary to search persistent memory via builtin.memory_search. Supply the typed inputs described for `pc-exec-memory-search`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to search persistent memory via builtin.memory_search. Supply the typed inputs described for `pc-exec-memory-search`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-search`'s block above.
 
@@ -818,13 +851,13 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 
 #### skill-memory-write-log
 
-**Usage prose to store:** “Use the host boundary to write to persistent memory via builtin.memory_write. Supply the typed inputs described for `pc-exec-memory-write`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to write to persistent memory via builtin.memory_write. Supply the typed inputs described for `pc-exec-memory-write`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-write`'s block above.
 
 #### skill-memory-write-main
 
-**Usage prose to store:** “Use the host boundary to write to persistent memory via builtin.memory_write. Supply the typed inputs described for `pc-exec-memory-write`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to write to persistent memory via builtin.memory_write. Supply the typed inputs described for `pc-exec-memory-write`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-write`'s block above.
 
@@ -848,7 +881,7 @@ result = host.memory_write(target=inputs["target"], old_string=inputs["old_strin
 
 #### skill-memory-write-patch
 
-**Usage prose to store:** “Use the host boundary for a targeted patch to a memory document via builtin.memory_write patch mode. Supply the typed inputs described for `pc-exec-memory-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for a targeted patch to a memory document via builtin.memory_write patch mode. Supply the typed inputs described for `pc-exec-memory-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-patch`'s block above.
 
@@ -872,7 +905,7 @@ result = host.memory_read(path=inputs["path"])
 
 #### skill-memory-read
 
-**Usage prose to store:** “Use the host boundary to read a memory document by path via builtin.memory_read. Supply the typed inputs described for `pc-exec-memory-read`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to read a memory document by path via builtin.memory_read. Supply the typed inputs described for `pc-exec-memory-read`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-read`'s block above.
 
@@ -896,7 +929,7 @@ result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
 
 #### skill-memory-tree
 
-**Usage prose to store:** “Use the host boundary to list the memory directory tree via builtin.memory_tree. Supply the typed inputs described for `pc-exec-memory-tree`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to list the memory directory tree via builtin.memory_tree. Supply the typed inputs described for `pc-exec-memory-tree`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-tree`'s block above.
 
@@ -976,7 +1009,7 @@ result = host.memory_write(target=inputs["target"], content=inputs["content"], a
 
 #### skill-memory-write-append
 
-**Usage prose to store:** “appends text to an existing memory document. Reads the current content via memory_read, then writes combined content via memory_write. Supply the typed inputs described for `pc-exec-memory-append`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “appends text to an existing memory document. Reads the current content via memory_read, then writes combined content via memory_write. Supply the typed inputs described for `pc-exec-memory-append`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-append`'s block above.
 
@@ -988,7 +1021,7 @@ result = host.memory_write(target=inputs["target"], content=inputs["content"], a
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git status'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git status'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1000,7 +1033,7 @@ result = host.shell(command='git status')
 
 #### skill-shell-git-status
 
-**Usage prose to store:** “runs 'git status' in the workspace root via builtin.shell. Command is a fixed literal. No user input enters the command string. Supply the typed inputs described for `pc-exec-shell-git-status`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git status' in the workspace root via builtin.shell. Command is a fixed literal. No user input enters the command string. Supply the typed inputs described for `pc-exec-shell-git-status`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-status`'s block above.
 
@@ -1012,7 +1045,7 @@ result = host.shell(command='git status')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git log --oneline -20'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git log --oneline -20'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1024,7 +1057,7 @@ result = host.shell(command='git log --oneline -20')
 
 #### skill-shell-git-log
 
-**Usage prose to store:** “runs 'git log --oneline -20' to get the last 20 commits. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-log`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git log --oneline -20' to get the last 20 commits. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-log`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-log`'s block above.
 
@@ -1036,7 +1069,7 @@ result = host.shell(command='git log --oneline -20')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff --stat'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff --stat'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1048,7 +1081,7 @@ result = host.shell(command='git diff --stat')
 
 #### skill-shell-git-diff-stat
 
-**Usage prose to store:** “runs 'git diff --stat' to show changed file summary. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-diff-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git diff --stat' to show changed file summary. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-diff-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-diff-stat`'s block above.
 
@@ -1060,7 +1093,7 @@ result = host.shell(command='git diff --stat')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git branch -a'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git branch -a'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1072,7 +1105,7 @@ result = host.shell(command='git branch -a')
 
 #### skill-shell-git-branch
 
-**Usage prose to store:** “runs 'git branch -a' to list all local and remote branches. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-branch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git branch -a' to list all local and remote branches. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-branch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-branch`'s block above.
 
@@ -1084,7 +1117,7 @@ result = host.shell(command='git branch -a')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git stash list'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git stash list'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1096,7 +1129,7 @@ result = host.shell(command='git stash list')
 
 #### skill-shell-git-stash-list
 
-**Usage prose to store:** “runs 'git stash list' to show the stash stack. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-stash-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git stash list' to show the stash stack. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-stash-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-stash-list`'s block above.
 
@@ -1108,7 +1141,7 @@ result = host.shell(command='git stash list')
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** count: integer 1..100, not bool; missing default 20 only at input binding; output actual shell envelope. Invalid values never become default20.
+**Typed inputs/result:** count: integer 1..100, not bool; missing default 20 only at input binding; output actual shell output/exit_code/success/sandboxed object. Invalid values never become default20.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
@@ -1129,7 +1162,7 @@ result = host.shell(command="git log --oneline -" + str(count))
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git remote -v'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git remote -v'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1141,7 +1174,7 @@ result = host.shell(command='git remote -v')
 
 #### skill-shell-git-remote
 
-**Usage prose to store:** “runs 'git remote -v' to list all configured remote repositories and their URLs. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-remote`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git remote -v' to list all configured remote repositories and their URLs. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-remote`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-remote`'s block above.
 
@@ -1153,7 +1186,7 @@ result = host.shell(command='git remote -v')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git show --stat HEAD'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git show --stat HEAD'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1165,7 +1198,7 @@ result = host.shell(command='git show --stat HEAD')
 
 #### skill-shell-git-show-stat
 
-**Usage prose to store:** “runs 'git show --stat HEAD' to show the last commit's changed files and line counts. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-show-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git show --stat HEAD' to show the last commit's changed files and line counts. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-show-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-show-stat`'s block above.
 
@@ -1177,7 +1210,7 @@ result = host.shell(command='git show --stat HEAD')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git tag --list'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git tag --list'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1189,7 +1222,7 @@ result = host.shell(command='git tag --list')
 
 #### skill-shell-git-tag-list
 
-**Usage prose to store:** “runs 'git tag --list' to enumerate all tags in the repository. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-tag-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git tag --list' to enumerate all tags in the repository. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-tag-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-tag-list`'s block above.
 
@@ -1201,7 +1234,7 @@ result = host.shell(command='git tag --list')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff --name-only HEAD'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff --name-only HEAD'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1213,7 +1246,7 @@ result = host.shell(command='git diff --name-only HEAD')
 
 #### skill-shell-git-diff-name-only
 
-**Usage prose to store:** “runs 'git diff --name-only HEAD' to list only the names of files changed since the last commit. No content shown. Fixed literal command — no slot interpolation. Supply the typed inputs described for `pc-exec-shell-git-diff-name-only`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git diff --name-only HEAD' to list only the names of files changed since the last commit. No content shown. Fixed literal command — no slot interpolation. Supply the typed inputs described for `pc-exec-shell-git-diff-name-only`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-diff-name-only`'s block above.
 
@@ -1225,7 +1258,7 @@ result = host.shell(command='git diff --name-only HEAD')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git log --stat --oneline -5'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git log --stat --oneline -5'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1237,7 +1270,7 @@ result = host.shell(command='git log --stat --oneline -5')
 
 #### skill-shell-git-log-stat
 
-**Usage prose to store:** “runs 'git log --stat --oneline -5' to show the last 5 commits with file-change counts per commit. Fixed literal. Supply the typed inputs described for `pc-exec-shell-git-log-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git log --stat --oneline -5' to show the last 5 commits with file-change counts per commit. Fixed literal. Supply the typed inputs described for `pc-exec-shell-git-log-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-log-stat`'s block above.
 
@@ -1249,7 +1282,7 @@ result = host.shell(command='git log --stat --oneline -5')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git stash show'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git stash show'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1261,7 +1294,7 @@ result = host.shell(command='git stash show')
 
 #### skill-shell-git-stash-show
 
-**Usage prose to store:** “runs 'git stash show' to show the diff summary of the most recent stash entry. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-stash-show`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git stash show' to show the diff summary of the most recent stash entry. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-stash-show`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-stash-show`'s block above.
 
@@ -1273,7 +1306,7 @@ result = host.shell(command='git stash show')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git config --list'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git config --list'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1285,7 +1318,7 @@ result = host.shell(command='git config --list')
 
 #### skill-shell-git-config-list
 
-**Usage prose to store:** “runs 'git config --list' to show all active git configuration values. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-config-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'git config --list' to show all active git configuration values. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-config-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-config-list`'s block above.
 
@@ -1311,7 +1344,7 @@ result = "git add -- " + " ".join(inputs["quoted_arguments"])
 
 #### skill-shell-git-add
 
-**Usage prose to store:** “Use the host boundary to run 'git add <path>'. Supply the typed inputs described for `pc-exec-shell-git-add`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to run 'git add <path>'. Supply the typed inputs described for `pc-exec-shell-git-add`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -1337,7 +1370,7 @@ result = "git commit -m " + inputs["quoted_arguments"][0]
 
 #### skill-shell-git-commit
 
-**Usage prose to store:** “Use the host boundary to run 'git commit -m <msg>'. Supply the typed inputs described for `pc-exec-shell-git-commit`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to run 'git commit -m <msg>'. Supply the typed inputs described for `pc-exec-shell-git-commit`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -1363,7 +1396,7 @@ result = "git push " + " ".join(inputs["quoted_arguments"])
 
 #### skill-shell-git-push
 
-**Usage prose to store:** “Use the host boundary to run 'git push <remote> <branch>'. Supply the typed inputs described for `pc-exec-shell-git-push`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to run 'git push <remote> <branch>'. Supply the typed inputs described for `pc-exec-shell-git-push`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -1389,7 +1422,7 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 
 #### skill-shell-git-pull
 
-**Usage prose to store:** “Use the host boundary to run 'git pull <remote> <branch>'. Supply the typed inputs described for `pc-exec-shell-git-pull`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to run 'git pull <remote> <branch>'. Supply the typed inputs described for `pc-exec-shell-git-pull`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -1401,7 +1434,7 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git fetch --all'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git fetch --all'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1413,7 +1446,7 @@ result = host.shell(command='git fetch --all')
 
 #### skill-shell-git-fetch
 
-**Usage prose to store:** “Use the host boundary to run 'git fetch --all'. Supply the typed inputs described for `pc-exec-shell-git-fetch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to run 'git fetch --all'. Supply the typed inputs described for `pc-exec-shell-git-fetch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-fetch`'s block above.
 
@@ -1425,7 +1458,7 @@ result = host.shell(command='git fetch --all')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='pwd'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='pwd'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1437,7 +1470,7 @@ result = host.shell(command='pwd')
 
 #### skill-shell-pwd
 
-**Usage prose to store:** “runs 'pwd' to show the current working directory. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-pwd`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'pwd' to show the current working directory. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-pwd`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-pwd`'s block above.
 
@@ -1449,7 +1482,7 @@ result = host.shell(command='pwd')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='df -h'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='df -h'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1461,7 +1494,7 @@ result = host.shell(command='df -h')
 
 #### skill-shell-df
 
-**Usage prose to store:** “runs 'df -h' to show disk usage in human-readable format. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-df`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'df -h' to show disk usage in human-readable format. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-df`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-df`'s block above.
 
@@ -1473,7 +1506,7 @@ result = host.shell(command='df -h')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='ps aux'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='ps aux'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1485,7 +1518,7 @@ result = host.shell(command='ps aux')
 
 #### skill-shell-ps
 
-**Usage prose to store:** “runs 'ps aux' to list running processes. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-ps`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'ps aux' to list running processes. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-ps`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-ps`'s block above.
 
@@ -1497,7 +1530,7 @@ result = host.shell(command='ps aux')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='env'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='env'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1509,7 +1542,7 @@ result = host.shell(command='env')
 
 #### skill-shell-env
 
-**Usage prose to store:** “runs 'env' to list all environment variables in the current session. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-env`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'env' to list all environment variables in the current session. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-env`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-env`'s block above.
 
@@ -1521,7 +1554,7 @@ result = host.shell(command='env')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='uname -a'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='uname -a'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1533,7 +1566,7 @@ result = host.shell(command='uname -a')
 
 #### skill-shell-uname
 
-**Usage prose to store:** “runs 'uname -a' to show OS/kernel information. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-uname`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'uname -a' to show OS/kernel information. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-uname`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-uname`'s block above.
 
@@ -1545,7 +1578,7 @@ result = host.shell(command='uname -a')
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** name: bounded ASCII binary name, no leading hyphen; output actual shell envelope. Unavailable binary is process failure, not invalid-input success.
+**Typed inputs/result:** name: bounded ASCII binary name, no leading hyphen; output actual shell output/exit_code/success/sandboxed object. Unavailable binary is process failure, not invalid-input success.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
@@ -1561,7 +1594,7 @@ result = host.shell(command="which " + name)
 
 #### skill-shell-which
 
-**Usage prose to store:** “runs 'which <toolname>' to locate a binary. Supply the typed inputs described for `pc-exec-shell-which`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'which <toolname>' to locate a binary. Supply the typed inputs described for `pc-exec-shell-which`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-which`'s block above.
 
@@ -1573,7 +1606,7 @@ result = host.shell(command="which " + name)
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='hostname'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='hostname'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1585,7 +1618,7 @@ result = host.shell(command='hostname')
 
 #### skill-shell-hostname
 
-**Usage prose to store:** “runs 'hostname' to print the machine hostname. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-hostname`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'hostname' to print the machine hostname. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-hostname`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-hostname`'s block above.
 
@@ -1597,7 +1630,7 @@ result = host.shell(command='hostname')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='whoami'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='whoami'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1609,7 +1642,7 @@ result = host.shell(command='whoami')
 
 #### skill-shell-whoami
 
-**Usage prose to store:** “runs 'whoami' to print the current user account name. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-whoami`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'whoami' to print the current user account name. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-whoami`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-whoami`'s block above.
 
@@ -1621,7 +1654,7 @@ result = host.shell(command='whoami')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='uptime'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='uptime'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1633,7 +1666,7 @@ result = host.shell(command='uptime')
 
 #### skill-shell-uptime
 
-**Usage prose to store:** “runs 'uptime' to show system uptime, load average, and logged-in user count. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-uptime`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'uptime' to show system uptime, load average, and logged-in user count. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-uptime`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-uptime`'s block above.
 
@@ -1645,7 +1678,7 @@ result = host.shell(command='uptime')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='free -h'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='free -h'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -1657,7 +1690,7 @@ result = host.shell(command='free -h')
 
 #### skill-shell-free
 
-**Usage prose to store:** “runs 'free -h' to show memory usage in human-readable format. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-free`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'free -h' to show memory usage in human-readable format. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-free`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-free`'s block above.
 
@@ -1683,11 +1716,13 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 
 #### skill-shell-wc-l
 
-**Usage prose to store:** “runs 'wc -l <filepath>' to count lines in a file. Supply the typed inputs described for `pc-exec-shell-wc-l`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “runs 'wc -l <filepath>' to count lines in a file. Supply the typed inputs described for `pc-exec-shell-wc-l`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
 ### L065. pc-exec-trigger-list
+
+**Audit correction:** The retained registered schema/handler accepts limit, not scope. all/active/scheduled are Recipe filtering usages over validated state/is_active/source fields; no scope selector may be dispatched. The inspected capped list cannot prove a globally unique name or absence. A complete enumeration or qualified exact lookup is required before name-based removal.
 
 **Prose description:** calls host.trigger_list to list configured triggers.
 
@@ -1695,35 +1730,37 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** scope: retained adapter enum, including the supported all/active/scheduled usages. Return the actual triggers list and metadata.
+**Typed inputs/result:** limit: integer 1..100, not bool; result: object with required triggers list of exact trigger_output records. Current primitive returns no completeness/pagination flag.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
 ```python
-result = host.trigger_list(scope=inputs["scope"])
+result = host.trigger_list(limit=inputs["limit"])
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-trigger-list
 
-**Usage prose to store:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above.
 
 #### skill-trigger-list-active
 
-**Usage prose to store:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above.
 
 #### skill-trigger-list-scheduled
 
-**Usage prose to store:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above.
 
 ### L066. pc-exec-trigger-resolve-and-remove
+
+**Audit correction:** BLOCKED name-resolution workflow until complete lookup is qualified. The final independently bound remove call uses trigger_id. Do not convert this legacy name workflow into guessed trigger_name dispatch or a scoped role requirement.
 
 **Prose description:** lists all triggers, finds the one matching the given name exactly, and removes it.
 
@@ -1731,13 +1768,17 @@ result = host.trigger_list(scope=inputs["scope"])
 
 **Split/reuse:** Split list → name equality filter → require one → separately bound removal. Return actual removal result and fail on ambiguity.
 
-**Typed inputs/result:** rows: bounded homogeneous object list; output: one object of that exact schema. Zero/ambiguous matches are distinct classified pre-effect failures at the adapter boundary.
+**Typed inputs/result:** rows: exact filtered trigger record list; complete: trusted full-query enumeration evidence, not available from the current capped list alone. Output: one exact trigger record containing trigger_id.
 
 **Recipe wiring:** `pc-exec-trigger-list` → `proposed-filter-records` → `proposed-require-one-record` → `proposed-trigger-remove`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
 ```python
+if not inputs["complete"]:
+    raise ValueError("incomplete lookup")
+if len(inputs["rows"]) == 0:
+    raise ValueError("lookup_not_found")
 if len(inputs["rows"]) != 1:
-    raise ValueError("expected exactly one match")
+    raise ValueError("lookup_ambiguous")
 result = inputs["rows"][0]
 ```
 
@@ -1763,7 +1804,7 @@ result = host.time(operation="now", timezone=inputs["timezone"])
 
 #### skill-time-now
 
-**Usage prose to store:** “Use the host boundary to get the current timestamp via builtin.time operation='now'. Supply the typed inputs described for `pc-exec-time-now`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to get the current timestamp via builtin.time operation='now'. Supply the typed inputs described for `pc-exec-time-now`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-now`'s block above.
 
@@ -1787,7 +1828,7 @@ result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs
 
 #### skill-time-parse
 
-**Usage prose to store:** “Use the host boundary to parse a timestamp string via builtin.time operation='parse'. Supply the typed inputs described for `pc-exec-time-parse`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to parse a timestamp string via builtin.time operation='parse'. Supply the typed inputs described for `pc-exec-time-parse`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-parse`'s block above.
 
@@ -1811,7 +1852,7 @@ result = host.time(operation="convert", input=inputs["timestamp"], from_timezone
 
 #### skill-time-convert
 
-**Usage prose to store:** “Use the host boundary to convert a timestamp between timezones via builtin.time operation='convert'. Supply the typed inputs described for `pc-exec-time-convert`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to convert a timestamp between timezones via builtin.time operation='convert'. Supply the typed inputs described for `pc-exec-time-convert`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-convert`'s block above.
 
@@ -1835,7 +1876,7 @@ result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=input
 
 #### skill-time-diff
 
-**Usage prose to store:** “Use the host boundary to compute the signed difference between two timestamps via builtin.time operation='diff'. Supply the typed inputs described for `pc-exec-time-diff`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to compute the signed difference between two timestamps via builtin.time operation='diff'. Supply the typed inputs described for `pc-exec-time-diff`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-diff`'s block above.
 
@@ -1859,11 +1900,13 @@ result = host.time(operation="format", input=inputs["timestamp"], format_string=
 
 #### skill-time-format
 
-**Usage prose to store:** “Use the host boundary to format a timestamp as a human-readable string via builtin.time operation='format'. Supply the typed inputs described for `pc-exec-time-format`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to format a timestamp as a human-readable string via builtin.time operation='format'. Supply the typed inputs described for `pc-exec-time-format`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-format`'s block above.
 
 ### L072. pc-exec-json-query
+
+**Audit correction:** The host reparses string data as JSON text. Do not claim an arbitrary recursively union-typed input/result or change that behavior silently. Dynamic paths with incompatible result types need separately reviewed profiles or explicit supported schema work; never add an invented any field.
 
 **Prose description:** Use the host boundary for json query operation.
 
@@ -1871,7 +1914,7 @@ result = host.time(operation="format", input=inputs["timestamp"], format_string=
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** data: recursively bounded JSON value; path: supported host query string. Return the real query value; absent paths remain the primitive error contract.
+**Typed inputs/result:** data: one exact supported object/list schema, or a distinct JSON-text input profile; path: actual host dot/bracket query string. Result: one exact per-usage selected-value schema, nullable only when allowed by that profile. Missing field/index is an InputEncode error; presentnull remains null.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
@@ -1883,11 +1926,13 @@ result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
 
 #### skill-json-query
 
-**Usage prose to store:** “Use the host boundary for json query operation. Supply the typed inputs described for `pc-exec-json-query`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for json query operation. Supply the typed inputs described for `pc-exec-json-query`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-query`'s block above.
 
 ### L073. pc-exec-json-stringify
+
+**Audit correction:** Actual builtin.json stringify reparses any string input as JSON text. Passing raw hello does not serialize the string hello. This text-in profile preserves that actual behavior; typed-object profiles may reuse code only with an exact object/list shape. Pure literal-string serialization can use reviewed Monty json.dumps(..., allow_nan=False); it is a different zero-Tool contract, not this Skill.
 
 **Prose description:** Use the host boundary for json stringify or parse.
 
@@ -1895,19 +1940,19 @@ result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** data: recursively bounded finite JSON value. Return the adapter JSON text/envelope. Fix selector to stringify; parsing belongs to newer component 6.
+**Typed inputs/result:** json_text: valid JSON text string; result: pretty-printed JSON string. Parsing/finite/size/depth semantics must match the retained Rust serde_json adapter.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
 ```python
-result = host.json(operation="stringify", data=inputs["data"])
+result = host.json(operation="stringify", data=inputs["json_text"])
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-json-stringify
 
-**Usage prose to store:** “Use the host boundary for json stringify or parse. Supply the typed inputs described for `pc-exec-json-stringify`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary for json stringify or parse. Supply the typed inputs described for `pc-exec-json-stringify`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-stringify`'s block above.
 
@@ -1931,7 +1976,7 @@ result = host.json(operation="validate", data=inputs["json_text"])
 
 #### skill-json-validate
 
-**Usage prose to store:** “Use the host boundary to validate a JSON string. Supply the typed inputs described for `pc-exec-json-validate`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “Use the host boundary to validate a JSON string. Supply the typed inputs described for `pc-exec-json-validate`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-validate`'s block above.
 
@@ -1973,7 +2018,7 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 #### skill-github-list-issues
 
-**Usage prose to store:** “GET /repos/{owner}/{repo}/issues?state=open. Supply the typed inputs described for `pc-github-list-issues`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /repos/{owner}/{repo}/issues?state=open. Supply the typed inputs described for `pc-github-list-issues`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -1997,7 +2042,7 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 #### skill-github-list-prs
 
-**Usage prose to store:** “GET /repos/{owner}/{repo}/pulls?state=open. Supply the typed inputs described for `pc-github-list-prs`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /repos/{owner}/{repo}/pulls?state=open. Supply the typed inputs described for `pc-github-list-prs`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -2023,7 +2068,7 @@ result = host.http(method="GET", url="https://api.github.com/user")
 
 #### skill-github-get-authenticated-user
 
-**Usage prose to store:** “GET /user — returns login, id, name, email. Supply the typed inputs described for `pc-github-get-authenticated-user`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /user — returns login, id, name, email. Supply the typed inputs described for `pc-github-get-authenticated-user`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-github-get-authenticated-user`'s block above.
 
@@ -2049,7 +2094,7 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 #### skill-github-search-issues
 
-**Usage prose to store:** “GET /search/issues?q={slot0}. slot0 = URL-encoded query. Supply the typed inputs described for `pc-github-search-issues`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /search/issues?q={slot0}. slot0 = URL-encoded query. Supply the typed inputs described for `pc-github-search-issues`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
 
@@ -2061,7 +2106,7 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -2079,7 +2124,7 @@ result = host.shell(command='git diff')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff --cached'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff --cached'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -2097,7 +2142,7 @@ result = host.shell(command='git diff --cached')
 
 **Split/reuse:** Reuse one shell dispatcher with this reviewed fixed command as typed Recipe data; retain distinct usage/effect contracts.
 
-**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff HEAD~1'; return actual shell process envelope.
+**Typed inputs/result:** No dynamic command arguments. Recipe constant command='git diff HEAD~1'; return actual shell output/exit_code/success/sandboxed object.
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
@@ -2284,22 +2329,32 @@ result = {"changed": prior != new}
 
 ### L091. pc-format-component-header
 
+**Audit correction:** The inspected legacy Rust renderer inserts a quoted name verbatim; it does not prove JSON-escape parsing compatibility. Keep exact two-space/header spelling and use the restricted profile below. A name outside it fails or uses a separately qualified encoding shared with the compiler; never silently adopt json.dumps as a legacy format upgrade.
+
 **Prose description:** render the base-prompt component header line `## CC:UID LABEL "name"` as used by do_reassemble.
 
 **Implementation:** Bind class, prompt UID, label and name as typed data with explicit string conversion/escaping. Validate the rendered header grammar and newline/quote handling, and align it with the existing prefix compiler format without treating a prompt UID as component identity. Reclassify the historical pure-logic Skill wrapper as documentation for this PythonCode; zero-Tool logic is not a one-Tool-usage Skill. **Duplicate review:** newer section-2 entries 18, 19 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts.
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** class_code: supported integer class, not bool; prompt_uid/label: validated single-line tokens; name: bounded string; result: header string. Match exact native compiler grammar before adopting JSON quoting; no unsafe newline interpolation.
+**Typed inputs/result:** class_code: supported integer class, not bool; prompt_uid: canonical decimal string; label: exact trusted class-label mapping; name: string in the explicit no-quote/backslash/control profile. Output header:string.
 
 **Concrete caveat:** Inspect the actual compiler header parser and qualify its quote/escape grammar. This example specifies a proposed quoted-name profile; it is not permission to change the compiler format independently.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
 ```python
-import json
-result = {"header": "## " + str(inputs["class_code"]) + ":" + inputs["prompt_uid"]
-          + "  " + inputs["label"] + "  " + json.dumps(inputs["name"])}
+name = inputs["name"]
+label = inputs["label"]
+uid = inputs["prompt_uid"]
+if any(c in name for c in ('"', "\", "\n", "\r", "\x00")):
+    raise ValueError("name requires a separately qualified header escape profile")
+if not label or any(c.isspace() or c in '\x00"\\' for c in label):
+    raise ValueError("invalid class label")
+if not uid or not uid.isascii() or not uid.isdigit():
+    raise ValueError("invalid prompt UID")
+result = {"header": "## " + str(inputs["class_code"]) + ":" + uid
+          + "  " + label + "  \"" + name + "\""}
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
@@ -2377,7 +2432,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 #### skill-zencoder-list-projects
 
-**Usage prose to store:** “GET /projects via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-projects`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /projects via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-projects`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-projects`'s block above.
 
@@ -2403,7 +2458,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 #### skill-zencoder-list-tasks
 
-**Usage prose to store:** “GET /projects/{pid}/tasks[?status&limit] via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-tasks`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /projects/{pid}/tasks[?status&limit] via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-tasks`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-tasks`'s block above.
 
@@ -2429,7 +2484,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 #### skill-zencoder-get-task
 
-**Usage prose to store:** “GET /projects/{pid}/tasks/{tid} via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-get-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /projects/{pid}/tasks/{tid} via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-get-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-get-task`'s block above.
 
@@ -2455,7 +2510,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 #### skill-zencoder-get-plan
 
-**Usage prose to store:** “GET /projects/{pid}/tasks/{tid}/plan via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-get-plan`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /projects/{pid}/tasks/{tid}/plan via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-get-plan`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-get-plan`'s block above.
 
@@ -2481,7 +2536,7 @@ result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=in
 
 #### skill-zencoder-create-task
 
-**Usage prose to store:** “POST /projects/{pid}/tasks via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-create-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “POST /projects/{pid}/tasks via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-create-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-create-task`'s block above.
 
@@ -2507,7 +2562,7 @@ result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=in
 
 #### skill-zencoder-patch-task
 
-**Usage prose to store:** “PATCH /projects/{pid}/tasks/{tid} via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-patch-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “PATCH /projects/{pid}/tasks/{tid} via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-patch-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-patch-task`'s block above.
 
@@ -2533,7 +2588,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 #### skill-zencoder-list-automations
 
-**Usage prose to store:** “GET /automations[?enabled] via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-automations`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “GET /automations[?enabled] via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-automations`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-automations`'s block above.
 
@@ -2559,7 +2614,7 @@ result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=in
 
 #### skill-zencoder-create-automation
 
-**Usage prose to store:** “POST /automations via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-create-automation`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Usage prose draft to specialize:** “POST /automations via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-create-automation`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
 
 **Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-create-automation`'s block above.
 
@@ -2579,7 +2634,7 @@ result = host.post_reply(answer=inputs["answer"])
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Packaged reply: reply:code / reply:skill. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Packaged reply: reply:code / reply:skill. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N02. Packaged history writer: history:code / history:skill
 
@@ -2595,7 +2650,7 @@ result = host.memory_write(content=inputs["content"], target="daily_log")
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Packaged history writer: history:code / history:skill. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Packaged history writer: history:code / history:skill. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N03. Packaged history formatter: history:formatter
 
@@ -2647,13 +2702,15 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Typed interval usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Typed interval usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N06. Typed JSON parse usage
 
+**Audit correction:** Actual builtin.json parse returns a bare serde_json value, not a {data:...} envelope. General arbitrary JSON results cannot be described by the current homogeneous v3 schema; bind a concrete expected shape per approved usage. serde_json parsing does not itself establish duplicate-key rejection for review/association documents.
+
 **Prose description and implementation:** Resolve real components and association. Syntax, duplicate-key and nonfinite semantics come from actual parser, not a second Python parser.
 
-**Typed inputs/result:** json_text: bounded string; result: recursively bounded parser value/envelope.
+**Typed inputs/result:** json_text: bounded string; result: one explicit finite per-usage object/list/scalar schema with recursive fields/items and no default values. Wrong-shape parse output fails validation before a consumer.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2663,13 +2720,13 @@ result = host.json(operation="parse", data=inputs["json_text"])
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Typed JSON parse usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Typed JSON parse usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N07. Shared narrow structural compatibility check
 
 **Prose description and implementation:** Repair only the narrow legacy nonempty predicate. This compatibility check neither proves semantic agreement nor replaces final validators.
 
-**Typed inputs/result:** metadata: exact class-specific required string fields; required_fields: trusted class-Recipe constant list; evidence_refs: trusted bounded string list; output: exact check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; metadata: exact class-specific required string fields; required_fields: trusted class-Recipe constant list; evidence_refs: trusted bounded string list; output: exact check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2679,7 +2736,7 @@ for field in inputs["required_fields"]:
     value = inputs["metadata"][field]
     if type(value) is not str or not value.strip():
         diagnostics.append({"path": [field], "code": "empty_metadata"})
-result = {"check_id": "nonempty_metadata", "complete": True, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": "nonempty_metadata", "complete": True, "passed": not diagnostics,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2691,7 +2748,7 @@ result = {"check_id": "nonempty_metadata", "complete": True, "passed": not diagn
 
 **Prose description and implementation:** Extend with class-specific required metadata and exact trusted checksum/subject identity comparisons. Candidate claims are not integrity evidence. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** candidate_uuid/subject_uuid: canonical UUID strings; revision: positive integer; trusted subject manifest pins class/name/content checksum. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; candidate_uuid/subject_uuid: canonical UUID strings; revision: positive integer; trusted subject manifest pins class/name/content checksum. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2701,7 +2758,7 @@ if inputs["candidate_uuid"] != inputs["subject_uuid"]:
     diagnostics.append({"path": ["uuid"], "code": "subject_mismatch"})
 if type(inputs["revision"]) is not int or inputs["revision"] < 1:
     diagnostics.append({"path": ["revision"], "code": "invalid_revision"})
-result = {"check_id": 'identity_and_metadata', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metadata', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2713,7 +2770,7 @@ result = {"check_id": 'identity_and_metadata', "complete": False, "passed": not 
 
 **Prose description and implementation:** Implement recursive schema traversal/fact production in the supported parser owner; enforce items/fields/extra-values/null/missing/defaults/bounds and compatibility. The small policy example consumes complete facts, not a candidate-supplied pass flag. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** schema_facts: trusted complete recursively typed schema-analysis facts, including violations path/code; enforce finite bounds and nesting. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; schema_facts: trusted complete recursively typed schema-analysis facts, including violations path/code; enforce finite bounds and nesting. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2721,7 +2778,7 @@ result = {"check_id": 'identity_and_metadata', "complete": False, "passed": not 
 diagnostics = []
 for finding in inputs["schema_facts"]["violations"]:
     diagnostics.append({"path": finding["path"], "code": finding["code"]})
-result = {"check_id": 'recursive_contracts', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'recursive_contracts', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2733,17 +2790,19 @@ result = {"check_id": 'recursive_contracts', "complete": False, "passed": not di
 
 **Prose description and implementation:** Verify recursive closure, cycles, exact immutable dependencies, association approval and actual Tool artifacts. This set comparison assumes trusted complete graph extraction; incomplete graphs fail before this check. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** expected_refs/retained_refs: trusted bounded exact revision/checksum reference strings from complete traversed graphs; not just UUID names. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; expected_refs/retained_refs: trusted bounded exact revision/checksum reference strings from complete traversed graphs; not just UUID names. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
 ```python
 diagnostics = []
+if not inputs["expected_refs"] or len(set(inputs["expected_refs"])) != len(inputs["expected_refs"]) or len(set(inputs["retained_refs"])) != len(inputs["retained_refs"]):
+    raise ValueError("empty or duplicate graph facts")
 expected = set(inputs["expected_refs"])
 retained = set(inputs["retained_refs"])
 for reference in sorted(expected - retained):
     diagnostics.append({"path": ["dependencies", reference], "code": "missing_dependency"})
-result = {"check_id": 'dependency_graph_completeness', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'dependency_graph_completeness', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2755,7 +2814,7 @@ result = {"check_id": 'dependency_graph_completeness', "complete": False, "passe
 
 **Prose description and implementation:** Compute compatibility from recursive usage, binding and callable schemas; check required/default/extra/null semantics and fixed selectors. A candidate compatible=true is never accepted as fact. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** argument_facts: trusted complete list of exact name:string/compatible:boolean and retained schema/adapter evidence references. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; argument_facts: trusted complete list of exact name:string/compatible:boolean and retained schema/adapter evidence references. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2764,7 +2823,7 @@ diagnostics = []
 for argument in inputs["argument_facts"]:
     if not argument["compatible"]:
         diagnostics.append({"path": ["arguments", argument["name"]], "code": "incompatible_argument"})
-result = {"check_id": 'argument_compatibility', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'argument_compatibility', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2776,7 +2835,7 @@ result = {"check_id": 'argument_compatibility', "complete": False, "passed": not
 
 **Prose description and implementation:** Complete binding-adjacency/Tool match, independent-call separation, typed references, selected variant step_link, completion and flow validation. Inspect source facts and exact dependent-chain coverage; one include alone is insufficient. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** steps: validated actual component-step objects with stepnumber and include UUID list; trusted flow facts separately cover order, channels, bindings and limits. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; steps: validated actual component-step objects with stepnumber and include UUID list; trusted flow facts separately cover order, channels, bindings and limits. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2785,7 +2844,7 @@ diagnostics = []
 for step in inputs["steps"]:
     if len(step["include"]) != 1:
         diagnostics.append({"path": ["steps", str(step["stepnumber"])], "code": "one_component_required"})
-result = {"check_id": 'workflow_structure', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'workflow_structure', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2797,7 +2856,7 @@ result = {"check_id": 'workflow_structure', "complete": False, "passed": not dia
 
 **Prose description and implementation:** Reuse real retained-source inspection and pinned Monty compile facts; add unsupported syntax/import, dynamic host access and recursive dependency analysis. Never execute submitted code to discover call sites. Behavior evidence is separate. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** source_facts: trusted exact-checksum parser facts with booleans and complete static host-call/import/call-layout analysis; not substring guesses. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; source_facts: trusted exact-checksum parser facts with booleans and complete static host-call/import/call-layout analysis; not substring guesses. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2808,7 +2867,7 @@ if facts["has_runtime_source_slots"]:
     diagnostics.append({"path": ["source"], "code": "source_slots_forbidden"})
 if not facts["assigns_result"]:
     diagnostics.append({"path": ["source"], "code": "missing_result"})
-result = {"check_id": 'source_facts_and_policy', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'source_facts_and_policy', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2820,7 +2879,7 @@ result = {"check_id": 'source_facts_and_policy', "complete": False, "passed": no
 
 **Prose description and implementation:** Complete eligible-outcome validation, explicit read-only/durable deduplication evidence and unknown-effect rules. The checker does not dispatch retries or grant policy. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** failure: exact skills.md failure object; retry_evidence_verified: trusted check result with subject/outcomes/idempotency evidence bound to this exact usage. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; failure: exact skills.md failure object; retry_evidence_verified: boolean derived by a trusted evidence resolver, not a candidate flag, plus retained evidence references with subject/outcomes/idempotency evidence bound to this exact usage. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2832,7 +2891,7 @@ if type(count) is not int or count < 1:
     diagnostics.append({"path": ["failure", "max_attempts"], "code": "invalid_attempt_count"})
 if type(count) is int and count > 1 and not inputs["retry_evidence_verified"]:
     diagnostics.append({"path": ["failure"], "code": "unverified_retry"})
-result = {"check_id": 'retry_declaration', "complete": False, "passed": not diagnostics,
+result = {"subject_ref": inputs["subject_ref"], "check_id": 'retry_declaration', "complete": False, "passed": False,
           "diagnostics": diagnostics, "evidence_refs": inputs["evidence_refs"]}
 ```
 
@@ -2842,6 +2901,8 @@ result = {"check_id": 'retry_declaration', "complete": False, "passed": not diag
 
 ### N15. Scoped verdict aggregation
 
+**Audit correction:** A pure equality check cannot authenticate review evidence. The trusted review owner must verify every producer/check revision, predicate scope, fact completeness and evidence record against the same subject before this component runs. Candidate-authored IDs/booleans are data, not authority. Required check IDs come from the selected approved class Recipe, never the proposal.
+
 **Prose description and implementation:** Require same-subject/checksum evidence, supported required checks and completeness. Infrastructure errors remain errors. Verdict is review evidence, not human Q2 or activation.
 
 **Typed inputs/result:** required_check_ids: unique trusted class-specific string list; checks: bounded exact common check-record list; subject_ref: exact reviewed manifest reference. Output subject_ref/passed/diagnostics/evidence_refs.
@@ -2850,21 +2911,26 @@ result = {"check_id": 'retry_declaration', "complete": False, "passed": not diag
 
 ```python
 expected = inputs["required_check_ids"]
-checks = inputs["checks"]
+if not expected or len(set(expected)) != len(expected):
+    raise ValueError("empty or duplicate required checks")
 by_id = {}
-for check in checks:
-    if check["check_id"] in by_id:
-        raise ValueError("duplicate check")
+for check in inputs["checks"]:
+    if check["check_id"] in by_id or check["subject_ref"] != inputs["subject_ref"]:
+        raise ValueError("duplicate or wrong-subject check")
+    if type(check["complete"]) is not bool or type(check["passed"]) is not bool:
+        raise ValueError("invalid check status")
+    if not check["complete"] or not check["evidence_refs"]:
+        raise ValueError("incomplete or unevidenced check")
+    if check["passed"] and check["diagnostics"]:
+        raise ValueError("contradictory passing check")
     by_id[check["check_id"]] = check
-if set(by_id) != set(expected) or len(set(expected)) != len(expected):
+if set(by_id) != set(expected):
     raise ValueError("incomplete check set")
 passed = True
 diagnostics = []
 evidence_refs = []
 for check_id in expected:
     check = by_id[check_id]
-    if not check["complete"]:
-        raise ValueError("incomplete check")
     passed = passed and check["passed"]
     diagnostics.extend(check["diagnostics"])
     evidence_refs.extend(check["evidence_refs"])
@@ -2890,7 +2956,7 @@ result = {"subject_ref": inputs["subject_ref"], "dependency_manifest_ref": input
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Immutable review submission. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Immutable review submission. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N17. Catalogue sweep and export
 
@@ -2906,7 +2972,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Catalogue sweep and export. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Catalogue sweep and export. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N18. Registered compiler worker invocation
 
@@ -2922,7 +2988,7 @@ result = {"export_ref": inputs["export_ref"], "compiler_ref": inputs["compiler_r
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Registered compiler worker invocation. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Registered compiler worker invocation. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N19. Generation validation usage
 
@@ -2938,7 +3004,7 @@ result = {"manifest_ref": inputs["manifest_ref"], "facts_ref": inputs["facts_ref
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Generation validation usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Generation validation usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ### N20. Prefix generation publication
 
@@ -2954,7 +3020,7 @@ result = {"generation_ref": inputs["generation_ref"], "validation_ref": inputs["
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose:** “Prefix generation publication. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Associated Skill prose draft to specialize:** “Prefix generation publication. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
 ## Proposed reusable parts
 
@@ -2998,6 +3064,8 @@ for line in inputs["content"].split("\n"):
 
 ### proposed-filter-records
 
+**Audit correction:** Choose a concrete homogeneous row/value contract per usage; this is not a generic any/union schema. Field and mode are reviewed constants or guarded inputs, and are validated even for an empty list. Python True==1 must not create an equality match across types.
+
 **Structured-directory adapter gap:** current list_dir returns display strings, not name/type records. This example requires a qualified structured result profile exposing actual identity fields; do not feed display strings to it or infer file type/name by parsing suffixes. Reuse existing primitive internals through a supported adapter upgrade where possible. Trigger records can use this helper independently once their schema is qualified.
 
 **Prose to store:** Filter typed records by one reviewed equality or substring predicate.
@@ -3007,15 +3075,18 @@ for line in inputs["content"].split("\n"):
 **Named reuse consumers:** `pc-exec-list-then-grep`, `pc-exec-list-filter-by-type`, `pc-exec-trigger-resolve-and-remove`.
 
 ```python
+mode = inputs["mode"]
+if mode not in ("equals", "contains"):
+    raise ValueError("unsupported predicate")
 result = []
 for row in inputs["rows"]:
     value = row[inputs["field"]]
-    if inputs["mode"] == "equals":
-        matched = value == inputs["value"]
-    elif inputs["mode"] == "contains":
-        matched = inputs["value"] in value
+    if mode == "equals":
+        matched = type(value) is type(inputs["value"]) and value == inputs["value"]
     else:
-        raise ValueError("unsupported predicate")
+        if type(value) is not str or type(inputs["value"]) is not str:
+            raise ValueError("contains requires strings")
+        matched = inputs["value"] in value
     if matched:
         result.append(row)
 ```
@@ -3024,30 +3095,39 @@ for row in inputs["rows"]:
 
 ### proposed-require-one-record
 
+**Audit correction:** Name uniqueness is not proved by a capped list containing one row. The actual trigger list has no completeness field; never supply constanttrue merely because fewer than100 rows returned. Distinct source errors remain errors. ValueError labels require supported classification before they are exposed as not_found/ambiguous outcomes.
+
 **Prose to store:** Require one unambiguous selected record before a dependent operation.
 
-**Typed inputs/result:** rows: bounded homogeneous object list; output: one object of that exact schema. Zero/ambiguous matches are distinct classified pre-effect failures at the adapter boundary.
+**Typed inputs/result:** rows: bounded homogeneous object list with a concrete per-usage schema; complete: boolean from trusted enumeration/lookup evidence for the same query/snapshot. Output: that exact record schema.
 
 **Named reuse consumers:** `pc-exec-trigger-resolve-and-remove`, `future exact project/task lookup`.
 
 ```python
-if len(inputs["rows"]) != 1:
-    raise ValueError("expected exactly one match")
-result = inputs["rows"][0]
+rows = inputs["rows"]
+if not inputs["complete"]:
+    raise ValueError("incomplete lookup")
+if len(rows) == 0:
+    raise ValueError("lookup_not_found")
+if len(rows) != 1:
+    raise ValueError("lookup_ambiguous")
+result = rows[0]
 ```
 
 **Implementation and Recipe instructions:** Store as pure class-22 code with no ToolSkill/Skill. Supply typed input fields from captured data, reviewed constants or prior successful results. Validate bounded recursive outputs before handoff; keep helper dependencies exact. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
 
 ### proposed-trigger-remove
 
+**Audit correction:** Use the actual trigger_id parameter. The selected ID fixes the object identity despite renames/name reuse. removed=False is an actual absent outcome, not confirmed removal. Qualify current instance-wide dispatch/policy identity through the v3 authorization cutover; the inspected scoped backend is legacy support, not a new v3 role requirement.
+
 **Prose to store:** Remove one explicitly selected trigger through the existing primitive.
 
-**Typed inputs/result:** trigger_name: nonempty string tied to the selected row; output: actual removal acknowledgement. Verify retained name-to-identity semantics and race handling.
+**Typed inputs/result:** trigger_id: selected canonical non-nil UUID string; result: exact removed:boolean and trigger:nullable object {trigger_id:string,name:string}.
 
 **Named reuse consumers:** `pc-exec-trigger-resolve-and-remove`, `future direct named-trigger removal Recipe`.
 
 ```python
-result = host.trigger_remove(trigger_name=inputs["trigger_name"])
+result = host.trigger_remove(trigger_id=inputs["trigger_id"])
 ```
 
 **Implementation and Recipe instructions:** Qualify the real existing Tool callable and its exact registration/adapter/result contract; associate one-Tool prose and bind immediately before execution. Retain actual acknowledgements and live policy/effect fencing. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
@@ -3092,7 +3172,7 @@ for argument in inputs["arguments"]:
 
 **Prose to store:** Execute one approved prepared shell command; do not plan subsequent commands.
 
-**Typed inputs/result:** command: bounded string constructed by an approved command-specific usage; result: actual process/exit/stdout/stderr envelope. All consuming Recipes Tier 1.
+**Typed inputs/result:** command: bounded string constructed by an approved command-specific usage; result: actual output:string/exit_code:integer/success:boolean/sandboxed:boolean object. All consuming Recipes Tier 1.
 
 **Named reuse consumers:** `all listed shell usages`, `pc-git-diff-unstaged/staged/head`.
 
@@ -3104,6 +3184,8 @@ result = host.shell(command=inputs["command"])
 
 ### proposed-api-relative-path
 
+**Audit correction:** Require uppercase two-digit percent escapes, reject raw delimiters/control characters and literal dot segments, and preserve supplied ordering. Endpoint-specific owner/repo/UUID/status contracts also validate decoded values before encoding; percent escaping does not establish endpoint authorization, prevent decoded traversal or replace kernel egress/redirect/secret checks.
+
 **Prose to store:** Assemble one relative API path and query from separately encoded values.
 
 **Typed inputs/result:** encoded_segments: bounded list of nonempty strings produced by approved encoder/UUID validator or reviewed constants; encoded_query: bounded list of exact key/value string objects. Preserve order. Empty segment list selects /.
@@ -3111,13 +3193,15 @@ result = host.shell(command=inputs["command"])
 **Named reuse consumers:** `GitHub list/search usages`, `Zencoder task and automation usages`.
 
 ```python
+import re
+encoded = r"(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})*"
 segments = inputs["encoded_segments"]
 for segment in segments:
-    if not segment or "/" in segment or "?" in segment or "#" in segment:
+    if not segment or re.fullmatch(encoded, segment) is None or segment in (".", ".."):
         raise ValueError("invalid encoded path segment")
 query = []
 for pair in inputs["encoded_query"]:
-    if any(c in pair["key"] + pair["value"] for c in "&=#?"):
+    if not pair["key"] or re.fullmatch(encoded, pair["key"]) is None or re.fullmatch(encoded, pair["value"]) is None:
         raise ValueError("invalid encoded query pair")
     query.append(pair["key"] + "=" + pair["value"])
 result = "/" + "/".join(segments)
@@ -3177,22 +3261,28 @@ result = {"completed": completed, "total": len(inputs["steps"])}
 
 **Prose to store:** Check exact source-reference coverage without compiling or publishing a prefix.
 
-**Typed inputs/result:** expected_source_refs/covered_source_refs: trusted complete bounded exact revision/checksum reference lists from same immutable snapshot/build; result: passed:boolean plus missing/unexpected lists.
+**Typed inputs/result:** subject_ref: trusted immutable snapshot/build subject; facts_complete:boolean from verified export/build facts; expected_source_refs/covered_source_refs: homogeneous exact revision/checksum reference lists from that subject. Output subject_ref/passed/missing/unexpected.
 
 **Named reuse consumers:** `newer-19 generation validation`, `future full-library export integrity review`.
 
 ```python
-expected = set(inputs["expected_source_refs"])
-covered = set(inputs["covered_source_refs"])
-if len(expected) != len(inputs["expected_source_refs"]):
-    raise ValueError("duplicate expected source")
-result = {"passed": expected == covered,
+expected_refs = inputs["expected_source_refs"]
+covered_refs = inputs["covered_source_refs"]
+if not expected_refs or not inputs["facts_complete"]:
+    raise ValueError("incomplete coverage subject")
+expected = set(expected_refs)
+covered = set(covered_refs)
+if len(expected) != len(expected_refs) or len(covered) != len(covered_refs):
+    raise ValueError("duplicate source reference")
+result = {"subject_ref": inputs["subject_ref"], "passed": expected == covered,
           "missing": sorted(expected - covered), "unexpected": sorted(covered - expected)}
 ```
 
 **Implementation and Recipe instructions:** Store as pure class-22 code with no ToolSkill/Skill. Supply typed input fields from captured data, reviewed constants or prior successful results. Validate bounded recursive outputs before handoff; keep helper dependencies exact. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
 
 ### proposed-line-reply-formatter
+
+**Audit correction:** Do not report no matches when a nonempty selection contains blank/whitespace lines. Preserve substantive matched text exactly; the explicit whitespace message is a display policy, not the result list.
 
 **Prose to store:** Render a bounded line-selection report for reply publication.
 
@@ -3202,7 +3292,12 @@ result = {"passed": expected == covered,
 
 ```python
 text = "\n".join(inputs["lines"])
-result = text if text.strip() else "No matching lines."
+if not inputs["lines"]:
+    result = "No matching lines."
+elif not text.strip():
+    result = "Matching lines contain only whitespace."
+else:
+    result = text
 ```
 
 **Implementation and Recipe instructions:** Store as pure class-22 code with no ToolSkill/Skill. Supply typed input fields from captured data, reviewed constants or prior successful results. Validate bounded recursive outputs before handoff; keep helper dependencies exact. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.

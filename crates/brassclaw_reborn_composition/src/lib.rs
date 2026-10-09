@@ -1048,3 +1048,6 @@ mod global_monty_startup;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod live_monty_settings;
+
+#[cfg(all(test, feature = "postgres"))]
+mod pg_resource_gate_tests;

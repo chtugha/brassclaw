@@ -15,6 +15,7 @@ use std::{future::Future, sync::Arc, time::Duration};
 use brassclaw_host_api::ResourceScope;
 use brassclaw_pg::PgPool;
 use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use serde_json::Value;
 
 use crate::{
@@ -217,6 +218,41 @@ impl PgBudgetGateStore {
         }
     }
 
+    // Every caller verifies the indexed envelope before trusting the payload.
+    // PostgreSQL timestamps have microsecond precision; match the driver's
+    // truncation relative to its 2000 epoch, including dates before that epoch.
+    fn gate_from_row(row: &tokio_postgres::Row) -> Result<BudgetApprovalGate, BudgetGateError> {
+        let gate: BudgetApprovalGate =
+            serde_json::from_value(row.get("payload")).map_err(map_json_b)?;
+        let amount: String = row.get("requested_amount");
+        let amount = Decimal::from_str_exact(&amount).map_err(|_| BudgetGateError::Storage {
+            reason: "invalid indexed budget amount".into(),
+        })?;
+        let expected_amount = match &gate.needed.requested {
+            crate::ResourceValue::Decimal(value) => *value,
+            crate::ResourceValue::Integer(value) => Decimal::from(*value),
+        };
+        let epoch = DateTime::from_timestamp(946_684_800, 0).expect("valid PostgreSQL epoch");
+        let expires_at: Option<DateTime<Utc>> = row.try_get("expires_at").map_err(map_pg_b)?;
+        let expected_expiry = gate
+            .expires_at
+            .signed_duration_since(epoch)
+            .num_microseconds();
+        if row.get::<_, String>("id") != gate.id.to_string()
+            || row.get::<_, String>("status") != Self::status_kind_str(&gate.status)
+            || row.get::<_, String>("gate_kind") != gate.needed.dimension.to_string()
+            || amount != expected_amount
+            || expected_expiry.is_none()
+            || expires_at.and_then(|value| value.signed_duration_since(epoch).num_microseconds())
+                != expected_expiry
+        {
+            return Err(BudgetGateError::Storage {
+                reason: "inconsistent budget gate envelope".into(),
+            });
+        }
+        Ok(gate)
+    }
+
     fn read_gate_sync(
         &self,
         id: BudgetGateId,
@@ -226,21 +262,14 @@ impl PgBudgetGateStore {
                 let client = self.pool.get().await.map_err(map_pool_b)?;
                 let row = client
                     .query_opt(
-                        "SELECT payload FROM brassclaw_budget_gates \
+                        "SELECT id, payload, status, expires_at, gate_kind, requested_amount::text \
+                         FROM brassclaw_budget_gates \
                          WHERE id = $1 AND tenant_id = $2",
                         &[&id.as_uuid().to_string(), &self.tenant_id],
                     )
                     .await
                     .map_err(map_pg_b)?;
-                match row {
-                    None => Ok(None),
-                    Some(r) => {
-                        let payload: Value = r.get(0);
-                        let gate: BudgetApprovalGate =
-                            serde_json::from_value(payload).map_err(map_json_b)?;
-                        Ok(Some(gate))
-                    }
-                }
+                row.as_ref().map(Self::gate_from_row).transpose()
             },
             |reason| BudgetGateError::Storage {
                 reason: reason.to_owned(),
@@ -266,6 +295,11 @@ impl BudgetGateStore for PgBudgetGateStore {
     ) -> Result<(), BudgetGateError> {
         blocking_pg(
             async {
+                if gate.status != BudgetGateStatus::Pending {
+                    return Err(BudgetGateError::Storage {
+                        reason: "only pending budget gates can be opened".into(),
+                    });
+                }
                 let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
                 // Use Display (not Debug) — Debug gives "InputTokens", Display gives "input_tokens".
                 let gate_kind = gate.needed.dimension.to_string();
@@ -295,14 +329,13 @@ impl BudgetGateStore for PgBudgetGateStore {
                 if inserted == 0 {
                     let row = client
                         .query_opt(
-                            "SELECT payload FROM brassclaw_budget_gates WHERE id=$1 AND tenant_id=$2",
+                            "SELECT id, payload, status, expires_at, gate_kind, requested_amount::text \
+                             FROM brassclaw_budget_gates WHERE id=$1 AND tenant_id=$2",
                             &[&gate.id.to_string(), &self.tenant_id],
                         )
                         .await
                         .map_err(map_pg_b)?;
-                    let existing: Option<BudgetApprovalGate> = row
-                        .map(|row| serde_json::from_value(row.get(0)).map_err(map_json_b))
-                        .transpose()?;
+                    let existing = row.as_ref().map(Self::gate_from_row).transpose()?;
                     if existing.as_ref() != Some(&gate) {
                         return Err(BudgetGateError::Storage {
                             reason: "budget gate identifier conflict".into(),
@@ -324,11 +357,20 @@ impl BudgetGateStore for PgBudgetGateStore {
         outcome: BudgetGateOutcome,
         at: DateTime<Utc>,
     ) -> Result<BudgetApprovalGate, BudgetGateError> {
-        let mut gate = self
-            .read_gate_sync(id)?
-            .ok_or(BudgetGateError::Unknown { id })?;
         blocking_pg(
             async {
+                let mut client = self.pool.get().await.map_err(map_pool_b)?;
+                let transaction = client.transaction().await.map_err(map_pg_b)?;
+                let row = transaction
+                    .query_opt(
+                        "SELECT id, payload, status, expires_at, gate_kind, requested_amount::text \
+                     FROM brassclaw_budget_gates WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+                        &[&id.to_string(), &self.tenant_id],
+                    )
+                    .await
+                    .map_err(map_pg_b)?
+                    .ok_or(BudgetGateError::Unknown { id })?;
+                let mut gate = Self::gate_from_row(&row)?;
                 if gate.status.is_terminal() {
                     return Err(BudgetGateError::AlreadyResolved { id });
                 }
@@ -345,8 +387,7 @@ impl BudgetGateStore for PgBudgetGateStore {
                 };
                 let new_status_str = Self::status_kind_str(&gate.status);
                 let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
-                let client = self.pool.get().await.map_err(map_pool_b)?;
-                let updated = client
+                let updated = transaction
                     .execute(
                         "UPDATE brassclaw_budget_gates \
                          SET status = $1, payload = $2, updated_at = now() \
@@ -363,6 +404,7 @@ impl BudgetGateStore for PgBudgetGateStore {
                 if updated != 1 {
                     return Err(BudgetGateError::AlreadyResolved { id });
                 }
+                transaction.commit().await.map_err(map_pg_b)?;
                 Ok(gate)
             },
             |reason| BudgetGateError::Storage {
@@ -384,7 +426,8 @@ impl BudgetGateStore for PgBudgetGateStore {
                 // be overwritten and returned payloads match durable terminal state.
                 let rows = transaction
                     .query(
-                        "SELECT id, payload FROM brassclaw_budget_gates
+                        "SELECT id, payload, status, expires_at, gate_kind, requested_amount::text
+                 FROM brassclaw_budget_gates
                  WHERE tenant_id=$1 AND status='pending' AND expires_at <= $2
                  ORDER BY id FOR UPDATE",
                         &[&self.tenant_id, &cutoff],
@@ -393,21 +436,22 @@ impl BudgetGateStore for PgBudgetGateStore {
                     .map_err(map_pg_b)?;
                 let mut gates = Vec::with_capacity(rows.len());
                 for row in rows {
-                    let id: String = row.get(0);
-                    let mut gate: BudgetApprovalGate =
-                        serde_json::from_value(row.get(1)).map_err(map_json_b)?;
-                    if gate.status != BudgetGateStatus::Pending || gate.expires_at > cutoff {
-                        return Err(BudgetGateError::Storage {
-                            reason: "inconsistent budget gate state".into(),
-                        });
+                    let mut gate = Self::gate_from_row(&row)?;
+                    // SQL can select the microsecond containing a later exact
+                    // payload deadline. Leave that gate pending until eligible.
+                    if gate.expires_at > cutoff {
+                        continue;
                     }
                     gate.status = BudgetGateStatus::Expired { at: cutoff };
                     let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
-                    transaction.execute(
+                    let updated = transaction.execute(
                     "UPDATE brassclaw_budget_gates SET status='expired', payload=$1, updated_at=now()
                      WHERE id=$2 AND tenant_id=$3 AND status='pending'",
-                    &[&payload, &id, &self.tenant_id],
+                    &[&payload, &gate.id.to_string(), &self.tenant_id],
                 ).await.map_err(map_pg_b)?;
+                    if updated != 1 {
+                        return Err(BudgetGateError::AlreadyResolved { id: gate.id });
+                    }
                     gates.push(gate);
                 }
                 transaction.commit().await.map_err(map_pg_b)?;
@@ -436,7 +480,8 @@ impl BudgetGateStore for PgBudgetGateStore {
                 let client = self.pool.get().await.map_err(map_pool_b)?;
                 let rows = client
                     .query(
-                        "SELECT payload FROM brassclaw_budget_gates \
+                        "SELECT id, payload, status, expires_at, gate_kind, requested_amount::text \
+                         FROM brassclaw_budget_gates \
                          WHERE tenant_id = $1 AND status = 'pending' \
                          ORDER BY created_at ASC",
                         &[&self.tenant_id],
@@ -444,10 +489,7 @@ impl BudgetGateStore for PgBudgetGateStore {
                     .await
                     .map_err(map_pg_b)?;
                 rows.into_iter()
-                    .map(|r| {
-                        let payload: Value = r.get(0);
-                        serde_json::from_value(payload).map_err(map_json_b)
-                    })
+                    .map(|row| Self::gate_from_row(&row))
                     .collect::<Result<_, _>>()
             },
             |reason| BudgetGateError::Storage {

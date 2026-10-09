@@ -11,12 +11,16 @@
 //! - the model gateway is scripted trace replay;
 //! - the capability port is a local recording echo/approval port;
 //! - external internet, delivery, and OAuth are not exercised by this harness.
+//!
+//! These are historical planned-loop substrate/parity fixtures. Production
+//! global Monty acceptance uses the real worker/native PostgreSQL caller tests
+//! in brassclaw_reborn_composition and tests/monty_control.
 
 #![allow(dead_code)] // Shared by staged Reborn binary-E2E validation ports.
 #![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -123,9 +127,10 @@ use brassclaw_turns::{
         CapabilityBatchOutcome, CapabilityCallCandidate, CapabilityDescriptorView,
         CapabilityInputRef, CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage,
         CapabilitySurfaceVersion, ConcurrencyHint, LoopCapabilityPort, LoopHostMilestone,
-        LoopHostMilestoneKind, LoopHostMilestoneSink, LoopRunContext, MontyTurnDriverPort,
-        ParentLoopOutput, PromptMode, ProviderToolCall, ProviderToolCallReplay,
-        ProviderToolDefinition, VisibleCapabilityRequest, VisibleCapabilitySurface,
+        LoopHostMilestoneKind, LoopHostMilestoneSink, LoopRunContext, MontyTaskAttempt,
+        MontyTaskHandoff, MontyTurnDriverPort, ParentLoopOutput, PromptMode, ProviderToolCall,
+        ProviderToolCallReplay, ProviderToolDefinition, VisibleCapabilityRequest,
+        VisibleCapabilitySurface,
     },
 };
 use serde_json::json;
@@ -162,13 +167,28 @@ pub type HarnessWaitConfig = WaitConfig;
 /// - `Some(id)` → resumed after approval/dependent-run block →
 ///   `AgentLoopDriver::resume` with the real checkpoint id so the driver can
 ///   reload the `BeforeBlock` state it stored during the initial run.
-struct HarnessPlannedMontyDriver {
+struct LegacyPlannedDriverFixture {
     default_driver: Arc<dyn AgentLoopDriver>,
     subagent_driver: Arc<dyn AgentLoopDriver>,
     turn_state: Arc<dyn TurnStateStore>,
+    driving: Mutex<HashSet<MontyTaskAttempt>>,
 }
 
-impl HarnessPlannedMontyDriver {
+struct LegacyDriveGuard<'a> {
+    driving: &'a Mutex<HashSet<MontyTaskAttempt>>,
+    attempt: MontyTaskAttempt,
+}
+
+impl Drop for LegacyDriveGuard<'_> {
+    fn drop(&mut self) {
+        self.driving
+            .lock()
+            .expect("fixture attempts")
+            .remove(&self.attempt);
+    }
+}
+
+impl LegacyPlannedDriverFixture {
     fn new(
         turn_state: Arc<dyn TurnStateStore>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
@@ -179,6 +199,7 @@ impl HarnessPlannedMontyDriver {
             default_driver: default_build.driver,
             subagent_driver: subagent_build.driver,
             turn_state,
+            driving: Mutex::new(HashSet::new()),
         }))
     }
 
@@ -198,13 +219,26 @@ impl HarnessPlannedMontyDriver {
 }
 
 #[async_trait]
-impl MontyTurnDriverPort for HarnessPlannedMontyDriver {
+impl MontyTurnDriverPort for LegacyPlannedDriverFixture {
     async fn drive_turn(
         &self,
-        request: AgentLoopDriverRunRequest,
-        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let (request, attempt, host) = handoff.into_parts();
+        if !self
+            .driving
+            .lock()
+            .expect("fixture attempts")
+            .insert(attempt)
+        {
+            return Err(AgentLoopDriverError::InvalidRequest {
+                reason: "fixture attempt is already driving".into(),
+            });
+        }
+        let _guard = LegacyDriveGuard {
+            driving: &self.driving,
+            attempt,
+        };
         let driver = self.driver_for(&request)?;
         // Determine run vs resume by inspecting the persisted run state.
         // A resumed run carries a checkpoint_id set when it was blocked;
@@ -230,12 +264,29 @@ impl MontyTurnDriverPort for HarnessPlannedMontyDriver {
                         checkpoint_id,
                         resolved_run_profile: request.resolved_run_profile,
                     },
-                    host,
+                    host.as_ref(),
                 )
                 .await
         } else {
-            driver.run(request, host).await
+            driver.run(request, host.as_ref()).await
         }
+    }
+
+    async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {
+        // This fixture owns execution in drive_turn's future and creates no
+        // separate service. The runner drops that future before this call;
+        // the guard proves the addressed execution ended before acknowledging.
+        if self
+            .driving
+            .lock()
+            .expect("fixture attempts")
+            .contains(&attempt)
+        {
+            return Err(AgentLoopDriverError::Unavailable {
+                reason: "fixture attempt is still driving".into(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -1008,7 +1059,7 @@ impl RebornBinaryE2EHarness {
             sempai_gateway: None,
             interceptor_mode: None,
             proposal_sink: None,
-            monty_driver: Some(HarnessPlannedMontyDriver::new(
+            monty_driver: Some(LegacyPlannedDriverFixture::new(
                 turn_store.clone() as Arc<dyn TurnStateStore>
             )?),
         })?;

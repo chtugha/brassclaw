@@ -3668,3 +3668,39 @@ performance or Windows runtime acceptance is claimed by this entry.
 The paired application/CLI version is `1.7.0-rc.1`; the release workflow builds
 locked Linux/macOS application and worker artifacts and labels tagged
 prereleases accordingly. Builds on the separate test machine were not used.
+
+### 2026-10-09 — Exact budget-gate persistence
+
+Review of the existing resource persistence path found that V019's
+`NUMERIC(18,6)` projection rounded amounts independently of the exact payload.
+V110 removes that projection precision and restores only amounts whose previous
+value equals the proven six-decimal rounding of the declared payload. Malformed
+or conflicting records fail migration instead of being silently repaired.
+
+PostgreSQL gate reads, duplicate-open checks, resolution and pending selectors
+verify the indexed ID, status, resource dimension, amount and deadline against
+the payload. Timestamp comparison follows the driver's actual microsecond
+encoding relative to the PostgreSQL epoch; full payload deadlines still govern
+expiry. Resolution reads and transitions under one row lock. A corrupt row in
+an expiry batch rolls back every earlier transition in that transaction.
+New open requests must be pending. This repairs persistence in an existing
+consumer; it adds no v3 operation approval or new scoped authority requirement.
+
+Three local real PostgreSQL regressions passed, covering the upgrade/rejection
+path, exact 28-decimal and maximum-u64 round trips, pre-epoch timestamp
+precision, corrupt envelopes with no mutation, batch rollback and concurrent
+terminal resolution. Final review restricted the migration UPDATE to genuinely
+rounded amounts, with regression evidence that already exact rows retain their
+timestamps. The final three native tests, all 40 resource tests and strict
+all-target resource/composition Clippy passed in the serial local queue.
+
+The prerelease checkpoint's Linux GitHub release build passed; macOS builds
+remain in progress. The first separately dispatched test run failed checkout
+because a short hash was supplied; a new run used the full checkpoint SHA.
+That run found the historical planned-loop fixture still implementing the old
+borrowed `drive_turn` interface. Its test-only adapter now accepts the owned
+handoff and tracks exact active attempts with a future-scoped guard; cancellation
+acknowledges only when that addressed future has ended. Its historical substrate
+evidence is explicitly separate from production Monty acceptance. The root-test
+repair awaits the next GitHub run. This introduces no production Rust fallback
+and does not claim full-plan or Windows acceptance.
