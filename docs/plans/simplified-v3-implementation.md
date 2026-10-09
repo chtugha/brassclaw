@@ -17,6 +17,14 @@ remain implementation work. This entry records documentation decisions only.
 This record distinguishes implemented changes from the binding target in
 `simplified_v3.md`. It is not a declaration that the migration is complete.
 
+### GitHub fixture follow-up — 2026-10-09
+
+Run 37864642005 compiled the owned handoff fixture and exposed its missing
+compaction prompt initialization in root shard 2. The filesystem fixture now
+loads the identical first-party seed consumed by production component boot;
+no synthetic prompt or production execution fallback was introduced. The unused
+`AgentLoopDriverHost` import was removed. The behavioral rerun remains pending.
+
 ## Phase 0 evidence
 
 Run `python3 scripts/simplified_v3_inventory.py --output /tmp/simplified-v3-inventory.json`.

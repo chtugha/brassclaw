@@ -122,13 +122,13 @@ use brassclaw_turns::{
     TurnCoordinator, TurnError, TurnRunId, TurnRunRecord, TurnRunState, TurnScope,
     TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
     run_profile::{
-        AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest,
-        AgentLoopHostError, AgentLoopHostErrorKind, CapabilityBatchInvocation,
-        CapabilityBatchOutcome, CapabilityCallCandidate, CapabilityDescriptorView,
-        CapabilityInputRef, CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage,
-        CapabilitySurfaceVersion, ConcurrencyHint, LoopCapabilityPort, LoopHostMilestone,
-        LoopHostMilestoneKind, LoopHostMilestoneSink, LoopRunContext, MontyTaskAttempt,
-        MontyTaskHandoff, MontyTurnDriverPort, ParentLoopOutput, PromptMode, ProviderToolCall,
+        AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverRunRequest, AgentLoopHostError,
+        AgentLoopHostErrorKind, CapabilityBatchInvocation, CapabilityBatchOutcome,
+        CapabilityCallCandidate, CapabilityDescriptorView, CapabilityInputRef,
+        CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage, CapabilitySurfaceVersion,
+        ConcurrencyHint, LoopCapabilityPort, LoopHostMilestone, LoopHostMilestoneKind,
+        LoopHostMilestoneSink, LoopRunContext, MontyTaskAttempt, MontyTaskHandoff,
+        MontyTurnDriverPort, ParentLoopOutput, PromptMode, ProviderToolCall,
         ProviderToolCallReplay, ProviderToolDefinition, VisibleCapabilityRequest,
         VisibleCapabilitySurface,
     },
@@ -192,6 +192,15 @@ impl LegacyPlannedDriverFixture {
     fn new(
         turn_state: Arc<dyn TurnStateStore>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
+        // This historical filesystem fixture bypasses the production DB boot.
+        // Load the identical first-party seed, rather than leaving the required
+        // process-local prompt uninitialised or inventing a fixture prompt.
+        brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+            include_str!(
+                "../../../crates/brassclaw_loop_support/prompts/compaction_summarizer_fresh.md"
+            )
+            .to_owned(),
+        );
         let family_registry = build_loop_family_registry()?;
         let default_build = default_planned_driver(Arc::clone(&family_registry))?;
         let subagent_build = subagent_planned_driver(family_registry)?;

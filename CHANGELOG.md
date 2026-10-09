@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interface and verify addressed future termination before cancellation
   acknowledgement. These fixtures provide substrate evidence; production
   execution remains on the global Monty worker path.
+- Initialise the retained filesystem test fixture with the same compaction
+  prompt seed used by production boot, fixing its pre-execution panic.
 
 ## [1.7.0-rc.1] - 2026-10-09
 

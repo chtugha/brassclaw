@@ -31,6 +31,17 @@ Where a snippet selects a dynamic field/path/method, each approved usage restric
 
 Prepared-input examples in L019 and N16–N20, the existence classifier in L010, partial validator examples and the class-10 excerpt are **not deployable completed executors**. They stay blocked/draft in the conversion ledger until their actual operation/result contracts and complete behavior exist. Unknown host callables are never guessed. Current legacy scoped authorization code is an implementation cutover dependency, not a v3 tenant/project role requirement; preserve technical enforcement while moving to instance-global policy.
 
+
+### Concrete-profile acceptance requirements
+
+Shared code is accepted once per exact usage combination, not as a schema-free dispatcher. Where the supported usage schema cannot express a fixed selector/value, the approved body must fix it or perform an explicit pre-effect guard, with code_arguments matching actual computation; passing a Recipe constant alone must not falsely describe an unconstrained standalone Skill as intrinsically fixed. Internal guard/helper composition must be supported and pinned, or author a small explicit entry point; do not invent an enum constraint in the value schema. All independent host calls remain separate steps. The binding preflight currently accepts one syntactic direct call for a Tool-bound child or zero for pure logic; v3's direct dependent-chain exception needs its own qualified binding layout before use. Counting call sites is not proof of at-most-once dispatch when a call appears in a loop or recursive function; source/behavior review must establish the declared effect count and attempt semantics.
+
+Directory list output is best-effort as well as capped: vanished/failed-stat entries can be skipped. A filter cannot prove filesystem absence or complete type coverage. Raw versus numbered read text, terminal newlines, empty input and nested Markdown headings must be explicit result semantics. The memory-section example is a deliberate revised ATX-only profile (deeper subsections retained), not the old stop-at-any-heading behavior or a full Markdown parser; record that semantic change, reconcile each consumer and keep old revisions. Plan snapshot/progress summaries require one coherent API snapshot or clearly documented best-effort reads, not atomicity inferred from two GETs.
+
+Shell commands inherit actual process-context/workdir/technical constraints and installed platform behavior. Fixed git commands can execute configured hooks/helpers/filters or expose data; do not label them mutation-free merely from their spelling. In particular fetch changes refs and pull changes worktree; preserve unknown-effect outcomes. Review remote/ref/path option semantics and Git pathspec interpretation (including magic) separately from shell quoting. If a usage promises literal paths, reject or deliberately encode pathspec magic under the actual installed Git semantics. Values beginning '-' must not become options; POSIX quoting is not an option/endpoint validator. Tier1 classification does not itself require an extra invocation approval lease; live instance-global Tool policy and technical restrictions remain the authority boundary.
+
+Authenticated HTTP uses the supported secret/auth adapter and rejects CR/LF header injection. Avoid raw credentials in durable general component inputs/logs; reference secret identities through the supported boundary where available, and treat missing secure transport as an adapter gap. Review redirects/origins, request-body representation, actual status/header/body/saved-body schema and truncation limits per usage. Zencoder has a seeded Tool row but no registered handler established by this audit; all illustrative host.zencoder_api bodies remain blocked until actual loading/identity/result/auth support is proven. A plan 404 is not automatically plan-not-created unless the qualified API error contract establishes that distinction.
+
 ## Legacy entries
 
 ### L001. pc-exec-read-file
@@ -1726,7 +1737,7 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 
 **Prose description:** calls host.trigger_list to list configured triggers.
 
-**Implementation:** Bind the supported scope selector and explicit missing default. Validate the real trigger-list object/items; an unknown selector must not silently become all. Review the companion prose against this exact usage, replace slot/range/result claims, move prerequisite or subsequent Tool calls into Recipe steps, and record its explicit reviewed association.
+**Implementation:** Replace unsupported scope dispatch with the actual limit input (1..100) and validated trigger-list records. Active/scheduled are separately reviewed pure filters, not host parameters. The capped result has no completeness metadata; do not infer unique names or absence from it. Review the companion prose against this exact usage, replace slot/range/result claims, move prerequisite or subsequent Tool calls into Recipe steps, and record its explicit reviewed association.
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
@@ -1936,7 +1947,7 @@ result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
 
 **Prose description:** Use the host boundary for json stringify or parse.
 
-**Implementation:** Bind a supported parse/stringify selector and typed data, splitting incompatible input layouts into explicit usages. For parsing, reuse the typed design in tools.md; for serialization, validate finite recursive data and exact output. Do not coerce arbitrary objects to strings or assume parsing proves schema validity. Review the companion prose against this exact usage, replace slot/range/result claims, move prerequisite or subsequent Tool calls into Recipe steps, and record its explicit reviewed association. **Duplicate review:** newer section-2 entries 6 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts.
+**Implementation:** Fix stringify as one operation and reuse the typed parse usage separately. The current host reparses string data as JSON text; the concrete text-in stringify profile returns pretty JSON text. Typed-object/list profiles require exact finite schemas; a raw string must not be misrepresented as literal-string serialization. Do not coerce arbitrary objects to strings or assume parsing proves schema validity. Review the companion prose against this exact usage, replace slot/range/result claims, move prerequisite or subsequent Tool calls into Recipe steps, and record its explicit reviewed association. **Duplicate review:** newer section-2 entries 6 overlap this functionality. Compare purpose, inputs/results and identity before converting; reuse compatible code and preserve distinct contracts.
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
@@ -2337,24 +2348,25 @@ result = {"changed": prior != new}
 
 **Split/reuse:** Keep atomic; its necessary local checks belong inside this coherent operation.
 
-**Typed inputs/result:** class_code: supported integer class, not bool; prompt_uid: canonical decimal string; label: exact trusted class-label mapping; name: string in the explicit no-quote/backslash/control profile. Output header:string.
+**Typed inputs/result:** class_code: supported integer class, not bool; prompt_uid: nonnegative integer within u32 transport, not bool; label: exact trusted class-label mapping; name: string in the explicit no-quote/backslash/control profile. Output header:string.
 
-**Concrete caveat:** Inspect the actual compiler header parser and qualify its quote/escape grammar. This example specifies a proposed quoted-name profile; it is not permission to change the compiler format independently.
+**Concrete caveat:** The restricted profile above preserves inspected legacy rendering. A wider name profile must be jointly specified and qualified with the retained native compiler before activation.
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
 ```python
 name = inputs["name"]
 label = inputs["label"]
-uid = inputs["prompt_uid"]
-if any(c in name for c in ('"', "\", "\n", "\r", "\x00")):
-    raise ValueError("name requires a separately qualified header escape profile")
-if not label or any(c.isspace() or c in '\x00"\\' for c in label):
+for char in name:
+    if char in ('"', '\\', '\n', '\r', '\x00') or ord(char) < 32 or ord(char) == 127:
+        raise ValueError("name needs a separately qualified escape profile")
+if not label:
     raise ValueError("invalid class label")
-if not uid or not uid.isascii() or not uid.isdigit():
-    raise ValueError("invalid prompt UID")
-result = {"header": "## " + str(inputs["class_code"]) + ":" + uid
-          + "  " + label + "  \"" + name + "\""}
+for char in label:
+    if char.isspace() or char in ('"', '\\') or ord(char) < 32 or ord(char) == 127:
+        raise ValueError("invalid class label")
+result = {"header": "## " + str(inputs["class_code"]) + ":" + str(inputs["prompt_uid"])
+          + '  ' + label + '  "' + name + '"'}
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
@@ -2522,14 +2534,17 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Split/reuse:** Share endpoint construction and GET/write transport; preserve the endpoint usage contract. Do not create one new executor per endpoint.
 
-**Typed inputs/result:** method: reviewed POST/PATCH enum per association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
+**Typed inputs/result:** method: string restricted to reviewed POST/PATCH selectors by preflight/code, with an exact usage association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
 
 **Concrete caveat:** Example is the shared transport body, not a complete endpoint-specific implementation. Resolve zencoder_api registration and retained authentication/result adapter before activation. Exact endpoint layout: segments=[projects, project UUID, tasks]; method=POST; separately validated complete task JSON body. API body remains typed JSON text where the existing adapter requires it; explicit stringify precedes dispatch.
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
 ```python
-result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=inputs["body"])
+method = inputs["method"]
+if method not in ("POST", "PATCH"):
+    raise ValueError("unsupported write method")
+result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
@@ -2548,14 +2563,17 @@ result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=in
 
 **Split/reuse:** Share endpoint construction and GET/write transport; preserve the endpoint usage contract. Do not create one new executor per endpoint.
 
-**Typed inputs/result:** method: reviewed POST/PATCH enum per association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
+**Typed inputs/result:** method: string restricted to reviewed POST/PATCH selectors by preflight/code, with an exact usage association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
 
 **Concrete caveat:** Example is the shared transport body, not a complete endpoint-specific implementation. Resolve zencoder_api registration and retained authentication/result adapter before activation. Exact endpoint layout: segments=[projects, project UUID, tasks, task UUID]; method=PATCH; separately validated patch body. API body remains typed JSON text where the existing adapter requires it; explicit stringify precedes dispatch.
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
 ```python
-result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=inputs["body"])
+method = inputs["method"]
+if method not in ("POST", "PATCH"):
+    raise ValueError("unsupported write method")
+result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
@@ -2600,14 +2618,17 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Split/reuse:** Share endpoint construction and GET/write transport; preserve the endpoint usage contract. Do not create one new executor per endpoint.
 
-**Typed inputs/result:** method: reviewed POST/PATCH enum per association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
+**Typed inputs/result:** method: string restricted to reviewed POST/PATCH selectors by preflight/code, with an exact usage association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
 
 **Concrete caveat:** Example is the shared transport body, not a complete endpoint-specific implementation. Resolve zencoder_api registration and retained authentication/result adapter before activation. Exact endpoint layout: segments=[automations]; method=POST; complete validated body, including nonblank name. API body remains typed JSON text where the existing adapter requires it; explicit stringify precedes dispatch.
 
 **Recipe wiring:** `proposed-api-relative-path` → `proposed-zencoder-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
 ```python
-result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=inputs["body"])
+method = inputs["method"]
+if method not in ("POST", "PATCH"):
+    raise ValueError("unsupported write method")
+result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
@@ -2726,7 +2747,7 @@ result = host.json(operation="parse", data=inputs["json_text"])
 
 **Prose description and implementation:** Repair only the narrow legacy nonempty predicate. This compatibility check neither proves semantic agreement nor replaces final validators.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; metadata: exact class-specific required string fields; required_fields: trusted class-Recipe constant list; evidence_refs: trusted bounded string list; output: exact check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; metadata: exact class-specific required string fields; required_fields: trusted class-Recipe constant list; evidence_refs: trusted bounded string list; output: exact subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2748,7 +2769,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": "nonempty_metadata",
 
 **Prose description and implementation:** Extend with class-specific required metadata and exact trusted checksum/subject identity comparisons. Candidate claims are not integrity evidence. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; candidate_uuid/subject_uuid: canonical UUID strings; revision: positive integer; trusted subject manifest pins class/name/content checksum. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; candidate_uuid/subject_uuid: canonical UUID strings; revision: positive integer; trusted subject manifest pins class/name/content checksum. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2770,7 +2791,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 
 **Prose description and implementation:** Implement recursive schema traversal/fact production in the supported parser owner; enforce items/fields/extra-values/null/missing/defaults/bounds and compatibility. The small policy example consumes complete facts, not a candidate-supplied pass flag. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; schema_facts: trusted complete recursively typed schema-analysis facts, including violations path/code; enforce finite bounds and nesting. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; schema_facts: trusted complete recursively typed schema-analysis facts, including violations path/code; enforce finite bounds and nesting. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2790,7 +2811,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'recursive_contracts
 
 **Prose description and implementation:** Verify recursive closure, cycles, exact immutable dependencies, association approval and actual Tool artifacts. This set comparison assumes trusted complete graph extraction; incomplete graphs fail before this check. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; expected_refs/retained_refs: trusted bounded exact revision/checksum reference strings from complete traversed graphs; not just UUID names. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; expected_refs/retained_refs: trusted bounded exact revision/checksum reference strings from complete traversed graphs; not just UUID names. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2814,7 +2835,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'dependency_graph_co
 
 **Prose description and implementation:** Compute compatibility from recursive usage, binding and callable schemas; check required/default/extra/null semantics and fixed selectors. A candidate compatible=true is never accepted as fact. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; argument_facts: trusted complete list of exact name:string/compatible:boolean and retained schema/adapter evidence references. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; argument_facts: trusted complete list of exact name:string/compatible:boolean and retained schema/adapter evidence references. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2835,7 +2856,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'argument_compatibil
 
 **Prose description and implementation:** Complete binding-adjacency/Tool match, independent-call separation, typed references, selected variant step_link, completion and flow validation. Inspect source facts and exact dependent-chain coverage; one include alone is insufficient. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; steps: validated actual component-step objects with stepnumber and include UUID list; trusted flow facts separately cover order, channels, bindings and limits. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; steps: validated actual component-step objects with stepnumber and include UUID list; trusted flow facts separately cover order, channels, bindings and limits. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2856,7 +2877,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'workflow_structure'
 
 **Prose description and implementation:** Reuse real retained-source inspection and pinned Monty compile facts; add unsupported syntax/import, dynamic host access and recursive dependency analysis. Never execute submitted code to discover call sites. Behavior evidence is separate. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; source_facts: trusted exact-checksum parser facts with booleans and complete static host-call/import/call-layout analysis; not substring guesses. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; source_facts: trusted exact-checksum parser facts with booleans and complete static host-call/import/call-layout analysis; not substring guesses. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -2879,7 +2900,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'source_facts_and_po
 
 **Prose description and implementation:** Complete eligible-outcome validation, explicit read-only/durable deduplication evidence and unknown-effect rules. The checker does not dispatch retries or grant policy. The example shows the stated predicate only and reports complete=False; implement every listed obligation, establish complete trusted fact coverage and qualify behavior before setting complete=True.
 
-**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; failure: exact skills.md failure object; retry_evidence_verified: boolean derived by a trusted evidence resolver, not a candidate flag, plus retained evidence references with subject/outcomes/idempotency evidence bound to this exact usage. All inputs have strict unknown-field policy; output is the common complete/passed/diagnostics/evidence_refs check record.
+**Typed inputs/result:** subject_ref: trusted exact immutable review subject, required on every check record; evidence_refs: required trusted durable references to this subject and predicate; failure: exact skills.md failure object; retry_evidence_verified: boolean derived by a trusted evidence resolver, not a candidate flag, plus retained evidence references with subject/outcomes/idempotency evidence bound to this exact usage. All inputs have strict unknown-field policy; output is the common subject_ref/check_id/complete/passed/diagnostics/evidence_refs check record.
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
@@ -3229,12 +3250,15 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Prose to store:** Perform one prepared Zencoder API mutation.
 
-**Typed inputs/result:** method: reviewed POST/PATCH enum per association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
+**Typed inputs/result:** method: string restricted to reviewed POST/PATCH selectors by preflight/code, with an exact usage association; path: prepared relative endpoint; body: actual adapter JSON-text representation. Output: actual mutation acknowledgement.
 
 **Named reuse consumers:** `pc-zencoder-create-task`, `pc-zencoder-patch-task`, `pc-zencoder-create-automation`.
 
 ```python
-result = host.zencoder_api(method=inputs["method"], path=inputs["path"], body=inputs["body"])
+method = inputs["method"]
+if method not in ("POST", "PATCH"):
+    raise ValueError("unsupported write method")
+result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
 ```
 
 **Implementation and Recipe instructions:** Qualify the real existing Tool callable and its exact registration/adapter/result contract; associate one-Tool prose and bind immediately before execution. Retain actual acknowledgements and live policy/effect fencing. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
