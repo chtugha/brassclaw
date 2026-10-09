@@ -63,6 +63,9 @@ uuid = { version = "1", features = ["v4"] }
 core-foundation = "0.10"
 security-framework = "3"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
+
 [dev-dependencies]
 brassclaw_event_projections = { path = "../brassclaw_event_projections" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }

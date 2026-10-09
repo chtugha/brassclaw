@@ -201,6 +201,20 @@ impl LegacyPlannedDriverFixture {
             )
             .to_owned(),
         );
+        brassclaw_loop_support::init_failure_explanation_prompt(
+            include_str!("../../../crates/brassclaw_loop_support/prompts/failure_explanation.md")
+                .to_owned(),
+        );
+        brassclaw_reborn::subagent::directions::init_directions(
+            include_str!("../../../crates/brassclaw_reborn/src/subagent/directions/general.md")
+                .to_owned(),
+            include_str!("../../../crates/brassclaw_reborn/src/subagent/directions/researcher.md")
+                .to_owned(),
+            include_str!("../../../crates/brassclaw_reborn/src/subagent/directions/explorer.md")
+                .to_owned(),
+            include_str!("../../../crates/brassclaw_reborn/src/subagent/directions/coder.md")
+                .to_owned(),
+        );
         let family_registry = build_loop_family_registry()?;
         let default_build = default_planned_driver(Arc::clone(&family_registry))?;
         let subagent_build = subagent_planned_driver(family_registry)?;

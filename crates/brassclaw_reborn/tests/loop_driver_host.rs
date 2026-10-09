@@ -6757,10 +6757,6 @@ struct HostFixture {
 
 impl HostFixture {
     async fn new(thread_name: &str, user_content: &str) -> Self {
-        brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
-            include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
-                .to_owned(),
-        );
         Self::new_with_submission_state(thread_name, user_content, true).await
     }
 
@@ -6773,6 +6769,10 @@ impl HostFixture {
         user_content: &str,
         mark_submitted: bool,
     ) -> Self {
+        brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+            include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
+                .to_owned(),
+        );
         let thread_service = Arc::new(InMemorySessionThreadService::default());
         let checkpoint_state_store = Arc::new(InMemoryCheckpointStateStore::default());
         let loop_checkpoint_store = Arc::new(InMemoryLoopCheckpointStore::default());

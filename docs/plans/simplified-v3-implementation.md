@@ -25,6 +25,55 @@ loads the identical first-party seed consumed by production component boot;
 no synthetic prompt or production execution fallback was introduced. The unused
 `AgentLoopDriverHost` import was removed. The behavioral rerun remains pending.
 
+The subsequent run 37865174881 exposed the same omitted boot prerequisite in
+hook/milestone tests and subagent direction prompts in the root filesystem
+fixture. The three host-port targets now pass locally: hooks 38, loop host 103,
+milestone projection 9, with strict target linting. All fixture constructors,
+including unsubmitted messages, initialize the canonical compaction seed.
+Root subagent fixtures initialize the canonical direction and failure prompts;
+their GitHub behavioral rerun remains pending. These are retained historical
+substrate fixtures, not additional production Monty acceptance.
+
+### Portable memory measurements — 2026-10-09
+
+`brassclaw_host_runtime::sample_process_memory_capacity` takes the supervised
+worker PID. It performs read-only native measurements without subprocesses,
+page walks or forced reclamation. Additional capacity excludes existing VM
+allocations; the calculator adds the actual live heap once and applies the
+operator reserve separately. A controller must fence the worker generation.
+
+- macOS: free plus purgeable pages, bounded by physical RAM, with XNU dispatch
+  pressure levels. Speculative pages are already included in free pages and
+  are never added twice; inactive/compressed pages are not assumed available.
+- Linux: MemAvailable plus host/cgroup PSI; each visible ancestor's memory.max
+  and memory.high minus its current usage clamps growth. The actual unrestricted
+  hierarchy root must be established from the memory-controller interfaces.
+  Hidden or legacy v1 hierarchies, incomplete counters and movement during a
+  sample return explicit unavailable/inconsistent measurements.
+- Windows: native physical/commit headroom and nonblocking low-memory notification.
+  A worker inside any job returns unknown containment: querying only its
+  immediate job or its peak consumption cannot establish nested current limits.
+  The native-counter test exercises the real APIs even inside a CI job.
+
+Actual local macOS counters pass, with strict host-runtime/PostgreSQL-feature
+linting. The architecture guard now permits only the two inspected private
+Linux counter readers and still rejects unrelated file/application-state reads;
+27 boundary tests pass. Linux/Windows execution is assigned to the new GitHub
+OS matrix and is not yet claimed as passed. Calculator finite-sentinel checks
+pass locally (8 adaptive-calculator tests and strict PostgreSQL-feature library
+linting). The full local batch used Rust 1.98 with incremental/debug info off
+and the NVMe target, serial `screen` queues; the first boundary run failed on
+the missing kernel-counter classification and the repaired run passed all 27.
+
+Remaining Phase 3a work includes production measurement ownership, bounded
+sampling cadence, admission backpressure, all heap/settings WebUI controls and
+complete container/job measurements. Manual reductions require serialized
+worker feasibility and persistence coordination: inspecting a stale heap then
+writing the DB is insufficient, and raising a runtime cap before a DB CAS can
+permit allocations that prevent rollback. Preserve the acknowledged effective
+limit and distinguish automatic budget revisions from desired settings revisions.
+These prerequisites do not establish the completed adaptive-memory cutover.
+
 ## Phase 0 evidence
 
 Run `python3 scripts/simplified_v3_inventory.py --output /tmp/simplified-v3-inventory.json`.

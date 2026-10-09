@@ -45,6 +45,7 @@ mod first_party_tools;
 mod http_body;
 mod invocation_services;
 pub mod memory_context;
+mod memory_probe;
 mod native_image;
 mod native_registration;
 mod obligations;
@@ -57,6 +58,8 @@ mod sandbox_process;
 mod services;
 mod surface;
 mod turn_scheduler;
+
+pub use memory_probe::{HostMemoryProbeError, sample_process_memory_capacity};
 
 pub use capability_catalog::{
     HotCapabilityCatalog, HotCapabilityRecord, MAX_HOT_PROMPT_BYTES, MAX_HOT_SCHEMA_BYTES,

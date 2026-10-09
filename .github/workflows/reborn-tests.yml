@@ -47,6 +47,38 @@ env:
   BRASSCLAW_DISABLE_OS_KEYCHAIN: "1"
 
 jobs:
+  native-memory-gate:
+    name: Native memory capacity (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.96.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          key: native-memory-${{ matrix.os }}
+      - name: Test actual native counters and containment classification
+        run: cargo test -p brassclaw_host_runtime --locked --lib memory_probe:: -- --nocapture
+      - name: Check portable host adapters
+        run: cargo clippy -p brassclaw_host_runtime --locked --lib -- -D warnings
+
   monty-upgrade-gate:
     name: Monty 1.0 API and allocator isolation
     needs: changes
@@ -556,6 +588,7 @@ jobs:
     if: always()
     needs:
       - changes
+      - native-memory-gate
       - monty-upgrade-gate
       - monty-control-gate
       - boundary-tests
@@ -598,6 +631,7 @@ jobs:
             exit 0
           fi
 
+          require_success "native-memory-gate" "${{ needs.native-memory-gate.result }}"
           require_success "monty-upgrade-gate" "${{ needs.monty-upgrade-gate.result }}"
           require_success "monty-control-gate" "${{ needs.monty-control-gate.result }}"
           require_success "boundary-tests" "${{ needs.boundary-tests.result }}"

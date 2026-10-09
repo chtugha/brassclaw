@@ -2669,6 +2669,8 @@ fn collect_forbidden_uses_detects_violation() {
 /// - Explicitly classified host/operator boundaries below. Native executable
 ///   retention permits only the inspected OS-image/artifact opens, never a
 ///   whole-module exception for configuration or application-state reads.
+/// - Native memory measurements read kernel-owned procfs/cgroup counters. Only
+///   the two private counter readers are classified; other reads stay forbidden.
 ///
 /// Any other use of the blocking filesystem-read APIs is either dead code or
 /// a regression that re-introduces file-based state. This test enforces the
@@ -2917,6 +2919,11 @@ fn scan_for_direct_fs_reads(
                     {
                         continue;
                     }
+                    if *pattern == "fs::read_to_string"
+                        && is_native_memory_counter_read(relative, production, line_number, line)
+                    {
+                        continue;
+                    }
                     violations.push(format!(
                         "{}:{} contains `{}` ({})",
                         relative.display(),
@@ -2928,6 +2935,59 @@ fn scan_for_direct_fs_reads(
             }
         }
     }
+}
+
+/// Kernel counters are observations, not persisted application state. The
+/// adapter's public boundary takes only a supervised PID, never a file path.
+fn is_native_memory_counter_read(
+    relative: &std::path::Path,
+    production: &str,
+    line_number: usize,
+    line: &str,
+) -> bool {
+    if relative != std::path::Path::new("crates/brassclaw_host_runtime/src/memory_probe/linux.rs") {
+        return false;
+    }
+    let enclosing = production
+        .lines()
+        .take(line_number + 1)
+        .filter(|line| line.starts_with("fn "))
+        .last();
+    match enclosing {
+        Some("fn read(path: &Path) -> ProbeResult<String> {") => {
+            line.trim() == "fs::read_to_string(path).map_err(|_| HostMemoryProbeError::Unavailable)"
+        }
+        Some("fn optional_read(path: &Path) -> ProbeResult<Option<String>> {") => {
+            line.trim() == "match fs::read_to_string(path) {"
+        }
+        _ => false,
+    }
+}
+
+#[test]
+fn native_memory_counter_boundary_keeps_application_state_reads_forbidden() {
+    let relative = std::path::Path::new("crates/brassclaw_host_runtime/src/memory_probe/linux.rs");
+    let reader = "fn read(path: &Path) -> ProbeResult<String> {\nfs::read_to_string(path).map_err(|_| HostMemoryProbeError::Unavailable)\n";
+    let line = reader.lines().nth(1).unwrap();
+    assert!(is_native_memory_counter_read(relative, reader, 1, line));
+    assert!(!is_native_memory_counter_read(
+        std::path::Path::new("crates/other/src/state.rs"),
+        reader,
+        1,
+        line
+    ));
+    assert!(!is_native_memory_counter_read(
+        relative,
+        "fn state() {",
+        0,
+        "fs::read_to_string(path).map_err(|_| HostMemoryProbeError::Unavailable)"
+    ));
+    assert!(!is_native_memory_counter_read(
+        relative,
+        reader,
+        1,
+        "fs::read_to_string(\"config.toml\").map_err(|_| HostMemoryProbeError::Unavailable)"
+    ));
 }
 
 /// The native-image primitive opens the actual OS-identified running image and

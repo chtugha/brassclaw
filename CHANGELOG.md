@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   execution remains on the global Monty worker path.
 - Initialise the retained filesystem test fixture with the same compaction
   prompt seed used by production boot, fixing its pre-execution panic.
+- Initialise hook, milestone and subagent fixtures with their required canonical
+  prompt seeds, including unsubmitted-message setup paths.
+- Reject unbounded heap-budget sentinels in the adaptive calculator.
+
+### Added
+
+- Native adaptive-memory measurement adapters for Linux, macOS and Windows.
+  Linux considers all visible cgroup-v2 ancestors and rejects hidden/v1 limit
+  views; Windows reports job containment as unavailable until complete limits
+  can be established. These probes are controller prerequisites, not completed
+  production adaptive-budget or WebUI wiring.
+- A three-platform native-counter and strict-lint GitHub gate, included in the
+  Reborn test roll-up.
 
 ## [1.7.0-rc.1] - 2026-10-09
 

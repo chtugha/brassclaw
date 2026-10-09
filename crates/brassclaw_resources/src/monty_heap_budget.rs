@@ -36,10 +36,11 @@ pub struct MontyHeapBudgetConfig {
 impl MontyHeapBudgetConfig {
     fn validate(self) -> Result<(), MontyHeapBudgetError> {
         if self.fallback_bytes == 0
+            || self.fallback_bytes == u64::MAX
             || self.growth_step_bytes == 0
             || self.growth_headroom_bytes == 0
             || self.max_sample_age.is_zero()
-            || self.manual_ceiling_bytes == Some(0)
+            || matches!(self.manual_ceiling_bytes, Some(0 | u64::MAX))
         {
             return Err(MontyHeapBudgetError::InvalidSettings);
         }
@@ -151,6 +152,7 @@ impl AdaptiveMontyHeapBudget {
         let target = sample.and_then(|s| {
             live_heap_bytes
                 .checked_add(s.additional_capacity_bytes)
+                .filter(|total| *total != u64::MAX)
                 .map(|total_capacity| {
                     let capacity = total_capacity.saturating_sub(self.config.reserve_bytes);
                     let capped = capacity.min(self.config.manual_ceiling_bytes.unwrap_or(u64::MAX));
@@ -314,6 +316,32 @@ mod tests {
                 MontyHeapAdjustmentReason::MeasurementUnavailable
             );
         }
+    }
+    #[test]
+    fn unbounded_sentinels_never_become_an_effective_or_proposed_heap_limit() {
+        let mut settings = config();
+        settings.fallback_bytes = u64::MAX;
+        assert!(matches!(
+            AdaptiveMontyHeapBudget::new(settings),
+            Err(MontyHeapBudgetError::InvalidSettings)
+        ));
+        settings = config();
+        settings.manual_ceiling_bytes = Some(u64::MAX);
+        assert!(matches!(
+            AdaptiveMontyHeapBudget::new(settings),
+            Err(MontyHeapBudgetError::InvalidSettings)
+        ));
+        let now = Instant::now();
+        let budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let decision = budget
+            .evaluate(0, Some(sample(now, u64::MAX)), now)
+            .unwrap();
+        assert!(decision.backpressure);
+        assert_eq!(
+            decision.reason,
+            MontyHeapAdjustmentReason::MeasurementUnavailable
+        );
+        assert_eq!(decision.proposed_bytes, 200);
     }
     #[test]
     fn rejects_manual_reduction_and_keeps_previous_configuration() {
