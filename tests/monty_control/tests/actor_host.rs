@@ -43,6 +43,149 @@ async fn exchange(
 }
 
 #[tokio::test]
+async fn retained_frame_credits_survive_policy_changes_and_abandoned_tickets() {
+    use brassclaw_monty_host::transport_actor::HostingDeadlines;
+    let initial_limits = actor_limits();
+    let (mut owner, ready) =
+        TransportOwner::start(worker(), boot(SOURCE), limits(), initial_limits)
+            .await
+            .unwrap();
+    let client = owner.client();
+    let initial_deadline = client.hosting_deadlines().unwrap().response_timeout;
+    let tighter = 8192;
+    let old = client
+        .try_submit_with_frame_limit(WorkerCommand::Inspect, tighter)
+        .unwrap();
+    let id = old.id;
+    drop(old);
+    let ordinary_frame = client.try_submit(WorkerCommand::Inspect).unwrap();
+    let other_frame = client.clone().try_submit(WorkerCommand::Inspect).unwrap();
+    let capacity = client.capacity().unwrap();
+    assert_eq!(capacity.configured_frame_bytes, limits().max_frame_bytes);
+    assert_eq!(capacity.max_retained_frame_bytes, limits().max_frame_bytes);
+    assert_eq!(capacity.required_frame_capacity(), limits().max_frame_bytes);
+    assert_eq!(capacity.control_requests, 3);
+    assert!(capacity.control_reserved_bytes > limits().max_frame_bytes * 2 + tighter);
+    assert!(capacity.control_reserved_bytes < limits().max_frame_bytes * 3);
+    for invalid in [0, limits().max_frame_bytes + 1] {
+        assert_eq!(
+            client
+                .try_submit_with_frame_limit(WorkerCommand::Inspect, invalid)
+                .err()
+                .expect("invalid frame must be rejected before acceptance")
+                .kind,
+            ActorFailure::InvalidLimits
+        );
+        assert_eq!(client.capacity().unwrap(), capacity);
+    }
+    client
+        .publish_hosting_policy(
+            Some(ActorLimits {
+                max_control_reserved_frame_bytes: limits().max_frame_bytes * 2,
+                ..initial_limits
+            }),
+            Some(HostingDeadlines {
+                startup_timeout: Duration::from_secs(2),
+                response_timeout: Duration::from_secs(8),
+            }),
+        )
+        .unwrap();
+    assert!(client.capacity().unwrap().control_over_capacity());
+    assert_eq!(
+        client
+            .try_submit(WorkerCommand::Inspect)
+            .err()
+            .expect("retained capacity debt must reject a new exchange")
+            .kind,
+        ActorFailure::Backpressure
+    );
+    let retained = client.completions().wait(id).await.unwrap();
+    assert_eq!(retained.max_frame_bytes, tighter);
+    assert_eq!(retained.response_timeout, initial_deadline);
+    assert!(matches!(
+        retained.original_command().unwrap(),
+        WorkerCommand::Inspect
+    ));
+    assert_eq!(retained.outcome.unwrap().root, ready.root);
+    assert!(client.capacity().unwrap().control_over_capacity());
+    let original = ordinary_frame.wait().await.unwrap();
+    assert_eq!(original.max_frame_bytes, limits().max_frame_bytes);
+    assert_eq!(original.response_timeout, initial_deadline);
+    assert_eq!(original.outcome.unwrap().root, ready.root);
+    assert!(!client.capacity().unwrap().control_over_capacity());
+    let original = other_frame.wait().await.unwrap();
+    assert_eq!(original.max_frame_bytes, limits().max_frame_bytes);
+    assert_eq!(original.response_timeout, initial_deadline);
+    assert_eq!(original.outcome.unwrap().root, ready.root);
+    assert_eq!(client.capacity().unwrap().control_reserved_bytes, 0);
+    assert_eq!(client.capacity().unwrap().control_requests, 0);
+    assert_eq!(client.capacity().unwrap().max_retained_frame_bytes, 0);
+    owner.request_termination();
+    assert_eq!(owner.join().await.unwrap().kind, StopKind::Requested);
+}
+
+#[tokio::test]
+async fn credited_frame_maximum_counts_duplicate_bounds_until_their_last_receipt() {
+    let (mut owner, ready) =
+        TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+            .await
+            .unwrap();
+    let client = owner.client();
+    let mut requirements = client.frame_requirements();
+    let mut ids = Vec::new();
+    for bound in [8192, 16384, 32768, 32768] {
+        let ticket = client
+            .clone()
+            .try_submit_with_frame_limit(WorkerCommand::Inspect, bound)
+            .unwrap();
+        ids.push(ticket.id);
+        drop(ticket);
+    }
+    // Completion alone cannot reclaim a credited old frame. The exact owner
+    // collects each real reply, preserving duplicate maxima until the last one.
+    for id in &ids {
+        client.completions().ready(*id).await.unwrap();
+    }
+    assert_eq!(client.capacity().unwrap().max_retained_frame_bytes, 32768);
+    let initial = *requirements.borrow_and_update();
+    assert_eq!(initial.max_retained_frame_bytes, 32768);
+    assert_eq!(initial.required_capacity(), limits().max_frame_bytes);
+    for (index, bound, next_max, remaining) in [
+        (2, 32768, 32768, 3),
+        (3, 32768, 16384, 2),
+        (1, 16384, 8192, 1),
+        (0, 8192, 0, 0),
+    ] {
+        let receipt = client.completions().try_take(ids[index]).unwrap();
+        assert!(receipt.transport_started);
+        assert_eq!(receipt.max_frame_bytes, bound);
+        assert_eq!(receipt.outcome.unwrap().root, ready.root);
+        let observation = client.clone().capacity().unwrap();
+        assert_eq!(observation.max_retained_frame_bytes, next_max);
+        assert_eq!(observation.control_requests, remaining);
+        assert_eq!(observation.configured_frame_bytes, limits().max_frame_bytes);
+        assert_eq!(
+            observation.required_frame_capacity(),
+            limits().max_frame_bytes
+        );
+        if next_max == 32768 {
+            assert!(!requirements.has_changed().unwrap());
+        } else {
+            tokio::time::timeout(Duration::from_secs(1), requirements.changed())
+                .await
+                .unwrap()
+                .unwrap();
+            let requirement = *requirements.borrow_and_update();
+            assert_eq!(requirement.max_retained_frame_bytes, next_max);
+            assert_eq!(requirement.configured_frame_bytes, limits().max_frame_bytes);
+        }
+    }
+    assert_eq!(client.capacity().unwrap().control_reserved_bytes, 0);
+    owner.request_termination();
+    assert_eq!(owner.join().await.unwrap().kind, StopKind::Requested);
+}
+
+#[tokio::test]
 async fn worker_ack_commits_rust_policy_before_child_progress_even_without_a_waiter() {
     use brassclaw_resources::LiveMontyTaskSettings;
     let selected = boot(SOURCE);
@@ -83,6 +226,7 @@ async fn worker_ack_commits_rust_policy_before_child_progress_even_without_a_wai
                     values: bounds,
                     max_recipe_contexts: None,
                     adapter_reserve_bytes: None,
+                    heap_update: None,
                 },
             },
             Box::new(move |snapshot| {

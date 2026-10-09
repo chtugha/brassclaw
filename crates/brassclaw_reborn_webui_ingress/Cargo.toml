@@ -52,6 +52,10 @@ urlencoding = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
+brassclaw_pg = { path = "../brassclaw_pg" }
+brassclaw_secrets = { path = "../brassclaw_secrets" }
+tempfile = "3"
 axum = { version = "0.8", features = ["macros"] }
 http = "1"
 http-body-util = "0.1"

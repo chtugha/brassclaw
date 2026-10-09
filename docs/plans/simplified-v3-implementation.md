@@ -5301,3 +5301,280 @@ request/response framing, allocator feasibility, queued work ownership and
 revisioned publication through the supported settings vertical. Shared preload
 caching, full authored activation, MCP, other platforms and full-plan acceptance
 remain open; no Rust-loop fallback or warning suppression was introduced.
+
+### 2026-10-09 — Nonmutating candidate allocator-layout validation
+
+Add `validate_worker_limits` beside `set_worker_limits`, sharing the same checked
+logical/physical validation. The observation writes no ceiling, baseline or
+counter. The installation worker's private protocol 9 carries a mechanical
+`ValidateMemoryLayout` command with expected settings and heap revisions plus
+candidate VM/frame/adapter geometry. It checks actual allocation ownership,
+positive wire/native frame representation and checked reserve arithmetic, without
+advancing Python or publishing settings. A probe does not reconcile or erase an
+existing pending automatic heap target. No Tool, model or Recipe workflow is added.
+
+All 50 real-worker cases passed (15 process, 12 actor, 23 service). The new
+regression observes a larger 128 MiB VM/80 MiB frame proposal without applying it,
+retains a real pending automatic target, and verifies unsafe live-heap reduction,
+both stale revision fences, zero and overflow denials with unchanged VM identity,
+settings, allocator geometry and waiting state. A separately framed actual native
+worker also rejects physical headroom below live allocations while its candidate
+VM allowance still covers the observed VM bytes. No state is published on denial.
+Its first assertion used the wrong failure-enum spelling; the assertion was
+corrected to the actual `UnsafeHeapReduction` wire representation, without a
+worker change or weakened state checks. Both scripts/diagnostics are retained.
+
+Strict composition library Clippy passed with `skills-db,libsql`. The initial
+`--locked` invocation stopped before compilation because a removed composition
+dependency remained in the root lockfile. Cargo repaired that stale edge offline;
+package identities and versions were verified unchanged. The subsequent native
+`--locked` build passed. Standalone test sources and their lockfile stayed fixed.
+Background screen, serial Cargo, process guards and mandatory disk cleanup were
+used. The updated vendor patch applies to the verified upstream tree and matches
+all 228 recorded vendor files exactly; original upstream hashes remain unchanged.
+
+A fresh ordinary CLI/default-features instance and retained protocol-9 worker
+ran through PostgreSQL V133. Authenticated settings edits acknowledged revisions
+2–4, combined slice/deadline reduction, child capacity and zero adapter reserve;
+stale revision rejection preserved settings and startup child identities.
+Shutdown exited 0 in 0.182 seconds with closed ports and no warnings or connection
+errors. This uses the existing local configured-provider bootstrap and no model
+inference. Native evidence covers the retained binaries and matching archived
+source snapshots. Later shared MCP gateway/test edits are outside this resource
+acceptance; runtime test formatting leaves its production prefix byte-identical.
+
+Evidence, source snapshots, patch round-trip, binary digests, commands, logs and
+actual receipts: `/private/tmp/brassclaw-memory-layout-probe-accepted-20261009`.
+This is the allocator feasibility prerequisite, **not a reservation or completed
+live frame setting**. Production frames still remain 64 MiB. Continue by retaining
+the sole transport boundary across the revision-checked probe, durable commit
+outcome and worker/Rust publication. Do not persist based on an earlier unfenced
+probe, change Python state during validation, or release a child RPC in between.
+A rejected commit applies no runtime successor; unknown commit/publication must
+retain evidence and fence without rollback/replay. Complete queued per-exchange
+frame/deadline retention, allocator/frame acknowledgment, full settings API/UI
+wiring and native retained-work acceptance before claiming live frame support.
+Platform, performance, catalogue/preload and full-plan acceptance remain open.
+
+### 2026-10-10 — Durable runtime settings at one transport boundary
+
+Ordinary non-heap edits now retain the sole transport owner across inspection of
+the actual current allocator layout, its revision-checked nonmutating probe, the
+durable commit outcome, worker publication and synchronous Rust publication.
+Child RPCs stay queued throughout. No provisional runtime settings are installed
+before persistence. Rejected writes preserve the old revision and require no
+rollback. A missing acknowledgment, timeout, panic or publication failure after
+a confirmed commit retains actual worker evidence and fences execution without
+replay. Unexpected inspection/probe evidence is retained rather than discarded.
+
+The durable write and settled readback keep the source deadline captured before
+the edit, independently of the worker IPC deadline. Verify the entire requested
+successor on successful writes and uncertain-outcome readback, not just its
+revision. The instance edit owner survives an HTTP waiter disappearing; effective
+full settings observation still follows the existing revision-aware controller.
+The larger task-settings command is boxed to avoid inflating every control-queue
+variant; the initial strict lint failure was resolved without suppression.
+
+All 37 actual worker actor/service cases passed. After the representation repair,
+the five affected settings cases passed again, including a rejected real file
+commit, a completed file commit whose waiter was dropped, retained child state
+and feed counts, and an actual synchronized write whose future never acknowledges
+completion. The latter fences queued child execution, retains its original work
+and the pre-commit worker receipt, and reaps the worker without pretending the
+write did not happen. Strict composition library Clippy passed with
+`skills-db,libsql`. Cargo ran serially in background screen with process guards
+and required disk cleanup; relevant sources stayed fixed in the final batch.
+
+A fresh ordinary CLI/default-features instance and retained packaged worker ran
+through PostgreSQL V133. An actual temporary database trigger rejected a valid
+operator edit: HTTP returned its redacted 500 error, the persisted and effective
+settings remained unchanged, and the worker stayed alive. A test-only trigger
+deliberately injected `pg_sleep(1.25)`; that request took 1.259 seconds, exceeding
+the proposed 200 ms source deadline and retained 1-second IPC deadline. This is
+a deadline-ownership check, not normal settings latency. The accepted deadline held;
+Rust/Monty acknowledged revisions 2–6, including combined execution/hosting edits,
+with unchanged startup child identities. Stale revision rejection preserved the
+final settings. Shutdown exited 0 in 0.183 seconds with closed ports.
+
+The first native run's blanket no-error log assertion rejected the deliberate
+database failure. Its script and diagnostics are preserved. The corrected run
+requires exactly that expected error, rejects every other warning/error and
+connection error, and passed against the same retained binaries without another
+Cargo build. No warning or error was hidden. This resource acceptance uses the
+existing configured-provider bootstrap and performs no model inference; it does
+not establish the DB-only provider or MCP/catalogue cutovers. The final native
+source archive's 2,197 files stayed fixed through build and acceptance.
+
+Evidence, exact sources/diff, commands, initial failed diagnostics, native binary
+digests and actual API receipts are retained at
+`/private/tmp/brassclaw-durable-runtime-settings-accepted-20261010`.
+This completes the ordinary runtime-settings persistence/publication fence,
+**not** the full resource matrix. Manual heap transactions still use their
+existing separate path; combined heap/reserve edits require coordinated full
+settings feasibility and publication. Production frames remain 64 MiB. Finish
+retained per-exchange frame/deadline policy, allocator/framing acknowledgment,
+settings API/WebUI wiring and retained-work acceptance before claiming live
+frame control. Shared immutable preload caching, authored activation, durable
+recovery, other platforms and full-plan acceptance remain open.
+
+### 2026-10-10 — Ordinary settings-write latency clarification
+
+The preceding 1.259-second request includes the intentionally injected
+`pg_sleep(1.25)` in a temporary PostgreSQL test trigger. The trigger was removed
+by the test; it is absent from production code and normal settings publication.
+Operator saves wake reconciliation immediately through the existing `Notify`;
+they do not wait for the periodic settings timer.
+
+A separate fresh ordinary CLI/PostgreSQL instance used the same verified retained
+debug binaries, with no test delay/rejection triggers and no model inference.
+Forty sequential authenticated settings PUTs (20 duration, 20 hosting edits) took
+2.412 ms median, 3.067 ms at p95 and 5.807 ms maximum, including response decoding,
+durable persistence and the complete effective Rust/Monty acknowledgment. Every
+revision advanced exactly once, the heap revision and worker identity stayed
+fixed, and an independent SQL query confirmed the final durable revision. No
+warning, error or connection failure occurred. These measurements show no
+1.25-second delay in ordinary saves; no runtime optimization is justified by the
+fault-injection timing. No recompilation or weaker deadline checks were needed.
+
+The evidence records startup (57.847 seconds) and shutdown (2.594 seconds)
+separately; neither is part of the save timings. This is an idle local debug-build
+measurement, not loaded-system, release, task throughput or platform acceptance.
+Startup performance remains a separate audit item under the full plan.
+Exact commands, binary digests, all 40 timings and revision receipts, and logs:
+`/private/tmp/brassclaw-settings-latency-accepted-20261010`.
+
+### 2026-10-10 — Atomic combined heap/runtime settings publication
+
+The ordinary settings store now uses the same owned durable transaction for
+manual heap edits and other execution/hosting edits. A complete nonmutating
+worker candidate checks task/VM/context revisions and the proposed heap/reserve
+geometry together before persistence. An explicit manual successor can replace
+a pending automatic target; the discarded target does not constrain its new
+reserve. Validation neither reconciles pending reductions nor changes Python,
+allocator or configured settings state. The private protocol advances to 10;
+paired application/worker packaging remains mandatory.
+
+After the exact durable successor is confirmed, one allocator operation publishes
+the heap and adapter reserve, then the worker publishes runtime settings. The
+synchronous Rust acknowledgment callback publishes the actual heap observation
+and controls before releasing subsequent child RPCs. Rejected writes publish
+nothing and need no rollback. Unknown writes or post-commit publication failures
+retain actual evidence and fence execution without replay. The owned operation
+continues when its HTTP waiter disappears. Effective full settings still follow
+the revision-aware controller and ownership account. The lower-level legacy
+heap-transaction primitive remains available but is no longer used by product
+settings edits.
+
+All 53 actual worker cases passed (16 process, 12 actor, 25 service), including
+pending-target replacement, stale/invalid full candidates, rejected real file
+commits, accepted commits with dropped waiters, retained child state/feed counts
+and an unacknowledged synchronized write that fences queued child execution.
+Strict composition library Clippy passed with `skills-db,libsql` and `-D warnings`.
+The initial locked lint stopped before compilation because new shared ingress
+development dependencies lacked lockfile edges. Offline resolution added exactly
+those four edges; every package identity, version and checksum stayed unchanged.
+Serial background screen and mandatory disk/process guards were used.
+
+A fresh ordinary CLI/default-features instance and its retained protocol-10 worker
+ran through PostgreSQL V133. An actual database-side rejection of a combined
+heap/reserve/duration edit preserved persisted/runtime settings and allocator
+geometry. A successful combined growth and subsequent safe combined reduction
+acknowledged heap revisions 2 and 3 with settings revisions 2–7; other edits kept
+the heap revision fixed. Worker/startup child PIDs stayed unchanged. The injected
+1.25-second SQL delay still proves independent source/IPC deadlines, not ordinary
+save latency. Stale edits preserved the final state; an independent SQL query
+confirmed the exact instance settings key. Shutdown exited 0 with closed ports.
+The expected database rejection error is explicitly required; every other warning,
+error and connection failure is rejected.
+
+The first native verification queried all settings rows instead of the instance
+composite key and failed after the runtime checks. Its script/logs are preserved.
+The corrected query passed against the same retained binaries without rebuilding.
+The 2,232 archived source files remained fixed throughout build and acceptance.
+Evidence, exact source/diff, failed and passing logs, commands, verified binary
+images and actual API receipts:
+`/private/tmp/brassclaw-combined-runtime-layout-accepted-20261010`.
+
+This closes the combined manual heap/reserve/runtime settings publication gap.
+Production frames remain 64 MiB. Continue retained per-exchange frame/deadline
+policy, allocator/framing acknowledgment, settings API/WebUI wiring and retained
+work acceptance before claiming live frame controls. Existing configured-provider
+bootstrap and no model inference limit this evidence; shared MCP, authored
+activation/preload caching, durable recovery, release/platform performance and
+full-plan acceptance remain open.
+
+### 2026-10-10 — Retain each accepted IPC frame contract
+
+The transport actor now records the accepted frame bound with its original
+request/response deadline, evidence bytes and credits. Envelopes and collected
+receipts preserve that bound, including abandoned tickets and completed unclaimed
+results. Credit reservations use that exact frame rather than an unrelated
+instance maximum. Every actual IPC phase of an owned durable settings/heap
+transaction uses the same retained frame contract.
+
+Private protocol 11 carries the accepted maximum in the request and echoes it
+in the reply. The worker checks positive/native/wire representation, its receive
+capacity and the actual received length before execution, then encodes its reply
+under the retained bound. The parent requires the exact echoed contract and keeps
+its original response bound throughout the await. Invalid preflight requests
+retain their original command without advancing or killing the worker. A real
+reply that cannot fit is a contained transport failure with an unacknowledged
+command, never a truncated success or fabricated snapshot. The instance allocator
+capacity remains separate from a tighter per-exchange contract; paired binaries
+are required. This change does not publish a new global frame setting.
+
+All 69 actual worker cases passed (19 process, 13 actor, 25 service, 12 utility).
+New regressions verify retained/refunded credits across policy changes and dropped
+tickets, nonmutating frame denials, invalid worker contracts before boot and
+actual containment when the intent-boundary reply exceeds its accepted frame.
+Expected fatal diagnostics remain visible. The initial compilation found two test
+assertions requiring a nonexistent `RequestTicket: Debug`; the assertions were
+corrected without adding production Debug behavior or suppressing warnings.
+Strict host Clippy with `--all-targets` and `-D warnings` passed. Serial background
+screen, process guards and mandatory disk cleanup were used.
+
+A fresh ordinary CLI/default-features instance and retained protocol-11 worker
+passed actual PostgreSQL V133/API acceptance: combined heap/reserve/duration growth
+and reduction, rejected durable writes with unchanged settings/allocator geometry,
+retained independent source/IPC deadlines, settings revisions 2–7, stale rejection,
+exact instance-key SQL confirmation and unchanged startup child PIDs. Shutdown
+exited 0 with closed ports. Exactly the deliberate DB rejection error is required;
+every other warning/error and connection failure is rejected. All 2,232 archived
+source files stayed fixed throughout build and acceptance. Exact sources/diff,
+commands, failed/passing logs, retained binary images and actual API receipts:
+`/private/tmp/brassclaw-retained-frame-contract-accepted-20261010`.
+
+**Continue the full live-frame implementation:** production still uses 64 MiB.
+Replace per-clone `ServiceClient.frame`/`TransportClient.frame` scalars with the
+shared acknowledged policy; add the finite frame setting to the full existing
+DB/API/WebUI execution-limits contract. Validate the complete candidate against
+its proposed frame, actor lanes and root source before durable mutation.
+Distinguish the configured bound for new exchanges, an older exchange's retained
+bound, and the worker's actual receive/allocator frame capacity.
+
+Track the maximum bound of all accepted credits, including completed unclaimed
+receipts, in the existing actor ledger. A counted ordered set can update this
+maximum on acceptance/refund without rescanning memory or polling OS pressure.
+A settings reduction must retain capacity for older exchanges: its owned candidate
+uses at least the maximum of the new policy and retained contracts, and its ACK
+uses the old exchange contract. Later accepts use the newly acknowledged policy.
+Do not shrink the worker's receive/allocation capacity while an older exchange
+still needs it. Expose desired/effective capacity and debt explicitly; a larger
+reserved capacity is not proof that new exchanges may use an older policy.
+
+Coordinate capacity release through the sole transport owner after credits are
+refunded. Recheck actual native allocator feasibility; unsafe physical reductions
+remain pending with the old effective capacity and explicit evidence. Ordinary
+work/control must remain usable under its acknowledged finite bounds; capacity
+debt alone is not a small-pressure signal or reason to pause every new task.
+Maintain checked heap + two effective frame buffers + adapter arithmetic without
+resetting consumed task budgets. Validate the actual protocol/control receipt
+representation as well as values/source/stdout limits; no guessed fixed minimum,
+blind rollback, lost effect result or silent truncation.
+
+Native live-WebUI acceptance still needs growth above 64 MiB, safe reduction and
+reduction during retained/in-flight work, correct old/new request and response
+bounds, retained task usage/identity/effect evidence, full settings revision
+publication and actual final capacity release. Shared MCP, authored activation/
+preload caching, durable recovery, DB-only providers, release/platform performance
+and full-plan acceptance remain open.

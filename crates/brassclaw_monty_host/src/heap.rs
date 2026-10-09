@@ -24,6 +24,14 @@ pub struct HeapSettings {
     pub max_vm_bytes: usize,
 }
 
+/// One explicit manual successor, coupled to a complete runtime settings edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeapUpdate {
+    pub expected_revision: u64,
+    pub settings: HeapSettings,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HeapStatus {
@@ -123,33 +131,78 @@ impl WorkerHeap {
         monty_alloc::validate_worker_limits(vm_bytes, reserve).map_err(limit_error)
     }
 
-    /// The synchronous worker owns this quiescent boundary. The allocator
-    /// validates actual live VM/physical bytes before changing either limit.
-    /// Heap publications and pending automatic reductions retain their revisions.
-    pub(crate) fn update_adapter_reserve(&mut self, reserve: usize) -> Result<(), VmError> {
+    pub(crate) fn validate_runtime_update(
+        &self,
+        update: Option<HeapUpdate>,
+        reserve: Option<usize>,
+    ) -> Result<(), VmError> {
+        if update.is_none() && reserve.is_none() {
+            return Ok(());
+        }
+        let reserve = reserve.unwrap_or(self.adapter_reserve_bytes);
+        if let Some(update) = update {
+            if update.expected_revision != self.status.desired_revision()
+                || update.settings.revision <= update.expected_revision
+            {
+                return Err(VmError::kind(VmFailure::SettingsRevisionConflict));
+            }
+            let non_vm = self
+                .frame_bytes
+                .checked_mul(2)
+                .and_then(|bytes| bytes.checked_add(reserve))
+                .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+            // This manual successor replaces a pending automatic target; the
+            // discarded target cannot constrain its new reserve geometry.
+            monty_alloc::validate_worker_limits(update.settings.max_vm_bytes, non_vm)
+                .map_err(limit_error)
+        } else {
+            let current = self
+                .status
+                .effective
+                .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+            self.validate_layout(
+                self.status.desired_revision(),
+                current.max_vm_bytes,
+                self.frame_bytes,
+                reserve,
+            )
+        }
+    }
+
+    /// Publish heap and reserve in one allocator operation. Validation and
+    /// metadata assignment execute synchronously, with no intervening VM work.
+    pub(crate) fn publish_runtime_update(
+        &mut self,
+        update: Option<HeapUpdate>,
+        reserve: Option<usize>,
+    ) -> Result<(), VmError> {
+        if update.is_none() && reserve.is_none() {
+            return Ok(());
+        }
+        self.validate_runtime_update(update, reserve)?;
+        let reserve = reserve.unwrap_or(self.adapter_reserve_bytes);
         let non_vm = self
             .frame_bytes
             .checked_mul(2)
             .and_then(|frames| frames.checked_add(reserve))
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
-        let current = self
-            .status
-            .effective
+        let current = update
+            .map(|update| update.settings)
+            .or(self.status.effective)
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
         let capacity = current
             .max_vm_bytes
             .checked_add(non_vm)
             .filter(|bytes| *bytes != usize::MAX)
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
-        if self.status.desired.is_some_and(|desired| {
-            desired
-                .max_vm_bytes
-                .checked_add(non_vm)
-                .is_none_or(|bytes| bytes == usize::MAX)
-        }) {
-            return Err(VmError::kind(VmFailure::InvalidBounds));
-        }
         monty_alloc::set_worker_limits(current.max_vm_bytes, non_vm).map_err(limit_error)?;
+        if update.is_some() {
+            self.status = HeapStatus {
+                desired: Some(current),
+                effective: Some(current),
+                pending_reduction: false,
+            };
+        }
         self.non_vm_reserve_bytes = non_vm;
         self.adapter_reserve_bytes = reserve;
         self.memory_budget_bytes = capacity;

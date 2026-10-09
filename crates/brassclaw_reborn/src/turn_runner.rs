@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures_util::FutureExt;
+use futures_util::{FutureExt, StreamExt, stream::FuturesUnordered};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, warn};
@@ -321,6 +321,51 @@ impl TurnRunnerWorker {
         debug!(runner_id = ?self.runner_id, "turn runner worker stopped");
     }
 
+    /// Multiplex ordinary admitted turns while their one shared Monty service
+    /// waits on external work. The host supplies a live transport-claim bound;
+    /// Monty's independent admission/resource checks still apply to every task.
+    /// Every future retains its exact lease and heartbeat. Shutdown drains
+    /// cancellation acknowledgement rather than dropping active driver futures.
+    pub async fn run_with_admission_capacity(
+        &self,
+        cancel: CancellationToken,
+        capacity: impl Fn() -> usize,
+    ) {
+        let mut active = FuturesUnordered::new();
+        let mut queue_empty = false;
+        if let Err(error) = self.recover_expired_leases().await {
+            warn!(%error, "expired lease recovery failed");
+        }
+        while !cancel.is_cancelled() {
+            if !queue_empty && active.len() < capacity().max(1) {
+                tokio::select! {
+                    () = cancel.cancelled() => break,
+                    Some(()) = active.next(), if !active.is_empty() => {},
+                    claimed = self.claim_run() => match claimed {
+                        Ok(Some(claimed)) => active.push(self.execute_claimed_run(claimed, &cancel)),
+                        Ok(None) => queue_empty = true,
+                        Err(error) => {
+                            warn!(%error, "ordinary turn claim failed");
+                            queue_empty = true;
+                        }
+                    }
+                }
+            } else {
+                tokio::select! {
+                    () = cancel.cancelled() => break,
+                    Some(()) = active.next(), if !active.is_empty() => queue_empty = false,
+                    () = self.wake_receiver.wait_or_timeout(self.config.poll_interval) => {
+                        queue_empty = false;
+                        if let Err(error) = self.recover_expired_leases().await {
+                            warn!(%error, "expired lease recovery failed");
+                        }
+                    }
+                }
+            }
+        }
+        while active.next().await.is_some() {}
+    }
+
     async fn recover_expired_leases(&self) -> Result<(), TurnError> {
         let response = self
             .transition_port
@@ -341,6 +386,14 @@ impl TurnRunnerWorker {
 
     /// Attempt one claim-and-run cycle.
     async fn try_claim_and_run(&self, cancel: &CancellationToken) -> Result<bool, TurnRunnerError> {
+        let Some(claimed) = self.claim_run().await? else {
+            return Ok(false);
+        };
+        self.execute_claimed_run(claimed, cancel).await;
+        Ok(true)
+    }
+
+    async fn claim_run(&self) -> Result<Option<ClaimedTurnRun>, TurnRunnerError> {
         let lease_token = TurnLeaseToken::new();
         let request = ClaimRunRequest {
             runner_id: self.runner_id,
@@ -356,7 +409,7 @@ impl TurnRunnerWorker {
 
         let Some(claimed) = claimed else {
             debug!(runner_id = ?self.runner_id, "no runs available to claim");
-            return Ok(false);
+            return Ok(None);
         };
 
         let run_id = claimed.state.run_id;
@@ -373,8 +426,7 @@ impl TurnRunnerWorker {
             "claimed turn run"
         );
 
-        self.execute_claimed_run(claimed, cancel).await;
-        Ok(true)
+        Ok(Some(claimed))
     }
 
     /// Execute a claimed run: heartbeat, invoke driver, apply exit.

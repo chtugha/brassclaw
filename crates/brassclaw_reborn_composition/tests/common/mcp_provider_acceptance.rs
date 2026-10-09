@@ -58,13 +58,18 @@ pub(super) async fn gateway(_: &PgPool) -> Arc<dyn HostManagedModelGateway> {
 
 pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, pool: &PgPool) {
     use crate::mcp_server_service::{McpListenerStatus, McpServerState, McpServerStatusResponse};
-    struct TestSocket(u16);
+    struct TestSocket(u16, Arc<std::sync::atomic::AtomicBool>);
     impl McpListenerStatus for TestSocket {
         fn status(&self) -> McpServerStatusResponse {
+            let alive = self.1.load(std::sync::atomic::Ordering::SeqCst);
             McpServerStatusResponse {
-                state: McpServerState::Running,
-                port: Some(self.0),
-                endpoint_url: Some(format!("http://127.0.0.1:{}/mcp", self.0)),
+                state: if alive {
+                    McpServerState::Running
+                } else {
+                    McpServerState::Stopped
+                },
+                port: alive.then_some(self.0),
+                endpoint_url: alive.then(|| format!("http://127.0.0.1:{}/mcp", self.0)),
                 error: None,
             }
         }
@@ -79,6 +84,8 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
         bridge.clone(),
     );
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+    let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let task_alive = alive.clone();
     let listener = tokio::spawn(async move {
         axum::serve(socket, router)
             .with_graceful_shutdown(async {
@@ -86,16 +93,44 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
             })
             .await
             .unwrap();
+        task_alive.store(false, std::sync::atomic::Ordering::SeqCst);
     });
     runtime
-        .attach_mcp_listener_status(Arc::new(TestSocket(port)))
+        .attach_mcp_listener_status(Arc::new(TestSocket(port, alive.clone())))
         .unwrap();
     let client = pool.get().await.unwrap();
     client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=true,revision=revision+1 WHERE tool_id IN(SELECT id FROM reborn_tools WHERE capability_id='host.post_reply')", &[]).await.unwrap();
     drop(client);
     let chat = runtime.new_conversation().await.unwrap();
     let reply=runtime.send_user_message(&chat,"Use the publish_literal_reply tool exactly once with command 'publish literal reply provider acceptance Ω'. After receiving its result, answer with that result text. You must call the tool; do not answer from memory.").await.unwrap();
-    assert!(reply.is_successful_final_reply(), "{reply:?}");
+    if !reply.is_successful_final_reply() {
+        let client = pool.get().await.unwrap();
+        let outcome: Value = client
+            .query_one(
+                "SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+                &[&reply.run_id.as_uuid()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let exchanges: i64 = client
+            .query_one(
+                "SELECT count(*) FROM brassclaw_mcp_exchanges WHERE parent_run_id=$1",
+                &[&reply.run_id.as_uuid()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let calls: i64 = client
+            .query_one(
+                "SELECT count(*) FROM brassclaw_mcp_chat_calls WHERE parent_run_id=$1",
+                &[&reply.run_id.as_uuid()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        panic!("{reply:?}; exchanges={exchanges}; calls={calls}; task outcome={outcome}");
+    }
     assert!(
         reply
             .text
@@ -159,4 +194,5 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
     bridge.disconnect_all().await.unwrap();
     stop_tx.send(()).unwrap();
     listener.await.unwrap();
+    assert!(!alive.load(std::sync::atomic::Ordering::SeqCst));
 }

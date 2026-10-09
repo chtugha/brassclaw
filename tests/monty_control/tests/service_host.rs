@@ -2093,6 +2093,308 @@ async fn manual_heap_commit_barrier_holds_direct_child_execution_and_rolls_back_
     assert_eq!(exit.transport.unwrap().kind, StopKind::Graceful);
 }
 #[tokio::test]
+async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_waiter() {
+    use brassclaw_monty_host::service::{
+        DurableSettingsCommit, HeapCommitOutcome, ServiceHostingLimits,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let mut root = boot(FILE_ROOT);
+    root.aliases.insert("read_file".into());
+    root.bounds.values.max_feeds = 2;
+    let mut owner = ServiceOwner::start(
+        worker(),
+        root,
+        limits(),
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+        },
+        2,
+    )
+    .await
+    .unwrap();
+    let client = owner.client();
+    let identity = client.root_identity();
+    let initial = client.live_task_settings().current();
+    let heap = client.heap_observation().status.effective;
+    for (label, committed) in [("rejected-settings", false), ("committed-settings", true)] {
+        let mut ports = FilePorts::new(directory.path(), label, false);
+        let port = Arc::get_mut(&mut ports).unwrap();
+        port.retain_child_heap = true;
+        port.resume_child_after_edit = true;
+        let task = client.submit(ports.input(), ports.clone()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), ports.started.notified())
+            .await
+            .unwrap();
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let path = directory.path().join(format!("settings-{label}"));
+        if !committed {
+            std::fs::write(&path, "previous configuration").unwrap();
+        }
+        let previous = client.live_task_settings().current();
+        let mut settings: brassclaw_monty_host::process::TaskSettings = previous.into();
+        settings.revision += 1;
+        settings.max_compute_time = Duration::from_secs(701);
+        let next_heap = brassclaw_monty_host::heap::HeapUpdate {
+            expected_revision: client.heap_observation().status.desired_revision(),
+            settings: brassclaw_monty_host::heap::HeapSettings {
+                revision: client.heap_observation().status.desired_revision() + 1,
+                max_vm_bytes: heap.unwrap().max_vm_bytes + 8 * 1024 * 1024,
+            },
+        };
+        let hosting = ServiceHostingLimits {
+            adapter_reserve_bytes: Some(0),
+            admission: client.admission_observation().limits,
+            max_pending_settings: client.settings_capacity().limit,
+            max_retained_attempts: client.retained_attempts().limit,
+            actor: None,
+            deadlines: None,
+        };
+        let publication = tokio::spawn({
+            let client = client.clone();
+            let path = path.clone();
+            let entered = entered.clone();
+            let release = release.clone();
+            async move {
+                client
+                    .publish_control_settings_transaction(
+                        previous.revision,
+                        settings,
+                        client.vm_bounds(),
+                        8,
+                        hosting,
+                        DurableSettingsCommit {
+                            heap_update: Some(next_heap),
+                            timeout: Duration::from_secs(2),
+                            future: Box::pin(async move {
+                                entered.notify_one();
+                                release.notified().await;
+                                use std::io::Write;
+                                match std::fs::OpenOptions::new()
+                                    .write(true)
+                                    .create_new(true)
+                                    .open(path)
+                                {
+                                    Ok(mut file) => match file
+                                        .write_all(settings.revision.to_string().as_bytes())
+                                        .and_then(|()| file.sync_all())
+                                    {
+                                        Ok(()) => HeapCommitOutcome::Committed,
+                                        Err(_) => HeapCommitOutcome::Unknown,
+                                    },
+                                    Err(error)
+                                        if error.kind() == std::io::ErrorKind::AlreadyExists =>
+                                    {
+                                        HeapCommitOutcome::Rejected
+                                    }
+                                    Err(_) => HeapCommitOutcome::Unknown,
+                                }
+                            }),
+                        },
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(2), entered.notified())
+            .await
+            .unwrap();
+        ports.release.notify_one();
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(!ports.child_resumed.load(Ordering::Acquire));
+        assert_eq!(client.live_task_settings().current(), previous);
+        assert_eq!(client.heap_observation().status.effective, heap);
+        if committed {
+            publication.abort();
+        }
+        release.notify_one();
+        if committed {
+            match publication.await {
+                Err(error) => assert!(error.is_cancelled()),
+                Ok(_) => panic!("publication waiter was aborted"),
+            }
+        } else {
+            assert!(matches!(
+                publication.await.unwrap(),
+                Err(ServiceFailure::SettingsConflict)
+            ));
+            assert_eq!(client.live_task_settings().current(), initial);
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                "previous configuration"
+            );
+        }
+        let receipt = tokio::time::timeout(Duration::from_secs(2), task.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        assert!(ports.child_resumed.load(Ordering::Acquire));
+        assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+        assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+        assert_eq!(client.root_identity(), identity);
+        if committed {
+            assert_eq!(
+                client.heap_observation().status.effective,
+                Some(next_heap.settings)
+            );
+            assert_eq!(
+                client.heap_observation().status.desired,
+                Some(next_heap.settings)
+            );
+            assert!(!client.heap_observation().status.pending_reduction);
+            assert_eq!(client.allocator_status().adapter_reserve_bytes, 0);
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                settings.revision.to_string()
+            );
+            assert_eq!(
+                client.live_task_settings().current().revision,
+                settings.revision
+            );
+            assert_eq!(
+                client
+                    .live_task_settings()
+                    .current()
+                    .limits
+                    .max_compute_time,
+                settings.max_compute_time
+            );
+        } else {
+            assert_eq!(client.heap_observation().status.effective, heap);
+        }
+    }
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn unacknowledged_actual_settings_write_fences_queued_child_and_retains_evidence() {
+    use brassclaw_monty_host::service::{DurableSettingsCommit, ServiceHostingLimits};
+    let directory = tempfile::tempdir().unwrap();
+    let mut root = boot(FILE_ROOT);
+    root.aliases.insert("read_file".into());
+    root.bounds.values.max_feeds = 2;
+    let mut owner = ServiceOwner::start(
+        worker(),
+        root,
+        limits(),
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+        },
+        2,
+    )
+    .await
+    .unwrap();
+    let client = owner.client();
+    let initial = client.live_task_settings().current();
+    let mut ports = FilePorts::new(directory.path(), "uncertain-settings", false);
+    let port = Arc::get_mut(&mut ports).unwrap();
+    port.retain_child_heap = true;
+    port.resume_child_after_edit = true;
+    let task = client.submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), ports.started.notified())
+        .await
+        .unwrap();
+    let written = Arc::new(Notify::new());
+    let path = directory.path().join("unacknowledged-settings");
+    let mut settings: brassclaw_monty_host::process::TaskSettings = initial.into();
+    settings.revision += 1;
+    let hosting = ServiceHostingLimits {
+        adapter_reserve_bytes: Some(0),
+        admission: client.admission_observation().limits,
+        max_pending_settings: client.settings_capacity().limit,
+        max_retained_attempts: client.retained_attempts().limit,
+        actor: None,
+        deadlines: None,
+    };
+    let publication = tokio::spawn({
+        let client = client.clone();
+        let path = path.clone();
+        let written = written.clone();
+        async move {
+            client
+                .publish_control_settings_transaction(
+                    initial.revision,
+                    settings,
+                    client.vm_bounds(),
+                    8,
+                    hosting,
+                    DurableSettingsCommit {
+                        heap_update: None,
+                        timeout: Duration::from_millis(200),
+                        future: Box::pin(async move {
+                            use std::io::Write;
+                            let mut file = std::fs::OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(path)
+                                .unwrap();
+                            file.write_all(settings.revision.to_string().as_bytes())
+                                .unwrap();
+                            file.sync_all().unwrap();
+                            written.notify_one();
+                            // The actual write exists, but its future provides no
+                            // acknowledgment. A timeout cannot prove no effect.
+                            std::future::pending().await
+                        }),
+                    },
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(2), written.notified())
+        .await
+        .unwrap();
+    ports.release.notify_one();
+    assert!(matches!(
+        publication.await.unwrap(),
+        Err(ServiceFailure::Transport)
+    ));
+    let exit = tokio::time::timeout(Duration::from_secs(2), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::Transport));
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        settings.revision.to_string()
+    );
+    assert_eq!(client.live_task_settings().current(), initial);
+    assert!(!ports.child_resumed.load(Ordering::Acquire));
+    assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+    assert_eq!(ports.writes.load(Ordering::Acquire), 0);
+    assert!(ports.fenced.load(Ordering::Acquire));
+    assert_eq!(exit.tasks.len(), 1);
+    assert_eq!(exit.failed_exchanges.len(), 1);
+    let error = exit.failed_exchanges[0].outcome.as_ref().err().unwrap();
+    let snapshot = error
+        .snapshot
+        .as_ref()
+        .expect("retain actual pre-commit worker observation");
+    assert_eq!(
+        snapshot.effective_task_settings.unwrap().revision,
+        initial.revision
+    );
+    assert_eq!(snapshot.recipe_context_capacity.unwrap().active, 1);
+    assert!(snapshot.vm_live_bytes >= 2 * 1024 * 1024);
+    assert_eq!(
+        error.diagnostic.as_deref(),
+        Some("durable settings outcome requires reconciliation")
+    );
+    assert!(matches!(task.wait().await, Err(ServiceFailure::Transport)));
+    let transport = exit.transport.unwrap();
+    assert_eq!(transport.kind, StopKind::TransportFailed);
+    assert!(transport.exit_status.is_some());
+    assert!(transport.containment_error.is_none());
+    assert!(transport.reap_error.is_none());
+}
+
+#[tokio::test]
 async fn live_retention_capacity_preserves_owned_credits_and_grows_beyond_256() {
     use brassclaw_monty_host::{process::TaskSettings, service::ServiceHostingLimits};
     let mut owner = start(FILE_ROOT).await;

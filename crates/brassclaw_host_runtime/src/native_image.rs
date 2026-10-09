@@ -11,6 +11,89 @@ use sha2::{Digest, Sha256};
 
 const MAX_IMAGE_BYTES: u64 = 1_073_741_824;
 
+/// Private copy of a packaged executable supplied by the installation owner.
+/// This establishes byte identity only, not running-image identity, provenance,
+/// approval or permission. The owner must inspect/qualify this exact copy.
+pub struct PackagedExecutableImage {
+    directory: tempfile::TempDir,
+    checksum: [u8; 32],
+}
+impl PackagedExecutableImage {
+    pub async fn capture(path: &std::path::Path, max_bytes: u64) -> Result<Self, NativeImageError> {
+        if max_bytes == 0 || max_bytes > MAX_IMAGE_BYTES {
+            return Err(NativeImageError::Capacity);
+        }
+        let path = path.to_owned();
+        tokio::task::spawn_blocking(move || stage_packaged(&path, max_bytes))
+            .await
+            .map_err(|_| NativeImageError::Verification)?
+    }
+    pub fn path(&self) -> std::path::PathBuf {
+        self.directory.path().join("executable")
+    }
+    pub fn checksum(&self) -> [u8; 32] {
+        self.checksum
+    }
+}
+
+fn stage_packaged(
+    path: &std::path::Path,
+    max_bytes: u64,
+) -> Result<PackagedExecutableImage, NativeImageError> {
+    let mut original = File::open(path).map_err(|_| NativeImageError::Storage)?;
+    let metadata = original.metadata().map_err(|_| NativeImageError::Storage)?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > max_bytes {
+        return Err(NativeImageError::Capacity);
+    }
+    let directory = tempfile::Builder::new()
+        .prefix("brassclaw-packaged-")
+        .tempdir()
+        .map_err(|_| NativeImageError::Storage)?;
+    let mut options = File::options();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut copy = options
+        .open(directory.path().join("executable"))
+        .map_err(|_| NativeImageError::Storage)?;
+    let mut hash = Sha256::new();
+    let mut size = 0u64;
+    let mut buffer = [0u8; 65_536];
+    loop {
+        let count = original
+            .read(&mut buffer)
+            .map_err(|_| NativeImageError::Storage)?;
+        if count == 0 {
+            break;
+        }
+        size = size
+            .checked_add(count as u64)
+            .filter(|size| *size <= max_bytes)
+            .ok_or(NativeImageError::Capacity)?;
+        copy.write_all(&buffer[..count])
+            .map_err(|_| NativeImageError::Storage)?;
+        hash.update(&buffer[..count]);
+    }
+    if size != metadata.len() {
+        return Err(NativeImageError::Identity);
+    }
+    copy.sync_all().map_err(|_| NativeImageError::Storage)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        copy.set_permissions(std::fs::Permissions::from_mode(0o500))
+            .map_err(|_| NativeImageError::Storage)?;
+    }
+    drop(copy);
+    Ok(PackagedExecutableImage {
+        directory,
+        checksum: hash.finalize().into(),
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum NativeImageError {
     #[error("native executable identity is unsupported on this platform")]
@@ -305,6 +388,27 @@ mod macos {
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn packaged_artifact_copy_is_bounded_and_does_not_alias_source() {
+        let source = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(source.path(), b"original package bytes").unwrap();
+        assert!(matches!(
+            PackagedExecutableImage::capture(source.path(), 1).await,
+            Err(NativeImageError::Capacity)
+        ));
+        let image = PackagedExecutableImage::capture(source.path(), 64)
+            .await
+            .unwrap();
+        std::fs::write(source.path(), b"changed").unwrap();
+        assert_eq!(
+            std::fs::read(image.path()).unwrap(),
+            b"original package bytes"
+        );
+        assert_eq!(
+            image.checksum(),
+            <[u8; 32]>::from(Sha256::digest(b"original package bytes"))
+        );
+    }
     #[tokio::test]
     async fn actual_loaded_executable_is_retained_and_corruption_is_rejected() {
         let image = NativeExecutableImage::capture(MAX_IMAGE_BYTES)

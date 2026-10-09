@@ -241,6 +241,10 @@ impl TriggerPollerSettings {
 /// needed to assemble a runnable Reborn agent.
 #[derive(Default)]
 pub struct RebornRuntimeInput {
+    /// Production hosts defer turn claims until their inbound MCP listener is
+    /// attached, so startup producers cannot advertise the legacy native surface.
+    #[cfg(feature = "skills-db")]
+    pub inbound_mcp_required: bool,
     pub services: Option<RebornBuildInput>,
     #[cfg(feature = "root-llm-provider")]
     pub llm: Option<ResolvedRebornLlm>,
@@ -315,6 +319,8 @@ impl RebornRuntimeInput {
     /// to the caller, not the assembly.
     pub fn from_services(services: RebornBuildInput) -> Self {
         Self {
+            #[cfg(feature = "skills-db")]
+            inbound_mcp_required: false,
             services: Some(services),
             #[cfg(feature = "root-llm-provider")]
             llm: None,
@@ -342,6 +348,12 @@ impl RebornRuntimeInput {
             #[cfg(any(test, feature = "test-support"))]
             model_cost_table_override: None,
         }
+    }
+
+    #[cfg(feature = "skills-db")]
+    pub fn with_inbound_mcp_required(mut self, required: bool) -> Self {
+        self.inbound_mcp_required = required;
+        self
     }
 
     /// Supply pre-resolved budget defaults. The caller is responsible

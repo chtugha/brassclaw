@@ -232,3 +232,28 @@ above. Strict composition lint validation was blocked by the concurrently edited
 MCP bridge's `verify_cached` argument-count warning; no consumer lint warning was
 reported in that run. Actual supervised effect/accounting reconciliation and
 general authored-catalogue activation remain separate work.
+
+### Operator inspection development acceptance — 2026-10-09
+
+`pg_review_submission::tests::native_http_review_inspection_preserves_quarantine_and_exact_observations`
+passed through the mounted operator HTTP routes with real PostgreSQL and V133.
+Its synthetic stopped journal fixture checks authentication, live-work rejection,
+late-answer/stale-checksum rejection, exact pinned envelope retention, ingress-owned
+actor identity, duplicate-ID readback, conflicting retries, unknown request fields,
+failed deferred commit with sanitized errors, immutable update/delete/truncate
+protection, cursor behavior, invalid IDs and missing attempts. The original work
+phase and dispatch count stay unchanged; no settlement is inserted. This proves
+management behavior, not execution of a real provider effect or its reconciliation.
+
+Both complete WebUI descriptor-policy contract tests pass. Four frontend interaction
+tests pass for exact-ID retry after an unknown save outcome, rapid double saves,
+running-work write exclusion and missing secure randomness. JavaScript syntax and
+`git diff --check` also pass. These component interaction tests do not establish
+browser rendering or a deployed WebUI; no remote deployment was changed.
+
+Strict affected-package linting was attempted for `brassclaw_product_workflow`,
+`brassclaw_webui_v2` and `brassclaw_reborn_composition` with `skills-db` and
+`root-llm-provider`. It stopped in the concurrently modified dependency
+`brassclaw_monty_host/src/service.rs:178` on `clippy::large_enum_variant` for
+`SettingsPublication`, before the affected crates completed. This check is
+blocked, not passing; no lint suppression or unrelated host change was made.

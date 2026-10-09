@@ -16,8 +16,9 @@ public reply qualifies, startup/refresh publishes its command entry. An empty
 pending snapshot is different from an unavailable catalogue. The default transport
 router still reports unavailable without an attached discovery facade. A host
 can attach the runtime facade through `orchestrator_mcp_router_with_discovery`;
-authentication belongs to host ingress. This change starts no listener, enables
-no provider connection and enables no `tools/call` execution.
+the discovery-only router does not execute calls. The instance host instead uses
+`orchestrator_mcp_router_with_chat` with the runtime-owned ordinary-chat bridge
+and authenticated, request-local provider exchanges; see transport lifecycle below.
 
 Startup retains and qualifies the packaged public successor of `host-post-reply`:
 `publish_literal_reply`, command `publish literal reply %`, with the answer in
@@ -55,7 +56,7 @@ snapshot only with complete exact ordinary-chat evidence. Contained validation
 never manufactures normal-match/root-completion evidence. Ordinary-command
 qualification is implemented for the packaged public reply; it still requires all
 real declared cases. MCP chat correlation/closure and Kohai/provider-window
-acceptance remain separate gates; this does not enable MCP `tools/call` transport.
+acceptance are recorded separately from component qualification below.
 
 ## Retained command declaration
 
@@ -203,7 +204,7 @@ complete command-contract set; advertised fingerprints also include the proof.
 An empty proof cannot qualify a newly declared command.
 
 To avoid circular bootstrap, missing execution observations leave MCP discovery
-unavailable while the existing retained normal Recipe catalogue continues to
+explicitly empty while the existing retained normal Recipe catalogue continues to
 serve ordinary chat. After acknowledged durable task settlement, that same
 catalogue owner retries qualification. It performs no example replay or hidden
 qualification effects. Structural/DB failures remain errors, and a stale
@@ -212,10 +213,9 @@ do not rebuild that immutable generation's proof. Startup/restart rechecks it.
 Authored activation/withdrawal still needs its separate supported owner/event
 integration; these observations cannot admit unapproved components.
 
-Today's packaged reply/history workflows still have no public `mcp_call`, so
-startup qualifies and retains an empty discovery generation. No public command,
-MCP chat bridge, authenticated listener or provider window is enabled by this
-implementation.
+The packaged public reply declares `mcp_call`; internal history remains private.
+Only complete ordinary-command evidence permits its advertisement. General
+authored activation/withdrawal is a separate catalogue-owner integration gate.
 
 ## Normal-match execution observations
 
@@ -301,3 +301,42 @@ or multi-usage profiles outside this accepted runner remain unqualified.
 These records authorize advertising only. Current kernel policy still governs
 every dispatch. Full MCP chat transport and Kohai provider connection windows are
 separate integration work.
+
+
+## Ordinary-chat transport and provider lifecycle
+
+The host owns a loopback HTTP listener throughout instance lifetime. `serve`
+uses `--mcp-port` (default 9090); run/repl use 9090. Listener status reflects
+that actual host observation. Provider disconnect does not stop the server.
+The legacy outbound MCP client remains disabled.
+
+After final prefix composition, Kohai establishes an authenticated MCP exchange,
+initializes it and obtains the pinned `tools/list`. The existing provider gateway
+advertises these Recipe command definitions through its supported function-call
+API. Kohai proxies their calls over actual MCP HTTP; this is not a claim of a
+provider-native remote-MCP SDK integration. Only completed listed commands are
+accepted. The existing Python root sequences intermediate calls; the exchange
+remains connected across them and disconnects when the model returns its final
+answer. A later explicit LLM step creates its own exchange. Errors, cancellation,
+attempt fencing and instance shutdown revoke credentials; old-attempt cleanup
+cannot disconnect a replacement attempt. Credentials never enter model prompts.
+
+V131 retains the exact original parent/request, exchange, advertisement, command,
+chat/run and message references. A durable intent precedes submission. Duplicate
+requests, including reconnects, recover the original run; unknown outcomes never
+create a replacement chat. Actual ordinary matching and the retained selection
+must agree with the original qualification before forwarding a result. Terminal
+results precede non-destructive chat closure. Restart reconciles original terminal
+runs and closure without resubmitting uncertain commands. A closed chat keeps its
+transcript and rejects new messages.
+
+Transport requires the supported MCP protocol/session headers, bearer credential
+and JSON/SSE Accept types. Browser Origins are rejected. Explicit MCP cancellation
+is scoped to its exchange/request; a dropped HTTP connection is not inferred
+cancellation. GET streaming and client DELETE are unsupported (405). Instance
+shutdown owns server termination. A command call does not create a component or
+require per-call Q1/Q2; actual Rust Tool dispatch still checks current kernel policy.
+
+Acceptance evidence for these infrastructure changes is recorded in section 34
+of [the implementation plan](plans/monty.composition.md). Source wiring alone does
+not establish production or deployed-instance acceptance.

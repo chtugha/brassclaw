@@ -31,6 +31,20 @@ use crate::{
 
 type ExchangeResult = Result<ProcessSnapshot, ProcessError>;
 
+/// All IPC phases of an owned transaction retain the same accepted frame
+/// contract. The instance receive/allocator capacity is a separate policy.
+struct RetainedExchange<'a> {
+    process: &'a mut GlobalProcess,
+    max_frame_bytes: usize,
+}
+impl RetainedExchange<'_> {
+    async fn exchange(&mut self, command: WorkerCommand) -> ExchangeResult {
+        self.process
+            .exchange_with_frame_limit(command, self.max_frame_bytes)
+            .await
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActorLimits {
     pub max_unclaimed: usize,
@@ -62,17 +76,42 @@ impl ActorLimits {
         }
     }
 }
+/// Shared policy and credited frame requirements. This describes ownership;
+/// it neither measures memory nor publishes worker allocator limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameRequirements {
+    pub configured_frame_bytes: usize,
+    pub max_retained_frame_bytes: usize,
+}
+impl FrameRequirements {
+    /// Reservation requirement only; does not acknowledge allocator uptake.
+    pub fn required_capacity(self) -> usize {
+        self.configured_frame_bytes
+            .max(self.max_retained_frame_bytes)
+    }
+}
+
 /// Counts cover queued, executing and completed-but-unclaimed requests. Each
 /// lane has independent credits, so ordinary saturation cannot consume control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActorCapacityObservation {
     pub limits: ActorLimits,
+    /// Acknowledged default for new exchanges, not an old receipt's bound.
+    pub configured_frame_bytes: usize,
+    /// Largest credited bound, including completed unclaimed receipts.
+    pub max_retained_frame_bytes: usize,
     pub ordinary_requests: usize,
     pub ordinary_reserved_bytes: usize,
     pub control_requests: usize,
     pub control_reserved_bytes: usize,
 }
 impl ActorCapacityObservation {
+    /// Minimum receive/reserve capacity needed by current policy and credits.
+    /// This is neither measured memory nor an acknowledged allocator change.
+    pub fn required_frame_capacity(self) -> usize {
+        self.configured_frame_bytes
+            .max(self.max_retained_frame_bytes)
+    }
     pub fn ordinary_over_capacity(self) -> bool {
         self.ordinary_requests > self.limits.max_unclaimed
             || self.ordinary_reserved_bytes > self.limits.max_reserved_frame_bytes
@@ -175,6 +214,7 @@ impl std::error::Error for StartError {
 
 struct Record {
     response_timeout: Duration,
+    max_frame_bytes: usize,
     wire: Vec<u8>,
     reserved: usize,
     transport_started: bool,
@@ -190,12 +230,58 @@ struct Credits {
 struct Ledger {
     deadlines: HostingDeadlines,
     limits: ActorLimits,
+    frame: watch::Sender<FrameRequirements>,
+    retained_frames: BTreeMap<usize, usize>,
     records: BTreeMap<RequestId, Record>,
     ordinary: Credits,
     control: Credits,
     closed: bool,
 }
 impl Ledger {
+    fn publish_frame_requirement(&self) {
+        let before = *self.frame.borrow();
+        let max_retained_frame_bytes = self
+            .retained_frames
+            .last_key_value()
+            .map_or(0, |(frame, _)| *frame);
+        if before.max_retained_frame_bytes != max_retained_frame_bytes {
+            self.frame.send_replace(FrameRequirements {
+                max_retained_frame_bytes,
+                ..before
+            });
+        }
+    }
+    fn refund_record(&mut self, id: RequestId) -> Result<Record, ActorFailure> {
+        let record = self.records.get(&id).ok_or(ActorFailure::UnknownRequest)?;
+        let frame = record.max_frame_bytes;
+        let control = record.control;
+        let remaining_frames = self
+            .retained_frames
+            .get(&frame)
+            .and_then(|count| count.checked_sub(1))
+            .ok_or(ActorFailure::AccountingUnavailable)?;
+        let credits = self.credits(control);
+        let remaining_count = credits
+            .count
+            .checked_sub(1)
+            .ok_or(ActorFailure::AccountingUnavailable)?;
+        let remaining_bytes = credits
+            .reserved
+            .checked_sub(record.reserved)
+            .ok_or(ActorFailure::AccountingUnavailable)?;
+        // Validate the whole refund before transferring any evidence ownership.
+        let record = self.records.remove(&id).expect("checked record");
+        if remaining_frames == 0 {
+            self.retained_frames.remove(&frame);
+        } else {
+            self.retained_frames.insert(frame, remaining_frames);
+        }
+        let credits = self.credits_mut(control);
+        credits.count = remaining_count;
+        credits.reserved = remaining_bytes;
+        self.publish_frame_requirement();
+        Ok(record)
+    }
     fn credits(&self, control: bool) -> &Credits {
         if control {
             &self.control
@@ -223,6 +309,7 @@ pub struct TransportReceipt {
     pub id: RequestId,
     pub transport_started: bool,
     pub response_timeout: Duration,
+    pub max_frame_bytes: usize,
     wire: Vec<u8>,
     pub outcome: ExchangeResult,
 }
@@ -263,14 +350,12 @@ impl CompletionInbox {
         if record.outcome.is_none() {
             return Err(ActorFailure::NotReady);
         }
-        let mut record = ledger.records.remove(&id).expect("checked record");
-        let credits = ledger.credits_mut(record.control);
-        credits.reserved -= record.reserved;
-        credits.count -= 1;
+        let mut record = ledger.refund_record(id)?;
         Ok(TransportReceipt {
             id,
             transport_started: record.transport_started,
             response_timeout: record.response_timeout,
+            max_frame_bytes: record.max_frame_bytes,
             wire: record.wire,
             outcome: record.outcome.take().expect("checked outcome"),
         })
@@ -315,14 +400,24 @@ pub enum HeapCommitOutcome {
     Rejected,
     Unknown,
 }
+/// Installation-owned durable settings operation. Its independent deadline is
+/// captured at acceptance; an IPC response deadline does not retime a DB write.
+pub struct DurableSettingsCommit {
+    pub future: BoxFuture<'static, HeapCommitOutcome>,
+    pub timeout: Duration,
+    /// Optional manual heap successor, applied with the full settings ACK.
+    pub heap_update: Option<crate::heap::HeapUpdate>,
+}
 struct HeapCommit {
     future: BoxFuture<'static, HeapCommitOutcome>,
     timeout: Duration,
 }
 struct Envelope {
     response_timeout: Duration,
+    max_frame_bytes: usize,
     heap_commit: Option<HeapCommit>,
     runtime_commit: Option<RuntimeCommit>,
+    durable_settings: Option<DurableSettingsCommit>,
     id: RequestId,
     command: WorkerCommand,
 }
@@ -340,12 +435,12 @@ pub struct TransportClient {
     values: watch::Receiver<VmBounds>,
     recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
     allocator: watch::Receiver<crate::heap::AllocatorStatus>,
-    frame: usize,
+    frame: watch::Receiver<FrameRequirements>,
     stopped: watch::Receiver<Option<StopKind>>,
 }
 impl TransportClient {
     pub fn validate_limits(&self, limits: ActorLimits) -> Result<(), ActorFailure> {
-        if limits.valid(self.frame) {
+        if limits.valid(self.frame_limit()) {
             Ok(())
         } else {
             Err(ActorFailure::InvalidLimits)
@@ -357,8 +452,14 @@ impl TransportClient {
             .ledger
             .lock()
             .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        let configured_frame_bytes = ledger.frame.borrow().configured_frame_bytes;
         Ok(ActorCapacityObservation {
             limits: ledger.limits,
+            configured_frame_bytes,
+            max_retained_frame_bytes: ledger
+                .retained_frames
+                .last_key_value()
+                .map_or(0, |(frame, _)| *frame),
             ordinary_requests: ledger.ordinary.count,
             ordinary_reserved_bytes: ledger.ordinary.reserved,
             control_requests: ledger.control.count,
@@ -416,9 +517,6 @@ impl TransportClient {
         deadlines: Option<HostingDeadlines>,
         values: VmBounds,
     ) -> Result<(), ActorFailure> {
-        if let Some(limits) = limits {
-            self.validate_limits(limits)?;
-        }
         if deadlines.is_some_and(|deadlines| {
             !deadlines.valid() || values.execution_slice >= deadlines.response_timeout
         }) {
@@ -432,6 +530,10 @@ impl TransportClient {
         if ledger.closed {
             return Err(ActorFailure::Closed);
         }
+        if limits.is_some_and(|limits| !limits.valid(ledger.frame.borrow().configured_frame_bytes))
+        {
+            return Err(ActorFailure::InvalidLimits);
+        }
         if let Some(limits) = limits {
             ledger.limits = limits;
         }
@@ -441,7 +543,12 @@ impl TransportClient {
         Ok(())
     }
     pub(crate) fn frame_limit(&self) -> usize {
-        self.frame
+        self.frame.borrow().configured_frame_bytes
+    }
+    /// Read-only, event-driven requirements; keeps no transport/service owner.
+    /// Copy a borrowed observation before awaiting or collecting a receipt.
+    pub fn frame_requirements(&self) -> watch::Receiver<FrameRequirements> {
+        self.frame.clone()
     }
     pub fn live_vm_bounds(&self) -> watch::Receiver<VmBounds> {
         self.values.clone()
@@ -481,7 +588,18 @@ impl TransportClient {
     /// receipt identity and sending its command. Full/closed queues return the
     /// whole unaccepted command. Credits include abandoned/completed requests.
     pub fn try_submit(&self, command: WorkerCommand) -> Result<RequestTicket, SubmitError> {
-        self.try_submit_inner(command, None, None)
+        self.try_submit_inner(command, None, None, None, None)
+    }
+
+    /// Optional tighter bound for one exchange; does not publish instance
+    /// policy. Queueing, credit reservation and worker response keep this exact
+    /// bound, including when the caller abandons its ticket.
+    pub fn try_submit_with_frame_limit(
+        &self,
+        command: WorkerCommand,
+        max_frame_bytes: usize,
+    ) -> Result<RequestTicket, SubmitError> {
+        self.try_submit_inner(command, None, None, None, Some(max_frame_bytes))
     }
 
     /// The instance service owns both the accepted command and its bounded
@@ -505,7 +623,39 @@ impl TransportClient {
                 command: Box::new(command),
             });
         }
-        self.try_submit_inner(command, None, Some(commit))
+        self.try_submit_inner(command, None, Some(commit), None, None)
+    }
+
+    pub(crate) fn try_submit_runtime_transaction(
+        &self,
+        command: WorkerCommand,
+        commit: RuntimeCommit,
+        durable: DurableSettingsCommit,
+    ) -> Result<RequestTicket, SubmitError> {
+        let heap_update = match &command {
+            WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings { heap_update, .. },
+            } => *heap_update,
+            _ => None,
+        };
+        if !matches!(
+            &command,
+            WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings { .. }
+                    | RecipeCommand::UpdateSettings { .. }
+            }
+        ) || heap_update != durable.heap_update
+            || durable.timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(durable.timeout)
+                .is_none()
+        {
+            return Err(SubmitError {
+                kind: ActorFailure::InvalidLimits,
+                command: Box::new(command),
+            });
+        }
+        self.try_submit_inner(command, None, Some(commit), Some(durable), None)
     }
     pub(crate) fn try_submit_heap_transaction(
         &self,
@@ -525,6 +675,8 @@ impl TransportClient {
                 timeout,
             }),
             None,
+            None,
+            None,
         )
     }
     fn try_submit_inner(
@@ -532,6 +684,8 @@ impl TransportClient {
         command: WorkerCommand,
         heap_commit: Option<HeapCommit>,
         runtime_commit: Option<RuntimeCommit>,
+        durable_settings: Option<DurableSettingsCommit>,
+        max_frame_bytes: Option<usize>,
     ) -> Result<RequestTicket, SubmitError> {
         let submit = |kind, command| SubmitError {
             kind,
@@ -556,11 +710,16 @@ impl TransportClient {
             return Err(submit(ActorFailure::Backpressure, command));
         }
         drop(ledger);
-        let wire = match retain_command(&command, *self.values.borrow(), self.frame) {
+        let configured_frame = self.frame_limit();
+        let max_frame_bytes = max_frame_bytes.unwrap_or(configured_frame);
+        if max_frame_bytes == 0 || max_frame_bytes > configured_frame {
+            return Err(submit(ActorFailure::InvalidLimits, command));
+        }
+        let wire = match retain_command(&command, *self.values.borrow(), max_frame_bytes) {
             Ok(wire) => wire,
             Err(kind) => return Err(submit(ActorFailure::Transport(kind), command)),
         };
-        let reserved = match wire.len().checked_add(self.frame) {
+        let reserved = match wire.len().checked_add(max_frame_bytes) {
             Some(reserved) => reserved,
             None => return Err(submit(ActorFailure::Backpressure, command)),
         };
@@ -570,6 +729,11 @@ impl TransportClient {
         };
         if ledger.closed {
             return Err(submit(ActorFailure::Closed, command));
+        }
+        // Expensive serialization is outside the lock. A future frame-policy
+        // publication cannot accept these bytes under a different bound.
+        if ledger.frame.borrow().configured_frame_bytes != configured_frame {
+            return Err(submit(ActorFailure::Backpressure, command));
         }
         if ledger.credits(control).count >= ledger.limits.lane(control).0 {
             return Err(submit(ActorFailure::Backpressure, command));
@@ -583,6 +747,16 @@ impl TransportClient {
         if ledger.records.contains_key(&id) {
             return Err(submit(ActorFailure::AccountingUnavailable, command));
         }
+        let frame_count = match ledger
+            .retained_frames
+            .get(&max_frame_bytes)
+            .copied()
+            .unwrap_or(0)
+            .checked_add(1)
+        {
+            Some(count) => count,
+            None => return Err(submit(ActorFailure::AccountingUnavailable, command)),
+        };
         let response_timeout = match &command {
             WorkerCommand::Boot { boot } => {
                 ledger.deadlines.response_timeout.min(boot.startup_timeout)
@@ -594,6 +768,7 @@ impl TransportClient {
             id,
             Record {
                 response_timeout,
+                max_frame_bytes,
                 wire,
                 reserved,
                 transport_started: false,
@@ -604,17 +779,22 @@ impl TransportClient {
         );
         ledger.credits_mut(control).reserved = total;
         ledger.credits_mut(control).count += 1;
+        ledger.retained_frames.insert(max_frame_bytes, frame_count);
+        ledger.publish_frame_requirement();
         let tx = if control { &self.control_tx } else { &self.tx };
         if let Err(error) = tx.send(Envelope {
             response_timeout,
+            max_frame_bytes,
             id,
             command,
             heap_commit,
             runtime_commit,
+            durable_settings,
         }) {
-            ledger.records.remove(&id);
-            ledger.credits_mut(control).reserved -= reserved;
-            ledger.credits_mut(control).count -= 1;
+            if ledger.refund_record(id).is_err() {
+                ledger.closed = true;
+                return Err(submit(ActorFailure::AccountingUnavailable, error.0.command));
+            }
             return Err(submit(ActorFailure::Closed, error.0.command));
         }
         Ok(RequestTicket {
@@ -705,10 +885,16 @@ impl TransportOwner {
         let (stop, stop_rx) = watch::channel(false);
         let (stopped, observed_stop) = watch::channel(None);
         let worker_process_id = process.worker_process_id();
+        let (frame_policy, observed_frame) = watch::channel(FrameRequirements {
+            configured_frame_bytes: process_limits.max_frame_bytes,
+            max_retained_frame_bytes: 0,
+        });
         let inbox = CompletionInbox {
             ledger: Arc::new(Mutex::new(Ledger {
                 limits,
                 deadlines,
+                frame: frame_policy,
+                retained_frames: BTreeMap::new(),
                 records: BTreeMap::new(),
                 ordinary: Credits::default(),
                 control: Credits::default(),
@@ -725,7 +911,7 @@ impl TransportOwner {
             values: values_rx,
             recipe_contexts: contexts_rx,
             allocator: allocator_rx,
-            frame: process_limits.max_frame_bytes,
+            frame: observed_frame,
             stopped: observed_stop,
         };
         let join = tokio::spawn(run(
@@ -839,11 +1025,19 @@ async fn run(
             break (StopKind::AccountingFailed, process.terminate().await);
         }
         process.set_response_timeout(envelope.response_timeout);
-        let transactional = envelope.heap_commit.is_some();
-        let mut outcome = if let Some(commit) = envelope.heap_commit {
-            heap_transaction(&mut process, envelope.command, commit).await
-        } else {
-            process.exchange(envelope.command).await
+        let transactional = envelope.heap_commit.is_some() || envelope.durable_settings.is_some();
+        let mut outcome = {
+            let mut exchange = RetainedExchange {
+                process: &mut process,
+                max_frame_bytes: envelope.max_frame_bytes,
+            };
+            if let Some(commit) = envelope.heap_commit {
+                heap_transaction(&mut exchange, envelope.command, commit).await
+            } else if let Some(durable) = envelope.durable_settings {
+                runtime_transaction(&mut exchange, envelope.command, durable).await
+            } else {
+                exchange.exchange(envelope.command).await
+            }
         };
         // The private ledger already holds the exact original command. Do not
         // retain a second decoded copy on a failed exchange.
@@ -963,10 +1157,129 @@ async fn run(
     }
 }
 
+/// The sole owner holds every subsequent RPC while actual feasibility, durable
+/// outcome and publication settle. No provisional policy or Python execution
+/// occurs before the durable commit; a rejected write needs no rollback.
+async fn runtime_transaction(
+    process: &mut RetainedExchange<'_>,
+    command: WorkerCommand,
+    durable: DurableSettingsCommit,
+) -> ExchangeResult {
+    let (expected, settings, values, contexts, reserve, heap_update) = match &command {
+        WorkerCommand::Recipe {
+            command:
+                RecipeCommand::UpdateRuntimeSettings {
+                    expected_revision,
+                    settings,
+                    values,
+                    max_recipe_contexts,
+                    adapter_reserve_bytes,
+                    heap_update,
+                },
+        } => (
+            *expected_revision,
+            *settings,
+            Some(*values),
+            *max_recipe_contexts,
+            *adapter_reserve_bytes,
+            *heap_update,
+        ),
+        WorkerCommand::Recipe {
+            command:
+                RecipeCommand::UpdateSettings {
+                    expected_revision,
+                    settings,
+                },
+        } => (*expected_revision, *settings, None, None, None, None),
+        _ => return Err(ProcessError::new(ProcessFailure::Protocol)),
+    };
+    // Child commands can have updated the heap since the service's last root
+    // snapshot. Observe the actual current layout inside this same owner fence.
+    let before = process.exchange(WorkerCommand::Inspect).await?;
+    if before.boundary.is_some()
+        || before.admitted_task.is_some()
+        || before.recipe.is_some()
+        || !before.stdout.is_empty()
+        || !before.withheld_answers.is_empty()
+        || before.heap.effective.is_none()
+        || before.vm_bounds.is_none()
+    {
+        let mut error = ProcessError::new(ProcessFailure::Protocol);
+        error.snapshot = Some(Box::new(before));
+        return Err(error);
+    }
+    let values = values
+        .or(before.vm_bounds)
+        .ok_or_else(|| ProcessError::new(ProcessFailure::Protocol))?;
+    let probe = process
+        .exchange(WorkerCommand::ValidateRuntimeSettings {
+            candidate: crate::process::RuntimeSettingsCandidate {
+                expected_revision: expected,
+                settings,
+                values,
+                max_recipe_contexts: contexts,
+                adapter_reserve_bytes: reserve,
+                heap_update,
+            },
+        })
+        .await?;
+    if probe.boundary.is_some()
+        || probe.admitted_task.is_some()
+        || probe.recipe.is_some()
+        || !probe.stdout.is_empty()
+        || !probe.withheld_answers.is_empty()
+        || probe.runtime_settings() != before.runtime_settings()
+        || probe.heap != before.heap
+    {
+        let mut error = ProcessError::new(ProcessFailure::Protocol);
+        error.snapshot = Some(Box::new(probe));
+        return Err(error);
+    }
+    match tokio::time::timeout(
+        durable.timeout,
+        AssertUnwindSafe(durable.future).catch_unwind(),
+    )
+    .await
+    {
+        Ok(Ok(HeapCommitOutcome::Committed)) => {
+            // A failure now follows a confirmed durable mutation. Preserve the
+            // actual worker receipt and fence; it is never a harmless denial.
+            process.exchange(command).await.map_err(|mut error| {
+                error.kind = ProcessFailure::Transport;
+                if error.snapshot.is_none() {
+                    // Last observation only: it cannot establish whether the
+                    // subsequent publication reached the worker.
+                    error.snapshot = Some(Box::new(probe));
+                }
+                if error.diagnostic.is_none() {
+                    error.diagnostic = Some(
+                        "durable settings committed; worker publication requires reconciliation"
+                            .into(),
+                    );
+                }
+                error
+            })
+        }
+        Ok(Ok(HeapCommitOutcome::Rejected)) => {
+            let mut error = ProcessError::new(ProcessFailure::Vm(
+                crate::VmFailure::SettingsRevisionConflict,
+            ));
+            error.snapshot = Some(Box::new(probe));
+            Err(error)
+        }
+        _ => {
+            let mut error = ProcessError::new(ProcessFailure::Transport);
+            error.snapshot = Some(Box::new(probe));
+            error.diagnostic = Some("durable settings outcome requires reconciliation".into());
+            Err(error)
+        }
+    }
+}
+
 // This barrier is inside the sole transport owner. Direct child-context
 // commands remain queued too; holding only the service loop would be insufficient.
 async fn heap_transaction(
-    process: &mut GlobalProcess,
+    process: &mut RetainedExchange<'_>,
     command: WorkerCommand,
     commit: HeapCommit,
 ) -> ExchangeResult {

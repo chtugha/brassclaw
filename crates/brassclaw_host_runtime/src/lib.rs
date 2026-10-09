@@ -108,7 +108,7 @@ pub use invocation_services::{
     InvocationServices, InvocationServicesError, InvocationServicesResolutionRequest,
     InvocationServicesResolver, LocalInvocationServicesResolver, ToolCallHttpEgress,
 };
-pub use native_image::{NativeExecutableImage, NativeImageError};
+pub use native_image::{NativeExecutableImage, NativeImageError, PackagedExecutableImage};
 pub use native_registration::{NativeImplementationRef, NativeRegistrationError};
 pub use obligations::{
     BuiltinObligationHandler, BuiltinObligationServices, LEAK_REDACT_FAILED_CODE,

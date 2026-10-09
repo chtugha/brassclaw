@@ -32,6 +32,7 @@ fn invalid() -> AgentLoopHostError {
 
 #[derive(Default)]
 pub(crate) struct McpProviderBinding {
+    ready: tokio_util::sync::CancellationToken,
     endpoint: RwLock<Option<(Weak<McpChatBridge>, String)>>,
     ports: Mutex<HashMap<TurnRunId, Weak<CommandPort>>>,
 }
@@ -58,7 +59,11 @@ impl McpProviderBinding {
             return Err(invalid());
         }
         *current = Some((Arc::downgrade(bridge), endpoint.to_owned()));
+        self.ready.cancel();
         Ok(())
+    }
+    pub(crate) async fn wait_ready(&self) {
+        self.ready.cancelled().await;
     }
     fn endpoint(&self) -> Result<Option<(Arc<McpChatBridge>, String)>, AgentLoopHostError> {
         let current = self.endpoint.read().map_err(|_| unavailable())?;
@@ -266,6 +271,10 @@ impl CommandPort {
             client,
             endpoint: self.endpoint.clone(),
         };
+        // Retain ownership before the first await so cancellation/error cleanup
+        // can durably disconnect even an unfinished MCP handshake.
+        *connected = Some(connection);
+        let connection = connected.as_ref().ok_or_else(unavailable)?;
         let result=connection.post(json!({"jsonrpc":"2.0","id":"initialize","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"brassclaw-kohai","version":env!("CARGO_PKG_VERSION")}}}),false).await?;
         if result["protocolVersion"] != "2025-06-18" {
             return Err(unavailable());
@@ -285,7 +294,9 @@ impl CommandPort {
         if listed != self.snapshot.tools_list() {
             return Err(unavailable());
         }
-        *connected = Some(connection);
+        if self.revoked.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(unavailable());
+        }
         Ok(())
     }
     async fn close_after_answer(&self) -> Result<(), AgentLoopHostError> {

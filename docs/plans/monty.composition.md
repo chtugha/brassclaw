@@ -1906,8 +1906,12 @@ The host ingress now has a dedicated loopback listener owner with graceful
 shutdown and actual listener status. `serve` starts it after runtime readiness,
 retains it until instance shutdown and exposes its observation to WebUI settings.
 Its port is selected at startup with `--mcp-port`; provider disconnect cannot
-stop the listener. Kohai/provider exchange wiring and host-listener acceptance
-are still in progress; this section does not claim those requirements complete.
+stop the listener. Run/repl start the same host-owned service on 9090. Kohai now
+connects after final prefix preparation and proxies the advertised Recipe commands
+through actual MCP HTTP using the existing provider function-call gateway. The
+Python root owns intermediate Tool-call sequencing. Final answers disconnect the
+exchange; cancellation/fencing/shutdown revoke its exact lease. This is not a
+provider-native remote-MCP SDK claim. Real provider acceptance remains in progress.
 
 The extended real PostgreSQL/retained-worker/global-Monty regression passed in
 215.71 seconds. It exercised ordinary correlated submission/replay, changed-input
@@ -1919,3 +1923,32 @@ This evidence covers the captured chat-transport implementation. Later listener
 and recovery guard changes require their own acceptance. The attempted broader
 listener/CLI lint check was interrupted by disappearing shared target artifacts;
 it did not establish a successful lint result.
+
+
+### Remaining transport acceptance and scheduling repair
+
+Recovery now compares the original actual normal-match and complete selection
+against its retained command qualification, in addition to exact terminal run,
+command and transcript references. Reconnection retains parent/request identity;
+unknown sends remain unresolved. Explicit MCP cancellation is request-scoped.
+Interrupted handshakes retain their lease before awaits so cleanup can durably
+record disconnect. Cleanup uses exact port identity, protecting newer attempts.
+
+The real local-provider acceptance exposed a serial turn-worker deadlock: a parent
+awaiting an MCP chat occupied the only claim/execution loop. The worker now
+multiplexes bounded ordinary-turn futures against the one existing Monty service.
+Each keeps its own lease/heartbeat and shutdown waits for cancellation acknowledgement.
+The live transport-claim ceiling derives from Monty hosting limits, with one
+additional claim to allow an over-capacity nested chat to reach the VM's actual
+resource check and fail explicitly. It creates no extra VM slot or budget.
+Production CLI startup defers claims until its MCP listener is attached, so early
+trigger admissions cannot advertise the native capability surface before MCP is
+ready. The original serial worker remains available for non-global hosting.
+
+Historical verification: affected host/runtime/CLI strict Clippy passed in 65
+seconds before the final recovery/scheduling additions. A later check passed in
+61 seconds but reported a dependency dead-code warning from a concurrent Monty
+transaction change; it does not certify later edits. The first real vLLM/HTTP test
+failed at the 180-second caller timeout, exposing the scheduling defect above.
+Final acceptance must rerun that actual path, recovery/isolation and affected
+architecture/lint checks. No completed-provider acceptance is claimed here yet.

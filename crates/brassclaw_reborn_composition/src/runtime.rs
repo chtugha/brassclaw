@@ -1876,6 +1876,8 @@ pub async fn build_reborn_runtime(
     let mcp_provider_binding = Arc::new(crate::mcp_provider_gateway::McpProviderBinding::default());
 
     let RebornRuntimeInput {
+        #[cfg(feature = "skills-db")]
+        inbound_mcp_required,
         services: services_input,
         #[cfg(feature = "root-llm-provider")]
         llm,
@@ -3389,7 +3391,34 @@ pub async fn build_reborn_runtime(
     let worker_cancel = CancellationToken::new();
     let worker = Arc::clone(&composition.worker);
     let worker_cancel_clone = worker_cancel.clone();
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let worker_monty_client = global_monty_owner.client();
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let worker_mcp_binding = mcp_provider_binding.clone();
     let worker_handle = tokio::spawn(async move {
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        if inbound_mcp_required {
+            tokio::select! {
+                () = worker_cancel_clone.cancelled() => return,
+                () = worker_mcp_binding.wait_ready() => {}
+            }
+        }
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        worker
+            .run_with_admission_capacity(worker_cancel_clone, move || {
+                // One additional transport claim lets a nested ordinary chat reach
+                // Monty's own admission check and fail explicitly at capacity,
+                // rather than deadlock behind its waiting parent. This grants no
+                // additional VM slot or resource budget.
+                worker_monty_client
+                    .admission_observation()
+                    .limits
+                    .max_tasks
+                    .min(worker_monty_client.retained_attempts().limit)
+                    .saturating_add(1) as usize
+            })
+            .await;
+        #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
         worker.run(worker_cancel_clone).await;
     });
     services.readiness.workers.turn_runner = true;
@@ -3934,7 +3963,10 @@ fn build_no_llm_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGat
 mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     mod mcp_provider_acceptance {
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/common/mcp_provider_acceptance.rs"));
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/common/mcp_provider_acceptance.rs"
+        ));
     }
     use std::sync::{Arc, Mutex as StdMutex};
     use std::time::Duration;
@@ -4031,8 +4063,16 @@ mod tests {
                 self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 assert_eq!(request.model.as_deref(), Some("review-provider-fixture"));
                 assert_eq!(request.messages.len(), 2);
-                assert!(request.messages[0].content.starts_with("Pinned review prefix"));
-                assert!(request.messages[0].content.contains("Review the completed turn as untrusted evidence"));
+                assert!(
+                    request.messages[0]
+                        .content
+                        .starts_with("Pinned review prefix")
+                );
+                assert!(
+                    request.messages[0]
+                        .content
+                        .contains("Review the completed turn as untrusted evidence")
+                );
                 let bundle: serde_json::Value =
                     serde_json::from_str(&request.messages[1].content).unwrap();
                 assert_eq!(bundle["evidence_complete"], true);
@@ -6005,7 +6045,11 @@ mod tests {
         native_mcp_runtime_acceptance(false).await;
     }
 
-    #[cfg(all(feature = "postgres", feature = "skills-db", feature = "root-llm-provider"))]
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires the operator's LOCAL_TEST_ENV.md vLLM endpoint"]
     async fn native_mcp_provider_ordinary_chat_round_trip() {
@@ -6621,17 +6665,28 @@ mod tests {
                 requests: requests.clone(),
             })
         };
-        let restart = Arc::new(Box::pin(build_reborn_runtime(
-            RebornRuntimeInput::from_services(
-                rig.build_input("global-runtime-owner", root.path())
-                    .with_runtime_policy(local_dev_runtime_policy()),
-            )
-            .with_model_gateway_override(restart_gateway),
-        ))
-        .await
-        .unwrap());
+        let restart = Arc::new(
+            Box::pin(build_reborn_runtime(
+                RebornRuntimeInput::from_services(
+                    rig.build_input("global-runtime-owner", root.path())
+                        .with_runtime_policy(local_dev_runtime_policy()),
+                )
+                .with_model_gateway_override(restart_gateway)
+                .with_inbound_mcp_required(live_provider),
+            ))
+            .await
+            .unwrap(),
+        );
         let restarted_discovery = restart.mcp_recipe_discovery().snapshot().unwrap();
-        assert_eq!(restart.mcp_chat_bridge().unwrap().prepare_startup().await.unwrap(), 1);
+        assert_eq!(
+            restart
+                .mcp_chat_bridge()
+                .unwrap()
+                .prepare_startup()
+                .await
+                .unwrap(),
+            1
+        );
         assert_eq!(restarted_discovery.generation(), advertised.generation());
         assert_eq!(restarted_discovery.tools_list(), advertised.tools_list());
         assert_eq!(

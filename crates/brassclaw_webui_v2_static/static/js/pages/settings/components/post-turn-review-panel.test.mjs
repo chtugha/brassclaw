@@ -8,7 +8,11 @@ function fixture({ phase = "uncertain", failId = false } = {}) {
   let failed = true;
   const evidence = JSON.stringify({ work: { phase }, journal_integrity: true, user: "<script>evil()</script>" });
   const context = {
-    React: { useState(initial) {
+    React: { useRef(initial) {
+      const index = cursor++;
+      if (!(index in state)) state[index] = { current: initial };
+      return state[index];
+    }, useState(initial) {
       const index = cursor++;
       if (!(index in state)) state[index] = initial;
       return [state[index], value => { state[index] = value; }];
@@ -80,3 +84,13 @@ test("missing secure randomness reports failure without leaving the panel busy",
   assert.equal(prop(button(f.render(), "postTurnReview.list"), "disabled"), false);
   assert.ok(nodes(f.render()).some(node => node.values.includes("randomness unavailable")));
 });
+
+ test("rapid double saves share an identity before React rerenders", async () => {
+  const f = fixture(); await inspect(f);
+  const noteNode = nodes(f.render()).find(node => node.values.includes("postTurnReview.note"));
+  prop(noteNode, "onChange")({ target: { value: "observe" } });
+  const save = prop(button(f.render(), "postTurnReview.save"), "onClick");
+  await Promise.all([save(), save()]);
+  assert.equal(f.ids(), 1);
+  assert.strictEqual(f.calls[0].request, f.calls[1].request);
+ });

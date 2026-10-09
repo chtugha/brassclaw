@@ -11,6 +11,7 @@ export function PostTurnReviewPanel() {
   const [view, setView] = React.useState(null);
   const [note, setNote] = React.useState("");
   const [decision, setDecision] = React.useState(null);
+  const requestRef = React.useRef(null);
   const [receipt, setReceipt] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -30,14 +31,15 @@ export function PostTurnReviewPanel() {
   const save = async () => {
     setBusy(true); setError("");
     try {
-      const request = decision ?? { disposition_id: clientActionId(), evidence_checksum: view.evidence_checksum, note };
+      const request = requestRef.current ?? { disposition_id: clientActionId(), evidence_checksum: view.evidence_checksum, note };
+      requestRef.current = request;
       setDecision(request);
       setReceipt(await recordReviewDisposition(attempt, request));
     }
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   };
-  const reset = () => { setDecision(null); setReceipt(null); setView(null); setNote(""); setError(""); };
+  const reset = () => { requestRef.current = null; setDecision(null); setReceipt(null); setView(null); setNote(""); setError(""); };
   let evidence = null;
   if (view) {
     try { evidence = JSON.parse(view.evidence_bytes); }

@@ -158,7 +158,7 @@ struct Subject {
     approval: Uuid,
     selection: [u8; 32],
     worker_path: std::path::PathBuf,
-    _worker: tempfile::TempDir,
+    _worker: brassclaw_host_runtime::PackagedExecutableImage,
 }
 impl Subject {
     async fn prepare(
@@ -167,38 +167,12 @@ impl Subject {
     ) -> Result<Self, RebornBuildError> {
         // Own validation bytes rather than execute a mutable package pathname
         // after hashing. Repeat inspection under that same interpreter.
-        let source = worker.to_owned();
-        let (worker_directory, worker_path, worker_checksum) =
-            tokio::task::spawn_blocking(move || {
-                use std::io::{Read, Write};
-                let mut bytes = Vec::new();
-                std::fs::File::open(source)
-                    .map_err(invalid)?
-                    .take(256 * 1024 * 1024 + 1)
-                    .read_to_end(&mut bytes)
-                    .map_err(invalid)?;
-                if bytes.is_empty() || bytes.len() > 256 * 1024 * 1024 {
-                    return Err(invalid("bootstrap worker exceeds artifact capacity"));
-                }
-                let directory = tempfile::tempdir().map_err(invalid)?;
-                let path = directory.path().join("monty_worker");
-                let mut file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&path)
-                    .map_err(invalid)?;
-                file.write_all(&bytes).map_err(invalid)?;
-                file.sync_all().map_err(invalid)?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o500))
-                        .map_err(invalid)?;
-                }
-                Ok::<_, RebornBuildError>((directory, path, hex(Sha256::digest(bytes).into())))
-            })
-            .await
-            .map_err(invalid)??;
+        let worker_directory =
+            brassclaw_host_runtime::PackagedExecutableImage::capture(worker, 256 * 1024 * 1024)
+                .await
+                .map_err(invalid)?;
+        let worker_path = worker_directory.path();
+        let worker_checksum = hex(worker_directory.checksum());
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect(inspected.program().clone(), &worker_path)
                 .await

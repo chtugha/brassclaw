@@ -14,7 +14,9 @@ use brassclaw_monty_host::{
     VmBounds,
     heap::HeapSettings,
     process::TaskSettings,
-    service::{AdmissionLimits, HeapCommitOutcome, ServiceClient, ServiceFailure},
+    service::{
+        AdmissionLimits, DurableSettingsCommit, HeapCommitOutcome, ServiceClient, ServiceFailure,
+    },
     transport_actor::{ActorLimits, HostingDeadlines},
 };
 use brassclaw_pg::PgPool;
@@ -997,13 +999,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
             ));
         }
         if let Some(limits) = update.execution_limits {
-            self.service
-                .validate_adapter_reserve(adapter_reserve(limits)?)
-                .map_err(|_| {
-                    MontyVmSettingsError::Invalid(
-                        "adapter reserve and heap exceed native capacity".into(),
-                    )
-                })?;
+            adapter_reserve(limits)?;
             admission_limits(limits)?;
             self.service.validate_actor_limits(actor_limits(limits)?)
                 .map_err(|_| MontyVmSettingsError::Invalid("ordinary actor bytes must exceed one frame; control bytes must reserve a full request and response".into()))?;
@@ -1085,7 +1081,10 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                     || update
                         .memory_policy
                         .is_some_and(|policy| policy != before.memory_policy));
-            let desired = if update.max_memory_bytes.is_some() || manual_selection || startup_edit {
+            let heap_update = if update.max_memory_bytes.is_some()
+                || manual_selection
+                || startup_edit
+            {
                 let bytes = expected
                     .max_memory_bytes
                     .ok_or_else(|| MontyVmSettingsError::Invalid("heap limit missing".into()))?;
@@ -1117,98 +1116,84 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                     })?,
                     max_vm_bytes,
                 };
-                let (persisted, mut result) = watch::channel(None);
-                let committed = expected.clone();
-                let commit = Box::pin(async move {
-                    let write = tokio::time::timeout(
-                        deadlines.source,
-                        store.upsert("default", "default", &update),
+                Some(brassclaw_monty_host::heap::HeapUpdate {
+                    expected_revision: heap_revision,
+                    settings: next,
+                })
+            } else {
+                None
+            };
+            let (persisted, mut result) = watch::channel(None);
+            let limits = expected.execution_limits;
+            let current = service.live_task_settings().current();
+            let settings = task_settings(&expected);
+            let values = execution_bounds(limits)?;
+            let hosting = brassclaw_monty_host::service::ServiceHostingLimits {
+                adapter_reserve_bytes: Some(adapter_reserve(limits)?),
+                admission: admission_limits(limits)?,
+                max_pending_settings: limits.max_pending_settings,
+                max_retained_attempts: limits.max_retained_attempts,
+                actor: Some(actor_limits(limits)?),
+                deadlines: Some(hosting_deadlines(limits)?),
+            };
+            // Write and uncertain-outcome readback retain their accepted
+            // source deadlines. This independent bounded stage must not
+            // borrow a possibly much shorter worker IPC response deadline.
+            let timeout = deadlines
+                .source
+                .checked_mul(2)
+                .and_then(|total| total.checked_add(deadlines.uptake))
+                .filter(|total| Instant::now().checked_add(*total).is_some())
+                .ok_or_else(|| {
+                    MontyVmSettingsError::Invalid(
+                        "durable settings deadline exceeds the host clock".into(),
                     )
-                    .await;
-                    let settled = match write {
-                        Ok(Ok(snapshot)) => Ok(snapshot),
-                        Ok(Err(
-                            error @ (MontyVmSettingsError::RevisionConflict
-                            | MontyVmSettingsError::Invalid(_)),
-                        )) => {
-                            persisted.send_replace(Some(Err(error)));
-                            return HeapCommitOutcome::Rejected;
-                        }
-                        failure => {
-                            let row =
-                                tokio::time::timeout(deadlines.source, store.settled_get()).await;
-                            match row {
-                                Ok(Ok(snapshot))
-                                    if snapshot.revision == committed.revision
-                                        && snapshots_equal(&snapshot, &committed) =>
-                                {
-                                    Ok(snapshot)
-                                }
-                                Ok(Ok(snapshot))
-                                    if snapshot.revision == before.revision
-                                        && snapshots_equal(&snapshot, &before) =>
-                                {
-                                    let error = match failure {
-                                        Ok(Err(error)) => error,
-                                        _ => MontyVmSettingsError::Unavailable(
-                                            "settings write did not commit".into(),
-                                        ),
-                                    };
-                                    persisted.send_replace(Some(Err(error)));
-                                    return HeapCommitOutcome::Rejected;
-                                }
-                                _ => {
-                                    persisted.send_replace(Some(Err(
-                                        MontyVmSettingsError::Unavailable(
-                                            "settings commit outcome requires reconciliation"
-                                                .into(),
-                                        ),
-                                    )));
-                                    return HeapCommitOutcome::Unknown;
-                                }
-                            }
-                        }
-                    };
-                    persisted.send_replace(Some(settled));
-                    HeapCommitOutcome::Committed
-                });
-                let receipt = service
-                    .publish_heap_transaction(heap_revision, next, commit)
-                    .await;
-                let persisted = result.borrow_and_update().clone();
-                if let Err(failure) = receipt {
-                    if failure == ServiceFailure::SettingsConflict
-                        && let Some(Err(error)) = persisted
-                    {
-                        return Err(error);
-                    }
-                    return Err(match failure {
-                        ServiceFailure::UnsafeHeapReduction => MontyVmSettingsError::Invalid(
-                            "heap reduction cannot be applied to current live allocations".into(),
-                        ),
-                        ServiceFailure::InvalidLimits => {
-                            MontyVmSettingsError::Invalid("heap limit is out of range".into())
-                        }
-                        _ => MontyVmSettingsError::Unavailable(
-                            "heap transaction failed; read current settings before retry".into(),
-                        ),
+                })?;
+            let durable = DurableSettingsCommit {
+                heap_update,
+                future: durable_settings_commit(
+                    store,
+                    before,
+                    expected.clone(),
+                    update,
+                    deadlines.source,
+                    persisted,
+                ),
+                timeout,
+            };
+            let receipt = service
+                .publish_control_settings_transaction(
+                    current.revision,
+                    settings,
+                    values,
+                    limits.max_recipe_contexts,
+                    hosting,
+                    durable,
+                )
+                .await;
+            let persisted = result.borrow_and_update().clone();
+            if let Err(failure) = receipt {
+                if failure == ServiceFailure::SettingsConflict {
+                    return Err(match persisted {
+                        Some(Err(error)) => error,
+                        _ => MontyVmSettingsError::RevisionConflict,
                     });
                 }
-                persisted.ok_or_else(|| {
-                    MontyVmSettingsError::Internal("heap commit receipt missing".into())
-                })??
-            } else {
-                tokio::time::timeout(
-                    deadlines.source,
-                    store.upsert("default", "default", &update),
-                )
-                .await
-                .map_err(|_| {
-                    MontyVmSettingsError::Unavailable(
-                        "settings write outcome requires readback".into(),
-                    )
-                })??
-            };
+                return Err(match failure {
+                    ServiceFailure::UnsafeHeapReduction => MontyVmSettingsError::Invalid(
+                        "heap and worker reserve cannot fit current live allocations".into(),
+                    ),
+                    ServiceFailure::InvalidLimits => MontyVmSettingsError::Invalid(
+                        "execution limits cannot be applied to this worker".into(),
+                    ),
+                    _ => MontyVmSettingsError::Unavailable(
+                        "settings transaction failed; read current settings before retry".into(),
+                    ),
+                });
+            }
+            let desired = persisted.ok_or_else(|| {
+                MontyVmSettingsError::Internal("settings commit receipt missing".into())
+            })??;
             memory.configured = desired.max_memory_bytes;
             memory.policy = desired.memory_policy;
             memory.settings_revision = desired.revision;
@@ -1252,6 +1237,69 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         }
         Ok(desired)
     }
+}
+
+/// Resolve the exact durable successor under the caller's retained worker
+/// boundary. Store errors/timeouts require settled readback; a success with a
+/// different full snapshot is uncertain too, never permission to publish it.
+fn durable_settings_commit(
+    store: PgMontyVmSettingsStore,
+    before: MontyVmSettings,
+    committed: MontyVmSettings,
+    update: UpdateMontyVmSettingsRequest,
+    deadline: Duration,
+    persisted: watch::Sender<Option<Result<MontyVmSettings, MontyVmSettingsError>>>,
+) -> futures::future::BoxFuture<'static, HeapCommitOutcome> {
+    Box::pin(async move {
+        let write =
+            tokio::time::timeout(deadline, store.upsert("default", "default", &update)).await;
+        match write {
+            Ok(Ok(snapshot))
+                if snapshot.revision == committed.revision
+                    && snapshots_equal(&snapshot, &committed) =>
+            {
+                persisted.send_replace(Some(Ok(snapshot)));
+                HeapCommitOutcome::Committed
+            }
+            Ok(Err(
+                error @ (MontyVmSettingsError::RevisionConflict | MontyVmSettingsError::Invalid(_)),
+            )) => {
+                persisted.send_replace(Some(Err(error)));
+                HeapCommitOutcome::Rejected
+            }
+            failure => {
+                let row = tokio::time::timeout(deadline, store.settled_get()).await;
+                match row {
+                    Ok(Ok(snapshot))
+                        if snapshot.revision == committed.revision
+                            && snapshots_equal(&snapshot, &committed) =>
+                    {
+                        persisted.send_replace(Some(Ok(snapshot)));
+                        HeapCommitOutcome::Committed
+                    }
+                    Ok(Ok(snapshot))
+                        if snapshot.revision == before.revision
+                            && snapshots_equal(&snapshot, &before) =>
+                    {
+                        let error = match failure {
+                            Ok(Err(error)) => error,
+                            _ => MontyVmSettingsError::Unavailable(
+                                "settings write did not commit".into(),
+                            ),
+                        };
+                        persisted.send_replace(Some(Err(error)));
+                        HeapCommitOutcome::Rejected
+                    }
+                    _ => {
+                        persisted.send_replace(Some(Err(MontyVmSettingsError::Unavailable(
+                            "settings commit outcome requires reconciliation".into(),
+                        ))));
+                        HeapCommitOutcome::Unknown
+                    }
+                }
+            }
+        }
+    })
 }
 
 fn snapshots_equal(left: &MontyVmSettings, right: &MontyVmSettings) -> bool {

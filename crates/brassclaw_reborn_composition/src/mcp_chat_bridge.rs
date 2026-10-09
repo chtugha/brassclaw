@@ -319,7 +319,7 @@ impl McpChatBridge {
         command: &str,
     ) -> Result<(), McpChatError> {
         let client = self.pool.get().await.map_err(|_| McpChatError::Storage)?;
-        let row = client.query_opt("SELECT a.outcome,q.evidence_bytes,c.tool_name FROM brassclaw_mcp_chat_calls c JOIN brassclaw_mcp_exchanges e USING(exchange_id) JOIN brassclaw_mcp_command_qualifications q ON q.checksum=e.qualification_checksum AND q.catalogue_id=e.catalogue_id JOIN brassclaw_monty_task_admissions a ON a.run_id=c.call_id WHERE c.call_id=$1 AND c.owner_scope=$2 AND c.command=$3 AND a.phase='settled'", &[&call_id,&self.owner_scope,&command])
+        let row = client.query_opt("SELECT a.outcome,q.evidence_bytes,c.tool_name,s.recipe_id FROM brassclaw_mcp_chat_calls c JOIN brassclaw_mcp_exchanges e USING(exchange_id) JOIN brassclaw_mcp_command_qualifications q ON q.checksum=e.qualification_checksum AND q.catalogue_id=e.catalogue_id JOIN brassclaw_monty_task_admissions a ON a.run_id=c.call_id JOIN brassclaw_monty_recipe_selections s ON s.run_id=c.call_id AND s.selection_checksum=(q.evidence_bytes::jsonb->'commands'->c.tool_name->>'selection_checksum') AND s.selection_checksum=encode(sha256(convert_to(s.selection_bytes,'UTF8')),'hex') WHERE c.call_id=$1 AND c.owner_scope=$2 AND c.command=$3 AND a.phase='settled'", &[&call_id,&self.owner_scope,&command])
             .await.map_err(|_| McpChatError::Storage)?.ok_or(McpChatError::Unresolved)?;
         let outcome: Value = row.get(0);
         let evidence: Value =
@@ -339,7 +339,9 @@ impl McpChatBridge {
             return Err(McpChatError::Unresolved);
         }
         let recipe = matched[0];
-        if recipe["selection_checksum"] != selected
+        if recipe["recipe_id"] != row.get::<_, Uuid>(3).to_string()
+            || recipe["normal_match"]["matching"]["recipe_uuid"] != recipe["recipe_id"]
+            || recipe["selection_checksum"] != selected
             || recipe["normal_match"]["matching"]["selection_checksum"] != selected
             || recipe["normal_match"]["matching"]["command_checksum"]
                 != hex::encode(Sha256::digest(command.as_bytes()))

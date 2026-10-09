@@ -109,6 +109,7 @@ pub enum RecipeCommand {
         values: VmBounds,
         max_recipe_contexts: Option<u32>,
         adapter_reserve_bytes: Option<usize>,
+        heap_update: Option<crate::heap::HeapUpdate>,
     },
     UpdateSettings {
         expected_revision: u64,
@@ -568,7 +569,13 @@ impl WorkerRecipes {
                 values,
                 max_recipe_contexts,
                 adapter_reserve_bytes: _,
+                heap_update,
             } => {
+                // Only the worker allocator owner can publish this field. It
+                // strips the already-applied heap edit before registry update.
+                if heap_update.is_some() {
+                    return Err(VmError::kind(VmFailure::InvalidBounds));
+                }
                 self.validate_runtime_settings(
                     expected_revision,
                     settings,

@@ -183,7 +183,10 @@ impl SwappableLlmProvider {
     /// swaps or mutable provider defaults must not change an admitted call.
     pub fn pinned_provider(&self) -> (Arc<dyn LlmProvider>, String) {
         let snapshot = read(&self.state);
-        (snapshot.inner.clone(), snapshot.active_model_name.to_string())
+        (
+            snapshot.inner.clone(),
+            snapshot.active_model_name.to_string(),
+        )
     }
 }
 

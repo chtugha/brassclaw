@@ -32,14 +32,14 @@ use crate::{
     },
 };
 
-use crate::heap::{AllocatorStatus, HeapSettings, HeapStatus, WorkerHeap};
+use crate::heap::{AllocatorStatus, HeapSettings, HeapStatus, HeapUpdate, WorkerHeap};
 use crate::process_recipe::WorkerRecipes;
 pub use crate::process_recipe::{
     RecipeBoundary, RecipeCommand, RecipeContextCapacity, RecipeContextId, RecipeEvent,
     ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 9;
+const PROTOCOL: u32 = 11;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
 const MAX_TRANSPORT_DEPTH: usize = 64;
@@ -121,6 +121,19 @@ pub struct RootBoot {
     pub max_recipe_contexts: u32,
 }
 
+/// Complete mechanical settings candidate. It performs no task execution and
+/// carries no Tool grant. Validation and publication use these exact values.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeSettingsCandidate {
+    pub expected_revision: u64,
+    pub settings: TaskSettings,
+    pub values: VmBounds,
+    pub max_recipe_contexts: Option<u32>,
+    pub adapter_reserve_bytes: Option<usize>,
+    pub heap_update: Option<HeapUpdate>,
+}
+
 /// Exact mechanical VM operation. Payloads deliberately have no Debug output.
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -130,6 +143,11 @@ pub enum WorkerCommand {
     },
     /// Actual worker receipt without advancing Python or inventing liveness.
     Inspect,
+    /// Validate the entire proposed edit without advancing Python, applying a
+    /// pending heap target or publishing any settings.
+    ValidateRuntimeSettings {
+        candidate: RuntimeSettingsCandidate,
+    },
     /// Check actual allocator feasibility without advancing Python or changing
     /// any policy revision. This observation alone cannot authorize persistence;
     /// the owner must retain the quiescent boundary through a durable edit.
@@ -295,6 +313,7 @@ impl fmt::Debug for ProcessSnapshot {
 struct Request<C = WorkerCommand> {
     protocol: u32,
     sequence: u64,
+    max_frame_bytes: usize,
     command: C,
 }
 #[derive(Serialize, Deserialize)]
@@ -302,6 +321,7 @@ struct Request<C = WorkerCommand> {
 struct Reply {
     protocol: u32,
     sequence: u64,
+    max_frame_bytes: usize,
     snapshot: ProcessSnapshot,
     failure: Option<VmFailure>,
     diagnostic: Option<String>,
@@ -506,13 +526,29 @@ impl GlobalProcess {
         &mut self,
         command: WorkerCommand,
     ) -> Result<ProcessSnapshot, ProcessError> {
+        self.exchange_with_frame_limit(command, self.limits.max_frame_bytes)
+            .await
+    }
+
+    /// Execute under the frame bound captured at acceptance, independently of
+    /// the receive capacity. A tighter bound never changes instance settings.
+    /// The worker must acknowledge this exact request/response contract.
+    pub async fn exchange_with_frame_limit(
+        &mut self,
+        command: WorkerCommand,
+        max_frame_bytes: usize,
+    ) -> Result<ProcessSnapshot, ProcessError> {
         if self.terminal {
             let mut error = ProcessError::new(ProcessFailure::Terminal);
             error.command = Some(Box::new(command));
             return Err(error);
         }
-        if let Err(kind) = validate_command_data(&command, self.values, self.limits.max_frame_bytes)
-        {
+        if !valid_frame_limit(max_frame_bytes) || max_frame_bytes > self.limits.max_frame_bytes {
+            let mut error = ProcessError::new(ProcessFailure::InvalidLimits);
+            error.command = Some(Box::new(command));
+            return Err(error);
+        }
+        if let Err(kind) = validate_command_data(&command, self.values, max_frame_bytes) {
             let mut error = ProcessError::new(kind);
             error.command = Some(Box::new(command));
             return Err(error);
@@ -526,9 +562,10 @@ impl GlobalProcess {
         let request = Request {
             protocol: PROTOCOL,
             sequence,
+            max_frame_bytes,
             command,
         };
-        let frame = match encode(&request, self.limits.max_frame_bytes) {
+        let frame = match encode(&request, max_frame_bytes) {
             Ok(frame) => frame,
             Err(_) => {
                 let mut error = ProcessError::new(ProcessFailure::FrameLimit);
@@ -544,7 +581,7 @@ impl GlobalProcess {
                 return Err(error);
             }
         };
-        let limit = self.limits.max_frame_bytes;
+        let limit = max_frame_bytes;
         // Boot compilation/native execution cannot defeat its own deadline by
         // blocking the in-worker startup tracker. Parent containment uses the
         // smaller startup/IPC bound; ordinary exchanges retain the IPC bound.
@@ -590,7 +627,13 @@ impl GlobalProcess {
             serde_json::from_slice::<Reply>(&bytes).map_err(|_| ProcessFailure::Protocol)
         };
         let reply = match tokio::time::timeout(timeout, operation).await {
-            Ok(Ok(reply)) if reply.protocol == PROTOCOL && reply.sequence == sequence => reply,
+            Ok(Ok(reply))
+                if reply.protocol == PROTOCOL
+                    && reply.sequence == sequence
+                    && reply.max_frame_bytes == max_frame_bytes =>
+            {
+                reply
+            }
             other => {
                 let kind = match other {
                     Err(_) => ProcessFailure::Deadline,
@@ -792,6 +835,7 @@ pub(crate) fn retain_command(
         &Request {
             protocol: PROTOCOL,
             sequence: u64::MAX,
+            max_frame_bytes: limit,
             command,
         },
         limit,
@@ -940,6 +984,13 @@ pub(crate) fn read_frame<T: DeserializeOwned>(
     input: &mut impl Read,
     limit: usize,
 ) -> io::Result<T> {
+    read_frame_with_length(input, limit).map(|(value, _)| value)
+}
+
+fn read_frame_with_length<T: DeserializeOwned>(
+    input: &mut impl Read,
+    limit: usize,
+) -> io::Result<(T, usize)> {
     if !valid_frame_limit(limit) {
         return Err(io::Error::other("invalid frame limit"));
     }
@@ -951,7 +1002,9 @@ pub(crate) fn read_frame<T: DeserializeOwned>(
     }
     let mut bytes = vec![0; length];
     input.read_exact(&mut bytes)?;
-    serde_json::from_slice(&bytes).map_err(io::Error::other)
+    serde_json::from_slice(&bytes)
+        .map(|value| (value, length))
+        .map_err(io::Error::other)
 }
 pub(crate) fn write_frame(
     output: &mut impl Write,
@@ -1001,16 +1054,26 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut recipes: Option<WorkerRecipes> = None;
     let mut sequence = 0u64;
     loop {
-        let request: Request = read_frame(&mut input, max_frame_bytes)
-            .map_err(|_| io::Error::other("invalid worker request"))?;
+        let (request, wire_bytes): (Request, _) =
+            read_frame_with_length(&mut input, max_frame_bytes)
+                .map_err(|_| io::Error::other("invalid worker request"))?;
+        if !valid_frame_limit(request.max_frame_bytes)
+            || request.max_frame_bytes > max_frame_bytes
+            || wire_bytes > request.max_frame_bytes
+        {
+            return Err("invalid worker request".into());
+        }
         if request.protocol != PROTOCOL || sequence.checked_add(1) != Some(request.sequence) {
             return Err("invalid worker sequence".into());
         }
         sequence = request.sequence;
         let mut admitted_task = None;
         let mut recipe = None;
-        let memory_validation =
-            matches!(&request.command, WorkerCommand::ValidateMemoryLayout { .. });
+        let memory_validation = matches!(
+            &request.command,
+            WorkerCommand::ValidateMemoryLayout { .. }
+                | WorkerCommand::ValidateRuntimeSettings { .. }
+        );
         let recipe_command = matches!(&request.command, WorkerCommand::Recipe { .. });
         let recipe_context = match &request.command {
             WorkerCommand::Recipe {
@@ -1064,6 +1127,26 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 command => match (vm.as_mut(), recipes.as_mut()) {
                     (Some(root), Some(registry)) => match command {
                         WorkerCommand::Inspect => Ok(None),
+                        WorkerCommand::ValidateRuntimeSettings { candidate } => {
+                            if !runtime_bounds_supported(candidate.values, max_frame_bytes) {
+                                Err(crate::VmError::kind(VmFailure::InvalidBounds))
+                            } else {
+                                registry
+                                    .validate_runtime_settings(
+                                        candidate.expected_revision,
+                                        candidate.settings,
+                                        candidate.values,
+                                        candidate.max_recipe_contexts,
+                                    )
+                                    .and_then(|()| {
+                                        heap.validate_runtime_update(
+                                            candidate.heap_update,
+                                            candidate.adapter_reserve_bytes,
+                                        )
+                                    })
+                                    .map(|()| None)
+                            }
+                        }
                         WorkerCommand::ValidateMemoryLayout {
                             expected_settings_revision,
                             expected_heap_revision,
@@ -1110,7 +1193,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                     settings,
                                     values,
                                     max_recipe_contexts,
-                                    adapter_reserve_bytes: Some(reserve),
+                                    adapter_reserve_bytes,
+                                    heap_update,
                                 },
                         } => {
                             if let Err(error) = registry.validate_runtime_settings(
@@ -1120,7 +1204,9 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                 max_recipe_contexts,
                             ) {
                                 Err(error)
-                            } else if let Err(error) = heap.update_adapter_reserve(reserve) {
+                            } else if let Err(error) =
+                                heap.publish_runtime_update(heap_update, adapter_reserve_bytes)
+                            {
                                 Err(error)
                             } else {
                                 let event = registry
@@ -1130,7 +1216,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                             settings,
                                             values,
                                             max_recipe_contexts,
-                                            adapter_reserve_bytes: Some(reserve),
+                                            adapter_reserve_bytes,
+                                            heap_update: None,
                                         },
                                         root,
                                     )
@@ -1256,11 +1343,12 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             &Reply {
                 protocol: PROTOCOL,
                 sequence,
+                max_frame_bytes: request.max_frame_bytes,
                 snapshot,
                 failure,
                 diagnostic,
             },
-            max_frame_bytes,
+            request.max_frame_bytes,
         )
         .map_err(|_| io::Error::other("worker reply failed"))?;
         if stopped {

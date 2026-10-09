@@ -397,6 +397,11 @@ pub(crate) fn build_runtime_input_with_options(
         .with_plan_library_enabled(behavior_flags.plan_library_enabled)
         .with_skill_promotion_threshold(behavior_flags.skill_promotion_threshold);
 
+    #[cfg(feature = "skills-db")]
+    {
+        runtime_input = runtime_input.with_inbound_mcp_required(true);
+    }
+
     #[cfg(feature = "root-llm-provider")]
     {
         match brassclaw_reborn_composition::resolve_reborn_runtime_llm(

@@ -456,6 +456,22 @@ async fn native_http_review_inspection_preserves_quarantine_and_exact_observatio
         send(&app, "POST", &write_uri, Some(&input), false).await.0,
         StatusCode::UNAUTHORIZED
     );
+    client.batch_execute("CREATE FUNCTION fail_observation_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'private note must not leak' USING ERRCODE='23514'; END; $$; CREATE CONSTRAINT TRIGGER observation_commit_fault AFTER INSERT ON brassclaw_monty_review_dispositions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_observation_commit()").await.unwrap();
+    let (status, failure) = send(&app, "POST", &write_uri, Some(&input), true).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!failure.to_string().contains("private note must not leak"));
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT count(*) FROM brassclaw_monty_review_dispositions",
+                &[]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    client.batch_execute("DROP TRIGGER observation_commit_fault ON brassclaw_monty_review_dispositions; DROP FUNCTION fail_observation_commit()").await.unwrap();
     let (status, receipt) = send(&app, "POST", &write_uri, Some(&input), true).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(receipt["retention_released"], false);

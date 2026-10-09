@@ -28,6 +28,7 @@ pub mod host;
 pub mod nearai_chat;
 pub mod openai_codex_provider;
 pub(crate) mod openai_codex_session;
+mod optional_auth_http;
 mod provider;
 mod reasoning;
 pub mod recording;
@@ -356,21 +357,24 @@ fn create_openai_compat_from_registry(
         extra_headers.insert(name, val);
     }
 
+    let auth_override = config
+        .api_key
+        .is_none()
+        .then(|| extra_headers.get(reqwest::header::AUTHORIZATION).cloned());
     let api_key = config
         .api_key
         .as_ref()
         .map(|k| k.expose_secret().to_string())
-        .unwrap_or_else(|| {
-            tracing::debug!(
-                provider = %config.provider_id,
-                "No API key configured for {}. Requests will likely fail with 401. \
-                 Check your .env or secrets store.",
-                config.provider_id,
-            );
-            "no-key".to_string()
-        });
+        .unwrap_or_default();
 
-    let mut builder = openai::Client::builder().api_key(&api_key);
+    // The SDK requires its bearer-key builder type even for no-auth compatible
+    // servers. Remove that generated header before transport when no key exists.
+    let mut builder = openai::Client::<reqwest::Client>::builder()
+        .api_key(&api_key)
+        .http_client(optional_auth_http::OptionalAuthHttp {
+            client: reqwest::Client::new(),
+            auth_override,
+        });
     if !config.base_url.is_empty() {
         let base_url = normalize_openai_base_url(&config.base_url);
         builder = builder.base_url(&base_url);
@@ -379,10 +383,11 @@ fn create_openai_compat_from_registry(
         builder = builder.http_headers(extra_headers);
     }
 
-    let client: openai::Client = builder.build().map_err(|e| LlmError::RequestFailed {
-        provider: config.provider_id.clone(),
-        reason: format!("Failed to create OpenAI-compatible client: {e}"),
-    })?;
+    let client: openai::Client<optional_auth_http::OptionalAuthHttp> =
+        builder.build().map_err(|e| LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: format!("Failed to create OpenAI-compatible client: {e}"),
+        })?;
 
     // Use CompletionsClient (Chat Completions API) instead of the default
     // Client (Responses API). The Responses API path in rig-core handles

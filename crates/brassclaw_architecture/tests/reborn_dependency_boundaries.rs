@@ -3013,6 +3013,10 @@ fn is_native_executable_artifact_read(
             "File::open(\"/proc/self/exe\").map_err(|_| NativeImageError::Identity)"
                 | "File::open(path).map_err(|_| NativeImageError::Identity)"
         ),
+        Some("fn stage_packaged(") => {
+            line.trim()
+                == "let mut original = File::open(path).map_err(|_| NativeImageError::Storage)?;"
+        }
         Some("fn stage(max_bytes: u64) -> Result<NativeExecutableImage, NativeImageError> {") => {
             line.trim()
                 == "let artifact = File::open(path).map_err(|_| NativeImageError::Storage)?;"
@@ -3040,6 +3044,9 @@ fn native_executable_artifact_boundary_keeps_unrelated_reads_forbidden() {
             "fn stage(max_bytes: u64) -> Result<NativeExecutableImage, NativeImageError> {\n",
             "let artifact = File::open(path).map_err(|_| NativeImageError::Storage)?;\n}\n",
             "fn other() {\nFile::open(path).map_err(|_| NativeImageError::Identity)\n}\n",
+            "fn stage_packaged(\n",
+            "let mut original = File::open(path).map_err(|_| NativeImageError::Storage)?;\n",
+            "File::open(\"config.toml\").map_err(|_| NativeImageError::Storage)?;\n}\n",
         ),
     )
     .unwrap();
@@ -3057,10 +3064,11 @@ fn native_executable_artifact_boundary_keeps_unrelated_reads_forbidden() {
         &mut violations,
     );
     std::fs::remove_dir_all(root).unwrap();
-    assert_eq!(violations.len(), 3, "{violations:?}");
+    assert_eq!(violations.len(), 4, "{violations:?}");
     assert!(violations.iter().any(|v| v.contains(":4 contains")));
     assert!(violations.iter().any(|v| v.contains(":5 contains")));
     assert!(violations.iter().any(|v| v.contains(":11 contains")));
+    assert!(violations.iter().any(|v| v.contains(":15 contains")));
 }
 
 /// Return the production-only slice of `contents`, with any `#[cfg(test)]`

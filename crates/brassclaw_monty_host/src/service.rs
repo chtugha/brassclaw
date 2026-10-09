@@ -144,6 +144,8 @@ struct TaskSettingsPublication {
     actor_limits: Option<ActorLimits>,
     hosting_deadlines: Option<HostingDeadlines>,
     adapter_reserve_bytes: Option<usize>,
+    heap_update: Option<crate::heap::HeapUpdate>,
+    durable: Option<DurableSettingsCommit>,
     result: watch::Sender<Option<Result<Arc<SettingsReceipt>, ServiceFailure>>>,
 }
 #[derive(Default)]
@@ -161,7 +163,7 @@ struct HeapPublication {
     automatic: bool,
     result: watch::Sender<Option<Result<HeapObservation, ServiceFailure>>>,
 }
-pub use crate::transport_actor::HeapCommitOutcome;
+pub use crate::transport_actor::{DurableSettingsCommit, HeapCommitOutcome};
 struct HeapTransaction {
     expected: u64,
     settings: HeapSettings,
@@ -175,7 +177,7 @@ struct MemoryAdmissionPublication {
     result: watch::Sender<Option<Result<MemoryAdmissionPolicy, ServiceFailure>>>,
 }
 enum SettingsPublication {
-    Task(TaskSettingsPublication),
+    Task(Box<TaskSettingsPublication>),
     Heap(HeapPublication),
     HeapTransaction(HeapTransaction),
     MemoryAdmission(MemoryAdmissionPublication),
@@ -268,6 +270,7 @@ impl From<&ProcessSnapshot> for HeapObservation {
     }
 }
 pub struct SettingsReceipt {
+    pub heap: HeapObservation,
     pub allocator: crate::heap::AllocatorStatus,
     pub effective_settings: TaskSettings,
     pub recipe_context_capacity: crate::process::RecipeContextCapacity,
@@ -377,7 +380,6 @@ pub struct ServiceClient {
     recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
     root_source_bytes: usize,
     root: RootExecutionIdentity,
-    frame: usize,
     worker_process_id: Option<u32>,
     settings: mpsc::UnboundedSender<CreditedPublication>,
     settings_credits: Arc<AdmissionCapacity>,
@@ -417,6 +419,7 @@ impl ServiceClient {
             None,
             None,
             HostingPolicyPatch::default(),
+            None,
         )
         .await
     }
@@ -452,7 +455,8 @@ impl ServiceClient {
     ) -> Result<(), ServiceFailure> {
         if heap == 0
             || self
-                .frame
+                .transport
+                .frame_limit()
                 .checked_mul(2)
                 .and_then(|frames| frames.checked_add(reserve))
                 .and_then(|non_vm| heap.checked_add(non_vm))
@@ -476,7 +480,7 @@ impl ServiceClient {
         values: crate::VmBounds,
         response_timeout: Duration,
     ) -> Result<(), ServiceFailure> {
-        if !crate::process::runtime_bounds_supported(values, self.frame)
+        if !crate::process::runtime_bounds_supported(values, self.transport.frame_limit())
             || response_timeout.is_zero()
             || std::time::Instant::now()
                 .checked_add(response_timeout)
@@ -505,6 +509,7 @@ impl ServiceClient {
             Some(values),
             None,
             HostingPolicyPatch::default(),
+            None,
         )
         .await
     }
@@ -528,6 +533,7 @@ impl ServiceClient {
             Some(values),
             Some(max_recipe_contexts),
             HostingPolicyPatch::default(),
+            None,
         )
         .await
     }
@@ -555,6 +561,7 @@ impl ServiceClient {
                 admission: Some(admission_limits),
                 ..HostingPolicyPatch::default()
             },
+            None,
         )
         .await
     }
@@ -568,7 +575,64 @@ impl ServiceClient {
         max_recipe_contexts: u32,
         hosting: ServiceHostingLimits,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
-        if let Some(reserve) = hosting.adapter_reserve_bytes {
+        self.publish_controls(
+            expected,
+            settings,
+            values,
+            max_recipe_contexts,
+            hosting,
+            None,
+        )
+        .await
+    }
+
+    /// Actual allocator feasibility precedes the owned durable operation. The
+    /// sole transport owner excludes child RPCs until the exact worker/Rust ACK.
+    /// Dropping an HTTP waiter cannot cancel the accepted commit or publication.
+    pub async fn publish_control_settings_transaction(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: crate::VmBounds,
+        max_recipe_contexts: u32,
+        hosting: ServiceHostingLimits,
+        durable: DurableSettingsCommit,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        if durable.timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(durable.timeout)
+                .is_none()
+        {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        self.publish_controls(
+            expected,
+            settings,
+            values,
+            max_recipe_contexts,
+            hosting,
+            Some(durable),
+        )
+        .await
+    }
+
+    async fn publish_controls(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: crate::VmBounds,
+        max_recipe_contexts: u32,
+        hosting: ServiceHostingLimits,
+        durable: Option<DurableSettingsCommit>,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        if let Some(update) = durable.as_ref().and_then(|durable| durable.heap_update) {
+            self.validate_memory_layout(
+                update.settings.max_vm_bytes,
+                hosting
+                    .adapter_reserve_bytes
+                    .unwrap_or(self.allocator_status().adapter_reserve_bytes),
+            )?;
+        } else if let Some(reserve) = hosting.adapter_reserve_bytes {
             self.validate_adapter_reserve(reserve)?;
         }
         if hosting
@@ -607,6 +671,7 @@ impl ServiceClient {
                 deadlines: hosting.deadlines,
                 adapter_reserve_bytes: hosting.adapter_reserve_bytes,
             },
+            durable,
         )
         .await
     }
@@ -679,24 +744,29 @@ impl ServiceClient {
         values: Option<crate::VmBounds>,
         max_recipe_contexts: Option<u32>,
         hosting: HostingPolicyPatch,
+        durable: Option<DurableSettingsCommit>,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
         if self.closed.load(Ordering::Acquire) {
             return Err(ServiceFailure::Closed);
         }
         let (result, mut receipt) = watch::channel(None);
-        self.enqueue_settings(SettingsPublication::Task(TaskSettingsPublication {
-            expected,
-            settings,
-            values,
-            max_recipe_contexts,
-            admission_limits: hosting.admission,
-            max_pending_settings: hosting.pending_settings,
-            max_retained_attempts: hosting.retained_attempts,
-            actor_limits: hosting.actor,
-            hosting_deadlines: hosting.deadlines,
-            adapter_reserve_bytes: hosting.adapter_reserve_bytes,
-            result,
-        }))?;
+        self.enqueue_settings(SettingsPublication::Task(Box::new(
+            TaskSettingsPublication {
+                expected,
+                settings,
+                values,
+                max_recipe_contexts,
+                admission_limits: hosting.admission,
+                max_pending_settings: hosting.pending_settings,
+                max_retained_attempts: hosting.retained_attempts,
+                actor_limits: hosting.actor,
+                hosting_deadlines: hosting.deadlines,
+                adapter_reserve_bytes: hosting.adapter_reserve_bytes,
+                heap_update: durable.as_ref().and_then(|durable| durable.heap_update),
+                durable,
+                result,
+            },
+        )))?;
         loop {
             if let Some(result) = receipt.borrow_and_update().clone() {
                 return result;
@@ -879,6 +949,7 @@ impl ServiceClient {
             return Err(ServiceFailure::InvalidInput);
         }
         let observed_values = self.vm_bounds();
+        let observed_frame = self.transport.frame_limit();
         if input.history.len() > observed_values.max_value_nodes
             || [
                 &input.conversation_id,
@@ -889,10 +960,9 @@ impl ServiceClient {
             ]
             .iter()
             .any(|value| value.len() > observed_values.max_value_bytes)
-            || input
-                .history
-                .iter()
-                .any(|value| !crate::process::transport_value(value, observed_values, self.frame))
+            || input.history.iter().any(|value| {
+                !crate::process::transport_value(value, observed_values, observed_frame)
+            })
         {
             return Err(ServiceFailure::InvalidInput);
         }
@@ -909,7 +979,7 @@ impl ServiceClient {
             },
             task: input,
         };
-        let bytes = crate::process::retain_command(&probe, values, self.frame)
+        let bytes = crate::process::retain_command(&probe, values, observed_frame)
             .map_err(|_| ServiceFailure::InvalidInput)?
             .len();
         let WorkerCommand::Admit { task, .. } = probe else {
@@ -1132,7 +1202,6 @@ impl ServiceOwner {
             recipe_contexts: owner.client().live_recipe_contexts(),
             root_source_bytes,
             root,
-            frame: process.max_frame_bytes,
             worker_process_id,
             settings,
             settings_credits: settings_credits.clone(),
@@ -1249,13 +1318,17 @@ async fn update_runtime(
     command: WorkerCommand,
     previous: &ProcessSnapshot,
     commit: RuntimeCommit,
+    durable: Option<DurableSettingsCommit>,
 ) -> Result<(ProcessSnapshot, Option<ServiceFailure>), ServiceFailure> {
-    let ticket = client
-        .try_submit_runtime_publication(command, commit)
-        .map_err(|error| {
-            evidence.rejected.push(*error.command);
-            ServiceFailure::Transport
-        })?;
+    let transactional = durable.is_some();
+    let ticket = match durable {
+        Some(durable) => client.try_submit_runtime_transaction(command, commit, durable),
+        None => client.try_submit_runtime_publication(command, commit),
+    }
+    .map_err(|error| {
+        evidence.rejected.push(*error.command);
+        ServiceFailure::Transport
+    })?;
     let receipt = ticket.wait().await.map_err(|_| ServiceFailure::Transport)?;
     let denial = match &receipt.outcome {
         Err(error) => match error.kind {
@@ -1279,7 +1352,8 @@ async fn update_runtime(
     if denial.is_some() && receipt.outcome.as_ref().err().and_then(|error| error.snapshot.as_deref())
         .is_none_or(|next| next.boundary.is_some() || next.admitted_task.is_some()
             || !next.withheld_answers.is_empty()
-            || !matches!(&next.recipe, Some(RecipeEvent::Failed { context: None, stdout }) if stdout.is_empty())
+            || !(matches!(&next.recipe, Some(RecipeEvent::Failed { context: None, stdout }) if stdout.is_empty())
+                || (transactional && next.recipe.is_none() && next.stdout.is_empty()))
             // Child opens/closes can precede this control command. Their live
             // counts are not a policy revision and must not fabricate a denial
             // mismatch; the configured capacity must remain unchanged.
@@ -1307,12 +1381,14 @@ fn runtime_commit(
     let values = publication.values;
     let contexts = publication.max_recipe_contexts;
     let reserve = publication.adapter_reserve_bytes;
+    let heap_update = publication.heap_update;
     let admission_limits = publication.admission_limits;
     let pending = publication.max_pending_settings;
     let retained = publication.max_retained_attempts;
     let actor = publication.actor_limits;
     let deadlines = publication.hosting_deadlines;
     let live = shutdown.settings.live.clone();
+    let heap = shutdown.settings.heap.clone();
     let admissions = shutdown.admission_credits.clone();
     let pending_credits = shutdown.settings.credits.clone();
     let retained_credits = shutdown.retained_credits.clone();
@@ -1329,6 +1405,11 @@ fn runtime_commit(
                     .is_none_or(|capacity| capacity.limit != limit)
             })
             || reserve.is_some_and(|reserve| receipt.allocator.adapter_reserve_bytes != reserve)
+            || heap_update.is_some_and(|update| {
+                receipt.heap.desired != Some(update.settings)
+                    || receipt.heap.effective != Some(update.settings)
+                    || receipt.heap.pending_reduction
+            })
             || receipt.boundary.is_some()
             || receipt.admitted_task.is_some()
             || !receipt.withheld_answers.is_empty()
@@ -1363,6 +1444,7 @@ fn runtime_commit(
             deadlines,
             receipt.vm_bounds.ok_or(ActorFailure::InvalidLimits)?,
         )?;
+        heap.send_replace(HeapObservation::from(receipt));
         live.publish(expected, settings.into())
             .map_err(|_| ActorFailure::AccountingUnavailable)
     })
@@ -1522,7 +1604,7 @@ async fn run(
                     continue;
                 }
                 match publication {
-                    SettingsPublication::Task(publication) => {
+                    SettingsPublication::Task(mut publication) => {
                         if publication.expected != shutdown.settings.live.current().revision
                             || publication.settings.revision <= publication.expected {
                             publication.result.send_replace(Some(Err(ServiceFailure::SettingsConflict)));
@@ -1534,18 +1616,20 @@ async fn run(
                             // Do not mutate the worker or contain a healthy service.
                             publication.result.send_replace(Some(Err(ServiceFailure::Backpressure)));
                         } else {
+                            let durable = publication.durable.take();
                             let update = update_runtime(&transport, &mut exchanges, WorkerCommand::Recipe {
                                 command: match publication.values {
                                     Some(values) => RecipeCommand::UpdateRuntimeSettings {
                                         expected_revision: publication.expected, settings: publication.settings, values,
                                         max_recipe_contexts: publication.max_recipe_contexts,
                                         adapter_reserve_bytes: publication.adapter_reserve_bytes,
+                                        heap_update: publication.heap_update,
                                     },
                                     None => RecipeCommand::UpdateSettings {
                                         expected_revision: publication.expected, settings: publication.settings,
                                     },
                                 },
-                            }, &snapshot, runtime_commit(&shutdown, &transport, &publication)).await;
+                            }, &snapshot, runtime_commit(&shutdown, &transport, &publication), durable).await;
                             let (mut receipt, denial) = match update {
                                 Ok(receipt) => receipt,
                                 Err(error) => {
@@ -1569,6 +1653,7 @@ async fn run(
                             // before the actor released this successful ACK or
                             // allowed any subsequent child RPC to execute.
                             publication.result.send_replace(Some(Ok(Arc::new(SettingsReceipt {
+                                heap: HeapObservation::from(&snapshot),
                                 allocator: snapshot.allocator,
                                 effective_settings: publication.settings,
                                 recipe_context_capacity: snapshot.recipe_context_capacity.ok_or(ServiceFailure::Protocol)?,

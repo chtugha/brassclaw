@@ -21,6 +21,214 @@ mod support;
 use support::{SOURCE, boot, limits, task, worker};
 
 #[tokio::test]
+async fn retained_exchange_frame_validates_before_transport_without_changing_capacity() {
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    let observed = process
+        .exchange_with_frame_limit(WorkerCommand::Inspect, 8192)
+        .await
+        .unwrap();
+    assert_eq!(observed.root, ready.root);
+    assert_eq!(observed.allocator, ready.allocator);
+    assert_eq!(observed.heap, ready.heap);
+    for (frame, kind) in [
+        (0, ProcessFailure::InvalidLimits),
+        (limits().max_frame_bytes + 1, ProcessFailure::InvalidLimits),
+        (1, ProcessFailure::FrameLimit),
+    ] {
+        let error = process
+            .exchange_with_frame_limit(WorkerCommand::Inspect, frame)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, kind);
+        assert!(matches!(
+            error.command.as_deref(),
+            Some(WorkerCommand::Inspect)
+        ));
+        assert!(error.exit_status.is_none());
+        assert!(error.snapshot.is_none());
+        assert_eq!(process.process_id(), pid);
+        let observed = process.exchange(WorkerCommand::Inspect).await.unwrap();
+        assert_eq!(observed.root, ready.root);
+        assert_eq!(observed.allocator, ready.allocator);
+        assert_eq!(observed.heap, ready.heap);
+    }
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
+async fn worker_honors_retained_response_frame_and_contains_unacknowledged_admission() {
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let mut input = task();
+    input["user_input"] = json!(format!("private-frame-contract-{}", "x".repeat(8192)));
+    let command = WorkerCommand::Admit {
+        key: ready.work_waits[0].1,
+        task: input,
+    };
+    // The actual request fits. Monty's subsequent intent boundary includes the
+    // input plus its real task/root receipt, exceeding this retained reply bound
+    // while still fitting the configured instance receive capacity.
+    let accepted = serde_json::to_vec(&command).unwrap().len() + 256;
+    assert!(accepted < limits().max_frame_bytes);
+    let error = process
+        .exchange_with_frame_limit(command, accepted)
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ProcessFailure::Transport);
+    assert!(matches!(
+        error.command.as_deref(),
+        Some(WorkerCommand::Admit { .. })
+    ));
+    assert!(error.exit_status.is_some_and(|status| !status.success()));
+    assert!(error.snapshot.is_none());
+    // Fatal allocator/transport diagnostics remain inherited stderr, not an
+    // invented framed acknowledgment or source-bearing error payload.
+    assert!(error.diagnostic.is_none());
+    assert_eq!(
+        process
+            .exchange(WorkerCommand::Inspect)
+            .await
+            .unwrap_err()
+            .kind,
+        ProcessFailure::Terminal
+    );
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
+async fn complete_settings_probe_preserves_pending_heap_and_publishes_one_manual_successor() {
+    use brassclaw_monty_host::{
+        heap::{HeapSettings, HeapUpdate},
+        process::{RecipeCommand, RecipeEvent, RuntimeSettingsCandidate},
+    };
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    let pending = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 1,
+            settings: HeapSettings {
+                revision: 2,
+                max_vm_bytes: 1,
+            },
+            automatic: true,
+        })
+        .await
+        .unwrap();
+    assert!(pending.heap.pending_reduction);
+    let candidate = RuntimeSettingsCandidate {
+        expected_revision: 1,
+        settings: TaskSettings {
+            revision: 2,
+            max_compute_time: Duration::from_secs(701),
+            token_budgets_enabled: false,
+        },
+        values: ready.vm_bounds.unwrap(),
+        max_recipe_contexts: Some(9),
+        adapter_reserve_bytes: Some(0),
+        heap_update: Some(HeapUpdate {
+            expected_revision: 2,
+            settings: HeapSettings {
+                revision: 3,
+                max_vm_bytes: 32 * 1024 * 1024,
+            },
+        }),
+    };
+    let probed = process
+        .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+        .await
+        .unwrap();
+    assert_eq!(probed.heap, pending.heap);
+    assert_eq!(probed.runtime_settings(), ready.runtime_settings());
+    assert_eq!(probed.allocator, ready.allocator);
+    assert_eq!(probed.root, ready.root);
+    assert_eq!(probed.work_waits, ready.work_waits);
+    assert!(probed.recipe.is_none() && probed.boundary.is_none() && probed.stdout.is_empty());
+    let mut invalid = Vec::new();
+    let mut next = candidate;
+    next.expected_revision = 9;
+    invalid.push((next, VmFailure::SettingsRevisionConflict));
+    let mut next = candidate;
+    next.heap_update.as_mut().unwrap().expected_revision = 1;
+    invalid.push((next, VmFailure::SettingsRevisionConflict));
+    let mut next = candidate;
+    next.heap_update.as_mut().unwrap().settings.revision = 2;
+    invalid.push((next, VmFailure::SettingsRevisionConflict));
+    let mut next = candidate;
+    next.heap_update.as_mut().unwrap().settings.max_vm_bytes = 0;
+    invalid.push((next, VmFailure::InvalidBounds));
+    let mut next = candidate;
+    next.heap_update.as_mut().unwrap().settings.max_vm_bytes = 1;
+    invalid.push((next, VmFailure::UnsafeHeapReduction));
+    let mut next = candidate;
+    next.adapter_reserve_bytes = Some(usize::MAX);
+    invalid.push((next, VmFailure::InvalidBounds));
+    let mut next = candidate;
+    next.settings.max_compute_time = Duration::ZERO;
+    invalid.push((next, VmFailure::InvalidBounds));
+    let mut next = candidate;
+    next.values.max_feeds = 0;
+    invalid.push((next, VmFailure::InvalidBounds));
+    let mut next = candidate;
+    next.max_recipe_contexts = Some(0);
+    invalid.push((next, VmFailure::InvalidBounds));
+    for (candidate, failure) in invalid {
+        let error = process
+            .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ProcessFailure::Vm(failure));
+        let snapshot = error.snapshot.unwrap();
+        assert_eq!(snapshot.heap, pending.heap);
+        assert_eq!(snapshot.runtime_settings(), ready.runtime_settings());
+        assert_eq!(snapshot.allocator, ready.allocator);
+        assert_eq!(snapshot.root, ready.root);
+        assert_eq!(snapshot.work_waits, ready.work_waits);
+        assert!(
+            snapshot.recipe.is_none() && snapshot.boundary.is_none() && snapshot.stdout.is_empty()
+        );
+    }
+    let published = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: candidate.expected_revision,
+                settings: candidate.settings,
+                values: candidate.values,
+                max_recipe_contexts: candidate.max_recipe_contexts,
+                adapter_reserve_bytes: candidate.adapter_reserve_bytes,
+                heap_update: candidate.heap_update,
+            },
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        published.recipe,
+        Some(RecipeEvent::SettingsUpdated)
+    ));
+    let next_heap = candidate.heap_update.unwrap().settings;
+    assert_eq!(published.heap.desired, Some(next_heap));
+    assert_eq!(published.heap.effective, Some(next_heap));
+    assert!(!published.heap.pending_reduction);
+    assert_eq!(published.effective_task_settings, Some(candidate.settings));
+    assert_eq!(published.recipe_context_capacity.unwrap().limit, 9);
+    assert_eq!(published.allocator.adapter_reserve_bytes, 0);
+    assert_eq!(published.root, ready.root);
+    assert_eq!(published.work_waits, ready.work_waits);
+    assert_eq!(process.process_id(), pid);
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
 async fn proposed_memory_layout_is_checked_without_publishing_or_advancing_python() {
     use brassclaw_monty_host::heap::HeapSettings;
     let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
@@ -523,6 +731,42 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
     }
 }
 
+#[tokio::test]
+async fn real_worker_rejects_invalid_exchange_frames_before_boot() {
+    for accepted in [0, 1, limits().max_frame_bytes + 1] {
+        let request = json!({"protocol":11,"sequence":1,"max_frame_bytes":accepted,
+            "command":WorkerCommand::Boot { boot:boot(SOURCE) }});
+        let body = serde_json::to_vec(&request).unwrap();
+        assert!(body.len() < limits().max_frame_bytes);
+        let mut child = tokio::process::Command::new(worker())
+            .arg(limits().hard_memory_bytes.to_string())
+            .arg(limits().max_frame_bytes.to_string())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        stdin
+            .write_all(&u32::try_from(body.len()).unwrap().to_be_bytes())
+            .await
+            .unwrap();
+        stdin.write_all(&body).await.unwrap();
+        drop(stdin);
+        let output = tokio::time::timeout(Duration::from_secs(5), child.wait_with_output())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let diagnostic = String::from_utf8(output.stderr).unwrap();
+        assert!(diagnostic.contains("invalid worker request"));
+        assert!(!diagnostic.contains(SOURCE));
+        assert!(!diagnostic.contains("await host"));
+    }
+}
+
 async fn recipe_command(
     process: &mut GlobalProcess,
     command: brassclaw_monty_host::process::RecipeCommand,
@@ -849,6 +1093,7 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
                 values: ready.vm_bounds.unwrap(),
                 max_recipe_contexts: None,
                 adapter_reserve_bytes: Some(8 * 1024 * 1024),
+                heap_update: None,
             },
         })
         .await
@@ -875,6 +1120,7 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
                     values: ready.vm_bounds.unwrap(),
                     max_recipe_contexts: None,
                     adapter_reserve_bytes: Some(reserve),
+                    heap_update: None,
                 },
             })
             .await
