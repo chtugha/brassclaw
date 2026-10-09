@@ -110,6 +110,8 @@ export function MontyVmTab({ searchQuery = "" }) {
     setSaveError(null);
     setSavedOk(false);
     try {
+      const duration = Number(settings.max_duration_secs);
+      if (!Number.isSafeInteger(duration) || duration < 1 || duration > 2147483647) throw new Error(t("montyVm.durationInvalid"));
       const executionLimits = {};
       for (const key of EXECUTION_FIELDS) {
         const value = Number(settings.execution_limits?.[key]);
@@ -134,7 +136,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         execution_limits: executionLimits,
         expected_revision: settings.revision,
         token_budgets_enabled: settings.token_budgets_enabled,
-        max_duration_secs: settings.max_duration_secs,
+        max_duration_secs: duration,
         failure_rollback_threshold: settings.failure_rollback_threshold,
         prior_knowledge_token_budget: settings.prior_knowledge_token_budget,
         q4_retention_days: settings.q4_retention_days,
@@ -324,6 +326,9 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       </div>
       <input
         type=${type}
+        min=${key === "max_duration_secs" ? "1" : undefined}
+        max=${key === "max_duration_secs" ? "2147483647" : undefined}
+        step=${key === "max_duration_secs" ? "1" : undefined}
         className="col-span-2 w-full rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm text-[var(--v2-text-strong)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-accent)]"
         value=${settings[key] ?? ""}
         disabled=${isSaving}

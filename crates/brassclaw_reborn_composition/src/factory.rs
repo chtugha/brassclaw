@@ -3108,6 +3108,208 @@ mod tests {
         .expect("valid execution context")
     }
 
+    /// Actual registered prefix primitives and PostgreSQL publication, including
+    /// one-use receipt fencing. This does not qualify the complete v3 compiler.
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    async fn postgres_prefix_tools_dispatch_and_publish_exact_bundle_once() {
+        use crate::pg_prefix_scope_ticket::{PgPrefixScopeTicketStore, PrefixScopeTicket};
+        use brassclaw_host_api::ThreadId;
+        use brassclaw_host_runtime::{
+            STORE_PREFIX_BUNDLE_CAPABILITY_ID, SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
+        };
+
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let root = tempfile::tempdir().expect("temporary runtime home");
+        let context = execution_context(
+            SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
+            MountView::new(Vec::new()).expect("empty mounts"),
+        );
+        let ticket = PrefixScopeTicket {
+            tenant_id: context.tenant_id.as_str().to_owned(),
+            user_id: context.user_id.as_str().to_owned(),
+            agent_id: context
+                .agent_id
+                .as_ref()
+                .expect("agent")
+                .as_str()
+                .to_owned(),
+            project_id: context
+                .project_id
+                .as_ref()
+                .expect("project")
+                .as_str()
+                .to_owned(),
+            conversation_id: "opaque-prefix-conversation".to_owned(),
+            request_id: uuid::Uuid::new_v4(),
+        };
+        let services = build_reborn_services(
+            rig.build_input(&ticket.user_id, root.path())
+                .with_tenant_id(&ticket.tenant_id)
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("runtime policy")),
+        )
+        .await
+        .expect("PostgreSQL production registry builds");
+        let host = services.host_runtime.as_ref().expect("host runtime");
+        let tickets = PgPrefixScopeTicketStore::new(Arc::clone(&rig.pool));
+        let raw_ticket = uuid::Uuid::new_v4().to_string();
+        tickets
+            .issue(&raw_ticket, &ticket)
+            .await
+            .expect("issue ticket");
+        let client = rig.pool.get().await.expect("database client");
+        // These are legacy storage-selection fixtures, not component approval
+        // evidence. Pending and unrelated records must stay out of the sweep.
+        for (name, content, status, project) in [
+            (
+                "prefix-visible",
+                "Grüße 😀 exact eligible text",
+                "validated",
+                ticket.project_id.as_str(),
+            ),
+            (
+                "prefix-pending",
+                "pending sentinel",
+                "pending",
+                ticket.project_id.as_str(),
+            ),
+            (
+                "prefix-other-project",
+                "unrelated sentinel",
+                "validated",
+                "other-project",
+            ),
+        ] {
+            client.execute(
+                "INSERT INTO reborn_notes (tenant_id,user_id,agent_id,project_id,name,content,validation_status)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7)",
+                &[&ticket.tenant_id, &ticket.user_id, &ticket.agent_id, &project, &name, &content, &status],
+            ).await.expect("insert selection fixture");
+        }
+        let request = |capability: &str, conversation: &str, input| {
+            let mut context = execution_context(
+                capability,
+                MountView::new(Vec::new()).expect("empty mounts"),
+            );
+            let thread = ThreadId::new(conversation).expect("opaque thread");
+            context.thread_id = Some(thread.clone());
+            context.resource_scope.thread_id = Some(thread);
+            context.grants.grants[0]
+                .constraints
+                .allowed_effects
+                .push(EffectKind::ExternalWrite);
+            context.validate().expect("coherent trusted scope");
+            let mut trust = trust_decision();
+            trust
+                .authority_ceiling
+                .allowed_effects
+                .push(EffectKind::ExternalWrite);
+            RuntimeCapabilityRequest::new(
+                context,
+                CapabilityId::new(capability).expect("capability"),
+                ResourceEstimate::default(),
+                input,
+                trust,
+            )
+        };
+        let sweep_input = serde_json::json!({"scope_ticket": raw_ticket});
+        let rejected = host
+            .invoke_capability(request(
+                SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
+                "wrong-conversation",
+                sweep_input.clone(),
+            ))
+            .await
+            .expect("dispatch returns classified outcome");
+        assert!(
+            matches!(rejected, RuntimeCapabilityOutcome::Failed(_)),
+            "{rejected:?}"
+        );
+        let sweep = host
+            .invoke_capability(request(
+                SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
+                &ticket.conversation_id,
+                sweep_input,
+            ))
+            .await
+            .expect("sweep dispatch");
+        let RuntimeCapabilityOutcome::Completed(sweep) = sweep else {
+            panic!("expected registered sweep success, got {sweep:?}");
+        };
+        let bundle = sweep.output["bundle"].as_str().expect("bundle text");
+        assert!(bundle.contains("Grüße 😀 exact eligible text"));
+        assert!(!bundle.contains("pending sentinel"));
+        assert!(!bundle.contains("unrelated sentinel"));
+        assert_eq!(sweep.output["component_count"], 1);
+        let generation_ms = sweep.output["generation_ms"]
+            .as_i64()
+            .expect("generation time");
+        let store_input = serde_json::json!({
+            "scope_ticket": raw_ticket, "bundle": bundle, "generation_ms": generation_ms,
+        });
+        let rejected = host
+            .invoke_capability(request(
+                STORE_PREFIX_BUNDLE_CAPABILITY_ID,
+                "wrong-conversation",
+                store_input.clone(),
+            ))
+            .await
+            .expect("store returns classified outcome");
+        assert!(
+            matches!(rejected, RuntimeCapabilityOutcome::Failed(_)),
+            "{rejected:?}"
+        );
+        assert_eq!(
+            tickets
+                .resolve(&raw_ticket)
+                .await
+                .expect("rollback preserves ticket")
+                .request_id,
+            ticket.request_id
+        );
+        let stored = host
+            .invoke_capability(request(
+                STORE_PREFIX_BUNDLE_CAPABILITY_ID,
+                &ticket.conversation_id,
+                store_input.clone(),
+            ))
+            .await
+            .expect("store dispatch");
+        let RuntimeCapabilityOutcome::Completed(stored) = stored else {
+            panic!("expected registered store success, got {stored:?}");
+        };
+        let fingerprint = crate::pg_basic_prompt_store::compute_fingerprint(bundle);
+        assert_eq!(stored.output["fingerprint"], fingerprint);
+        assert_eq!(
+            stored.output["generation_id"],
+            ticket.request_id.to_string()
+        );
+        assert_eq!(stored.output["generation_ms"], generation_ms);
+        assert!(tickets.resolve(&raw_ticket).await.is_err());
+        let replay = host
+            .invoke_capability(request(
+                STORE_PREFIX_BUNDLE_CAPABILITY_ID,
+                &ticket.conversation_id,
+                store_input,
+            ))
+            .await
+            .expect("replay dispatch");
+        assert!(
+            matches!(replay, RuntimeCapabilityOutcome::Failed(_)),
+            "{replay:?}"
+        );
+        let row = client.query_one(
+            "SELECT bundle_json #>> '{}',fingerprint,generation_ms,generation_id,is_stale
+             FROM reborn_basic_prompt_store WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4",
+            &[&ticket.tenant_id, &ticket.user_id, &ticket.agent_id, &ticket.project_id],
+        ).await.expect("published bundle row");
+        assert_eq!(row.get::<_, String>(0), bundle);
+        assert_eq!(row.get::<_, String>(1), fingerprint);
+        assert_eq!(row.get::<_, i64>(2), generation_ms);
+        assert_eq!(row.get::<_, uuid::Uuid>(3), ticket.request_id);
+        assert!(!row.get::<_, bool>(4));
+    }
+
     fn web_access_network_policy() -> NetworkPolicy {
         NetworkPolicy {
             allowed_targets: vec![NetworkTargetPattern {

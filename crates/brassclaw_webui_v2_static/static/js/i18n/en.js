@@ -1242,6 +1242,7 @@ registerPack("en", {
   "montyVm.settingsTitle": "Resource limits",
   "montyVm.maxDuration": "Max duration (s)",
   "montyVm.maxDurationDesc": "Maximum active VM compute time per task in seconds; excludes idle and external waits.",
+  "montyVm.durationInvalid": "Enter whole seconds from 1 to 2147483647 (database integer range).",
   "montyVm.memoryTitle": "Memory budget",
   "montyVm.memoryDesc": "Startup sizing measures capacity once and then holds the budget. Manual changes apply live. Optional automatic adjustment samples at most once per configured interval; mild pressure alone does not pause new work.",
   "montyVm.memoryMode.startup": "Size at startup",

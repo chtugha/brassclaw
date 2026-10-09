@@ -69,6 +69,7 @@ registerPack("de", {
   "montyVm.allocationCountRetired": "Monty 1.0 hat Allokationszähler-Limits entfernt. Frühere Werte bleiben zur Nachvollziehbarkeit erhalten und begrenzen die Ausführung nicht.",
   "montyVm.retiredAllocationValue": "Früherer Allokationszähler (schreibgeschützt)",
   "montyVm.maxDurationDesc": "Maximale aktive VM-Rechenzeit pro Aufgabe in Sekunden; ohne Leerlauf und externe Wartezeiten.",
+  "montyVm.durationInvalid": "Ganze Sekunden von 1 bis 2147483647 eingeben (Integer-Bereich der Datenbank).",
   "language.name": "Deutsch",
   "language.switch": "Sprache geändert",
 

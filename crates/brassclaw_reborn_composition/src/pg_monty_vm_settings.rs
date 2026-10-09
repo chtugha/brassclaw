@@ -211,9 +211,9 @@ mod inner {
                 })
                 .transpose()?;
             let duration = checked_i32(update.max_duration_secs, "max_duration_secs")?;
-            if duration.is_some_and(|value| !(30..=3600).contains(&value)) {
+            if duration.is_some_and(|value| value <= 0) {
                 return Err(MontyVmSettingsError::Invalid(
-                    "max_duration_secs must be 30..=3600".into(),
+                    "max_duration_secs must be a positive signed 32-bit integer".into(),
                 ));
             }
             if update.max_allocations.is_some() {
@@ -462,6 +462,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_duration_upgrade_preserves_values_and_allows_positive_int_range() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA duration_upgrade;
+            CREATE TABLE duration_upgrade.reborn_monty_vm_settings
+            (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO duration_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT reborn_monty_vm_settings_max_duration_secs_check;
+            ALTER TABLE reborn_monty_vm_settings ADD CONSTRAINT reborn_monty_vm_settings_max_duration_secs_check
+                CHECK(max_duration_secs BETWEEN 30 AND 3600);
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,max_duration_secs,revision)
+            VALUES('old','owner','agent','project',900,8);").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V112__monty_task_duration_range.sql"
+            ))
+            .await
+            .unwrap();
+        let old = client.query_one("SELECT max_duration_secs,revision FROM reborn_monty_vm_settings WHERE tenant_id='old'", &[]).await.unwrap();
+        assert_eq!(old.get::<_, i32>(0), 900);
+        assert_eq!(old.get::<_, i64>(1), 8);
+        for duration in [1, 7200, i32::MAX] {
+            let actual = client
+                .query_one(
+                    "INSERT INTO reborn_monty_vm_settings
+                (tenant_id,user_id,agent_id,project_id,max_duration_secs)
+                VALUES($1,'owner','agent','project',$2) RETURNING max_duration_secs",
+                    &[&format!("duration-{duration}"), &duration],
+                )
+                .await
+                .unwrap();
+            assert_eq!(actual.get::<_, i32>(0), duration);
+        }
+        for duration in [0, -1] {
+            let error = client
+                .execute(
+                    "INSERT INTO reborn_monty_vm_settings
+                (tenant_id,user_id,agent_id,project_id,max_duration_secs)
+                VALUES($1,'owner','agent','project',$2)",
+                    &[&format!("invalid-{duration}"), &duration],
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
     async fn native_monty_settings_patch_is_revision_checked_and_atomic() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let store = PgMontyVmSettingsStore::new(Arc::clone(&rig.pool), "settings-cas", "agent");
@@ -510,6 +562,8 @@ mod tests {
         for invalid in [
             serde_json::json!({"max_duration_secs": 600}),
             serde_json::json!({"expected_revision": 0, "max_duration_secs": u64::MAX}),
+            serde_json::json!({"expected_revision": 0, "max_duration_secs": 0}),
+            serde_json::json!({"expected_revision": 0, "max_duration_secs": i32::MAX as u64 + 1}),
             serde_json::json!({"expected_revision": 0, "max_allocations": u64::MAX}),
             serde_json::json!({"expected_revision": 0, "max_allocations": 1}),
             serde_json::json!({"expected_revision": 0, "max_memory_bytes": 0}),

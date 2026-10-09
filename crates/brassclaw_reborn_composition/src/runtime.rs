@@ -5165,7 +5165,7 @@ mod tests {
         let root_identity = runtime.global_monty_owner.client().root_identity();
         // The task is in an external provider wait. Both edits must reach the
         // existing VM and its Rust watch without charging that wait or restarting.
-        for (offset, duration, enabled) in [(1, 900, true), (2, 600, false)] {
+        for (offset, duration, enabled) in [(1, 7200, true), (2, 600, false)] {
             execution_limits["max_feeds"] = serde_json::json!(128 + offset);
             execution_limits["execution_slice_millis"] = serde_json::json!(5 + offset);
             let (code, result) = request(

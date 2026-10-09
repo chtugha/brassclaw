@@ -678,6 +678,7 @@ not existing tables/API fields:
 | Prefix profile | Stable profile ID, display metadata, registered compiler/version/checksum, source/coverage policy, model targets and supported validation adapters. |
 | Design revision/proposal | Model-specific declarative design/schema revision and checksum, profile/consumer bindings, predecessor, pinned Prefix-Maker/design-provider/model-specification/source/target references, raw proposal, diff, exact updated candidate generation and validation/acceptance evidence. Draft proposals never become accepted designs by a status label alone. |
 | Model specification/design selection | DB-owned versioned records and mappings from section 5.3, with explicit compatibility/Unknown states and retained revisions; no browser-only model-formatting configuration. |
+| Source registration/observation | Versioned profile-source identities and applicability/review state plus separate append-only availability/content-check receipts from section 8.1. Generation manifests pin used revisions; transient observations do not alter source or generation identity. |
 | Prefix generation | Content-addressed ID, profile ID, compiler/input snapshot identities, full bundle text, evidence cards, immutable source/dependency manifest, model/tokenizer/template hashes, exact token counts and quality results. |
 | Generation job | Durable request/run ID, profile, pinned input references, state/stage, timestamps, logical step-invocation references, execution attempts, cancellation/fencing, checkpoints/artifacts and classified errors. |
 | Active selection | Provider/model/consumer binding to one immutable generation or explicitly compiled composite; desired/effective state and revision for compare-and-swap. |
@@ -846,6 +847,8 @@ Retain the current API family. Proposed extensions, subject to final DTO review:
 | Review/accept design | Proposed design-proposal detail and explicit acceptance mutations under the profile/draft family; require exact proposal/checksum, predecessor revision and validation/review evidence. No acceptance by arbitrary JSON overwrite. |
 | Model design catalogue/jobs | Proposed `GET /api/webchat/v2/prefix-model-designs` and `POST /api/webchat/v2/prefix-model-design-jobs`; read persisted model/design records and admit confirmed design jobs using registered model/target/design-provider references. |
 | Model design acceptance/binding | Proposed detail/acceptance and profile-model binding mutations under that API family; exact model/design/schema revisions, compatibility evidence and compare-and-swap, never browser-authored runtime facts. |
+| Source inventory/registration | Proposed `GET /api/webchat/v2/prefixes/{name}/sources` and `POST /api/webchat/v2/prefixes/{name}/sources`; return generation provenance plus current registered sources, or save a validated new source registration. |
+| Source availability check | Proposed `POST /api/webchat/v2/prefixes/{name}/source-check-jobs`; admit a bounded check of pinned registered source identities and return job/progress/result references, rather than performing network I/O in a GET handler. |
 | Observe/cancel | `GET /api/webchat/v2/prefix-jobs/{id}` and `POST /api/webchat/v2/prefix-jobs/{id}/cancel`; reuse runtime events where available. |
 | Generation details | `GET /api/webchat/v2/prefixes/{name}/generations/{id}` with manifest, source and quality projection. |
 | Activation/warm | Explicit mutation operations under the same profile family with registered target identity and exact generation, not arbitrary host paths or shell commands. |
@@ -863,6 +866,96 @@ translations and contract tests as one vertical change. The server owns profile 
 compiler paths and source packs; the browser selects registered IDs and validated
 settings. Keep authentication, origin/body limits and technical resource enforcement
 at their existing boundaries without adding legacy feature-role authorization.
+
+### 8.1 Sources button, source inventory and availability checks
+
+Add a button labelled **Sources** beside Generate / Regenerate in each seeded/custom
+prefix row, alongside Redesign. Clicking opens a profile-specific **Sources** tab in
+the same settings section; preserve the selected profile/generation and provide a
+clear return to the prefix list. This is a source-management view, not another prefix
+compiler. Implement it through the existing facade, composition and ingress seams.
+
+Show every source actually used by the displayed generation, including inherited
+base/composite sources, official web documents, qualified forum/local findings,
+DB component records, release documents and teaching packages. Derive this inventory
+from the immutable source/evidence manifest, not a reconstructed list of URLs. Also
+show current source registrations, newly saved sources and omissions separately, so
+“used in this generation” cannot be confused with “available for the next build.”
+Before the first generation, show the registered source catalogue with Not yet used.
+
+Each row shows title/type, URL or safe registered reference, source/version identity,
+availability indicator, last check time/result, archived snapshot availability,
+review/disposition and usage in the selected generation. Use **green Available**
+when the declared source/content can actually be retrieved/read through its adapter,
+and **red Unavailable** for a completed check that cannot retrieve/read it. Add
+neutral Checking / Not checked / Check error states with text and accessible labels;
+no color-only meaning and no false red during an unfinished check. Explain reasons
+such as Missing, Authentication required, Timeout or Rate limited. Availability,
+content changed and knowledge approval are separate fields: green never means
+authoritative, unchanged or approved. A dead upstream URL does not delete an intact
+archived source or change a historical generation's provenance.
+
+On tab opening, render the inventory immediately and admit a bounded, model-free
+source-check Recipe against the pinned source registrations. Stream per-source
+results; offer Check again. Coalesce repeated opens/concurrent tabs into an existing
+compatible check job, enforce concurrency/time/byte/request limits and show the age
+of previous observations while rechecking. Closing the tab stops UI subscriptions,
+not a separately admitted durable job. No continuous background crawl is introduced.
+
+For web sources, use a short content-aware fetch through the existing registered
+HTTP/fetch primitive: bounded redirects and response size, expected media/extraction
+adapter, and sufficient content checks to detect empty pages, login/error pages or
+soft 404s. HEAD may precede GET where useful; ping/DNS/HTTP 200 alone cannot establish
+that the referenced document still exists. A range/snippet can establish a limited
+availability observation but cannot certify full-content identity. Compare complete
+content hashes only when the supported bounded fetch actually retrieves the full
+artifact; otherwise report Content identity not checked. Authentication uses existing
+host secret resolution, never URL credentials or secrets stored in manifests.
+
+For DB/release/local artifact sources, resolve the registered identity/revision and
+verify read/access and retained artifact integrity without web requests or arbitrary
+browser-supplied filesystem access. All actual checks obey current global Tool policy,
+network/secret constraints and technical limits, including redirect destinations and
+private-network targets under the existing supported policy. URLs remain typed data;
+the check does not execute source content or scripts, crawl unrelated links or create
+a provider call. Reuse a deterministic non-shell fetch/check adapter; shell variants
+remain Tier 1 and cannot be the sole model-free path.
+
+Provide a text field labelled **Add source** and a **Save source** button in the tab.
+Accept an HTTP(S) URL or a supported registered document/component reference; offer
+source type/title/applicability details where needed. Validate and canonicalize through
+the supported adapter without stripping meaningful version/query identifiers. Reject
+unsupported schemes, embedded credentials and duplicate conflicting registrations;
+show duplicate existing sources instead of silently adding another row. Saving persists
+an immutable/versioned profile-source registration in PostgreSQL, with stable identity,
+origin, applicability, intended required/optional coverage and review status. It is
+not an automatic fetch approval, redesign, build or activation. A subsequent bounded
+availability check may run through the same admitted check path.
+
+A newly saved source is **Pending collection/review**, visibly not yet used. The next
+confirmed Redesign collects it under the registered refresh policy, preserves original
+bytes/provenance and checks relevance, quality, licensing and compatibility before
+incorporation into the candidate. Generate/Regenerate may include it once an eligible
+reviewed snapshot exists and the accepted design's registered source/coverage rules
+permit it; adding a URL must not invoke an LLM or silently change those rules. If new
+coverage needs a design change, show Needs redesign. If required content cannot fit,
+report Capacity blocked; optional exclusions need explicit recorded reasons. Respect
+trusted bundled source provenance versus post-installation edits; a source label or
+green check bypasses neither authored validation nor component Q1/human Q2.
+
+Keep availability observations separate from source revisions and generation identity:
+timestamps and transient network failures never enter stable prefix text. Checks are
+read-only diagnostics and cannot rewrite approved snapshots, delete sources, mark an
+unchanged generation outdated solely because of a timeout, or invalidate active tasks.
+Reviewed source-content/selection changes follow dependency invalidation normally.
+Preserve historical registrations/snapshots and pin new jobs to a coherent selection;
+sources saved mid-build apply only to a subsequent admitted build.
+
+Implement source inventory, registration, collection and checking as separate reusable
+usages in Recipes with typed results and retained identities; independent Tool calls
+remain separate steps. Define real store/adapter contracts before authoring component
+rows. Record positive/negative intent cases and exact errors/retries; the UI opening
+calls the admitted workflow through the facade, not a second browser/server executor.
 
 ## 9. Serving, large-prefix capacity and hybrid cache
 
@@ -1172,6 +1265,8 @@ for injection, token inspection, grammar, native/external cache and validation s
 Specify section 5.3's model/specification/runtime/design identities, immutable schemas,
 profile/consumer selection rules, provider-switch impact and the confirmed design-job
 contracts before implementing database or UI fields. Unknown capabilities stay explicit.
+Specify section 8.1's used-versus-registered source inventory, registration/collection
+contracts, per-type bounded checks, availability states and source-review eligibility.
 
 ### Gate A1 — Runtime prerequisites for production Recipe jobs
 
@@ -1409,6 +1504,12 @@ popup, proposal/diff review and Accept redesign controls. Add the Create Prefix 
 custom-profile draft/registration lifecycle through the same facade/API/runtime path.
 Add Model Designs selection/generation/list/review/binding controls and affected
 consumer readiness on provider/model changes; expose persisted historical designs too.
+Implement section 8.1's Sources button/tab, manifest-backed inventory, durable source
+registration/check workflows and per-source availability projections. Wire existing
+fetch/artifact/store adapters through Recipes; implement genuinely missing support
+in its owning layer before exposing enabled actions. Source checks/registration use
+accepted Gate A1/C paths and do not require a design provider; Redesign-based collection
+still follows Phase C3, while offline approved-snapshot Generate remains available.
 Generate requires Gate A1 and Phase C acceptance. Activate/Rollback/Warm requires
 Phase C2 acceptance for the specific registered provider target. Until then, show
 disabled actions with their missing prerequisite; enforce the same gate server-side.
@@ -1433,6 +1534,16 @@ proposal, approves a component or activates a prefix. Verify active-model select
 separate design-provider selection, generated model-design history after reload,
 validation/acceptance and explicit bindings, switch readiness for both consumers,
 and Redesign returning a complete current-content generation rather than design only.
+Test Sources on every seeded/custom row, inherited composite sources and pre-generation
+registrations, immediate inventory plus per-source checks on opening, green/red/neutral
+accessible states, check-again/dedup/reconnect and observation persistence. Exercise
+real supported HTTP/content and DB/artifact adapters: redirects, soft 404/login/empty
+pages, missing retained artifacts, timeout/rate-limit/auth/policy denial and full-versus-
+partial content identity. Show an intact archive despite upstream failure. Save a new
+source, reject credentials/unsupported schemes/conflicting duplicates, verify restart
+persistence and Pending review, then prove inclusion in the next eligible Redesign or
+Generate without changing a running build. Test Needs redesign, capacity/exclusion
+reasons and no hidden LLM/source execution or automatic active-generation replacement.
 
 ### Phase E — Extended cache and answer quality
 
@@ -1552,6 +1663,8 @@ or report their explicit readiness prerequisite rather than serving mismatched c
 | Generate model design | Active registered target and separate design provider yield a persisted, validated proposal with model-specific formatting/capacity rules; acceptance and profile binding are explicit. |
 | Change Kohai/Sempai provider or model | Resolve exact compatible model/profile/consumer design and generation, or report Needs design/generation/Incompatible; no old mismatched prefix or hidden redesign call. |
 | Reopen Model Designs | Generated and historical model designs, evidence, acceptance and bindings survive reload/restart and reseeding. |
+| Open Sources | Manifest-backed used sources and pending registrations appear; bounded per-source checks report green/red/neutral with reasons and timestamps, without changing archived evidence or active prefixes. |
+| Save a source | Versioned registration persists, is collected/reviewed for the next eligible Redesign/Generate, and remains visibly unused until included in a validated generation. |
 
 Run this matrix through the production facade, composed ingress, Recipe worker and
 browser path. Script-only success or a screenshot of buttons does not close the plan.

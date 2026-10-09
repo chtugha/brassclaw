@@ -1,0 +1,376 @@
+{
+  "schema": 1,
+  "tag": "v1.0.0",
+  "commit": "85c5d1f6bef038405cfc40a4eed94806e303567e",
+  "repository": "https://github.com/pydantic/monty",
+  "license": "MIT; preserved LICENSE",
+  "scope": "Complete repository documentation Markdown; API templates require separate rendering/implementation evidence",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "5841db47ee6e1f0becafe2d19ca43c08cbc6d2c0952822ccf88cbbf2bd0749bd",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/LICENSE",
+      "model_reference": false
+    },
+    {
+      "path": "docs/alternatives.md",
+      "sha256": "ea6ef28ecefb682d7025b87768d9a66721ee39e9804f3f595861197250011341",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/alternatives.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/api/python/errors.md",
+      "sha256": "ccc047c7915a7c2c1e3e1d8fd746e70c14fc79395d64656176a7651eb9333f86",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/api/python/errors.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/api/python/host_objects.md",
+      "sha256": "8ca2cd3a2bdca9c53d00dbd9f0009656ba62f8e8ed3a63629565fc1ed941e2c3",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/api/python/host_objects.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/api/python/os.md",
+      "sha256": "bf331adc93e588e8f6d777673afb19075a110fb81dc343bdbe1900bcc1f784da",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/api/python/os.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/api/python/pools.md",
+      "sha256": "f028bda4019f1191d1d8c0ef702b783c5694d973b22466b5ce1602367dbe66e7",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/api/python/pools.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/api/python/suspend_resume.md",
+      "sha256": "c646f4ca4181f6f2f84a120b9c7218a24769892b892b939e1dd428ee7fdc4c6a",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/api/python/suspend_resume.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/api/python/websocket.md",
+      "sha256": "dea439093cf8eee4eb23faaa29235688435dc17ebf80555e3c9729cb8249a85d",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/api/python/websocket.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/cli.md",
+      "sha256": "c1152dccdc0c4896b4e3275b2ad55628b1cb40e614cebee650c1ce31ad4cce36",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/cli.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/examples.md",
+      "sha256": "5ccb6c4c9c716d766ded5b7c8c232a9f856e4075aafd64eb89bcd76eb3ea6848",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/examples.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/filesystem.md",
+      "sha256": "016840f49b88faa102a2ff19318fbd6cdfb4203beace1caaaedbeba63cec6f02",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/filesystem.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/host-functions.md",
+      "sha256": "5fe313f77ccb491c36017f7d4b18a62a1fb45354db9309a6478297f2f0f4bb33",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/host-functions.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/host-objects.md",
+      "sha256": "9a66604e4015afdf5092edd48336a4bb89c4e52e7f202e9f994c04a6d8c97ca5",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/host-objects.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/index.md",
+      "sha256": "a8aabb1b66313d4f16f04de5f309fb532ce6f295c4e728e72551c78993550345",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/index.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/AGENTS.md",
+      "sha256": "2155ae0c8298289bc2b1058014da3b9e8851a89dddedd6fa43ef875c738457c7",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/AGENTS.md",
+      "model_reference": false
+    },
+    {
+      "path": "docs/limitations/assert.md",
+      "sha256": "37d01e0e563c77ddcc973bcf0d9333ff2174a98dd34d0bd5c2f8c9d9b9e0d9ef",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/assert.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/asyncio.md",
+      "sha256": "c271c4c89069e9019d0101769cb8608a6856440291fb79197eb410a9668a3798",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/asyncio.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/base64.md",
+      "sha256": "6049f74353c3ef9f2325d0689aeae291262425aea8e2329a133f39f3fb9d4709",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/base64.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/builtins.md",
+      "sha256": "2677f03fac4162f3a506364631baae29577623650baf96da493cf4503db4a1aa",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/builtins.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/classes.md",
+      "sha256": "7221cb3e13b5482b3f89fdb819005b710bb01b91b16d17b1a59b423866e2fd78",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/classes.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/collections.md",
+      "sha256": "f5d674c14f10c5970ec9e012bcdd7818a4fde895f118505bda1ff14e42f94871",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/collections.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/comprehensions.md",
+      "sha256": "af6cd77f6b8b28618293f8c24d35cb8db5cd8499c861f2886a914cd274953052",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/comprehensions.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/copy.md",
+      "sha256": "2b6c1001d2d7f44e3d244a7621cc347d302539ab6a7ea41b5824ac6b4c536f41",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/copy.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/dataclasses.md",
+      "sha256": "0b5b93cc02be40dcba3442283f56cf8dad5c431a6501b0410be794fae03c6e00",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/dataclasses.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/datetime.md",
+      "sha256": "682ca711f39e7d57a3ec08b083543c1e196ef76386aa2cb0261fbe2945c455d9",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/datetime.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/encoding.md",
+      "sha256": "82248a5d6c6605d612fb76268c29c56c97b829408df8aa0326b507cbcdde135d",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/encoding.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/eval_exec.md",
+      "sha256": "0b8195fedc2d82a6d3a361a8397f97cde91e200d09186285af0156ff1c481cb5",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/eval_exec.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/exceptions.md",
+      "sha256": "a8193eec66bafdcd87b2991d5e15410f33ef26ce6d096cd96f505d6e57437e3e",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/exceptions.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/filesystem.md",
+      "sha256": "e1cc8b5e83e74f0180fb07f0cddd3a993f03f7edf2a93956f449f3bbc3835777",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/filesystem.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/format.md",
+      "sha256": "7bb5dc2a93db5f7c2de249ccd1ea9b3d92a082fa71b1573cb80591ba7e36d0a1",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/format.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/functools.md",
+      "sha256": "0b9e14ae53ddd3d5164ddcc4b2bfe8d597517730c7eb7f9f76ceda4eb6a7779c",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/functools.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/host-values.md",
+      "sha256": "8c5f9d70c233829498c9bef05d301c12f03136fb2222d20dddb646abd4ab8223",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/host-values.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/index.md",
+      "sha256": "c9142e56f1bdf7c0f94c94a578e44f422d3358838547e673b15b150c99902306",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/index.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/iter.md",
+      "sha256": "e9b420a64f4139d90d9752528d652def881a3da1619669774438b148881bc0ee",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/iter.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/itertools.md",
+      "sha256": "3653095b12376b39ad39f491ba2f7b2ab0949fb7f55079f6743a4a99d9e595c5",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/itertools.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/json.md",
+      "sha256": "15cc2a1ea4aacefcaabf73a73b0e2bbcd2b816642347894360e23bc17b131b89",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/json.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/language.md",
+      "sha256": "adb0c0dfda76f73d77a8019cf86959ec1d1a4a390f5db061d9cd8cf05c7685cb",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/language.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/math.md",
+      "sha256": "ae1751bf865edea92cdc5654f540eeb879572aa98c330ff9f3f977762a024261",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/math.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/modules.md",
+      "sha256": "3d851ea7de032debc9cb0f746c4655382f5db438b60dcbe2b3ce24ecea378a8e",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/modules.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/namedtuple.md",
+      "sha256": "63d6a9ade96f640997f1f1bb8fcda9cc3ea9e50fea390469dc0c54ec5a2588ed",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/namedtuple.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/open.md",
+      "sha256": "69f3fd002287fcd3779d755e50e36b1ef72b56c48c13f87e16d56dbc428fb2ca",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/open.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/os.md",
+      "sha256": "54970ff4c9f0cf53ae51a8debb5efddd4502776a62205da7c200ff047201ce02",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/os.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/pathlib.md",
+      "sha256": "dd3ac90310178b4f13ed8373572987b839011660c7806512cd5427e20d184d9b",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/pathlib.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/print.md",
+      "sha256": "5e18781707c813c8386ab6422f575c3d18805b497c66836c470a501580c1c2ad",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/print.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/random.md",
+      "sha256": "f574af7f77a5a68393ac960784e003067e2314eb00542304d20749f4495ecf2d",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/random.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/re.md",
+      "sha256": "688613b816c296f1e0660d7e8a3bef0bc191b1c4dc1b6d72fa004f8af4c1f1cf",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/re.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/resource_limits.md",
+      "sha256": "e99c6da222b1ba645ea59a1717908e0a9f25d4e1a7d8d92a1737da6bcd6228fb",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/resource_limits.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/sys.md",
+      "sha256": "29d0fba881d63f8aa77c32cace47f8fae23e04eb018444a1d298f225f0975de7",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/sys.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/time.md",
+      "sha256": "d33e21c06b524f2446957c5bf12bf7db4ef4b58ab900efa4c81d0efbc13068bb",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/time.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/typing.md",
+      "sha256": "06787880d8b10400ee5bc1e13f3ba2cfe2420157060dd075d0c14fbc4450a8ac",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/typing.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/unicodedata.md",
+      "sha256": "0a4ef6986827e42d119fbeffcff34b07c420c92b0c126a834d647991fa2d2983",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/unicodedata.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/limitations/with.md",
+      "sha256": "0012740030482bfec43f91e196ea6be2762817567064352038426e6b5aa3f5f2",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/limitations/with.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/quickstart/javascript.md",
+      "sha256": "fae1913f44d77caf6164f03c8fe038d191bae5402377b2a7469bf597b59120eb",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/quickstart/javascript.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/quickstart/python.md",
+      "sha256": "e07e3b7ac56e9d0021a794f1c8b70e96fcdb8bcfa2e8022bf5df1553484740f2",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/quickstart/python.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/quickstart/rust.md",
+      "sha256": "76007a9dae61dc5402693ba9f0c545b8278cc4c0cbf3e0c3401fd47ff7cc2910",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/quickstart/rust.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/resource-limits.md",
+      "sha256": "1513013582f24ba084d09838582d9948c9672fd18a21bef9b99c28b7a5af20de",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/resource-limits.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/security.md",
+      "sha256": "97bcaa97493b2ae89b0bf5e3233448555ccac9607024dd416647dd553b4db46d",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/security.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/server.md",
+      "sha256": "6f8e655c5fbcfc11357683f3a98abfccda1a0ae1ecb693930f485c088e496249",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/server.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/snapshots.md",
+      "sha256": "ab593ba527c2510daa695b4f245862c59ef70d0900a1db0d6ff3a0063b328f18",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/snapshots.md",
+      "model_reference": true
+    },
+    {
+      "path": "docs/type-checking.md",
+      "sha256": "d87efe568d96e64fb6846c6fd8bee8d930424275fba1f96b1f01070120553b18",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/docs/type-checking.md",
+      "model_reference": true
+    },
+    {
+      "path": "mkdocs.yml",
+      "sha256": "9176d37d6e7efcb59f5b6d3df67f4048fe535ad05f294853445d17dfad150974",
+      "url": "https://github.com/pydantic/monty/blob/85c5d1f6bef038405cfc40a4eed94806e303567e/mkdocs.yml",
+      "model_reference": false
+    }
+  ]
+}

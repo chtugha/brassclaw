@@ -21,7 +21,11 @@ pub struct MontyTaskLimits {
 
 impl MontyTaskLimits {
     fn validate(self) -> Result<(), MontyTaskBudgetError> {
-        if !(Duration::from_secs(30)..=Duration::from_secs(3600)).contains(&self.max_compute_time) {
+        // Match the positive PostgreSQL INT seconds contract. The old 30..3600
+        // operational range prevented valid operator edits at both host and VM.
+        if !(Duration::from_secs(1)..=Duration::from_secs(i32::MAX as u64))
+            .contains(&self.max_compute_time)
+        {
             return Err(MontyTaskBudgetError::InvalidSettings);
         }
         Ok(())
@@ -340,6 +344,29 @@ mod tests {
         );
         assert_eq!(live.current(), settings(2, 60));
         assert_eq!(live.current().limits.token_budget(4096), None);
+    }
+
+    #[test]
+    fn duration_range_preserves_usage_and_only_rejects_unrepresentable_values() {
+        let live = LiveMontyTaskSettings::new(settings(1, 7200)).unwrap();
+        let task = SharedMontyTaskBudget::new(live.clone());
+        task.record_compute_time(Duration::from_millis(250))
+            .unwrap();
+        live.publish(1, settings(2, 1)).unwrap();
+        let snapshot = task.check().unwrap();
+        assert_eq!(snapshot.usage.compute_time, Duration::from_millis(250));
+        live.publish(2, settings(3, i32::MAX as u64)).unwrap();
+        for seconds in [0, i32::MAX as u64 + 1, u64::MAX] {
+            assert_eq!(
+                live.publish(3, settings(4, seconds)),
+                Err(MontyTaskBudgetError::InvalidSettings)
+            );
+        }
+        assert_eq!(live.current(), settings(3, i32::MAX as u64));
+        assert_eq!(
+            task.check().unwrap().usage.compute_time,
+            Duration::from_millis(250)
+        );
     }
 
     #[test]

@@ -1000,7 +1000,11 @@ mod tests {
     async fn webui_serve_wires_notion_dcr_into_runtime_services() {
         let dir = tempfile::tempdir().expect("tempdir");
         let services_input = with_notion_dcr_oauth_backend(
-            RebornBuildInput::local_dev("notion-dcr-owner", dir.path().join("local-dev")),
+            RebornBuildInput::local_dev("notion-dcr-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(
+                    brassclaw_reborn_composition::local_dev_runtime_policy()
+                        .expect("explicit local-dev runtime policy"),
+                ),
             "http://127.0.0.1:3000",
         )
         .expect("notion dcr wiring");
@@ -1022,7 +1026,11 @@ mod tests {
     async fn webui_serve_wires_notion_dcr_with_canonical_host_origin() {
         let dir = tempfile::tempdir().expect("tempdir");
         let services_input = with_notion_dcr_oauth_backend(
-            RebornBuildInput::local_dev("notion-dcr-owner", dir.path().join("local-dev")),
+            RebornBuildInput::local_dev("notion-dcr-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(
+                    brassclaw_reborn_composition::local_dev_runtime_policy()
+                        .expect("explicit local-dev runtime policy"),
+                ),
             webui_oauth_callback_origin(
                 SocketAddr::from(([0, 0, 0, 0], 3000)),
                 Some("app.example.com"),

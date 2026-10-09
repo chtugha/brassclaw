@@ -140,6 +140,51 @@ visible; panic recovery has not been disabled. Linux/Windows native CI, complete
 job/container measurements, remaining hosting-limit controls, durable fatal
 recovery and the full catalogue/authorization/prefix cutovers remain open.
 
+### Duration range and GitHub follow-up — 2026-10-09
+
+The plan now removes the arbitrary 30–3600 second duration range. V112 changes
+only the database check to positive INT seconds; stored values and revisions
+remain unchanged. The WebUI, PostgreSQL writer and shared Rust/worker budget
+validator accept 1 through 2147483647 whole seconds. The 600-second default and
+executing-time accounting remain unchanged; missing/null PATCH fields retain
+their prior values. Zero, negative, fractional and out-of-representation edits
+are rejected at the relevant input boundary, before durable publication.
+
+The serial local queue passed seven resource-budget regressions, the real worker
+active-account test with live 7200/1-second revisions, native V112 migration and
+CAS tests, and the ordinary WebUI/startup/restart regression with a 7200-second
+edit (126.21 seconds). Resource, composition and isolated control-workspace
+strict lints pass. Rust 1.98 used the NVMe target without incremental/debug info;
+the actual newly built worker was retained outside mandatory cleanup and restored
+beside the actual test executable. No remote machine was used for compilation.
+
+GitHub run 37872977914 exposed an obsolete coding-decoder lint allowance,
+two CLI fixtures lacking explicit runtime policy, absent positive coverage for
+the registered prefix primitives and two validation expressions rejected by
+Rust 1.96 Clippy. The decoder now uses stable array chunks and rejects a trailing
+incomplete UTF-16 unit instead of silently discarding it. All 16 coding caller
+tests, including real Unicode edit/BOM/newline preservation and malformed-file
+rejection, pass; both CLI DCR fixtures pass with explicit policy. Their affected
+strict lints pass.
+
+`factory::tests::postgres_prefix_tools_dispatch_and_publish_exact_bundle_once`
+passes through the actual factory registry, real PostgreSQL backends and durable
+publication. It verifies eligible content, pending/unrelated exclusion, exact
+stored bytes/fingerprint/generation/time, wrong-conversation rejection, ticket
+rollback and rejected replay without replacement. Composition strict lints pass.
+The root capability inventory now names these two primitives and their actual
+test. This is primitive-level acceptance of the existing backend, not qualified
+library activation, a global Monty prefix Recipe or complete prefix-v3 assembly.
+Rust 1.96 passes all 14 existing association/value-contract cases, the root
+capability inventory and strict engine/all-target and coding-caller lints. This
+checks the minimum-version diagnostics directly without suppressing them. No
+GitHub rerun of this follow-up diff is yet accepted.
+
+Release run 37872337895 passed Linux x86_64 and both macOS architecture builds
+for commit 17a8920d5a2862ab5be39ab432a010e7d222c62b (`v1.7.0-rc.2`). That
+release contains the revised memory modes; it does not include this subsequent
+duration/CI follow-up diff or certify Windows runtime support or the full plan.
+
 ## Phase 0 evidence
 
 Run `python3 scripts/simplified_v3_inventory.py --output /tmp/simplified-v3-inventory.json`.
@@ -3685,7 +3730,7 @@ control alone does not establish runtime uptake.
 
 | Resource | Current enforcing path/default | Required disposition |
 | --- | --- | --- |
-| Logical shared heap | `global_monty_startup` uses required `max_memory_bytes`; new rows inherit 128 MiB | Automatic mode with measured capacity/reserve, optional preserved operator ceiling; live worker acknowledgement. |
+| Logical shared heap | `global_monty_startup` uses acknowledged finite limits; V111 defaults to startup sizing with a 512 MiB ceiling/fallback | Startup/manual are constant without periodic pressure reads; automatic is optional. See the accepted memory-mode entry above; remaining allocator/transport controls are separate. |
 | Physical worker allocator | Startup heap + two 64 MiB frames + 4 MiB adapter reserve; `WorkerHeap` now resizes the backstop with heap edits | Derive from the same acknowledged policy; expose frame/non-VM reserve inputs and resulting physical bound, remove independent startup ceiling. |
 | Source and accumulated compiled source | `VmBounds`: 1 MiB / 2 MiB | Settings propagated to root, child constructor, retained artifact inspection and every subsequent feed; already pinned sources remain retained. |
 | Feeds per Recipe context | `VmBounds.max_feeds = 128` | Live limit; preserve consumed feed count, reject new feeds after reduction rather than resetting it. |

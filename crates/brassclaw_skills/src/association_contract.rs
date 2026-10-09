@@ -579,7 +579,7 @@ impl AssociationApprovalDeclaration {
             (association.tool_skill, 13),
             (association.tool, 0),
         ] {
-            if !actual.get(&id).is_some_and(|r| r.class_code == class) {
+            if actual.get(&id).is_none_or(|r| r.class_code != class) {
                 return Err(invalid("component role has the wrong class"));
             }
         }

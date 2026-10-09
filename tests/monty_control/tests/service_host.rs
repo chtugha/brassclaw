@@ -917,13 +917,17 @@ async fn settings_publication_preserves_active_task_consumption_and_rejects_stal
             1,
             TaskSettings {
                 revision: 2,
-                max_compute_time: Duration::from_secs(300),
+                max_compute_time: Duration::from_secs(7200),
                 token_budgets_enabled: true,
             },
         )
         .await
         .unwrap();
     assert_eq!(first.effective_settings.revision, 2);
+    assert_eq!(
+        first.effective_settings.max_compute_time,
+        Duration::from_secs(7200)
+    );
     assert_eq!(live.current().revision, 2);
     assert_eq!(first.accounting.len(), 1);
     let usage = first.accounting[0].compute_time.unwrap();
@@ -946,13 +950,17 @@ async fn settings_publication_preserves_active_task_consumption_and_rejects_stal
             2,
             TaskSettings {
                 revision: 3,
-                max_compute_time: Duration::from_secs(30),
+                max_compute_time: Duration::from_secs(1),
                 token_budgets_enabled: false,
             },
         )
         .await
         .unwrap();
     assert_eq!(second.effective_settings.revision, 3);
+    assert_eq!(
+        second.effective_settings.max_compute_time,
+        Duration::from_secs(1)
+    );
     assert_eq!(live.current().revision, 3);
     assert_eq!(
         second.accounting[0].compute_time.unwrap(),

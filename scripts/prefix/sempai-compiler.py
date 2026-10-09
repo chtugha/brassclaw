@@ -56,7 +56,7 @@ FAILED = BASE / "failed.json"
 
 MODEL = os.getenv("VLLM_MODEL", "cyankiwi/Ornith-1.5-9B-AWQ-INT4")
 ATOMIZER_VERSION = "preserve-lines-v2"
-PIPELINE_VERSION = "2026-10-06-sempai-evidence-v1"
+PIPELINE_VERSION = "2026-10-09-sempai-monty-reference-v2"
 TOKENIZER_MODEL = os.getenv("TOKENIZER_MODEL", MODEL)
 VLLM_URL = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
 ACTIVE_SERVER_PREFIX = os.getenv("VLLM_SERVER_PREFIX_FILE", "").strip()
@@ -128,6 +128,18 @@ SOURCE_DOCUMENTS = {
     "scripts/prefix/sempai-authoring-reference.md": "reviewable prompt-audit and draft-authoring procedure; not activated components",
     "scripts/prefix/sempai-worked-examples.md": "verified complete teaching artifacts and scoped contrasts; not approved components",
 }
+MONTY_PACKAGE = "scripts/prefix/monty-reference/v1.0.0"
+MONTY_MANIFEST_PATH = MONTY_PACKAGE + "/manifest.json"
+MONTY_MANIFEST = json.loads((SOURCE_ROOT / MONTY_MANIFEST_PATH).read_text())
+if MONTY_MANIFEST.get("schema") != 1 or MONTY_MANIFEST.get("commit") != "85c5d1f6bef038405cfc40a4eed94806e303567e":
+    raise ValueError("Monty documentation requires the reviewed v1.0.0 source manifest")
+SOURCE_DOCUMENTS[MONTY_MANIFEST_PATH] = "Pinned official Monty documentation inventory; not runtime approval"
+SOURCE_DOCUMENTS["scripts/prefix/sempai-monty-compatibility.md"] = "BrassClaw usage/policy overlay on pinned Monty; upstream features do not grant host access"
+for _entry in MONTY_MANIFEST["files"]:
+    SOURCE_DOCUMENTS[MONTY_PACKAGE + "/" + _entry["path"]] = (
+        "Official Monty v1.0.0 documentation; adapt host API examples to the selected BrassClaw runtime"
+        if _entry["model_reference"] else "Upstream package metadata; retained for provenance, not instruction authority")
+
 TEACHING_SIDECARS = ('scripts/prefix/sempai-worked-examples.json',
                      'scripts/prefix/sempai-worked-examples.receipt.json')
 DEFAULT_REPOS = {"brassclaw": str(SOURCE_ROOT)}
@@ -907,6 +919,12 @@ def collect():
                 raise ValueError('Choose a separate Sempai cache; refusing an existing/unknown source profile')
         finally:
             previous.close()
+    if json.loads((SOURCE_ROOT / MONTY_MANIFEST_PATH).read_text()) != MONTY_MANIFEST:
+        raise ValueError("Monty documentation manifest changed; review/reload the package")
+    for entry in MONTY_MANIFEST["files"]:
+        location = (SOURCE_ROOT / MONTY_PACKAGE / entry["path"]).resolve()
+        if not location.is_relative_to(SOURCE_ROOT) or not location.is_file() or file_sha256(location) != entry["sha256"]:
+            raise ValueError("Monty documentation artifact missing, unsafe or changed: " + entry["path"])
     teaching_receipt = validate_teaching_evidence()
     teaching_sidecars = {p:(SOURCE_ROOT/p).read_bytes().decode('utf-8') for p in TEACHING_SIDECARS}
     snapshots = {}
@@ -956,6 +974,10 @@ def collect():
                             "revision": snapshot, "snapshot": hashes[relative],
                             "version": "source package " + snapshot,
                             "applicability": SOURCE_DOCUMENTS[relative]}
+                if relative.startswith(MONTY_PACKAGE + "/"):
+                    entry = next((e for e in MONTY_MANIFEST["files"] if MONTY_PACKAGE + "/" + e["path"] == relative), None)
+                    if entry:
+                        metadata.update(url=entry["url"], revision=MONTY_MANIFEST["commit"], version="Monty v1.0.0 official sources")
                 encoded = json.dumps(metadata, sort_keys=True)
                 row = conn.execute("SELECT id,source_digest FROM documents WHERE repo=? AND path=?",
                                    ("brassclaw", relative)).fetchone()
@@ -1288,6 +1310,10 @@ def reviewer_decision_checkpoint(cards):
                      + card['excerpt'] + '\n' for card in matches)
 
 REQUIRED_TOPICS = {
+    "monty-subset": (("brassclaw",), r"monty-reference/v1\.0\.0/docs/limitations/index\.md$", r"subset|Supported"),
+    "monty-modules": (("brassclaw",), r"monty-reference/v1\.0\.0/docs/limitations/modules\.md$", r"Modules available"),
+    "monty-policy-overlay": (("brassclaw",), r"sempai-monty-compatibility\.md$", r"Policy is stricter than upstream"),
+    "monty-input-boundary": (("brassclaw",), r"monty-reference/v1\.0\.0/docs/host-functions\.md$", r"inputs.*external_lookup"),
     "prompt-diagnosis": (("brassclaw",), r"sempai-authoring-reference\.md$", r"Diagnose the prompt"),
     "provider-authority": (("brassclaw",), r"simplified_v3\.md$", r"Provider ausschließlich in PostgreSQL"),
     "recipe-schema": (("brassclaw",), r"recipe\.md$", r"step_descriptions"),
@@ -1352,6 +1378,7 @@ def required_reference_cards(cards):
             selected = []
             complete = {"recipe.md", "skills.md", "tools.md", "toolskills.md",
                         "scripts/prefix/sempai-authoring-reference.md",
+                        "scripts/prefix/sempai-monty-compatibility.md",
                         "scripts/prefix/sempai-worked-examples.md",
                         "crates/brassclaw_interceptor/src/packet.rs"}
             for card in cards:

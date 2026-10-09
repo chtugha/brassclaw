@@ -215,7 +215,8 @@ pub struct MontyVmSettings {
     /// Durable desired settings revision; zero denotes an absent row.
     /// This is not evidence of runtime uptake.
     pub revision: u64,
-    /// Maximum active VM compute time per task in seconds (default: 600).
+    /// Maximum active VM compute time per task in whole seconds (default: 600).
+    /// Positive PostgreSQL INT range, 1..=2147483647; no fixed one-hour cap.
     pub max_duration_secs: u64,
     /// Compatibility response field. Always None: Monty 1.0 removed this limit.
     pub max_allocations: Option<u64>,

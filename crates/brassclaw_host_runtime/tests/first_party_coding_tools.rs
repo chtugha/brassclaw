@@ -448,6 +448,72 @@ async fn builtin_apply_patch_failure_reports_path_and_match_count() {
 }
 
 #[tokio::test]
+async fn builtin_coding_utf16_rejects_incomplete_units_and_preserves_unicode_edits() {
+    let temp = tempfile::tempdir().unwrap();
+    let encode = |text: &str| {
+        let mut bytes = vec![0xff, 0xfe];
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        bytes
+    };
+    let original = encode("Grüße 😀\r\n");
+    std::fs::write(temp.path().join("valid.txt"), &original).unwrap();
+    std::fs::write(temp.path().join("empty.txt"), [0xff, 0xfe]).unwrap();
+    let malformed = [
+        ("odd.txt", vec![0xff, 0xfe, b'A', 0, b'B']),
+        ("surrogate.txt", vec![0xff, 0xfe, 0, 0xd8]),
+    ];
+    for (name, bytes) in &malformed {
+        std::fs::write(temp.path().join(name), bytes).unwrap();
+    }
+    let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_write());
+    let runtime = runtime_with_filesystem(filesystem);
+    let context = execution_context_with_mounts(coding_capability_ids(), mounts);
+    let read = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/valid.txt"}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(read["content"].as_str().unwrap().contains("Grüße 😀"));
+    invoke_with_context(
+        &runtime,
+        APPLY_PATCH_CAPABILITY_ID,
+        json!({"path":"/workspace/valid.txt", "old_string":"Grüße", "new_string":"Hallo"}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::read(temp.path().join("valid.txt")).unwrap(),
+        encode("Hallo 😀\r\n")
+    );
+    let empty = invoke_with_context(
+        &runtime,
+        READ_FILE_CAPABILITY_ID,
+        json!({"path":"/workspace/empty.txt"}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(empty["total_lines"], 0);
+    for (name, bytes) in malformed {
+        let failed = invoke_with_context(
+            &runtime,
+            READ_FILE_CAPABILITY_ID,
+            json!({"path":format!("/workspace/{name}")}),
+            context.clone(),
+        )
+        .await;
+        assert_eq!(failed, Err(RuntimeFailureKind::OperationFailed));
+        assert_eq!(std::fs::read(temp.path().join(name)).unwrap(), bytes);
+    }
+}
+
+#[tokio::test]
 async fn builtin_read_file_failure_reports_missing_path() {
     let temp = tempfile::tempdir().unwrap();
     let (filesystem, mounts) = mounted_filesystem(temp.path(), MountPermissions::read_only());

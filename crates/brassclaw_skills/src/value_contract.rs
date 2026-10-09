@@ -637,10 +637,10 @@ fn parse_schema(
         {
             return Err(error(path, "invalid input dependency"));
         }
-        if !record
+        if record
             .get("meaning")
             .and_then(Value::as_str)
-            .is_some_and(|s| !s.trim().is_empty())
+            .is_none_or(|s| s.trim().is_empty())
         {
             return Err(error(path, "computed argument requires meaning"));
         }

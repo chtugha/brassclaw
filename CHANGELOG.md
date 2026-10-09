@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.3] - 2026-10-09
+
+This development checkpoint repairs task-duration controls and the identified
+CI failures. The paired application/worker protocol remains version 6. Full v3
+acceptance and remaining hosting controls are still open.
+
+### Fixed
+
+- Remove the operational 30–3600 second task-duration range. WebUI, PostgreSQL,
+  Rust accounting and the worker now accept positive whole seconds within the
+  database INT representation, preserving consumption and live revisions.
+- Reject incomplete UTF-16 file units before reading or editing; preserve valid
+  Unicode, BOM and newline encoding through the registered coding Tools.
+- Supply the required explicit runtime policy in the two CLI DCR fixtures.
+  Use stable array chunks and equivalent validation predicates without obsolete
+  lint allowances, including the Rust 1.96 checks.
+
+### Added
+
+- Native PostgreSQL coverage for both registered prefix Tools, including exact
+  bundle publication, conversation fencing, transaction rollback and one-use
+  ticket rejection. This does not certify full v3 prefix compilation.
+
 ## [1.7.0-rc.2] - 2026-10-09
 
 This development checkpoint adds the revised memory defaults and live settings

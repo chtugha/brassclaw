@@ -29,10 +29,15 @@ pub(super) fn decode_text(
         FileEncoding::Utf8 => String::from_utf8(bytes.to_vec()).map_err(|_| operation_error())?,
         FileEncoding::Utf16Le => {
             let data = bytes.get(2..).unwrap_or_default();
-            #[allow(clippy::chunks_exact_to_as_chunks)] // as_chunks / array_chunks not yet stable
-            let units = data
-                .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            let (pairs, remainder) = data.as_chunks::<2>();
+            if !remainder.is_empty() {
+                // An incomplete UTF-16 unit is corrupt input, not a byte to
+                // silently discard before reading or rewriting the file.
+                return Err(operation_error());
+            }
+            let units = pairs
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
                 .collect::<Vec<_>>();
             String::from_utf16(&units).map_err(|_| operation_error())?
         }
