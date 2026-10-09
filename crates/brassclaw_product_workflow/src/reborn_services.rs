@@ -1127,6 +1127,29 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
+    async fn list_post_turn_reviews(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _after: Option<&str>,
+    ) -> Result<crate::recipes::PostTurnReviewList, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+    async fn inspect_post_turn_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _attempt: &str,
+    ) -> Result<crate::recipes::PostTurnReviewInspection, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+    async fn record_review_disposition(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _attempt: &str,
+        _request: crate::recipes::ReviewDispositionRequest,
+    ) -> Result<crate::recipes::ReviewDispositionReceipt, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
     async fn submit_component_review(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -3953,6 +3976,44 @@ impl RebornServicesApi for RebornServices {
             count,
             status: status.to_string(),
         })
+    }
+
+    async fn list_post_turn_reviews(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        after: Option<&str>,
+    ) -> Result<crate::recipes::PostTurnReviewList, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .list_post_turn_reviews(after)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+    async fn inspect_post_turn_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        attempt: &str,
+    ) -> Result<crate::recipes::PostTurnReviewInspection, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .inspect_post_turn_review(attempt)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+    async fn record_review_disposition(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        attempt: &str,
+        request: crate::recipes::ReviewDispositionRequest,
+    ) -> Result<crate::recipes::ReviewDispositionReceipt, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .record_review_disposition(&caller.user_id.to_string(), attempt, request)
+            .await
+            .map_err(map_recipe_store_error)
     }
 
     async fn submit_component_review(

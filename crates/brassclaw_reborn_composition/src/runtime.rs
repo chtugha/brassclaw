@@ -3932,6 +3932,10 @@ fn build_no_llm_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGat
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    mod mcp_provider_acceptance {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/common/mcp_provider_acceptance.rs"));
+    }
     use std::sync::{Arc, Mutex as StdMutex};
     use std::time::Duration;
 
@@ -5998,6 +6002,18 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_global_runtime_retains_one_root_across_match_and_no_match() {
+        native_mcp_runtime_acceptance(false).await;
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db", feature = "root-llm-provider"))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires the operator's LOCAL_TEST_ENV.md vLLM endpoint"]
+    async fn native_mcp_provider_ordinary_chat_round_trip() {
+        native_mcp_runtime_acceptance(true).await;
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn native_mcp_runtime_acceptance(live_provider: bool) {
         use brassclaw_product_workflow::MontyVmSettingsStore;
         use sha2::Digest;
 
@@ -6597,19 +6613,25 @@ mod tests {
             .unwrap()
             .get(0);
         drop(client);
-        let restart = Box::pin(build_reborn_runtime(
+        let restart_gateway: Arc<dyn HostManagedModelGateway> = if live_provider {
+            mcp_provider_acceptance::gateway(&rig.pool).await
+        } else {
+            Arc::new(RecordingGateway {
+                reply: "unused during bootstrap readback".into(),
+                requests: requests.clone(),
+            })
+        };
+        let restart = Arc::new(Box::pin(build_reborn_runtime(
             RebornRuntimeInput::from_services(
                 rig.build_input("global-runtime-owner", root.path())
                     .with_runtime_policy(local_dev_runtime_policy()),
             )
-            .with_model_gateway_override(Arc::new(RecordingGateway {
-                reply: "unused during bootstrap readback".into(),
-                requests: requests.clone(),
-            })),
+            .with_model_gateway_override(restart_gateway),
         ))
         .await
-        .unwrap();
+        .unwrap());
         let restarted_discovery = restart.mcp_recipe_discovery().snapshot().unwrap();
+        assert_eq!(restart.mcp_chat_bridge().unwrap().prepare_startup().await.unwrap(), 1);
         assert_eq!(restarted_discovery.generation(), advertised.generation());
         assert_eq!(restarted_discovery.tools_list(), advertised.tools_list());
         assert_eq!(
@@ -6627,7 +6649,10 @@ mod tests {
             "actual restart must reuse bootstrap approval without replaying effects, even while the Tool is blocked"
         );
         drop(client);
-        restart.shutdown().await.unwrap();
+        if live_provider {
+            mcp_provider_acceptance::round_trip(&restart, &rig.pool).await;
+        }
+        shutdown_shared_runtime(restart).await.unwrap();
     }
 
     #[cfg(feature = "skills-db")]

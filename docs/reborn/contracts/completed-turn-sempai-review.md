@@ -158,8 +158,9 @@ reserved/uncertain for supervised reconciliation; restart never redispatches the
 Failed service tasks keep their exact native handles, child execution, observed
 model responses, Tool answers and bounded retention credits. Shutdown reports
 unresolved reviews and quarantines these owners instead of silently destroying
-recovery evidence. A reconciliation UI and general authored-catalogue activation
-are separate implementation work. No receipt here proves proposed component
+recovery evidence. The operator inspection UI records quarantine observations
+without releasing these owners. Actual effect/accounting reconciliation and
+general authored-catalogue activation remain separate implementation work. No receipt here proves proposed component
 behavior, Q1, human Q2 or full-v3 acceptance.
 
 Acceptance must exercise the ordinary runtime: No-Match completion and a failure
@@ -170,6 +171,43 @@ stale claims, duplicate delivery and component/prefix/model replacement during
 review. Verify one publication and no repeat task effects, exact proposal receipts
 and no activation before required review evidence. SQL producer tests alone do
 not certify this consumer or full-v3 cutover.
+
+### Operator inspection and quarantine observations
+
+Settings → Validation now contains **Post-turn Sempai reviews**. The operator
+loads a cursor-paginated list of reserved attempts (50 per page), opens an attempt,
+and inspects its original immutable event, pinned work, operation inputs/answers
+and recorded settlement. A PostgreSQL statement supplies one coherent envelope;
+its exact UTF-8 bytes and SHA-256 identify the observation. The journal-checksum
+indicator checks the event link and operation byte checksums. It does not prove
+semantic completeness, provider billing, candidate behavior or root quiescence.
+Unreserved events waiting for Sempai configuration are not included in this list.
+
+The three operator-only routes use the existing facade and PostgreSQL RecipeStore
+adapter: `GET /api/webchat/v2/post-turn-reviews?after=<attempt-uuid>`,
+`GET /api/webchat/v2/post-turn-reviews/<attempt-uuid>`, and
+`POST /api/webchat/v2/post-turn-reviews/<attempt-uuid>/dispositions`.
+Ordinary chat/MCP callers gain no management or dispatch shortcut. Evidence is
+private operator data rendered as text, never executable source or HTML. Database
+errors are sanitized. An inspection over 32 MiB fails whole; it is not truncated.
+
+Only stopped `failed`, `uncertain` or `incomplete` attempts accept an observation.
+The operator supplies a canonical disposition UUID, the inspected checksum and
+a nonempty note of at most 16 KiB; actor identity comes from authenticated ingress.
+V133 retains the exact inspected envelope and note separately from original work.
+Changed evidence requires another inspection. A repeated ID with identical actor,
+attempt, checksum and note returns the original receipt, including after an unknown
+commit; changed fields conflict. The latest 50 notes and total count are shown.
+The immutable original work phase, operation answers and settlement remain intact.
+
+This is the inspection/decision-record prerequisite for a future supervised
+reconciliation Recipe. There is deliberately no resume/retry/release operation:
+an observation cannot establish whether a provider call or candidate submission
+occurred, reconstruct lost native handles, settle accountant reservations, or
+activate components. Receipts explicitly report `retention_released: false` and
+`work_replayed: false`. The existing review owner/quarantine continues to hold
+unknown effects. A future actual reconciliation path must resolve authoritative
+model/storage/effect receipts and retained accounting before supported release.
 
 ### Recorded development acceptance — 2026-10-09
 
@@ -192,5 +230,5 @@ These are wiring and storage evidence using a provider fixture, not an Ornith
 quality benchmark, billing acceptance or completion of the full failure matrix
 above. Strict composition lint validation was blocked by the concurrently edited
 MCP bridge's `verify_cached` argument-count warning; no consumer lint warning was
-reported in that run. Supervised reconciliation UI and general authored-catalogue
-activation remain separate work.
+reported in that run. Actual supervised effect/accounting reconciliation and
+general authored-catalogue activation remain separate work.

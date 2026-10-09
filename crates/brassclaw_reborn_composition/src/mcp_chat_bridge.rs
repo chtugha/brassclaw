@@ -38,6 +38,7 @@ struct Exchange {
     protocol_state: AtomicU8,
     advertised: Arc<McpRecipeDiscoverySnapshot>,
     cancellation: CancellationToken,
+    calls: Mutex<HashMap<String, CancellationToken>>,
 }
 
 /// Product-owned transport facade. No component selection or Tool dispatch API.
@@ -144,6 +145,7 @@ impl McpChatBridge {
             protocol_state: AtomicU8::new(0),
             advertised,
             cancellation: CancellationToken::new(),
+            calls: Mutex::new(HashMap::new()),
         });
         self.exchanges
             .lock()
@@ -223,6 +225,8 @@ impl McpChatBridge {
                 )
                 .await?;
             }
+            self.verify_matched_subject(call_id, row.get::<_, String>(3).as_str())
+                .await?;
             if runtime
                 .close_correlated_conversation(&conversation, call_id)
                 .await
@@ -246,6 +250,7 @@ impl McpChatBridge {
         command: &str,
         reply: crate::runtime::AssistantReply,
     ) -> Result<Value, McpChatError> {
+        self.verify_matched_subject(call_id, command).await?;
         let (accepted_message_ref, reply_message_ref) = runtime
             .correlated_chat_message_refs(conversation, call_id, command)
             .await
@@ -282,6 +287,7 @@ impl McpChatBridge {
         command: &str,
         receipt: CachedReceipt<'_>,
     ) -> Result<(), McpChatError> {
+        self.verify_matched_subject(call_id, command).await?;
         let reply = runtime
             .recover_correlated_user_message(conversation, call_id)
             .await
@@ -301,6 +307,44 @@ impl McpChatBridge {
             || actual_reply.as_deref() != receipt.reply_ref
         {
             return Err(McpChatError::Storage);
+        }
+        Ok(())
+    }
+
+    // Observe the original ordinary matcher and pinned selection. This never
+    // selects a Recipe, invokes IBS or replays a command during recovery.
+    async fn verify_matched_subject(
+        &self,
+        call_id: Uuid,
+        command: &str,
+    ) -> Result<(), McpChatError> {
+        let client = self.pool.get().await.map_err(|_| McpChatError::Storage)?;
+        let row = client.query_opt("SELECT a.outcome,q.evidence_bytes,c.tool_name FROM brassclaw_mcp_chat_calls c JOIN brassclaw_mcp_exchanges e USING(exchange_id) JOIN brassclaw_mcp_command_qualifications q ON q.checksum=e.qualification_checksum AND q.catalogue_id=e.catalogue_id JOIN brassclaw_monty_task_admissions a ON a.run_id=c.call_id WHERE c.call_id=$1 AND c.owner_scope=$2 AND c.command=$3 AND a.phase='settled'", &[&call_id,&self.owner_scope,&command])
+            .await.map_err(|_| McpChatError::Storage)?.ok_or(McpChatError::Unresolved)?;
+        let outcome: Value = row.get(0);
+        let evidence: Value =
+            serde_json::from_str(&row.get::<_, String>(1)).map_err(|_| McpChatError::Storage)?;
+        let name: String = row.get(2);
+        let selected = evidence["commands"][&name]["selection_checksum"]
+            .as_str()
+            .ok_or(McpChatError::Storage)?;
+        let recipes = outcome["execution"]["recipes"]
+            .as_array()
+            .ok_or(McpChatError::Unresolved)?;
+        let matched: Vec<_> = recipes
+            .iter()
+            .filter(|r| !r["normal_match"].is_null())
+            .collect();
+        if outcome["execution"]["intent_outcome"] != "match" || matched.len() != 1 {
+            return Err(McpChatError::Unresolved);
+        }
+        let recipe = matched[0];
+        if recipe["selection_checksum"] != selected
+            || recipe["normal_match"]["matching"]["selection_checksum"] != selected
+            || recipe["normal_match"]["matching"]["command_checksum"]
+                != hex::encode(Sha256::digest(command.as_bytes()))
+        {
+            return Err(McpChatError::Unresolved);
         }
         Ok(())
     }
@@ -325,6 +369,22 @@ impl McpChatBridge {
 
     pub fn authenticate_exchange(&self, token: &str) -> Result<Uuid, McpChatError> {
         Ok(self.authenticate(token)?.id)
+    }
+
+    pub fn cancel_request(&self, token: &str, request_id: &Value) -> Result<(), McpChatError> {
+        let exchange = self.authenticate(token)?;
+        if !request_id.is_string() && !request_id.is_number() {
+            return Err(McpChatError::RequestConflict);
+        }
+        if let Some(call) = exchange
+            .calls
+            .lock()
+            .map_err(|_| McpChatError::Unavailable)?
+            .get(&request_id.to_string())
+        {
+            call.cancel();
+        }
+        Ok(())
     }
 
     pub fn initialize(&self, token: &str) -> Result<Uuid, McpChatError> {
@@ -378,6 +438,20 @@ impl McpChatBridge {
                 .validate_command(name, command)
                 .map_err(|_| McpChatError::InvalidCommand)?,
         );
+        let cancellation = {
+            let mut calls = exchange
+                .calls
+                .lock()
+                .map_err(|_| McpChatError::Unavailable)?;
+            let key = request_id.to_string();
+            if calls.len() >= 4096 && !calls.contains_key(&key) {
+                return Err(McpChatError::Unavailable);
+            }
+            calls
+                .entry(key)
+                .or_insert_with(|| exchange.cancellation.child_token())
+                .clone()
+        };
         let runtime = self.runtime.upgrade().ok_or(McpChatError::Unavailable)?;
         let mut client = self.pool.get().await.map_err(|_| McpChatError::Storage)?;
         let tx = client
@@ -406,7 +480,7 @@ impl McpChatBridge {
         let phase: i16 = row.get(3);
         let saved: Option<Value> = row.get(4);
         if phase == 0 {
-            if exchange.cancellation.is_cancelled() {
+            if cancellation.is_cancelled() {
                 return Err(McpChatError::Unavailable);
             }
             self.discovery
@@ -438,7 +512,7 @@ impl McpChatBridge {
             .await?;
         }
         if phase == 3 {
-            if exchange.cancellation.is_cancelled() {
+            if cancellation.is_cancelled() {
                 return Err(McpChatError::Unavailable);
             }
             return saved.ok_or(McpChatError::Storage);
@@ -447,7 +521,7 @@ impl McpChatBridge {
             saved.ok_or(McpChatError::Storage)?
         } else {
             let reply = if phase == 0 {
-                if exchange.cancellation.is_cancelled() {
+                if cancellation.is_cancelled() {
                     return Err(McpChatError::Unresolved);
                 }
                 runtime
@@ -459,7 +533,7 @@ impl McpChatBridge {
                         &conversation,
                         command,
                         call_id,
-                        exchange.cancellation.child_token(),
+                        cancellation.child_token(),
                     )
                     .await
                     .map_err(|_| McpChatError::Unresolved)?
@@ -479,7 +553,7 @@ impl McpChatBridge {
             .map_err(|_| McpChatError::Unresolved)?;
         self.pool.get().await.map_err(|_| McpChatError::Storage)?
             .execute("UPDATE brassclaw_mcp_chat_calls SET phase=3,updated_at=clock_timestamp() WHERE call_id=$1 AND phase=2", &[&call_id]).await.map_err(|_| McpChatError::Storage)?;
-        if exchange.cancellation.is_cancelled() {
+        if cancellation.is_cancelled() {
             return Err(McpChatError::Unavailable);
         }
         Ok(response)
@@ -594,6 +668,20 @@ pub(crate) async fn assert_native_chat_transport(runtime: Arc<RebornRuntime>, pa
     );
     assert_eq!(result_a["result"]["content"][0]["text"], "transport α");
     assert_eq!(result_b["result"]["content"][0]["text"], "transport β");
+    let reconnected = bridge.connect(parent_run_id).await.unwrap();
+    initialize(router.clone(), &reconnected).await;
+    assert_eq!(
+        post(
+            router.clone(),
+            reconnected.bearer_token(),
+            Some(reconnected.id()),
+            a.clone()
+        )
+        .await
+        .1,
+        result_a
+    );
+    reconnected.disconnect().await.unwrap();
     assert_eq!(
         post(router.clone(), first.bearer_token(), Some(first.id()), a)
             .await
@@ -663,6 +751,19 @@ pub(crate) async fn assert_native_chat_transport(runtime: Arc<RebornRuntime>, pa
             .is_none()
     );
     let first_token = first.bearer_token().to_owned();
+    assert_eq!(post(router.clone(), first.bearer_token(), Some(first.id()),
+        json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"same-id"}})).await.0, StatusCode::ACCEPTED);
+    assert!(
+        bridge
+            .call(
+                first.bearer_token(),
+                &json!("same-id"),
+                "publish_literal_reply",
+                "publish literal reply transport α"
+            )
+            .await
+            .is_err()
+    );
     let first_id = first.id();
     first.disconnect().await.unwrap();
     assert_eq!(

@@ -13,11 +13,16 @@ import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
 import { IntentTemplatePreviewPanel } from "./intent-template-preview-panel.js";
 import { AssociationReviewPanel } from "./association-review-panel.js";
+import { PostTurnReviewPanel } from "./post-turn-review-panel.js";
 import { ComponentSubmissionPanel } from "./component-submission-panel.js";
 import { ComponentDetailPane, componentTypeForClass } from "./component-detail-pane.js";
 import { Section } from "./component-detail-primitives.js";
 
 export function ValidationQueueTab({ searchQuery = "" }) {
+  return html`<div className="space-y-4"><${PostTurnReviewPanel} /><${ValidationQueueContents} searchQuery=${searchQuery} /></div>`;
+}
+
+function ValidationQueueContents({ searchQuery = "" }) {
   const t = useT();
   const countQuery = useQuery({
     queryKey: ["settings", "validation-queue", "count"],

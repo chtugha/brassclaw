@@ -155,6 +155,8 @@ pub(crate) mod pg_python_code_store;
 pub(crate) mod pg_recipe_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_review_submission;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_review_inspection;
 pub(crate) mod pg_security_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_settings_listing;

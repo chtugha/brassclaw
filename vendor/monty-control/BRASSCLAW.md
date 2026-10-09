@@ -153,3 +153,13 @@ Dump ABI remains `0xBC05`; this changes allocator publication, not snapshot
 layout. Private worker protocol 5 is unchanged. Real allocator and root/child
 resize acceptance is required in `tests/monty_control`; this primitive does not
 implement host-pressure measurement, adaptive settings migration or WebUI uptake.
+
+The same unreleased `control.7` adds nonmutating `validate_worker_limits`, using
+the exact logical/physical validation shared with `set_worker_limits`. It writes
+neither ceiling, baseline nor counters. The installation worker's private
+protocol 9 exposes a revision-checked candidate-layout observation without
+advancing Python, reconciling a pending automatic heap target or changing its
+configured frame. This is not a reservation or a durable settings transaction.
+The transport owner must retain the quiescent boundary through persistence and
+publication; full live frame uptake and queued-exchange retention remain open.
+Dump ABI stays `0xBC05`; the process protocol and interpreter dump are separate.

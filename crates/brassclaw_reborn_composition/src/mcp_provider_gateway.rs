@@ -150,7 +150,11 @@ impl LoopCapabilityPortFactory for McpCommandPortFactory {
         });
         {
             let mut ports = self.binding.ports.lock().map_err(|_| unavailable())?;
-            if ports.get(&context.run_id).and_then(Weak::upgrade).is_some() {
+            if ports
+                .get(&context.run_id)
+                .and_then(Weak::upgrade)
+                .is_some_and(|current| !current.revoked.load(std::sync::atomic::Ordering::SeqCst))
+            {
                 return Err(unavailable());
             }
             ports.insert(context.run_id, Arc::downgrade(&port));

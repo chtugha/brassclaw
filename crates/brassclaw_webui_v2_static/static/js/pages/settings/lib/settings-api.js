@@ -375,3 +375,15 @@ export function stopMcpServer(payload = {}) {
     body: JSON.stringify(payload),
   });
 }
+
+// Operator observations keep original work and retained runtime state intact.
+export function fetchPostTurnReviews(after = null) {
+  return apiFetch(`/api/webchat/v2/post-turn-reviews${after ? `?after=${encodeURIComponent(after)}` : ""}`);
+}
+export function inspectPostTurnReview(attempt) {
+  return apiFetch(`/api/webchat/v2/post-turn-reviews/${encodeURIComponent(attempt)}`);
+}
+export function recordReviewDisposition(attempt, request) {
+  return apiFetch(`/api/webchat/v2/post-turn-reviews/${encodeURIComponent(attempt)}/dispositions`,
+    { method: "POST", body: request });
+}

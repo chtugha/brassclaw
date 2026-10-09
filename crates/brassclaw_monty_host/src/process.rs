@@ -39,7 +39,7 @@ pub use crate::process_recipe::{
     ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 8;
+const PROTOCOL: u32 = 9;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
 const MAX_TRANSPORT_DEPTH: usize = 64;
@@ -130,6 +130,16 @@ pub enum WorkerCommand {
     },
     /// Actual worker receipt without advancing Python or inventing liveness.
     Inspect,
+    /// Check actual allocator feasibility without advancing Python or changing
+    /// any policy revision. This observation alone cannot authorize persistence;
+    /// the owner must retain the quiescent boundary through a durable edit.
+    ValidateMemoryLayout {
+        expected_settings_revision: u64,
+        expected_heap_revision: u64,
+        max_vm_bytes: usize,
+        max_frame_bytes: usize,
+        adapter_reserve_bytes: usize,
+    },
     UpdateHeap {
         expected_revision: u64,
         settings: HeapSettings,
@@ -249,6 +259,26 @@ pub struct ProcessSnapshot {
     pub recipe_context_capacity: Option<RecipeContextCapacity>,
     pub task_accounting: Vec<TaskAccounting>,
     pub withheld_answers: Vec<WithheldHostAnswer>,
+}
+
+/// Acknowledged execution settings, distinct from changing usage/context counts
+/// and from Tool authority. Expected edit denials preserve this observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeSettingsObservation {
+    pub task: Option<TaskSettings>,
+    pub values: Option<VmBounds>,
+    pub max_recipe_contexts: Option<u32>,
+    pub adapter_reserve_bytes: usize,
+}
+impl ProcessSnapshot {
+    pub fn runtime_settings(&self) -> RuntimeSettingsObservation {
+        RuntimeSettingsObservation {
+            task: self.effective_task_settings,
+            values: self.vm_bounds,
+            max_recipe_contexts: self.recipe_context_capacity.map(|capacity| capacity.limit),
+            adapter_reserve_bytes: self.allocator.adapter_reserve_bytes,
+        }
+    }
 }
 impl fmt::Debug for ProcessSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -979,6 +1009,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
         sequence = request.sequence;
         let mut admitted_task = None;
         let mut recipe = None;
+        let memory_validation =
+            matches!(&request.command, WorkerCommand::ValidateMemoryLayout { .. });
         let recipe_command = matches!(&request.command, WorkerCommand::Recipe { .. });
         let recipe_context = match &request.command {
             WorkerCommand::Recipe {
@@ -1032,6 +1064,27 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 command => match (vm.as_mut(), recipes.as_mut()) {
                     (Some(root), Some(registry)) => match command {
                         WorkerCommand::Inspect => Ok(None),
+                        WorkerCommand::ValidateMemoryLayout {
+                            expected_settings_revision,
+                            expected_heap_revision,
+                            max_vm_bytes,
+                            max_frame_bytes,
+                            adapter_reserve_bytes,
+                        } => {
+                            if expected_settings_revision != registry.settings().revision {
+                                Err(crate::VmError::kind(VmFailure::SettingsRevisionConflict))
+                            } else if !valid_frame_limit(max_frame_bytes) {
+                                Err(crate::VmError::kind(VmFailure::InvalidBounds))
+                            } else {
+                                heap.validate_layout(
+                                    expected_heap_revision,
+                                    max_vm_bytes,
+                                    max_frame_bytes,
+                                    adapter_reserve_bytes,
+                                )
+                                .map(|()| None)
+                            }
+                        }
                         WorkerCommand::UpdateHeap {
                             expected_revision,
                             settings,
@@ -1188,8 +1241,12 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             },
         };
         let mut snapshot = snapshot;
-        heap.reconcile()
-            .map_err(|_| "worker heap reconciliation failed")?;
+        // A feasibility probe must not apply a pending automatic target as a
+        // side effect. Actual publication still rechecks under the owner fence.
+        if !memory_validation {
+            heap.reconcile()
+                .map_err(|_| "worker heap reconciliation failed")?;
+        }
         snapshot.heap = heap.status();
         snapshot.allocator = heap.allocator_status();
         snapshot.vm_live_bytes = monty_alloc::vm_live_bytes();

@@ -5254,3 +5254,50 @@ background screen, process guards and required disk cleanup were used; relevant
 source hashes stayed fixed. The reproducer, prior-worker digest, exact snapshots
 and logs are at `/private/tmp/brassclaw-zero-reserve-boot-accepted-20261009`.
 This is standalone hosting acceptance, not full platform or plan acceptance.
+
+### 2026-10-09 — Publish Rust settings at the worker acknowledgment boundary
+
+Source tracing found a revision gap: after the worker acknowledged a runtime
+edit, the transport could begin another child RPC before the service published
+its Rust task settings and hosting policy. Move that bounded synchronous metadata
+publication into the sole transport owner, before observations, the successful
+receipt and any subsequent exchange are released. The callback is restricted to
+mechanical settings commands; no database, model, Tool or workflow execution is
+added. The service continues to retain its unconsumed root boundary and own the
+settings receipt. Dropping a waiter does not cancel the accepted publication.
+
+Validate the exact worker acknowledgment before publishing Rust settings. An
+expected worker denial never calls the publisher. Publication failure or panic
+after a worker acknowledgment retains that actual acknowledgment and fences and
+reaps the worker; queued commands retain their identity without starting transport.
+Do not roll back an acknowledged revision or retry its command. Expected denial
+comparison now separates configured limits from changing active-context counts.
+Validate a combined deadline/slice edit against its acknowledged new VM bounds,
+rather than the preceding unpublished observation.
+
+All 35 real-worker actor/service cases passed (12 actor, 23 service), including
+dropped waiters, queued child progress, expected denial, publication failure and
+panic, retained task consumption, and a combined slice/deadline reduction. Strict
+composition library Clippy passed with `skills-db,libsql`. Cargo ran serially in
+background screen using process guards and required disk cleanup. Relevant source
+hashes stayed fixed for the focused batch and native acceptance.
+
+A fresh ordinary CLI/default-features instance and retained packaged worker ran
+through PostgreSQL V133. Actual authenticated settings API edits acknowledged
+revisions 2–4 in Rust and Monty: duration 701 seconds, a 2-second slice with a
+5-second response deadline, then a 5-millisecond slice with a 1-second deadline,
+96 child contexts and zero adapter reserve. The heap revision and startup child
+process identities remained fixed. A stale revision returned 409 without changing
+persisted or effective settings. Shutdown exited 0 in 0.147 seconds with closed
+HTTP/PostgreSQL ports and no warnings or connection errors. This resource check
+used the existing `local_dev` configured-provider bootstrap and no inference;
+it does not establish the final DB-only provider cutover.
+
+Exact source snapshots, diff, commands, logs, binary digests and API receipts:
+`/private/tmp/brassclaw-runtime-publication-boundary-accepted-20261009`.
+This closes the identified worker/Rust publication gap. Production frame size
+still remains 64 MiB. Live frame changes still need retained per-exchange
+request/response framing, allocator feasibility, queued work ownership and
+revisioned publication through the supported settings vertical. Shared preload
+caching, full authored activation, MCP, other platforms and full-plan acceptance
+remain open; no Rust-loop fallback or warning suppression was introduced.

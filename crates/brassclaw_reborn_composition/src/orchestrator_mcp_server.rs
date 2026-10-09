@@ -208,6 +208,19 @@ mod inner {
                     return StatusCode::BAD_REQUEST.into_response();
                 }
                 StatusCode::ACCEPTED.into_response()
+            } else if req.method == "notifications/cancelled" {
+                let Some(request_id) = req.params.get("requestId") else {
+                    return StatusCode::BAD_REQUEST.into_response();
+                };
+                if let Some(chat) = &state.chat
+                    && chat
+                        .cancel_request(token.unwrap_or_default(), request_id)
+                        .is_ok()
+                {
+                    StatusCode::ACCEPTED.into_response()
+                } else {
+                    StatusCode::BAD_REQUEST.into_response()
+                }
             } else {
                 StatusCode::BAD_REQUEST.into_response()
             };

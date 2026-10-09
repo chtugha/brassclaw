@@ -37,8 +37,8 @@ use crate::{
         RecipeEvent, RootBoot, TaskHandle, TaskSettings, WorkerCommand,
     },
     transport_actor::{
-        ActorExit, ActorLimits, HostingDeadlines, StartError, TransportClient, TransportOwner,
-        TransportReceipt,
+        ActorExit, ActorFailure, ActorLimits, HostingDeadlines, RuntimeCommit, StartError,
+        TransportClient, TransportOwner, TransportReceipt,
     },
 };
 
@@ -1248,11 +1248,14 @@ async fn update_runtime(
     evidence: &mut ExchangeEvidence,
     command: WorkerCommand,
     previous: &ProcessSnapshot,
+    commit: RuntimeCommit,
 ) -> Result<(ProcessSnapshot, Option<ServiceFailure>), ServiceFailure> {
-    let ticket = client.try_submit(command).map_err(|error| {
-        evidence.rejected.push(*error.command);
-        ServiceFailure::Transport
-    })?;
+    let ticket = client
+        .try_submit_runtime_publication(command, commit)
+        .map_err(|error| {
+            evidence.rejected.push(*error.command);
+            ServiceFailure::Transport
+        })?;
     let receipt = ticket.wait().await.map_err(|_| ServiceFailure::Transport)?;
     let denial = match &receipt.outcome {
         Err(error) => match error.kind {
@@ -1277,10 +1280,10 @@ async fn update_runtime(
         .is_none_or(|next| next.boundary.is_some() || next.admitted_task.is_some()
             || !next.withheld_answers.is_empty()
             || !matches!(&next.recipe, Some(RecipeEvent::Failed { context: None, stdout }) if stdout.is_empty())
-            || next.effective_task_settings != previous.effective_task_settings
-            || next.vm_bounds != previous.vm_bounds
-            || next.recipe_context_capacity != previous.recipe_context_capacity
-            || next.allocator.adapter_reserve_bytes != previous.allocator.adapter_reserve_bytes) {
+            // Child opens/closes can precede this control command. Their live
+            // counts are not a policy revision and must not fabricate a denial
+            // mismatch; the configured capacity must remain unchanged.
+            || next.runtime_settings() != previous.runtime_settings()) {
         evidence.failed.push(receipt);
         return Err(ServiceFailure::Protocol);
     }
@@ -1289,6 +1292,80 @@ async fn update_runtime(
         Err(mut error) => *error.snapshot.take().ok_or(ServiceFailure::Protocol)?,
     };
     Ok((snapshot, denial))
+}
+
+/// Bounded synchronous metadata publication in the sole transport owner. The
+/// service still owns sequencing, the unconsumed root boundary and the final
+/// settings receipt; children cannot resume in the worker/Rust revision gap.
+fn runtime_commit(
+    shutdown: &ShutdownBounds,
+    transport: &TransportClient,
+    publication: &TaskSettingsPublication,
+) -> RuntimeCommit {
+    let expected = publication.expected;
+    let settings = publication.settings;
+    let values = publication.values;
+    let contexts = publication.max_recipe_contexts;
+    let reserve = publication.adapter_reserve_bytes;
+    let admission_limits = publication.admission_limits;
+    let pending = publication.max_pending_settings;
+    let retained = publication.max_retained_attempts;
+    let actor = publication.actor_limits;
+    let deadlines = publication.hosting_deadlines;
+    let live = shutdown.settings.live.clone();
+    let admissions = shutdown.admission_credits.clone();
+    let pending_credits = shutdown.settings.credits.clone();
+    let retained_credits = shutdown.retained_credits.clone();
+    let transport = transport.clone();
+    Box::new(move |receipt| {
+        if !matches!(&receipt.recipe, Some(RecipeEvent::SettingsUpdated))
+            || receipt.effective_task_settings != Some(settings)
+            || values.is_some_and(|values| receipt.vm_bounds != Some(values))
+            || receipt.vm_bounds.is_none()
+            || receipt.recipe_context_capacity.is_none()
+            || contexts.is_some_and(|limit| {
+                receipt
+                    .recipe_context_capacity
+                    .is_none_or(|capacity| capacity.limit != limit)
+            })
+            || reserve.is_some_and(|reserve| receipt.allocator.adapter_reserve_bytes != reserve)
+            || receipt.boundary.is_some()
+            || receipt.admitted_task.is_some()
+            || !receipt.withheld_answers.is_empty()
+            || !receipt.stdout.is_empty()
+            || live.current().revision != expected
+        {
+            return Err(ActorFailure::Transport(ProcessFailure::Protocol));
+        }
+        if let Some(limits) = admission_limits {
+            admissions
+                .publish(limits)
+                .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        }
+        if let Some(limit) = pending {
+            pending_credits
+                .publish(AdmissionLimits {
+                    max_tasks: limit,
+                    max_bytes: 1,
+                })
+                .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        }
+        if let Some(limit) = retained {
+            retained_credits
+                .publish(AdmissionLimits {
+                    max_tasks: limit,
+                    max_bytes: 1,
+                })
+                .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        }
+        transport.publish_hosting_policy_for_bounds(
+            actor,
+            deadlines,
+            receipt.vm_bounds.ok_or(ActorFailure::InvalidLimits)?,
+        )?;
+        live.publish(expected, settings.into())
+            .map_err(|_| ActorFailure::AccountingUnavailable)
+    })
 }
 
 /// An expected rejected heap edit executes no Python or host effect. Its real
@@ -1468,7 +1545,7 @@ async fn run(
                                         expected_revision: publication.expected, settings: publication.settings,
                                     },
                                 },
-                            }, &snapshot).await;
+                            }, &snapshot, runtime_commit(&shutdown, &transport, &publication)).await;
                             let (mut receipt, denial) = match update {
                                 Ok(receipt) => receipt,
                                 Err(error) => {
@@ -1483,51 +1560,14 @@ async fn run(
                                 publication.result.send_replace(Some(Err(denial)));
                                 continue;
                             }
-                            if !matches!(receipt.recipe, Some(RecipeEvent::SettingsUpdated))
-                                || receipt.effective_task_settings != Some(publication.settings)
-                                || publication.values.is_some_and(|values| receipt.vm_bounds != Some(values))
-                                || receipt.recipe_context_capacity.is_none()
-                                || publication.max_recipe_contexts.is_some_and(|limit| receipt.recipe_context_capacity.is_none_or(|capacity| capacity.limit != limit))
-                                || receipt.boundary.is_some() {
-                                snapshot = receipt;
-                                publication.result.send_replace(Some(Err(ServiceFailure::Protocol)));
-                                return Err(ServiceFailure::Protocol);
-                            }
-                            if publication.adapter_reserve_bytes.is_some_and(|reserve|
-                                receipt.allocator.adapter_reserve_bytes != reserve) {
-                                snapshot = receipt;
-                                publication.result.send_replace(Some(Err(ServiceFailure::Protocol)));
-                                return Err(ServiceFailure::Protocol);
-                            }
                             // UpdateSettings does not advance the root. Preserve its
                             // actual unconsumed call/control boundary; replacing it
                             // with the side-command's None would strand execution.
                             receipt.boundary = snapshot.boundary.take();
                             snapshot = receipt;
-                            if let Some(limits) = publication.admission_limits
-                                && let Err(error) = shutdown.admission_credits.publish(limits) {
-                                publication.result.send_replace(Some(Err(error)));
-                                return Err(error);
-                            }
-                            if let Some(limit) = publication.max_pending_settings
-                                && let Err(error) = shutdown.settings.credits.publish(AdmissionLimits { max_tasks: limit, max_bytes: 1 }) {
-                                publication.result.send_replace(Some(Err(error)));
-                                return Err(error);
-                            }
-                            if let Some(limit) = publication.max_retained_attempts
-                                && let Err(error) = shutdown.retained_credits.publish(AdmissionLimits { max_tasks: limit, max_bytes: 1 }) {
-                                publication.result.send_replace(Some(Err(error)));
-                                return Err(error);
-                            }
-                            if transport.publish_hosting_policy(publication.actor_limits,
-                                publication.hosting_deadlines).is_err() {
-                                publication.result.send_replace(Some(Err(ServiceFailure::Transport)));
-                                return Err(ServiceFailure::Transport);
-                            }
-                            if shutdown.settings.live.publish(publication.expected, publication.settings.into()).is_err() {
-                                publication.result.send_replace(Some(Err(ServiceFailure::SettingsConflict)));
-                                return Err(ServiceFailure::SettingsConflict);
-                            }
+                            // Rust policy and worker observations were published
+                            // before the actor released this successful ACK or
+                            // allowed any subsequent child RPC to execute.
                             publication.result.send_replace(Some(Ok(Arc::new(SettingsReceipt {
                                 allocator: snapshot.allocator,
                                 effective_settings: publication.settings,

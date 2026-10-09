@@ -2317,5 +2317,36 @@ async fn live_hosting_deadlines_share_revision_and_preserve_global_root() {
     assert_eq!(receipt.hosting_deadlines, reduced);
     assert_eq!(client.live_task_settings().current().revision, 3);
     assert_eq!(client.root_identity(), root);
+    // The actor now publishes Rust inside the worker ACK boundary. Validate
+    // a combined slice/deadline reduction against the ACK's new bounds, not
+    // the still-unpublished watch containing the old two-second slice.
+    let mut large_slice = client.vm_bounds();
+    large_slice.execution_slice = Duration::from_secs(2);
+    let settings = TaskSettings {
+        revision: 4,
+        ..settings
+    };
+    client
+        .publish_control_settings(3, settings, large_slice, 8, policy(reduced))
+        .await
+        .unwrap();
+    let mut small_slice = large_slice;
+    small_slice.execution_slice = Duration::from_millis(5);
+    let shorter = HostingDeadlines {
+        startup_timeout: Duration::from_millis(100),
+        response_timeout: Duration::from_secs(1),
+    };
+    let settings = TaskSettings {
+        revision: 5,
+        ..settings
+    };
+    let receipt = client
+        .publish_control_settings(4, settings, small_slice, 8, policy(shorter))
+        .await
+        .unwrap();
+    assert_eq!(receipt.hosting_deadlines, shorter);
+    assert_eq!(client.vm_bounds(), small_slice);
+    assert_eq!(client.live_task_settings().current().revision, 5);
+    assert_eq!(client.root_identity(), root);
     graceful(&mut owner).await;
 }

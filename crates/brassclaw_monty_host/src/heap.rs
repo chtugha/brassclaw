@@ -96,6 +96,33 @@ impl WorkerHeap {
         }
     }
 
+    /// Nonmutating feasibility at a serialized worker boundary. The observation
+    /// does not reserve capacity or authorize a later, unfenced durable edit.
+    pub(crate) fn validate_layout(
+        &self,
+        expected_revision: u64,
+        vm_bytes: usize,
+        frame_bytes: usize,
+        adapter_reserve_bytes: usize,
+    ) -> Result<(), VmError> {
+        if expected_revision != self.status.desired_revision() {
+            return Err(VmError::kind(VmFailure::SettingsRevisionConflict));
+        }
+        let reserve = frame_bytes
+            .checked_mul(2)
+            .and_then(|bytes| bytes.checked_add(adapter_reserve_bytes))
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        if self.status.desired.is_some_and(|desired| {
+            desired
+                .max_vm_bytes
+                .checked_add(reserve)
+                .is_none_or(|bytes| bytes == usize::MAX)
+        }) {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        monty_alloc::validate_worker_limits(vm_bytes, reserve).map_err(limit_error)
+    }
+
     /// The synchronous worker owns this quiescent boundary. The allocator
     /// validates actual live VM/physical bytes before changing either limit.
     /// Heap publications and pending automatic reductions retain their revisions.

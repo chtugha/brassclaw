@@ -21,6 +21,102 @@ mod support;
 use support::{SOURCE, boot, limits, task, worker};
 
 #[tokio::test]
+async fn proposed_memory_layout_is_checked_without_publishing_or_advancing_python() {
+    use brassclaw_monty_host::heap::HeapSettings;
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    // Preserve an actual pending automatic target too: a probe is not an
+    // opportunistic heap reconciliation or a cancellation of that target.
+    let pending = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: 1,
+            settings: HeapSettings {
+                revision: 2,
+                max_vm_bytes: 1,
+            },
+            automatic: true,
+        })
+        .await
+        .unwrap();
+    assert!(pending.heap.pending_reduction);
+    assert_eq!(pending.heap.effective, ready.heap.effective);
+    let command = |settings_revision, heap_revision, heap, frame, reserve| {
+        WorkerCommand::ValidateMemoryLayout {
+            expected_settings_revision: settings_revision,
+            expected_heap_revision: heap_revision,
+            max_vm_bytes: heap,
+            max_frame_bytes: frame,
+            adapter_reserve_bytes: reserve,
+        }
+    };
+    // This future layout is larger than both the initial physical limit and
+    // its configured frame. Feasibility must not install either proposal.
+    let accepted = process
+        .exchange(command(1, 2, 128 * 1024 * 1024, 80 * 1024 * 1024, 0))
+        .await
+        .unwrap();
+    for snapshot in [&pending, &accepted] {
+        assert_eq!(snapshot.root, ready.root);
+        assert_eq!(snapshot.work_waits, ready.work_waits);
+        assert_eq!(snapshot.runtime_settings(), ready.runtime_settings());
+        assert_eq!(snapshot.allocator, ready.allocator);
+        assert!(snapshot.boundary.is_none());
+        assert!(snapshot.admitted_task.is_none());
+        assert!(snapshot.recipe.is_none());
+        assert!(snapshot.task_accounting.is_empty());
+        assert!(snapshot.stdout.is_empty());
+        assert!(snapshot.withheld_answers.is_empty());
+    }
+    assert_eq!(accepted.heap, pending.heap);
+    let mut rejected = vec![
+        (
+            command(9, 2, 128 * 1024 * 1024, 4096, 0),
+            VmFailure::SettingsRevisionConflict,
+        ),
+        (
+            command(1, 1, 128 * 1024 * 1024, 4096, 0),
+            VmFailure::SettingsRevisionConflict,
+        ),
+        (command(1, 2, 1, 4096, 0), VmFailure::UnsafeHeapReduction),
+        (command(1, 2, 0, 4096, 0), VmFailure::InvalidBounds),
+        (command(1, 2, usize::MAX, 4096, 0), VmFailure::InvalidBounds),
+        (
+            command(1, 2, 128 * 1024 * 1024, 0, 0),
+            VmFailure::InvalidBounds,
+        ),
+        (
+            command(1, 2, 128 * 1024 * 1024, 4096, usize::MAX),
+            VmFailure::InvalidBounds,
+        ),
+    ];
+    if let Ok(frame) = usize::try_from(u64::from(u32::MAX) + 1) {
+        rejected.push((
+            command(1, 2, 128 * 1024 * 1024, frame, 0),
+            VmFailure::InvalidBounds,
+        ));
+    }
+    for (command, failure) in rejected {
+        let error = process.exchange(command).await.unwrap_err();
+        assert_eq!(error.kind, ProcessFailure::Vm(failure));
+        let snapshot = error.snapshot.expect("actual worker denial required");
+        assert_eq!(snapshot.root, ready.root);
+        assert_eq!(snapshot.work_waits, ready.work_waits);
+        assert_eq!(snapshot.runtime_settings(), ready.runtime_settings());
+        assert_eq!(snapshot.allocator, ready.allocator);
+        assert_eq!(snapshot.heap, pending.heap);
+        assert!(snapshot.boundary.is_none());
+        assert!(snapshot.recipe.is_none());
+        assert!(snapshot.task_accounting.is_empty());
+        assert_eq!(process.process_id(), pid);
+    }
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
 async fn explicit_zero_reserve_boot_has_no_hidden_default_minimum() {
     // Standalone hosting geometry is independent of the product's configured
     // 512 MiB floor. This probe executes no Recipe or external Tool.

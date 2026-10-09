@@ -1201,6 +1201,50 @@ pub struct ComponentPath {
     pub component_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostTurnReviewsQuery {
+    pub after: Option<String>,
+}
+
+pub async fn list_post_turn_reviews(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Query(query): Query<PostTurnReviewsQuery>,
+) -> Result<Json<brassclaw_product_workflow::PostTurnReviewList>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .list_post_turn_reviews(caller, query.after.as_deref())
+            .await?,
+    ))
+}
+pub async fn inspect_post_turn_review(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(attempt): Path<String>,
+) -> Result<Json<brassclaw_product_workflow::PostTurnReviewInspection>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .inspect_post_turn_review(caller, &attempt)
+            .await?,
+    ))
+}
+pub async fn record_review_disposition(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(attempt): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::ReviewDispositionRequest>,
+) -> Result<Json<brassclaw_product_workflow::ReviewDispositionReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .record_review_disposition(caller, &attempt, request)
+            .await?,
+    ))
+}
+
 /// Retain a candidate as data; this neither reviews nor activates it.
 pub async fn submit_component_review(
     State(state): State<WebUiV2State>,

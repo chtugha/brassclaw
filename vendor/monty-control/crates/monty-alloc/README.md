@@ -84,3 +84,9 @@ does not reset either live counter or move VM allocations into baseline. Typed
 errors distinguish invalid settings/accounting from unsafe reductions. A failed
 publication leaves both limits unchanged. Concurrent allocation/execution must
 be excluded by the worker owner. This API is not an OS capacity measurement.
+
+`validate_worker_limits(vm_bytes, reserve_bytes)` shares those checks without
+publishing either limit or changing counters or baseline. It is an observation,
+not a capacity reservation. The host must keep the worker quiescent across
+feasibility, durable commit and publication; a later unfenced write cannot rely
+on an earlier successful probe.

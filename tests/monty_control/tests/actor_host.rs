@@ -2,13 +2,22 @@
 use brassclaw_monty_host::{
     global::Lifecycle,
     process::{
-        ProcessBoundary, ProcessFailure, RecipeCommand, RecipeEvent, SelectedPython, WorkerCommand,
+        ProcessBoundary, ProcessFailure, RecipeCommand, RecipeEvent, SelectedPython, TaskSettings,
+        WorkerCommand,
     },
     transport_actor::{ActorFailure, ActorLimits, StopKind, TransportClient, TransportOwner},
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::{future::Future, task::Poll, time::Duration};
+use std::{
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    task::Poll,
+    time::Duration,
+};
 mod support;
 use support::{SOURCE, boot, limits, task, worker};
 
@@ -31,6 +40,248 @@ async fn exchange(
         .unwrap()
         .outcome
         .unwrap()
+}
+
+#[tokio::test]
+async fn worker_ack_commits_rust_policy_before_child_progress_even_without_a_waiter() {
+    use brassclaw_resources::LiveMontyTaskSettings;
+    let selected = boot(SOURCE);
+    let initial_settings = selected.task_settings;
+    let initial_bounds = selected.bounds.values;
+    let live = LiveMontyTaskSettings::new(initial_settings.into()).unwrap();
+    let (mut owner, ready) = TransportOwner::start(worker(), selected, limits(), actor_limits())
+        .await
+        .unwrap();
+    let client = owner.client();
+    let admitted = exchange(
+        &client,
+        WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        },
+    )
+    .await;
+    let task = admitted.admitted_task.unwrap();
+    let compute = admitted.task_accounting[0].compute_time.unwrap();
+    let next = TaskSettings {
+        revision: 2,
+        max_compute_time: Duration::from_secs(60),
+        token_budgets_enabled: false,
+    };
+    let mut bounds = initial_bounds;
+    bounds.max_value_bytes *= 2;
+    let commits = Arc::new(AtomicUsize::new(0));
+    let count = commits.clone();
+    let rust = live.clone();
+    let observed = client.live_vm_bounds();
+    let publication = client
+        .try_submit_runtime_publication(
+            WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings {
+                    expected_revision: 1,
+                    settings: next,
+                    values: bounds,
+                    max_recipe_contexts: None,
+                    adapter_reserve_bytes: None,
+                },
+            },
+            Box::new(move |snapshot| {
+                assert_eq!(snapshot.effective_task_settings, Some(next));
+                assert_eq!(snapshot.vm_bounds, Some(bounds));
+                assert_eq!(
+                    *observed.borrow(),
+                    initial_bounds,
+                    "worker observation must not escape before Rust publication"
+                );
+                assert_eq!(rust.current().revision, 1);
+                rust.publish(1, next.into()).unwrap();
+                count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+        )
+        .unwrap();
+    let id = publication.id;
+    drop(publication);
+    // The queued child is real VM work, not a synthetic dispatch result. The
+    // accepted publication remains owned despite the dropped HTTP-like waiter.
+    let opened = client
+        .try_submit(WorkerCommand::Recipe {
+            command: RecipeCommand::Open { task, parent: None },
+        })
+        .unwrap()
+        .wait()
+        .await
+        .unwrap()
+        .outcome
+        .unwrap();
+    assert!(matches!(opened.recipe, Some(RecipeEvent::Opened { .. })));
+    assert_eq!(opened.root, ready.root);
+    assert_eq!(opened.effective_task_settings, Some(next));
+    assert!(opened.task_accounting[0].compute_time.unwrap() >= compute);
+    assert_eq!(TaskSettings::from(live.current()), next);
+    assert_eq!(commits.load(Ordering::SeqCst), 1);
+    assert_eq!(*client.live_vm_bounds().borrow(), bounds);
+    let receipt = client.completions().wait(id).await.unwrap();
+    assert!(receipt.transport_started);
+    assert!(
+        matches!(receipt.original_command().unwrap(), WorkerCommand::Recipe {
+        command: RecipeCommand::UpdateRuntimeSettings { settings, .. }
+    } if settings == next)
+    );
+    receipt.outcome.unwrap();
+    owner.request_termination();
+    let exit = owner.join().await.unwrap();
+    assert_eq!(exit.kind, StopKind::Requested);
+    assert!(exit.containment_error.is_none() && exit.reap_error.is_none());
+}
+
+#[tokio::test]
+async fn rust_publication_failure_retains_actual_worker_ack_and_fences_queued_work() {
+    for panic in [false, true] {
+        let (mut owner, ready) =
+            TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+                .await
+                .unwrap();
+        let client = owner.client();
+        let next = TaskSettings {
+            revision: 2,
+            max_compute_time: Duration::from_secs(60),
+            token_budgets_enabled: false,
+        };
+        let ticket = client
+            .try_submit_runtime_publication(
+                WorkerCommand::Recipe {
+                    command: RecipeCommand::UpdateSettings {
+                        expected_revision: 1,
+                        settings: next,
+                    },
+                },
+                Box::new(move |snapshot| {
+                    assert_eq!(snapshot.effective_task_settings, Some(next));
+                    if panic {
+                        panic!("intentional synchronous publication failure");
+                    }
+                    Err(ActorFailure::AccountingUnavailable)
+                }),
+            )
+            .unwrap();
+        let queued = client.try_submit(WorkerCommand::Inspect).unwrap();
+        let receipt = ticket.wait().await.unwrap();
+        assert!(receipt.transport_started);
+        assert!(
+            matches!(receipt.original_command().unwrap(), WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateSettings { settings, .. }
+        } if settings == next)
+        );
+        let error = receipt.outcome.unwrap_err();
+        assert_eq!(error.kind, ProcessFailure::Protocol);
+        let actual = error.snapshot.unwrap();
+        assert_eq!(actual.root, ready.root);
+        assert_eq!(actual.effective_task_settings, Some(next));
+        assert!(matches!(actual.recipe, Some(RecipeEvent::SettingsUpdated)));
+        let exit = owner.join().await.unwrap();
+        assert_eq!(exit.kind, StopKind::TransportFailed);
+        assert!(exit.exit_status.is_some());
+        assert!(exit.containment_error.is_none() && exit.reap_error.is_none());
+        let unstarted = queued.wait().await.unwrap();
+        assert!(!unstarted.transport_started);
+        assert!(matches!(
+            unstarted.original_command().unwrap(),
+            WorkerCommand::Inspect
+        ));
+        assert_eq!(
+            unstarted.outcome.unwrap_err().kind,
+            ProcessFailure::Terminal
+        );
+    }
+}
+
+#[tokio::test]
+async fn worker_denial_never_commits_rust_or_accepts_a_non_settings_callback() {
+    let (mut owner, ready) =
+        TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+            .await
+            .unwrap();
+    let client = owner.client();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let rejected = match client.try_submit_runtime_publication(
+        WorkerCommand::Inspect,
+        Box::new(move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }),
+    ) {
+        Err(error) => error,
+        Ok(_) => panic!("general commands cannot acquire a settings callback"),
+    };
+    assert_eq!(rejected.kind, ActorFailure::InvalidLimits);
+    assert!(matches!(*rejected.command, WorkerCommand::Inspect));
+    let admitted = exchange(
+        &client,
+        WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        },
+    )
+    .await;
+    let opened = exchange(
+        &client,
+        WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task: admitted.admitted_task.unwrap(),
+                parent: None,
+            },
+        },
+    )
+    .await;
+    assert_eq!(ready.recipe_context_capacity.unwrap().active, 0);
+    assert_eq!(opened.recipe_context_capacity.unwrap().active, 1);
+    assert_eq!(
+        opened.runtime_settings(),
+        ready.runtime_settings(),
+        "live child usage must not masquerade as a settings change"
+    );
+    let count = calls.clone();
+    let receipt = client
+        .try_submit_runtime_publication(
+            WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateSettings {
+                    expected_revision: 99,
+                    settings: TaskSettings {
+                        revision: 100,
+                        max_compute_time: Duration::from_secs(60),
+                        token_budgets_enabled: false,
+                    },
+                },
+            },
+            Box::new(move |_| {
+                count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+        )
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    let error = receipt.outcome.unwrap_err();
+    assert_eq!(
+        error.kind,
+        ProcessFailure::Vm(brassclaw_monty_host::VmFailure::SettingsRevisionConflict)
+    );
+    let denied = error.snapshot.unwrap();
+    assert_eq!(denied.recipe_context_capacity.unwrap().active, 1);
+    assert_eq!(denied.runtime_settings(), ready.runtime_settings());
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let inspected = exchange(&client, WorkerCommand::Inspect).await;
+    assert_eq!(
+        inspected.effective_task_settings,
+        ready.effective_task_settings
+    );
+    assert_eq!(inspected.root, ready.root);
+    assert_eq!(inspected.lifecycle, Lifecycle::Ready);
+    owner.request_termination();
+    assert_eq!(owner.join().await.unwrap().kind, StopKind::Requested);
 }
 
 #[tokio::test]

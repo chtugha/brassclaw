@@ -322,9 +322,16 @@ struct HeapCommit {
 struct Envelope {
     response_timeout: Duration,
     heap_commit: Option<HeapCommit>,
+    runtime_commit: Option<RuntimeCommit>,
     id: RequestId,
     command: WorkerCommand,
 }
+/// Installation-owned, synchronous Rust policy publication after the exact
+/// worker ACK and before another exchange can begin. No database/model/Tool
+/// work or task sequencing belongs in this callback. Failure after the worker
+/// ACK fences the instance and retains that ACK; it never rolls back or retries.
+pub type RuntimeCommit =
+    Box<dyn FnOnce(&ProcessSnapshot) -> Result<(), ActorFailure> + Send + 'static>;
 #[derive(Clone)]
 pub struct TransportClient {
     tx: mpsc::UnboundedSender<Envelope>,
@@ -400,11 +407,20 @@ impl TransportClient {
         limits: Option<ActorLimits>,
         deadlines: Option<HostingDeadlines>,
     ) -> Result<(), ActorFailure> {
+        self.publish_hosting_policy_for_bounds(limits, deadlines, *self.values.borrow())
+    }
+
+    pub(crate) fn publish_hosting_policy_for_bounds(
+        &self,
+        limits: Option<ActorLimits>,
+        deadlines: Option<HostingDeadlines>,
+        values: VmBounds,
+    ) -> Result<(), ActorFailure> {
         if let Some(limits) = limits {
             self.validate_limits(limits)?;
         }
         if deadlines.is_some_and(|deadlines| {
-            !deadlines.valid() || self.values.borrow().execution_slice >= deadlines.response_timeout
+            !deadlines.valid() || values.execution_slice >= deadlines.response_timeout
         }) {
             return Err(ActorFailure::InvalidLimits);
         }
@@ -465,7 +481,31 @@ impl TransportClient {
     /// receipt identity and sending its command. Full/closed queues return the
     /// whole unaccepted command. Credits include abandoned/completed requests.
     pub fn try_submit(&self, command: WorkerCommand) -> Result<RequestTicket, SubmitError> {
-        self.try_submit_inner(command, None)
+        self.try_submit_inner(command, None, None)
+    }
+
+    /// The instance service owns both the accepted command and its bounded
+    /// synchronous callback. Dropping a waiter cannot cancel either. Only
+    /// mechanical settings commands qualify; this is not a general execution
+    /// callback or a Tool permission boundary.
+    pub fn try_submit_runtime_publication(
+        &self,
+        command: WorkerCommand,
+        commit: RuntimeCommit,
+    ) -> Result<RequestTicket, SubmitError> {
+        if !matches!(
+            &command,
+            WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateSettings { .. }
+                    | RecipeCommand::UpdateRuntimeSettings { .. }
+            }
+        ) {
+            return Err(SubmitError {
+                kind: ActorFailure::InvalidLimits,
+                command: Box::new(command),
+            });
+        }
+        self.try_submit_inner(command, None, Some(commit))
     }
     pub(crate) fn try_submit_heap_transaction(
         &self,
@@ -484,12 +524,14 @@ impl TransportClient {
                 future: commit,
                 timeout,
             }),
+            None,
         )
     }
     fn try_submit_inner(
         &self,
         command: WorkerCommand,
         heap_commit: Option<HeapCommit>,
+        runtime_commit: Option<RuntimeCommit>,
     ) -> Result<RequestTicket, SubmitError> {
         let submit = |kind, command| SubmitError {
             kind,
@@ -568,6 +610,7 @@ impl TransportClient {
             id,
             command,
             heap_commit,
+            runtime_commit,
         }) {
             ledger.records.remove(&id);
             ledger.credits_mut(control).reserved -= reserved;
@@ -808,6 +851,27 @@ async fn run(
             && !transactional
         {
             error.command = None;
+        }
+        if let Some(commit) = envelope.runtime_commit
+            && let Ok(snapshot) = &outcome
+        {
+            // No later queued RPC, observation or successful receipt may escape
+            // between the worker's ACK and Rust publication. Expected worker
+            // denials never invoke this callback or change Rust policy.
+            let failed = match std::panic::catch_unwind(AssertUnwindSafe(|| commit(snapshot))) {
+                Ok(Ok(())) => None,
+                Ok(Err(error)) => Some(format!("Rust runtime publication failed: {error:?}")),
+                Err(_) => Some("Rust runtime publication panicked".into()),
+            };
+            if let Some(diagnostic) = failed {
+                let Ok(snapshot) = outcome else {
+                    unreachable!("publication only follows a worker ACK")
+                };
+                let mut error = ProcessError::new(ProcessFailure::Protocol);
+                error.snapshot = Some(Box::new(snapshot));
+                error.diagnostic = Some(diagnostic);
+                outcome = Err(error);
+            }
         }
         if let Ok(snapshot) = &outcome
             && let Some(bounds) = snapshot.vm_bounds

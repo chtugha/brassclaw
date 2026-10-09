@@ -1169,6 +1169,39 @@ fn queue_filter_statuses(
 #[async_trait]
 impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     #[cfg(feature = "skills-db")]
+    async fn list_post_turn_reviews(
+        &self,
+        after: Option<&str>,
+    ) -> Result<
+        brassclaw_product_workflow::PostTurnReviewList,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_review_inspection::list(&self.inner.pool, after).await
+    }
+    #[cfg(feature = "skills-db")]
+    async fn inspect_post_turn_review(
+        &self,
+        attempt: &str,
+    ) -> Result<
+        brassclaw_product_workflow::PostTurnReviewInspection,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_review_inspection::inspect(&self.inner.pool, attempt).await
+    }
+    #[cfg(feature = "skills-db")]
+    async fn record_review_disposition(
+        &self,
+        actor: &str,
+        attempt: &str,
+        request: brassclaw_product_workflow::ReviewDispositionRequest,
+    ) -> Result<
+        brassclaw_product_workflow::ReviewDispositionReceipt,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_review_inspection::record(&self.inner.pool, actor, attempt, request).await
+    }
+
+    #[cfg(feature = "skills-db")]
     async fn submit_component_review(
         &self,
         actor: &str,

@@ -1,6 +1,24 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
+  "postTurnReview.title": "Sempai-Nachprüfungen",
+  "postTurnReview.scope": "Gesicherte Nachweise prüfen und eine Quarantänebeobachtung speichern. Dies wiederholt keine Arbeit, gibt keinen Zustand frei, klärt keine Abrechnung und aktiviert keine Komponenten. Nachweise können private Gesprächsdaten enthalten.",
+  "postTurnReview.list": "Prüfungen laden",
+  "postTurnReview.dispatches": "Modellaufrufe: {count}",
+  "postTurnReview.notes": "Notizen: {count}",
+  "postTurnReview.empty": "Keine reservierten Prüfungen. Auf Sempai-Konfiguration wartende Aufgaben werden nicht angezeigt.",
+  "postTurnReview.next": "Nächste 50",
+  "postTurnReview.integrity": "Journal-Prüfsummen: {status}. Dies bestätigt weder Vollständigkeit noch Verhalten.",
+  "postTurnReview.valid": "konsistent",
+  "postTurnReview.invalid": "ungeprüft oder inkonsistent",
+  "postTurnReview.evidence": "Exakt gesicherte Nachweise",
+  "postTurnReview.recentNotes": "{count} Beobachtungen; die letzten 50 werden angezeigt.",
+  "postTurnReview.note": "Beobachtung (Aufbewahrung bleibt unverändert)",
+  "postTurnReview.retry": "Dieselbe Beobachtung erneut speichern",
+  "postTurnReview.save": "Beobachtung speichern",
+  "postTurnReview.recorded": "Beobachtung {id} gesichert. Arbeit und Abrechnung bleiben unverändert.",
+  "postTurnReview.reset": "Andere Prüfung ansehen",
+
   "montyVm.desiredRevision": "Gewünschte Task-Revision",
   "montyVm.effectiveRevision": "Wirksame Task-Revision",
   "montyVm.uptake.applied": "Übernommen",

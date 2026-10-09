@@ -270,6 +270,51 @@ pub struct ComponentReviewSubmissionView {
     pub component_bytes: Vec<String>,
 }
 
+/// Bounded, cursor-paginated operator projection of internal Sempai attempts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostTurnReviewSummary {
+    pub source_run_id: String,
+    pub attempt_id: String,
+    pub phase: String,
+    pub model_dispatch_count: i32,
+    pub settlement_recorded: bool,
+    pub disposition_count: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostTurnReviewList {
+    pub items: Vec<PostTurnReviewSummary>,
+    pub next_after: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PostTurnReviewInspection {
+    pub evidence_bytes: String,
+    pub evidence_checksum: String,
+    pub dispositions: Vec<ReviewDispositionView>,
+    pub disposition_count: i64,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ReviewDispositionView {
+    pub receipt: ReviewDispositionReceipt,
+    pub actor: String,
+    pub note: String,
+}
+/// An immutable operator observation, never permission to retry or release state.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewDispositionRequest {
+    pub disposition_id: String,
+    pub evidence_checksum: String,
+    pub note: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewDispositionReceipt {
+    pub disposition_id: String,
+    pub attempt_id: String,
+    pub evidence_checksum: String,
+    pub retention_released: bool,
+    pub work_replayed: bool,
+}
+
 /// Response for `PUT/validate`, `PUT/reject`, `PUT/review-request`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateValidationStatusResponse {
@@ -316,6 +361,33 @@ pub struct RecordOutcomeResponse {
 /// `RecipeSummary` / `ToolSkillSummary` for the WebUI list tab.
 #[async_trait]
 pub trait RecipeStore: Send + Sync {
+    async fn list_post_turn_reviews(
+        &self,
+        _after: Option<&str>,
+    ) -> Result<PostTurnReviewList, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "post-turn review inspection unavailable".into(),
+        ))
+    }
+    async fn inspect_post_turn_review(
+        &self,
+        _attempt: &str,
+    ) -> Result<PostTurnReviewInspection, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "post-turn review inspection unavailable".into(),
+        ))
+    }
+    async fn record_review_disposition(
+        &self,
+        _actor: &str,
+        _attempt: &str,
+        _request: ReviewDispositionRequest,
+    ) -> Result<ReviewDispositionReceipt, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "post-turn review inspection unavailable".into(),
+        ))
+    }
+
     async fn submit_component_review(
         &self,
         _actor: &str,

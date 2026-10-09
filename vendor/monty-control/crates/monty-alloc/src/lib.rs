@@ -124,6 +124,25 @@ impl std::error::Error for WorkerMemoryLimitError {}
 /// nor ownership tag is reset. Transport and exception reserve is separate from
 /// the VM budget and must cover the worker's bounded frame/adapter overhead.
 pub fn set_worker_limits(vm_bytes: usize, reserve_bytes: usize) -> Result<(), WorkerMemoryLimitError> {
+    let (baseline, hard) = checked_worker_limits(vm_bytes, reserve_bytes)?;
+    // No fallible work or allocations between these stores. Only the quiescent
+    // worker owner may call this function; another thread cannot use an interim
+    // mixed ceiling. Baseline may decrease, never absorb live VM consumption.
+    BASELINE_MEMORY.store(baseline, Ordering::Relaxed);
+    HARD_LIMIT.store(hard, Ordering::Relaxed);
+    VM_MEMORY_LIMIT.store(vm_bytes, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Check a proposed logical/physical layout against actual allocation ownership
+/// without changing limits, counters or the baseline. This is an observation,
+/// not a reservation: a caller needing durable feasibility must retain the
+/// serialized quiescent worker boundary until publication or rejection.
+pub fn validate_worker_limits(vm_bytes: usize, reserve_bytes: usize) -> Result<(), WorkerMemoryLimitError> {
+    checked_worker_limits(vm_bytes, reserve_bytes).map(|_| ())
+}
+
+fn checked_worker_limits(vm_bytes: usize, reserve_bytes: usize) -> Result<(usize, usize), WorkerMemoryLimitError> {
     if !VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) {
         return Err(WorkerMemoryLimitError::AccountingUnavailable);
     }
@@ -146,13 +165,7 @@ pub fn set_worker_limits(vm_bytes: usize, reserve_bytes: usize) -> Result<(), Wo
     if live > hard {
         return Err(WorkerMemoryLimitError::PhysicalReduction);
     }
-    // No fallible work or allocations between these stores. Only the quiescent
-    // worker owner may call this function; another thread cannot use an interim
-    // mixed ceiling. Baseline may decrease, never absorb live VM consumption.
-    BASELINE_MEMORY.store(baseline, Ordering::Relaxed);
-    HARD_LIMIT.store(hard, Ordering::Relaxed);
-    VM_MEMORY_LIMIT.store(vm_bytes, Ordering::Relaxed);
-    Ok(())
+    Ok((baseline, hard))
 }
 
 #[derive(Clone, Copy)]

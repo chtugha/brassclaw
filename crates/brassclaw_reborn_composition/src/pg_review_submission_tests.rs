@@ -370,3 +370,188 @@ async fn native_sempai_intent_proposal_does_not_slice_inside_unicode() {
     assert_eq!(row.get::<_, Value>(1), json!([{"input":input}]));
     assert_eq!(row.get::<_, String>(2), "pending");
 }
+
+// Synthetic stopped journal fixture: this tests management, not model behavior
+// or the producer's completeness/approval contract.
+#[tokio::test]
+async fn native_http_review_inspection_preserves_quarantine_and_exact_observations() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    let client = rig.pool.get().await.unwrap();
+    let source = Uuid::new_v4();
+    let attempt = Uuid::new_v4();
+    let event = json!({"format":"monty-completed-turn-review/1","run_id":source,
+        "evidence_complete":false,"original":"private quotes \" ä猫"})
+    .to_string();
+    client.execute("INSERT INTO brassclaw_monty_task_admissions
+        (run_id,turn_id,scope,accepted_message_ref,runner_id,claim_checksum,admission_key,phase)
+        VALUES($1,$2,'{}','fixture',$3,decode(repeat('01',32),'hex'),decode(repeat('02',32),'hex'),'reserved')",
+        &[&source,&Uuid::new_v4(),&Uuid::new_v4()]).await.unwrap();
+    client
+        .execute(
+            "INSERT INTO brassclaw_monty_review_events(run_id,event_bytes,event_checksum)
+        VALUES($1,$2,encode(sha256(convert_to($2,'UTF8')),'hex'))",
+            &[&source, &event],
+        )
+        .await
+        .unwrap();
+    client.execute("INSERT INTO brassclaw_monty_review_work
+        (source_run_id,attempt_id,owner_id,event_checksum,selection_bytes,prefix_bytes,model_identity)
+        SELECT $1,$2,$3,event_checksum,'immutable selection','pinned prefix','test model'
+        FROM brassclaw_monty_review_events WHERE run_id=$1", &[&source,&attempt,&Uuid::new_v4()]).await.unwrap();
+    let app = app(rig.pool.clone());
+    let list_uri = "/api/webchat/v2/post-turn-reviews";
+    let uri = format!("{list_uri}/{attempt}");
+    let write_uri = format!("{uri}/dispositions");
+    assert_eq!(
+        send(&app, "GET", list_uri, None, false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, "GET", &uri, None, false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, listed) = send(&app, "GET", list_uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["items"][0]["attempt_id"], attempt.to_string());
+    assert_eq!(listed["items"][0]["settlement_recorded"], false);
+    let (status, view) = send(&app, "GET", &uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    let disposition = Uuid::new_v4();
+    let mut input = json!({"disposition_id":disposition,"evidence_checksum":view["evidence_checksum"],
+        "note":"Unknown provider effects; keep retention. \" ä猫"});
+    assert_eq!(
+        send(&app, "POST", &write_uri, Some(&input), true).await.0,
+        StatusCode::CONFLICT,
+        "live work cannot accept a stopped-review observation"
+    );
+    client
+        .execute(
+            "UPDATE brassclaw_monty_review_work SET phase='uncertain' WHERE attempt_id=$1",
+            &[&attempt],
+        )
+        .await
+        .unwrap();
+    client.execute("INSERT INTO brassclaw_monty_review_operations(attempt_id,operation,input_bytes,input_checksum)
+        VALUES($1,'ask_sempai','{}',encode(sha256(convert_to('{}','UTF8')),'hex'))", &[&attempt]).await.unwrap();
+    let (status, before) = send(&app, "GET", &uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    let envelope: Value = serde_json::from_str(before["evidence_bytes"].as_str().unwrap()).unwrap();
+    assert_eq!(envelope["journal_integrity"], true);
+    assert_eq!(envelope["event"]["event_bytes"], event);
+    assert_eq!(envelope["operations"][0]["output_bytes"], Value::Null);
+    input["evidence_checksum"] = before["evidence_checksum"].clone();
+    // A late actual operation answer changes the observation, without resuming
+    // the stopped task or changing its immutable terminal phase.
+    client.execute("UPDATE brassclaw_monty_review_operations SET output_bytes='late observed response',
+        output_checksum=encode(sha256(convert_to('late observed response','UTF8')),'hex'),answered_at=clock_timestamp()
+        WHERE attempt_id=$1", &[&attempt]).await.unwrap();
+    assert_eq!(
+        send(&app, "POST", &write_uri, Some(&input), true).await.0,
+        StatusCode::CONFLICT
+    );
+    let (status, refreshed) = send(&app, "GET", &uri, None, true).await;
+    assert_eq!(status, StatusCode::OK);
+    input["evidence_checksum"] = refreshed["evidence_checksum"].clone();
+    assert_eq!(
+        send(&app, "POST", &write_uri, Some(&input), false).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, receipt) = send(&app, "POST", &write_uri, Some(&input), true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(receipt["retention_released"], false);
+    assert_eq!(receipt["work_replayed"], false);
+    assert_eq!(
+        send(&app, "POST", &write_uri, Some(&input), true).await,
+        (StatusCode::OK, receipt.clone())
+    );
+    let mut changed = input.clone();
+    changed["note"] = json!("replacement observation");
+    assert_eq!(
+        send(&app, "POST", &write_uri, Some(&changed), true).await.0,
+        StatusCode::CONFLICT
+    );
+    let mut forged = input.clone();
+    forged["actor"] = json!("forged");
+    assert_eq!(
+        send(&app, "POST", &write_uri, Some(&forged), true).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (_, observed) = send(&app, "GET", &uri, None, true).await;
+    assert_eq!(observed["disposition_count"], 1);
+    assert_eq!(
+        observed["dispositions"][0]["actor"],
+        "submission-test-operator"
+    );
+    assert_eq!(observed["dispositions"][0]["note"], input["note"]);
+    let retained=client.query_one("SELECT evidence_bytes FROM brassclaw_monty_review_dispositions WHERE disposition_id=$1", &[&disposition]).await.unwrap();
+    assert_eq!(
+        retained.get::<_, String>(0),
+        refreshed["evidence_bytes"].as_str().unwrap()
+    );
+    for sql in [
+        "UPDATE brassclaw_monty_review_dispositions SET note='changed'",
+        "DELETE FROM brassclaw_monty_review_dispositions",
+        "TRUNCATE brassclaw_monty_review_dispositions",
+    ] {
+        assert!(client.batch_execute(sql).await.is_err(), "{sql}");
+    }
+    assert_eq!(client.query_one("SELECT phase,model_dispatch_count FROM brassclaw_monty_review_work WHERE attempt_id=$1", &[&attempt]).await.unwrap().get::<_,String>(0),"uncertain");
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT model_dispatch_count FROM brassclaw_monty_review_work WHERE attempt_id=$1",
+                &[&attempt]
+            )
+            .await
+            .unwrap()
+            .get::<_, i32>(0),
+        0
+    );
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT count(*) FROM brassclaw_monty_review_settlements",
+                &[]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("{list_uri}?after={attempt}"),
+            None,
+            true
+        )
+        .await
+        .1["items"],
+        json!([])
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("{list_uri}/{}", Uuid::new_v4()),
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("{list_uri}?after={}", Uuid::nil()),
+            None,
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+}

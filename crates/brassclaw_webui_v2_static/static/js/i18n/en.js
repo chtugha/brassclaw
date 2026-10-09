@@ -1,6 +1,24 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("en", {
+  "postTurnReview.title": "Post-turn Sempai reviews",
+  "postTurnReview.scope": "Inspect retained evidence and record a quarantine observation. This does not retry work, release retained state, resolve billing or activate components. Evidence may contain private conversation data.",
+  "postTurnReview.list": "Load reviews",
+  "postTurnReview.dispatches": "Model dispatches: {count}",
+  "postTurnReview.notes": "Notes: {count}",
+  "postTurnReview.empty": "No reserved reviews. Turns awaiting Sempai configuration are not listed.",
+  "postTurnReview.next": "Next 50",
+  "postTurnReview.integrity": "Journal checksums: {status}. This does not certify evidence completeness or behavior.",
+  "postTurnReview.valid": "consistent",
+  "postTurnReview.invalid": "unverified or inconsistent",
+  "postTurnReview.evidence": "Exact retained evidence",
+  "postTurnReview.recentNotes": "{count} observations; showing the latest 50.",
+  "postTurnReview.note": "Observation (retention remains unchanged)",
+  "postTurnReview.retry": "Retry the same observation",
+  "postTurnReview.save": "Record observation",
+  "postTurnReview.recorded": "Observation {id} retained. Work and accounting remain unchanged.",
+  "postTurnReview.reset": "Inspect another review",
+
   "componentSubmission.title": "Retain a proposed component revision",
   "componentSubmission.scope": "Keep a proposed revision and its exact dependencies together. This saves an unreviewed subject; it does not start validation or activate the component.",
   "componentSubmission.editor": "Advanced revision editor",

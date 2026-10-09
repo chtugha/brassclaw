@@ -75,6 +75,14 @@ pub const WEBUI_V2_ROUTE_DELETE_COMPONENT: &str = "webui.v2.delete_component";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_component_audit_status";
 pub const WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW: &str = "webui.v2.prepare_association_review";
 pub const WEBUI_V2_ROUTE_APPROVE_ASSOCIATION: &str = "webui.v2.approve_association";
+pub const WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS: &str = "webui.v2.list_post_turn_reviews";
+pub const WEBUI_V2_ROUTE_INSPECT_POST_TURN_REVIEW: &str = "webui.v2.inspect_post_turn_review";
+pub const WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION: &str = "webui.v2.record_review_disposition";
+pub const WEBUI_V2_PATTERN_POST_TURN_REVIEWS: &str = "/api/webchat/v2/post-turn-reviews";
+pub const WEBUI_V2_PATTERN_POST_TURN_REVIEW: &str =
+    "/api/webchat/v2/post-turn-reviews/{attempt_id}";
+pub const WEBUI_V2_PATTERN_REVIEW_DISPOSITION: &str =
+    "/api/webchat/v2/post-turn-reviews/{attempt_id}/dispositions";
 pub const WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW: &str = "webui.v2.submit_component_review";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION: &str =
     "webui.v2.get_component_review_submission";
@@ -302,6 +310,9 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         validate_component_descriptor(),
         association_review_descriptor(),
         association_approval_descriptor(),
+        list_post_turn_reviews_descriptor(),
+        inspect_post_turn_review_descriptor(),
+        record_review_disposition_descriptor(),
         submit_component_review_descriptor(),
         get_component_review_submission_descriptor(),
         reject_component_descriptor(),
@@ -389,9 +400,52 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
             route_id,
             WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW
                 | WEBUI_V2_ROUTE_APPROVE_ASSOCIATION
+                | WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS
+                | WEBUI_V2_ROUTE_INSPECT_POST_TURN_REVIEW
+                | WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION
                 | WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW
                 | WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION
         )
+}
+
+fn list_post_turn_reviews_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_POST_TURN_REVIEWS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+fn inspect_post_turn_review_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_INSPECT_POST_TURN_REVIEW,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_POST_TURN_REVIEW,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+fn record_review_disposition_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_REVIEW_DISPOSITION,
+        mutation_policy(
+            body_limit_kib(32),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
 }
 
 fn submit_component_review_descriptor() -> IngressRouteDescriptor {

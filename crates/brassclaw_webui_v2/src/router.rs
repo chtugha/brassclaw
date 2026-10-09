@@ -52,7 +52,9 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_VALIDATION_QUEUE, WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT,
 };
 use crate::descriptors::{
-    WEBUI_V2_PATTERN_APPROVE_ASSOCIATION, WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW,
+    WEBUI_V2_PATTERN_APPROVE_ASSOCIATION, WEBUI_V2_PATTERN_POST_TURN_REVIEW,
+    WEBUI_V2_PATTERN_POST_TURN_REVIEWS, WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW,
+    WEBUI_V2_PATTERN_REVIEW_DISPOSITION,
 };
 use crate::handlers;
 use crate::sse_capacity::{DEFAULT_SSE_MAX_CONCURRENT_PER_CALLER, SseCapacity};
@@ -432,6 +434,18 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         );
     if options.mount_llm_config_routes {
         router = router
+            .route(
+                WEBUI_V2_PATTERN_POST_TURN_REVIEWS,
+                get(handlers::list_post_turn_reviews),
+            )
+            .route(
+                WEBUI_V2_PATTERN_POST_TURN_REVIEW,
+                get(handlers::inspect_post_turn_review),
+            )
+            .route(
+                WEBUI_V2_PATTERN_REVIEW_DISPOSITION,
+                post(handlers::record_review_disposition),
+            )
             .route(
                 WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW,
                 post(handlers::submit_component_review)
