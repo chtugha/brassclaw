@@ -234,15 +234,20 @@ impl GlobalRecipePorts {
                 "compute_time":account.compute_time, "failure":account.failure,
             })
         });
+        let (model_exchanges, capability_dispatches) = self.host.review_dispatch_counts();
         Ok(
             json!({"format":"monty-task-execution/1", "root":root, "root_completed":completed,
             "all_selected_recipes_complete":complete, "recipes":progress,
             "intent_outcome":intent_outcome.unwrap_or("not_started"),
-            "reply":completed_reply.map(|(reference, checksum)| json!({"reference":reference,"content_checksum":checksum})),
+            "reply":completed_reply.or_else(|| self.host.finalized_reply_evidence().map(|(reference, content)| {
+                use sha2::Digest;
+                (reference, hex::encode(sha2::Sha256::digest(content.as_bytes())))
+            })).map(|(reference, checksum)| json!({"reference":reference,"content_checksum":checksum})),
             "checked_recipe_capacity":capacity.map(|capacity| json!({
                 "revision":capacity.revision,"max_recipes":capacity.max_recipes})),
             "accounting":account, "withheld_root_answers":receipt.withheld.len(),
             "withheld_host_answers":self.host.has_withheld_results(),
+            "model_exchange_count":model_exchanges,"capability_dispatch_count":capability_dispatches,
             "semantic_approval":false,"catalogue_activation":false}),
         )
     }
@@ -585,6 +590,9 @@ impl TaskPorts for GlobalRecipePorts {
         outcome: TaskOutcome,
     ) -> BoxFuture<'static, Result<TaskOutcome, PortFailure>> {
         async move {
+            if matches!(outcome, TaskOutcome::InternalCompleted { .. }) {
+                return Err(failure("recipe_reply_invalid"));
+            }
             if let TaskOutcome::Completed { reply_ref } = &outcome {
                 self.check_fence()?;
                 self.check_recipe_completion().await?;

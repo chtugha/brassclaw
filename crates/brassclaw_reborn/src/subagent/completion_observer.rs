@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    sync::{Arc, OnceLock},
+    sync::{Arc, OnceLock, Weak},
 };
 
 use async_trait::async_trait;
@@ -36,8 +36,22 @@ pub struct SubagentCompletionObserver<S: SessionThreadService + ?Sized> {
     goal_store: Arc<dyn SubagentSpawnGoalStore>,
     turn_state_store: Arc<dyn TurnSpawnTreeStateStore>,
     result_writer: Arc<dyn LoopCapabilityResultWriter>,
-    coordinator: Arc<OnceLock<Arc<dyn TurnCoordinator>>>,
+    coordinator: Arc<OnceLock<CoordinatorBinding>>,
     thread_service: Arc<S>,
+}
+
+enum CoordinatorBinding {
+    Owned(Arc<dyn TurnCoordinator>),
+    BackReference(Weak<dyn TurnCoordinator>),
+}
+
+impl CoordinatorBinding {
+    fn upgrade(&self) -> Option<Arc<dyn TurnCoordinator>> {
+        match self {
+            Self::Owned(coordinator) => Some(Arc::clone(coordinator)),
+            Self::BackReference(coordinator) => coordinator.upgrade(),
+        }
+    }
 }
 
 impl<S> SubagentCompletionObserver<S>
@@ -80,15 +94,32 @@ where
         }
     }
 
-    /// Bind the back-reference to the wrapping `TurnCoordinator` so the
-    /// blocking-resume path can call back into it after a child terminates.
+    /// Retain a coordinator for an independently owned observer. Runtime
+    /// composition must use `bind_coordinator_weak` when the coordinator itself
+    /// owns this observer through its lifecycle event bus.
     /// The binding lives on a shared `Arc<OnceLock<_>>` carried inside the
     /// observer, so clones of this `SubagentCompletionObserver` share the
     /// same OnceLock cell and observe each other's bindings. Returns
     /// `TurnError::InvalidRequest` if a coordinator has already been bound.
     pub fn bind_coordinator(&self, coordinator: Arc<dyn TurnCoordinator>) -> Result<(), TurnError> {
         self.coordinator
-            .set(coordinator)
+            .set(CoordinatorBinding::Owned(coordinator))
+            .map_err(|_| TurnError::InvalidRequest {
+                reason: "subagent completion observer coordinator already bound".to_string(),
+            })
+    }
+
+    /// Bind a non-owning back-reference to the runtime's coordinator. Each
+    /// callback upgrades it for the duration of the resume, without keeping the
+    /// coordinator, lifecycle bus and database stores alive after runtime drop.
+    pub fn bind_coordinator_weak(
+        &self,
+        coordinator: &Arc<dyn TurnCoordinator>,
+    ) -> Result<(), TurnError> {
+        self.coordinator
+            .set(CoordinatorBinding::BackReference(Arc::downgrade(
+                coordinator,
+            )))
             .map_err(|_| TurnError::InvalidRequest {
                 reason: "subagent completion observer coordinator already bound".to_string(),
             })
@@ -460,8 +491,11 @@ where
         let coordinator = self
             .coordinator
             .get()
+            .and_then(CoordinatorBinding::upgrade)
             .ok_or_else(|| TurnError::Unavailable {
-                reason: "subagent completion observer coordinator is not bound".to_string(),
+                reason:
+                    "subagent completion observer coordinator is not bound or no longer available"
+                        .to_string(),
             })?;
         coordinator
             .resume_turn(ResumeTurnRequest {
@@ -3373,15 +3407,16 @@ mod tests {
 
         let result_writer = Arc::new(RecordingResultWriter::new(result_ref));
         let coordinator = Arc::new(RecordingCoordinator::default());
-        let observer = SubagentCompletionObserver::new(
+        let observer = SubagentCompletionObserver::new_unbound(
             Arc::clone(&gate_store),
             goal_store,
             turn_state_store.clone(),
             result_writer.clone(),
-            coordinator.clone(),
             thread_service.clone(),
-        )
-        .unwrap();
+        );
+        let coordinator_port: Arc<dyn TurnCoordinator> = coordinator.clone();
+        observer.bind_coordinator_weak(&coordinator_port).unwrap();
+        drop(coordinator_port);
 
         observer
             .handle_terminal(&TurnLifecycleEvent {

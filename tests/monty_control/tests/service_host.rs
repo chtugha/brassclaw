@@ -485,6 +485,91 @@ async fn worker_death_during_real_wait_fences_and_retains_late_io_before_service
 }
 
 #[tokio::test]
+async fn live_adapter_reserve_preserves_heap_identity_and_waiting_task_accounting() {
+    use brassclaw_monty_host::{process::TaskSettings, service::ServiceHostingLimits};
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let identity = client.root_identity();
+    let heap = client.heap_observation().status;
+    let ports = FilePorts::new(directory.path(), "reserve", true);
+    let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), ports.started.notified())
+        .await
+        .unwrap();
+    let settings = |revision| TaskSettings {
+        revision,
+        max_compute_time: Duration::from_secs(600),
+        token_budgets_enabled: false,
+    };
+    let hosting = |reserve| ServiceHostingLimits {
+        adapter_reserve_bytes: Some(reserve),
+        admission: client.admission_observation().limits,
+        max_pending_settings: client.settings_capacity().limit,
+        max_retained_attempts: client.retained_attempts().limit,
+        actor: None,
+        deadlines: None,
+    };
+    let grown = client
+        .publish_control_settings(
+            1,
+            settings(2),
+            client.vm_bounds(),
+            8,
+            hosting(8 * 1024 * 1024),
+        )
+        .await
+        .unwrap();
+    let reduced = client
+        .publish_control_settings(2, settings(3), client.vm_bounds(), 8, hosting(0))
+        .await
+        .unwrap();
+    assert_eq!(grown.allocator.adapter_reserve_bytes, 8 * 1024 * 1024);
+    assert_eq!(reduced.allocator.adapter_reserve_bytes, 0);
+    assert_eq!(
+        reduced.allocator.non_vm_reserve_bytes,
+        2 * limits().max_frame_bytes
+    );
+    assert_eq!(
+        reduced.allocator.memory_budget_bytes,
+        heap.effective.unwrap().max_vm_bytes + 2 * limits().max_frame_bytes
+    );
+    assert_eq!(client.heap_observation().status, heap);
+    assert_eq!(client.root_identity(), identity);
+    assert_eq!(grown.accounting.len(), 1);
+    assert_eq!(reduced.accounting.len(), 1);
+    assert_eq!(grown.accounting[0].task, reduced.accounting[0].task);
+    assert_eq!(reduced.accounting[0].effective_revision, 3);
+    assert!(
+        reduced.accounting[0].compute_time.unwrap() >= grown.accounting[0].compute_time.unwrap()
+    );
+    assert_eq!(
+        client
+            .publish_control_settings(1, settings(4), client.vm_bounds(), 8, hosting(4096))
+            .await
+            .err(),
+        Some(ServiceFailure::SettingsConflict)
+    );
+    assert_eq!(
+        client
+            .publish_control_settings(3, settings(4), client.vm_bounds(), 8, hosting(usize::MAX))
+            .await
+            .err(),
+        Some(ServiceFailure::InvalidLimits)
+    );
+    assert_eq!(client.allocator_status(), reduced.allocator);
+    ports.release.notify_one();
+    let result = tokio::time::timeout(Duration::from_secs(5), ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(result.outcome, TaskOutcome::Completed { .. }));
+    assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+    assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
 async fn boot_is_idle_and_original_opaque_ids_reach_real_ports() {
     let directory = tempfile::tempdir().unwrap();
     let mut owner = start(FILE_ROOT).await;
@@ -1693,6 +1778,7 @@ async fn live_settings_capacity_retains_accepted_edits_and_grows_beyond_eight() 
     let first_path = directory.path().join("first-committed-settings");
     let (release, commit) = held_commit(client.clone(), first_path.clone()).await;
     let hosting = |limit| ServiceHostingLimits {
+        adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
         max_pending_settings: limit,
         max_retained_attempts: 256,
@@ -2034,6 +2120,7 @@ async fn live_retention_capacity_preserves_owned_credits_and_grows_beyond_256() 
                     client.vm_bounds(),
                     8,
                     ServiceHostingLimits {
+                        adapter_reserve_bytes: None,
                         admission: client.admission_observation().limits,
                         max_pending_settings: client.settings_capacity().limit,
                         max_retained_attempts: limit,
@@ -2090,6 +2177,7 @@ async fn actor_policy_is_published_with_the_worker_settings_revision() {
         ..initial
     };
     let hosting = |actor| ServiceHostingLimits {
+        adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
         max_pending_settings: client.settings_capacity().limit,
         max_retained_attempts: client.retained_attempts().limit,
@@ -2156,6 +2244,7 @@ async fn live_hosting_deadlines_share_revision_and_preserve_global_root() {
     let root = client.root_identity();
     let initial = client.hosting_deadlines().unwrap();
     let policy = |deadlines| ServiceHostingLimits {
+        adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
         max_pending_settings: client.settings_capacity().limit,
         max_retained_attempts: client.retained_attempts().limit,

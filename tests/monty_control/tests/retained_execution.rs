@@ -206,7 +206,19 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     for invalid_output in [false, true] {
-        let prepared = retained_program::program(&store, invalid_output).await;
+        let prepared = if invalid_output {
+            retained_program::program(&store, true).await
+        } else {
+            // Exercise an actual caught exception before both retained Tool
+            // occurrences. The local alias must not become a dependency, and
+            // the error's text remains typed data passed to the JSON usage.
+            retained_program::program_with_preload_source(
+                &store,
+                "def parse_usage(inputs):\n    try:\n        raise ValueError(inputs['data'])\n    except ValueError as error:\n        data = str(error)\n    return _parse_data({'data': data})",
+                None,
+            )
+            .await
+        };
         assert_eq!(prepared.bindings()["0:2"].combination().len(), 5);
         assert!(std::ptr::eq(
             prepared.bindings()["0:2"].combination(),
@@ -827,11 +839,17 @@ async fn selected_export_preflight_rejects_unsafe_libraries_before_execution() {
         "def parse_usage(inputs):\n    first = _parse_data(inputs)\n    return _parse_data(inputs)",
         "def parse_usage(inputs):\n    for item in [inputs]:\n        _parse_data(item)\n    return _parse_data(inputs)",
         "def parse_usage(inputs):\n    alias = _parse_data\n    return alias(inputs)",
+        "def parse_usage(inputs):\n    call = lambda: host.json(operation='parse', data=inputs['data'])\n    return call()",
         "def parse_usage(inputs):\n    values = [_parse_data(item) for item in [inputs, inputs]]\n    return values[0]",
+        "def parse_usage(inputs):\n    values = [(lambda item: _parse_data(item))(item) for item in [inputs, inputs]]\n    return values[0]",
+        "def parse_usage(inputs):\n    values = {(lambda item: _parse_data(item))(item)['text'] for item in [inputs, inputs]}\n    return {'text': next(iter(values))}",
+        "def parse_usage(inputs):\n    values = {index: (lambda item: _parse_data(item))(item) for index, item in enumerate([inputs, inputs])}\n    return values[0]",
+        "def parse_usage(inputs):\n    values = list((lambda item: _parse_data(item))(item) for item in [inputs, inputs])\n    return values[0]",
+        "def parse_usage(inputs):\n    values = [[(lambda item: _parse_data(item))(item) for item in group] for group in [[inputs, inputs]]]\n    return values[0][0]",
         "STATE = []\ndef parse_usage(inputs):\n    STATE.append(inputs['data'])\n    return _parse_data(inputs)",
         "def parse_usage(inputs):\n    global STATE\n    STATE = inputs\n    return _parse_data(inputs)",
     ] {
-        let program = retained_program::program_with_preload_source(&store, source).await;
+        let program = retained_program::program_with_preload_source(&store, source, None).await;
         assert!(matches!(
             InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
                 .await,

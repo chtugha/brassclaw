@@ -510,7 +510,7 @@ where
     let child_runs: Arc<dyn TurnSpawnTreePort> = base_coordinator_arc.clone();
     let coordinator: Arc<dyn brassclaw_turns::TurnCoordinator> = base_coordinator_arc;
     completion_observer
-        .bind_coordinator(Arc::clone(&coordinator))
+        .bind_coordinator_weak(&coordinator)
         .map_err(|error| DefaultPlannedRuntimeBuildError::SubagentCompletion(error.to_string()))?;
 
     let turn_state_store: Arc<dyn TurnStateStore> = turn_state.clone();

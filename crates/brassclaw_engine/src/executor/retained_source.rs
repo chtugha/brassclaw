@@ -313,7 +313,13 @@ impl InspectedRetainedProgram {
                 if let Some(binding) = program.binding(&step.step_id) {
                     // Every public entry of this Skill must implement the same
                     // one-Tool usage; unselected helpers stay private.
-                    for entry in library.exports.values() {
+                    for (name, entry) in &library.exports {
+                        // An unselected public entry is still part of this
+                        // exact Skill interface. Qualify its typed invocation
+                        // now, before this library can have any effects.
+                        library
+                            .invocation(name, &document["input_contract"])
+                            .map_err(|reason| fail(component.uuid, reason))?;
                         let calls = export_calls(&entry.symbol, &symbols, &sources)
                             .map_err(|reason| fail(component.uuid, reason))?;
                         if calls.len() != 1

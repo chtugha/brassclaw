@@ -51,6 +51,8 @@ struct RetainedTask {
     receipt: Option<Arc<TaskReceipt>>,
     execution_report: Option<Value>,
     settled: bool,
+    provider_watch: Option<tokio_util::task::AbortOnDropHandle<()>>,
+    provider_port: Option<Arc<crate::mcp_provider_gateway::CommandPort>>,
 }
 
 /// Transfers the real host, private admission address, child/Tool port state
@@ -77,6 +79,7 @@ pub(crate) struct OwnedGlobalTaskFactory {
     cancellation: Arc<dyn CancellationAckSource>,
     retention: Arc<AttemptRetentionRegistry>,
     tasks: Mutex<HashMap<MontyTaskAttempt, RetainedTask>>,
+    mcp_provider_binding: Option<Arc<crate::mcp_provider_gateway::McpProviderBinding>>,
 }
 
 impl OwnedGlobalTaskFactory {
@@ -99,7 +102,16 @@ impl OwnedGlobalTaskFactory {
             cancellation,
             retention: AttemptRetentionRegistry::new(service),
             tasks: Mutex::new(HashMap::new()),
+            mcp_provider_binding: None,
         })
+    }
+
+    pub(crate) fn with_mcp_provider_binding(
+        mut self,
+        binding: Arc<crate::mcp_provider_gateway::McpProviderBinding>,
+    ) -> Self {
+        self.mcp_provider_binding = Some(binding);
+        self
     }
 
     fn tasks(
@@ -175,6 +187,25 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         {
             return Err(failed("monty_admission_identity_invalid"));
         }
+        let provider_port = if let Some(binding) = &self.mcp_provider_binding {
+            if let Some(port) = binding
+                .port(context.run_id)
+                .map_err(|_| failed("mcp_exchange_unavailable"))?
+            {
+                let surface = host
+                    .visible_capabilities()
+                    .await
+                    .map_err(|_| failed("mcp_exchange_unavailable"))?;
+                if &surface.version != port.surface_version() {
+                    return Err(failed("mcp_exchange_task_selection_conflict"));
+                }
+                Some(port)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let retention = self.retention.retain(&host)?;
         self.ownership
             .check()
@@ -190,6 +221,19 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             if tasks.contains_key(&host.attempt()) {
                 return Err(failed("monty_admission_replay_requires_recovery"));
             }
+            let provider_watch = self
+                .mcp_provider_binding
+                .as_ref()
+                .zip(provider_port.as_ref())
+                .map(|(binding, port)| {
+                    let binding = binding.clone();
+                    let host = host.clone();
+                    let port = port.clone();
+                    tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+                        host.cancellation_requested().await;
+                        binding.finish_port(&port).await;
+                    }))
+                });
             tasks.insert(
                 host.attempt(),
                 RetainedTask {
@@ -200,6 +244,8 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                     receipt: None,
                     execution_report: None,
                     settled: false,
+                    provider_watch,
+                    provider_port,
                 },
             );
         }
@@ -235,6 +281,9 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         receipt: Arc<TaskReceipt>,
     ) -> Result<(), AgentLoopDriverError> {
         let mut outcome = match &receipt.outcome {
+            TaskOutcome::InternalCompleted { .. } => {
+                return Err(failed("monty_reply_reference_invalid"));
+            }
             TaskOutcome::Completed { reply_ref } => {
                 let reference = LoopMessageRef::new(reply_ref.clone())
                     .map_err(|_| failed("monty_reply_reference_invalid"))?;
@@ -254,7 +303,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 json!({"status":"failed", "reason_kind":reason_kind})
             }
         };
-        let (admission, ports, retained_report) = {
+        let (admission, ports, retained_report, provider_port) = {
             let mut tasks = self.tasks()?;
             let task = tasks
                 .get_mut(&host.attempt())
@@ -275,6 +324,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                     .clone()
                     .ok_or_else(|| failed("monty_task_registry_failed"))?,
                 task.execution_report.clone(),
+                task.provider_port.clone(),
             )
         };
         let report = match retained_report {
@@ -304,6 +354,11 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // same transaction records outcome and child completion together; audit
         // recovery never rereads latest, restores dispatch or repeats an effect.
         outcome["execution"] = report;
+        if let Some(binding) = &self.mcp_provider_binding
+            && let Some(port) = &provider_port
+        {
+            binding.finish_port(port).await;
+        }
         admission.settle(outcome).await?;
         // Optional discovery observes only acknowledged durable evidence. Its
         // pending/error state cannot replay or invalidate a completed task.
@@ -317,6 +372,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 return Err(failed("monty_task_settlement_conflict"));
             }
             task.settled = true;
+            task.provider_watch.take();
         }
         // Failed tasks retain actual child/Tool evidence for reconciliation.
         // Only a real published completion with acknowledged durable settlement

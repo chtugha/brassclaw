@@ -10,6 +10,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 
 pub(crate) fn boot(source: &str) -> RootBoot {
     RootBoot {
+        adapter_reserve_bytes: brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize,
         heap_settings: Some(HeapSettings {
             revision: 1,
             max_vm_bytes: 16 * 1024 * 1024,

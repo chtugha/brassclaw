@@ -6,9 +6,9 @@
 //! Monty executor or Rust Tool dispatcher.
 //!
 //! Discovery can be supplied from the normal-chat catalogue owner. Durable
-//! chat correlation/closure and Kohai-owned provider sessions remain unwired;
-//! tools/call still reports unavailable after validating a listed command.
-//! Instance startup must qualify those adapters before exposing a listener.
+//! chat correlation/closure is supplied through its ordinary-chat facade.
+//! Production transport authenticates request-local provider exchanges; routes
+//! without a chat facade remain unavailable for calls.
 
 #![forbid(unsafe_code)]
 
@@ -31,7 +31,14 @@ mod inner {
     use std::sync::Arc;
 
     use super::MCP_CHAT_UNAVAILABLE;
+    use crate::mcp_chat_bridge::{McpChatBridge, McpChatError};
     use crate::mcp_recipe_catalogue::McpRecipeDiscovery;
+
+    #[derive(Clone)]
+    struct TransportState {
+        discovery: Option<Arc<McpRecipeDiscovery>>,
+        chat: Option<Arc<McpChatBridge>>,
+    }
 
     const PROTOCOL: &str = "2025-06-18";
 
@@ -76,7 +83,7 @@ mod inner {
     /// No SSE notifications are implemented: GET returns 405. Browser Origins
     /// are rejected until an explicit authenticated origin policy is wired.
     pub fn orchestrator_mcp_router(config: OrchestratorMcpServerConfig) -> Router {
-        router(config, None)
+        router(config, None, None)
     }
 
     /// Only a runtime-owned, qualified discovery facade may supply tools/list.
@@ -86,20 +93,42 @@ mod inner {
         config: OrchestratorMcpServerConfig,
         discovery: Arc<McpRecipeDiscovery>,
     ) -> Router {
-        router(config, Some(discovery))
+        router(config, Some(discovery), None)
+    }
+
+    /// Authenticated production transport. Credentials are issued only by the
+    /// request-local Kohai exchange owner; the server accepts no execution code.
+    pub fn orchestrator_mcp_router_with_chat(
+        config: OrchestratorMcpServerConfig,
+        chat: Arc<McpChatBridge>,
+    ) -> Router {
+        router(config, None, Some(chat))
     }
 
     fn router(
         config: OrchestratorMcpServerConfig,
         discovery: Option<Arc<McpRecipeDiscovery>>,
+        chat: Option<Arc<McpChatBridge>>,
     ) -> Router {
         Router::new()
             .route("/mcp", post(handle_post).get(handle_get))
             .layer(DefaultBodyLimit::max(config.max_request_bytes))
-            .with_state(discovery)
+            .with_state(TransportState { discovery, chat })
     }
 
-    async fn handle_get() -> StatusCode {
+    async fn handle_get(State(state): State<TransportState>, headers: HeaderMap) -> StatusCode {
+        if headers.contains_key("origin") {
+            return StatusCode::FORBIDDEN;
+        }
+        if let Some(chat) = &state.chat {
+            let token = headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "));
+            if token.is_none_or(|token| chat.authenticate_exchange(token).is_err()) {
+                return StatusCode::UNAUTHORIZED;
+            }
+        }
         StatusCode::METHOD_NOT_ALLOWED
     }
 
@@ -113,7 +142,7 @@ mod inner {
     }
 
     async fn handle_post(
-        State(discovery): State<Option<Arc<McpRecipeDiscovery>>>,
+        State(state): State<TransportState>,
         headers: HeaderMap,
         Json(raw): Json<Value>,
     ) -> Response {
@@ -124,6 +153,41 @@ mod inner {
             && version != PROTOCOL
         {
             return StatusCode::BAD_REQUEST.into_response();
+        }
+        let token = headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "));
+        if let Some(chat) = &state.chat {
+            let accept = headers
+                .get("accept")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            let media: Vec<_> = accept
+                .split(',')
+                .map(|value| value.split(';').next().unwrap_or_default().trim())
+                .collect();
+            if !media.contains(&"application/json") || !media.contains(&"text/event-stream") {
+                return StatusCode::NOT_ACCEPTABLE.into_response();
+            }
+            let Some(token) = token else {
+                return StatusCode::UNAUTHORIZED.into_response();
+            };
+            let Ok(exchange_id) = chat.authenticate_exchange(token) else {
+                return StatusCode::UNAUTHORIZED.into_response();
+            };
+            if raw.get("method").and_then(Value::as_str) != Some("initialize") {
+                if headers
+                    .get("mcp-session-id")
+                    .and_then(|value| value.to_str().ok())
+                    != Some(exchange_id.to_string().as_str())
+                {
+                    return StatusCode::NOT_FOUND.into_response();
+                }
+                if headers.get("mcp-protocol-version").is_none() {
+                    return StatusCode::BAD_REQUEST.into_response();
+                }
+            }
         }
         let id = raw.get("id").cloned().unwrap_or(Value::Null);
         let Ok(req) = serde_json::from_value::<Request>(raw.clone()) else {
@@ -138,6 +202,11 @@ mod inner {
         {
             // A notification must never dispatch a Tool or create a chat.
             return if req.method == "notifications/initialized" {
+                if let Some(chat) = &state.chat
+                    && chat.initialized(token.unwrap_or_default()).is_err()
+                {
+                    return StatusCode::BAD_REQUEST.into_response();
+                }
                 StatusCode::ACCEPTED.into_response()
             } else {
                 StatusCode::BAD_REQUEST.into_response()
@@ -155,14 +224,26 @@ mod inner {
                 if version != PROTOCOL {
                     return error(id, -32602, "unsupported protocolVersion");
                 }
-                response(
+                let mut initialized_response = response(
                     id,
                     json!({
                         "protocolVersion": PROTOCOL,
                         "capabilities": {"tools": {"listChanged": false}},
                         "serverInfo": {"name": "brassclaw-orchestrator", "version": env!("CARGO_PKG_VERSION")}
                     }),
-                )
+                );
+                if let Some(chat) = &state.chat {
+                    let Ok(exchange_id) = chat.initialize(token.unwrap_or_default()) else {
+                        return error(Value::Null, -32600, "exchange is already initialized");
+                    };
+                    let Ok(session_header) = exchange_id.to_string().parse() else {
+                        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                    };
+                    initialized_response
+                        .headers_mut()
+                        .insert("mcp-session-id", session_header);
+                }
+                initialized_response
             }
             "tools/list" => {
                 // The bounded catalogue is returned as one atomic generation;
@@ -170,7 +251,17 @@ mod inner {
                 if !req.params.is_null() && !req.params.as_object().is_some_and(|p| p.is_empty()) {
                     return error(id, -32602, "tools/list accepts no cursor or filters");
                 }
-                match discovery.as_ref().and_then(|owner| owner.snapshot().ok()) {
+                if let Some(chat) = &state.chat {
+                    return match chat.tools_list(token.unwrap_or_default()) {
+                        Ok(list) => response(id, list),
+                        Err(_) => error(id, -32600, "exchange initialization is incomplete"),
+                    };
+                }
+                match state
+                    .discovery
+                    .as_ref()
+                    .and_then(|owner| owner.snapshot().ok())
+                {
                     Some(snapshot) => response(id, snapshot.tools_list()),
                     None => error(id, -32603, MCP_CHAT_UNAVAILABLE),
                 }
@@ -186,7 +277,24 @@ mod inner {
                 if call.name.trim().is_empty() || call.arguments.command.trim().is_empty() {
                     return error(id, -32602, "name and completed command must be nonempty");
                 }
-                if let Some(owner) = discovery {
+                if let Some(chat) = &state.chat {
+                    return match chat
+                        .call(
+                            token.unwrap_or_default(),
+                            &id,
+                            &call.name,
+                            &call.arguments.command,
+                        )
+                        .await
+                    {
+                        Ok(result) => response(id, result),
+                        Err(McpChatError::InvalidCommand | McpChatError::RequestConflict) => {
+                            error(id, -32602, "stale command or conflicting request ID")
+                        }
+                        Err(error_kind) => error(id, -32603, &error_kind.to_string()),
+                    };
+                }
+                if let Some(owner) = state.discovery {
                     let Ok(advertised) = owner.snapshot() else {
                         return error(id, -32603, MCP_CHAT_UNAVAILABLE);
                     };
@@ -343,5 +451,6 @@ mod inner {
 
 #[cfg(feature = "skills-db")]
 pub use inner::{
-    OrchestratorMcpServerConfig, orchestrator_mcp_router, orchestrator_mcp_router_with_discovery,
+    OrchestratorMcpServerConfig, orchestrator_mcp_router, orchestrator_mcp_router_with_chat,
+    orchestrator_mcp_router_with_discovery,
 };

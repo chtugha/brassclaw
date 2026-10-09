@@ -45,6 +45,13 @@ pub(crate) trait MontyKernelSnapshot: Send + Sync {
         expected: NativeImplementationRef,
         policy: Arc<dyn InstanceToolPolicySource>,
     ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
+    #[cfg(feature = "root-llm-provider")]
+    fn review(
+        &self,
+        handler: Arc<crate::completed_turn_review::backend::ReviewPrimitive>,
+        capability: &CapabilityId,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RebornBuildError>;
     fn reply(
         &self,
         host: Arc<MontyTaskHost>,
@@ -147,6 +154,48 @@ impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnap
             Some(expected) => self.retain_native(id, expected),
             None => self.retain(id),
         }
+    }
+    #[cfg(feature = "root-llm-provider")]
+    fn review(
+        &self,
+        handler: Arc<crate::completed_turn_review::backend::ReviewPrimitive>,
+        capability: &CapabilityId,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RebornBuildError> {
+        let mut package = reply_package()?;
+        // Rebuild the manifest with only the declared primitive. Binding cannot
+        // expose the reply capability or grant unrelated dispatch authority.
+        let mut manifest = package.manifest.clone();
+        manifest.capabilities[0].id = capability.clone();
+        manifest.capabilities[0].description = "One retained internal review operation".into();
+        manifest.capabilities[0].input_schema_ref = CapabilityProfileSchemaRef::new(
+            "schemas/completed-turn-review.input.v1.json",
+        )?;
+        manifest.capabilities[0].output_schema_ref = CapabilityProfileSchemaRef::new(
+            "schemas/completed-turn-review.output.v1.json",
+        )?;
+        package =
+            ExtensionPackage::from_manifest(manifest, VirtualPath::new("/system/extensions/host")?)
+                .map_err(|e| invalid(e.to_string()))?;
+        let trust = HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
+            AdminEntry::for_local_manifest(
+                PackageId::new("host")?,
+                "/system/extensions/host/manifest.toml".into(),
+                None,
+                HostTrustAssignment::first_party(),
+                vec![EffectKind::ExternalWrite],
+                None,
+            ),
+        ]))])
+        .map_err(|e| invalid(e.to_string()))?;
+        self.retain_bound_handler(
+            package,
+            capability,
+            handler,
+            Arc::new(InstanceToolAuthorizer::new(policy)),
+            Arc::new(trust),
+        )
+        .map_err(|e| invalid(e.to_string()))
     }
     fn reply(
         &self,

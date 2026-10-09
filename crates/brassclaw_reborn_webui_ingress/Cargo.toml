@@ -12,6 +12,7 @@ publish = false
 
 [features]
 default = []
+skills-db = ["brassclaw_reborn_composition/skills-db"]
 # Compile in `InMemorySessionStore` as a public crate item. Off by
 # default so a production deployment cannot accidentally wire the
 # process-local store as a `SessionStore` impl — `SessionAuthenticator`

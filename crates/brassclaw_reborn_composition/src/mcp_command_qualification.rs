@@ -48,6 +48,7 @@ struct SuccessCase {
 struct FailureCase {
     command: String,
     reason_kind: String,
+    tool_failure_kind: String,
 }
 
 /// Created only from checked database observations after durable commit.
@@ -109,6 +110,7 @@ pub(crate) async fn qualify_installed_commands(
     generation: Uuid,
     programs: &[&InspectedRetainedProgram],
     routing: &[&InspectedRetainedProgram],
+    approval: Option<&crate::bootstrap_reply_approval::BootstrapReplyApproval>,
 ) -> Result<QualifiedCommands, McpDiscoveryError> {
     let contracts = McpRecipeDiscovery::contracts(generation, programs)?;
     let mut client = pool.get().await.map_err(unavailable)?;
@@ -155,6 +157,13 @@ pub(crate) async fn qualify_installed_commands(
                 .checksum(),
         ));
     }
+    if !contracts.is_empty() {
+        approval
+            .ok_or(McpDiscoveryError::Unqualified)?
+            .verify_in_transaction(&tx)
+            .await
+            .map_err(unavailable)?;
+    }
     let mut proofs = BTreeMap::new();
     for (name, contract) in &contracts {
         let selected = programs
@@ -177,6 +186,17 @@ pub(crate) async fn qualify_installed_commands(
         let instruction = selected.program().inputs().instruction();
         let selection = instruction.retained_selection().map_err(unavailable)?;
         if !routing_selections.contains(&hex::encode(selection.checksum())) {
+            return Err(McpDiscoveryError::Unqualified);
+        }
+        approval
+            .ok_or(McpDiscoveryError::Unqualified)?
+            .require_selected_program(selected)
+            .map_err(unavailable)?;
+        let catalogue_document: Value =
+            serde_json::from_str(&catalogue_bytes).map_err(|_| McpDiscoveryError::Unqualified)?;
+        let retained_reply_bytes = serde_json::to_string(&catalogue_document["reply_selection"])
+            .map_err(|_| McpDiscoveryError::Unqualified)?;
+        if retained_reply_bytes != selection.exact_bytes() {
             return Err(McpDiscoveryError::Unqualified);
         }
         check_export(selected, contract)?;
@@ -322,6 +342,7 @@ async fn check_cases(
     let mut failures = Vec::new();
     for case in &cases.failure_examples {
         if !commands.insert(&case.command)
+            || case.tool_failure_kind != "retained_tool_authorization"
             || case.reason_kind.is_empty()
             || case.reason_kind.len() > 128
             || !case
@@ -331,7 +352,7 @@ async fn check_cases(
         {
             return Err(McpDiscoveryError::Contract);
         }
-        failures.push(check_execution(tx, subject, &case.command, Some(&case.reason_kind)).await?);
+        failures.push(check_execution(tx, subject, &case.command, Some(case)).await?);
     }
     let mut negatives = Vec::new();
     for command in &contract.declaration.negative_examples {
@@ -402,7 +423,7 @@ async fn check_execution(
     tx: &Transaction<'_>,
     subject: &CommandSubject<'_>,
     command: &str,
-    failure: Option<&str>,
+    failure: Option<&FailureCase>,
 ) -> Result<Value, McpDiscoveryError> {
     let CommandSubject {
         scope,
@@ -435,12 +456,26 @@ async fn check_execution(
         instruction.class(),
     )
     .map_err(|_| McpDiscoveryError::Unqualified)?;
+    let brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(original) =
+        selected.program()
+    else {
+        return Err(McpDiscoveryError::Unqualified);
+    };
+    let actual = brassclaw_engine::memory::retained_tools::prepare_retained_tool_program(actual)
+        .and_then(|actual| actual.retain_approvals_from(original))
+        .map_err(unavailable)?;
     let selection = instruction.retained_selection().map_err(unavailable)?;
     let IntentResolution::Match { input_text, .. } = &matched else {
         return Err(McpDiscoveryError::Unqualified);
     };
     if input_text != &contract.declaration.sentence
-        || actual.retained_selection().map_err(unavailable)?.checksum() != selection.checksum()
+        || actual
+            .inputs()
+            .instruction()
+            .retained_selection()
+            .map_err(unavailable)?
+            .checksum()
+            != selection.checksum()
         || selected
             .program()
             .inputs()
@@ -461,14 +496,158 @@ async fn check_execution(
     } else {
         "completed"
     };
-    let row = tx.query_opt("SELECT a.run_id,a.outcome,s.selection_bytes FROM brassclaw_monty_task_admissions a JOIN brassclaw_monty_recipe_selections s ON s.run_id=a.run_id AND s.recipe_id=$1 WHERE a.phase='settled' AND a.scope->>'tenant_id'=$2 AND a.scope->>'agent_id'=$3 AND COALESCE(a.scope->>'project_id','default')=$4 AND a.outcome->>'status'=$5 AND a.outcome->'execution'->'recipes' @> $6::jsonb AND ($7::text IS NULL OR a.outcome->>'reason_kind'=$7) AND s.selection_checksum=$8 ORDER BY a.run_id LIMIT 1", &[&reference.uuid,&scope.tenant_id,&scope.agent_id,&scope.project_id,&status,&filter,&failure,&hex::encode(selection.checksum())]).await.map_err(unavailable)?.ok_or(McpDiscoveryError::Unqualified)?;
+    let failure_kind = failure.map(|case| case.reason_kind.as_str());
+    let host_failure = failure.map(|case| {
+        json!({"kind":"terminal_error", "reason_kind":case.tool_failure_kind}).to_string()
+    });
+    let row = tx.query_opt("SELECT a.run_id,a.outcome,s.selection_bytes FROM brassclaw_monty_task_admissions a JOIN brassclaw_monty_recipe_selections s ON s.run_id=a.run_id AND s.recipe_id=$1 WHERE a.phase='settled' AND a.scope->>'tenant_id'=$2 AND a.scope->>'agent_id'=$3 AND COALESCE(a.scope->>'project_id','default')=$4 AND a.outcome->>'status'=$5 AND a.outcome->'execution'->'recipes' @> $6::jsonb AND ($7::text IS NULL OR a.outcome->>'reason_kind'=$7) AND s.selection_checksum=$8 AND ($9::text IS NULL OR EXISTS(SELECT 1 FROM brassclaw_monty_tool_invocations i WHERE i.run_id=a.run_id AND i.recipe_id=$1 AND i.answer_bytes::jsonb=$9::jsonb)) ORDER BY a.run_id LIMIT 1", &[&reference.uuid,&scope.tenant_id,&scope.agent_id,&scope.project_id,&status,&filter,&failure_kind,&hex::encode(selection.checksum()),&host_failure]).await.map_err(unavailable)?.ok_or(McpDiscoveryError::Unqualified)?;
     let outcome: Value = row.get(1);
     if row.get::<_, String>(2) != selection.exact_bytes() {
         return Err(McpDiscoveryError::Unqualified);
     }
-    check_settlement(selected, &matching, &outcome, failure)?;
+    check_settlement(selected, &matching, &outcome, failure_kind)?;
+    let invocation = check_invocation(tx, selected, row.get(0), &inputs, &outcome, failure).await?;
     Ok(
-        json!({"command_checksum":digest(command),"run_id":row.get::<_,Uuid>(0),"outcome_checksum":digest(outcome.to_string()),"reply_ref":outcome.get("reply_ref"),"reply_content_checksum":outcome["execution"]["reply"]["content_checksum"],"reason_kind":failure,"root":outcome["execution"]["root"]}),
+        json!({"command_checksum":digest(command),"run_id":row.get::<_,Uuid>(0),"outcome_checksum":digest(outcome.to_string()),"reply_ref":outcome.get("reply_ref"),"reply_content_checksum":outcome["execution"]["reply"]["content_checksum"],"reason_kind":failure_kind,"invocation":invocation,"root":outcome["execution"]["root"]}),
+    )
+}
+
+/// Reconcile actual dispatch intent, pinned selection, typed arguments and host
+/// answer. A generic Recipe failure cannot stand in for a kernel policy denial.
+async fn check_invocation(
+    tx: &Transaction<'_>,
+    selected: &InspectedRetainedProgram,
+    run: Uuid,
+    inputs: &Value,
+    outcome: &Value,
+    failure: Option<&FailureCase>,
+) -> Result<Value, McpDiscoveryError> {
+    use brassclaw_engine::memory::typed_bindings::PreparedReference;
+    use brassclaw_monty_host::process::PortAnswer;
+    let RetainedProgram::Tools(program) = selected.program() else {
+        return Err(McpDiscoveryError::UnsupportedRunner);
+    };
+    // The currently qualified public profile is one usage, with task/constant
+    // inputs. Result-dependent/multi-usage commands need their own acceptance.
+    if program.bindings().len() != 1 {
+        return Err(McpDiscoveryError::UnsupportedRunner);
+    }
+    let (step, binding) = program
+        .bindings()
+        .first_key_value()
+        .ok_or(McpDiscoveryError::Unqualified)?;
+    let mut locals = serde_json::Map::new();
+    for (name, reference) in program
+        .inputs()
+        .layout()
+        .steps()
+        .get(step)
+        .ok_or(McpDiscoveryError::Unqualified)?
+    {
+        let value = match reference {
+            PreparedReference::Input { name } => inputs
+                .get(name)
+                .ok_or(McpDiscoveryError::Unqualified)?
+                .clone(),
+            PreparedReference::Constant { value } => value.clone(),
+            PreparedReference::Result { .. } => return Err(McpDiscoveryError::UnsupportedRunner),
+        };
+        locals.insert(name.clone(), value);
+    }
+    let locals = program
+        .inputs()
+        .bind_step_inputs(step, &Value::Object(locals))
+        .map_err(|_| McpDiscoveryError::Unqualified)?;
+    let rows = tx.query("SELECT i.invocation_id,i.step_id,i.selection_bytes,i.selection_checksum,i.arguments_bytes,i.arguments_checksum,i.answer_bytes,i.answer_checksum,i.phase,i.attempt_count,a.scope FROM brassclaw_monty_tool_invocations i JOIN brassclaw_monty_task_admissions a USING(run_id) WHERE i.run_id=$1 AND i.recipe_id=$2", &[&run, &program.inputs().instruction().recipe().uuid]).await.map_err(unavailable)?;
+    if rows.len() != 1 {
+        return Err(McpDiscoveryError::Unqualified);
+    }
+    let row = &rows[0];
+    let selection =
+        crate::pg_monty_admission::PgMontyAdmission::invocation_selection(program, step)
+            .map_err(unavailable)?;
+    let arguments: String = row.get(4);
+    let answer: String = row
+        .get::<_, Option<String>>(6)
+        .ok_or(McpDiscoveryError::Unqualified)?;
+    if row.get::<_, String>(1) != *step
+        || row.get::<_, String>(2) != selection
+        || row.get::<_, String>(3) != digest(&selection)
+        || row.get::<_, String>(5) != digest(&arguments)
+        || row.get::<_, Option<String>>(7).as_deref() != Some(digest(&answer).as_str())
+        || row.get::<_, String>(8) != "answered"
+        || row.get::<_, i16>(9) != 1
+    {
+        return Err(McpDiscoveryError::Unqualified);
+    }
+    let arguments = brassclaw_skills::value_contract::strict_json(&arguments, REVISION_LIMITS)
+        .map_err(|_| McpDiscoveryError::Unqualified)?;
+    binding
+        .bind_tool_arguments(&locals, &arguments)
+        .map_err(|_| McpDiscoveryError::Unqualified)?;
+    let actual: PortAnswer =
+        serde_json::from_str(&answer).map_err(|_| McpDiscoveryError::Unqualified)?;
+    match (actual, failure) {
+        (PortAnswer::Return { value }, None) if value == outcome["reply_ref"] => {
+            program
+                .inputs()
+                .validate_step_result(step, &value)
+                .map_err(|_| McpDiscoveryError::Unqualified)?;
+        }
+        (PortAnswer::TerminalError { reason_kind }, Some(case))
+            if reason_kind == case.tool_failure_kind && outcome["reply_ref"].is_null() => {}
+        _ => return Err(McpDiscoveryError::Unqualified),
+    }
+    let scope: Value = row.get(10);
+    let tenant = scope["tenant_id"]
+        .as_str()
+        .ok_or(McpDiscoveryError::Unqualified)?;
+    let thread = scope["thread_id"]
+        .as_str()
+        .ok_or(McpDiscoveryError::Unqualified)?;
+    let transcript: Value = tx
+        .query_one(
+            "SELECT metadata FROM brassclaw_session_threads WHERE tenant_id=$1 AND id=$2",
+            &[&tenant, &thread],
+        )
+        .await
+        .map_err(unavailable)?
+        .get(0);
+    let run = run.to_string();
+    let replies: Vec<_> = transcript["messages"]
+        .as_array()
+        .ok_or(McpDiscoveryError::Unqualified)?
+        .iter()
+        .filter(|message| {
+            message["turn_run_id"] == run
+                && message["kind"] == "assistant"
+                && message["status"] == "finalized"
+        })
+        .collect();
+    if failure.is_some() {
+        if !replies.is_empty() {
+            return Err(McpDiscoveryError::Unqualified);
+        }
+    } else if replies.len() != 1
+        || outcome["reply_ref"]
+            != format!(
+                "msg:{}",
+                replies[0]["message_id"]
+                    .as_str()
+                    .ok_or(McpDiscoveryError::Unqualified)?
+            )
+        || outcome["execution"]["reply"]["content_checksum"]
+            != digest(
+                replies[0]["content"]
+                    .as_str()
+                    .ok_or(McpDiscoveryError::Unqualified)?,
+            )
+    {
+        return Err(McpDiscoveryError::Unqualified);
+    }
+    Ok(
+        json!({"invocation_id":row.get::<_,Uuid>(0),"selection_checksum":digest(&selection),
+        "arguments_checksum":row.get::<_,String>(5),"answer_checksum":digest(&answer),"attempt_count":1}),
     )
 }
 
@@ -619,6 +798,7 @@ pub(crate) async fn assert_recorded_command_cases(
         failure_examples: vec![FailureCase {
             command: "reply must not publish".into(),
             reason_kind: "recipe_execution_failed".into(),
+            tool_failure_kind: "retained_tool_authorization".into(),
         }],
     };
     let suite = check_cases(&tx, &subject, &cases).await.unwrap();
@@ -637,7 +817,7 @@ pub(crate) async fn assert_recorded_command_cases(
         &tx,
         &subject,
         "reply must not publish",
-        Some("recipe_execution_failed"),
+        Some(&cases.failure_examples[0]),
     )
     .await
     .unwrap();
@@ -702,38 +882,29 @@ pub(crate) async fn assert_recorded_command_cases(
         "corrupt physical routing anchors must fail closed"
     );
     routing_tx.rollback().await.unwrap();
-    let empty = qualify_installed_commands(pool, scope, generation, &[selected], &[selected])
-        .await
-        .unwrap();
-    empty.verify(generation, &BTreeMap::new()).unwrap();
-    assert!(matches!(
-        empty.verify(Uuid::new_v4(), &BTreeMap::new()),
-        Err(McpDiscoveryError::Unqualified)
-    ));
     assert!(
         matches!(
-            empty.verify(
-                generation,
-                &BTreeMap::from([("reply_case".into(), contract.clone())])
-            ),
+            qualify_installed_commands(pool, scope, generation, &[selected], &[selected], None)
+                .await,
             Err(McpDiscoveryError::Unqualified)
         ),
-        "an empty qualification cannot authorize a newly declared public command"
+        "observations without trusted activation approval cannot qualify advertising"
     );
-    // The ordinary startup's empty, committed qualification is immutable and
-    // explicitly non-approval evidence. No new effects are dispatched here.
-    let row = client
-        .query_one(
-            "SELECT evidence_bytes FROM brassclaw_mcp_command_qualifications WHERE catalogue_id=$1",
-            &[&generation],
-        )
-        .await
-        .unwrap();
-    let bytes: String = row.get(0);
+    let row = client.query_one(
+        "SELECT checksum,evidence_bytes FROM brassclaw_mcp_command_qualifications WHERE catalogue_id=$1 ORDER BY checksum LIMIT 1",
+        &[&generation],
+    ).await.unwrap();
+    let checksum: String = row.get(0);
+    let bytes: String = row.get(1);
+    assert_eq!(digest(&bytes), checksum);
     let proof: Value = serde_json::from_str(&bytes).unwrap();
-    assert_eq!(proof["commands"], json!({}));
+    let command = &proof["commands"]["publish_literal_reply"];
+    assert_eq!(command["successes"].as_array().unwrap().len(), 3);
+    assert_eq!(command["failures"].as_array().unwrap().len(), 1);
+    assert_eq!(command["negative_commands"].as_array().unwrap().len(), 2);
     assert_eq!(proof["semantic_approval"], false);
-    assert!(client.execute("UPDATE brassclaw_mcp_command_qualifications SET evidence_bytes=$1 WHERE catalogue_id=$2", &[&bytes, &generation]).await.is_err());
+    assert_eq!(proof["catalogue_activation"], false);
+    assert!(client.execute("UPDATE brassclaw_mcp_command_qualifications SET evidence_bytes=$1 WHERE checksum=$2", &[&bytes, &checksum]).await.is_err());
 }
 
 #[cfg(test)]

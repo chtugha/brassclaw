@@ -21,6 +21,91 @@ mod support;
 use support::{SOURCE, boot, limits, task, worker};
 
 #[tokio::test]
+async fn explicit_zero_reserve_boot_has_no_hidden_default_minimum() {
+    // Standalone hosting geometry is independent of the product's configured
+    // 512 MiB floor. This probe executes no Recipe or external Tool.
+    let source = "import asyncio\nasync def ready():\n    await host.await_next_task(0)\nasyncio.run(ready())\n";
+    let mut boot = boot(source);
+    boot.adapter_reserve_bytes = 0;
+    boot.bounds.workers = 1;
+    boot.aliases = ["await_next_task".into()].into();
+    let heap = 2 * 1024 * 1024;
+    let frame = 128 * 1024;
+    boot.heap_settings.as_mut().unwrap().max_vm_bytes = heap;
+    let (mut process, ready) = GlobalProcess::start(
+        worker(),
+        boot,
+        ProcessLimits {
+            hard_memory_bytes: heap + 2 * frame,
+            max_frame_bytes: frame,
+            response_timeout: Duration::from_secs(5),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(ready.lifecycle, Lifecycle::Ready);
+    assert_eq!(ready.work_waits.len(), 1);
+    assert_eq!(ready.heap.effective.unwrap().max_vm_bytes, heap);
+    assert_eq!(ready.allocator.adapter_reserve_bytes, 0);
+    assert_eq!(ready.allocator.non_vm_reserve_bytes, 2 * frame);
+    assert_eq!(ready.allocator.memory_budget_bytes, heap + 2 * frame);
+    assert!(ready.vm_live_bytes > 0 && ready.vm_live_bytes < heap);
+    let observed = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert_eq!(observed.root, ready.root);
+    assert_eq!(observed.allocator, ready.allocator);
+    assert_eq!(observed.work_waits, ready.work_waits);
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
+async fn global_worker_preserves_typed_admission_above_the_former_frame_ceiling() {
+    let mut boot = boot(SOURCE);
+    boot.heap_settings.as_mut().unwrap().max_vm_bytes = 512 * 1024 * 1024;
+    boot.bounds.values.max_value_bytes = 70 * 1024 * 1024;
+    let (mut process, ready) = GlobalProcess::start(
+        worker(),
+        boot,
+        ProcessLimits {
+            hard_memory_bytes: 1024 * 1024 * 1024,
+            max_frame_bytes: 80 * 1024 * 1024,
+            response_timeout: Duration::from_secs(30),
+        },
+    )
+    .await
+    .unwrap();
+    let root = ready.root.unwrap();
+    let text = "p".repeat(65 * 1024 * 1024);
+    let mut input = task();
+    input["user_input"] = Value::String(text.clone());
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: input,
+        })
+        .await
+        .unwrap();
+    assert_eq!(admitted.root, Some(root));
+    let Some(ProcessBoundary::HostCall { name, args, .. }) = admitted.boundary else {
+        panic!("actual root matching boundary required")
+    };
+    assert_eq!(name, "resolve_intent");
+    assert_eq!(args[0], json!(admitted.admitted_task.unwrap().to_string()));
+    let returned = args[1].as_str().expect("typed admitted text");
+    assert_eq!(returned.len(), text.len());
+    assert_eq!(
+        Sha256::digest(returned.as_bytes()),
+        Sha256::digest(text.as_bytes())
+    );
+    // No matching result or Tool effect is supplied. Reap the probe rather
+    // than fabricating a completed task or a durable settlement receipt.
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
 async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admission() {
     let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
         .await
@@ -655,6 +740,56 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
     assert_eq!(pending.heap.desired, Some(reduced));
     assert_eq!(pending.heap.effective, both.heap.effective);
     assert!(pending.heap.pending_reduction);
+    let pending_heap = pending.heap;
+    let settings = TaskSettings {
+        revision: 2,
+        ..pending.effective_task_settings.unwrap()
+    };
+    let pending = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: 1,
+                settings,
+                values: ready.vm_bounds.unwrap(),
+                max_recipe_contexts: None,
+                adapter_reserve_bytes: Some(8 * 1024 * 1024),
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        pending.heap, pending_heap,
+        "reserve edits retain the pending automatic heap revision"
+    );
+    assert_eq!(pending.allocator.adapter_reserve_bytes, 8 * 1024 * 1024);
+    assert_eq!(pending.task_accounting.len(), 1);
+    assert_eq!(pending.task_accounting[0].effective_revision, 2);
+    for (expected, reserve, failure) in [
+        (2, usize::MAX, VmFailure::InvalidBounds),
+        (1, 16384, VmFailure::SettingsRevisionConflict),
+    ] {
+        let rejected = process
+            .exchange(WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings {
+                    expected_revision: expected,
+                    settings: TaskSettings {
+                        revision: 3,
+                        ..settings
+                    },
+                    values: ready.vm_bounds.unwrap(),
+                    max_recipe_contexts: None,
+                    adapter_reserve_bytes: Some(reserve),
+                },
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(rejected.kind, ProcessFailure::Vm(failure));
+        let rejected = rejected.snapshot.unwrap();
+        assert_eq!(rejected.allocator, pending.allocator);
+        assert_eq!(rejected.heap, pending_heap);
+        assert_eq!(rejected.effective_task_settings, Some(settings));
+        assert_eq!(rejected.root, ready.root);
+    }
     let mut another = task();
     another["run_id"] = json!("heap-pending-unadmitted-run");
     let no_capacity = process

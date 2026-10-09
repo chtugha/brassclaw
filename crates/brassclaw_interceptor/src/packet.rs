@@ -1,6 +1,6 @@
 //! `ForensicPacket` — the core data type captured by the interceptor.
 //!
-//! Each turn through the agent loop produces exactly one `ForensicPacket`.
+//! Each intercepted model iteration produces one `ForensicPacket`.
 //! The packet is created after `PromptStage` completes and closed (with
 //! Kohai response + optional Sempai review) after `ModelStage` completes.
 //!
@@ -197,6 +197,10 @@ pub struct ForensicPacket {
     pub captured_at: DateTime<Utc>,
     /// The assembled prompt and its structural breakdown.
     pub prompt: CapturedPrompt,
+    /// Exact host-boundary JSON snapshots, distinct from the legacy text view.
+    /// Absent for historical/other capture paths; absence is an evidence gap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_exchange: Option<ModelExchangeEvidence>,
     /// Raw Kohai response text (set after ModelStage completes).
     /// `None` while status is `AwaitingKohai`.
     pub kohai_response: Option<String>,
@@ -207,6 +211,23 @@ pub struct ForensicPacket {
     pub sempai_review: Option<SempaiReviewOutcome>,
     /// Timestamp when the Kohai response was received.
     pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Evidence of one host-managed model operation, not raw provider wire bytes,
+/// a complete task transcript, a dispatch permit or a replay instruction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelExchangeEvidence {
+    /// Schema identity for consumers interpreting the retained JSON strings.
+    pub format: String,
+    /// Request before Sempai adjustment, including structured replay metadata.
+    pub original_request_bytes: String,
+    /// Request passed to the underlying gateway. None when preparation fails.
+    pub effective_request_bytes: Option<String>,
+    /// Actual returned host response, including output, deltas and usage.
+    pub response_bytes: Option<String>,
+    /// Classified error observation. Does not prove no provider effect occurred.
+    pub failure: Option<serde_json::Value>,
 }
 
 /// Token usage as reported by the Kohai provider for this turn.
@@ -229,6 +250,7 @@ impl ForensicPacket {
             iteration,
             captured_at: Utc::now(),
             prompt,
+            model_exchange: None,
             kohai_response: None,
             kohai_usage: None,
             sempai_review: None,

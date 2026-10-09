@@ -11,7 +11,7 @@ use brassclaw_engine::executor::{
         RetainedProgram, RetainedRecipeExecution, RetainedStepFailure, RetainedToolInvocation,
         RetainedToolPort,
     },
-    retained_source::InspectedRetainedProgram,
+    retained_source::{InspectedRetainedProgram, RetainedSourceError},
 };
 use brassclaw_host_api::{
     CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ResourceEstimate,
@@ -54,6 +54,58 @@ use pg_retained_q1::{
 
 fn worker() -> &'static std::path::Path {
     support::worker()
+}
+
+#[tokio::test]
+async fn native_preload_checks_every_public_signature_before_effects() {
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let source = "def parse_usage(inputs):\n    return _parse_data(inputs)";
+    let valid = retained_program::program_with_preload_source(&store, source, None).await;
+    let inspected = InspectedRetainedProgram::inspect(RetainedProgram::Tools(valid), worker())
+        .await
+        .unwrap();
+    assert_eq!(inspected.preload_order().len(), 2);
+    assert_eq!(
+        inspected.invocation("0:2"),
+        Some("result = parse_usage(inputs=inputs)")
+    );
+    // The source really declares unused_usage(inputs), so parser/signature
+    // agreement and the one-Tool check both succeed. Its explicit keyword
+    // contract is incompatible with this Skill's sole input, data. Checking
+    // only the selected mapping export would incorrectly qualify the library.
+    let incompatible = json!({
+        "parse":{"symbol":"parse_usage","parameters":["inputs"],"mapping":true},
+        "unused":{"symbol":"unused_usage","parameters":["inputs"],"mapping":false}
+    });
+    let invalid =
+        retained_program::program_with_preload_source(&store, source, Some(incompatible)).await;
+    assert!(matches!(
+        InspectedRetainedProgram::inspect(RetainedProgram::Tools(invalid), worker()).await,
+        Err(RetainedSourceError::Invalid {
+            reason: "export signature differs from input contract",
+            ..
+        })
+    ));
+    // Keep migration preflight exercised by the shared root caller too; a
+    // legacy body must never disguise an unbound Tool as a qualified export.
+    let legacy = retained_program::program_with_source(
+        &store,
+        false,
+        Some("result = host.unbound(data=inputs['data'])"),
+    )
+    .await;
+    assert!(matches!(
+        InspectedRetainedProgram::inspect(RetainedProgram::Tools(legacy), worker()).await,
+        Err(RetainedSourceError::Invalid { .. })
+    ));
+    let client = rig.pool.get().await.unwrap();
+    let count: i64 = client
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 0, "inspection must not create an effect intent");
 }
 
 #[test]
@@ -137,7 +189,22 @@ async fn actual_structural_reviews_retain_exact_source_and_are_not_combination_a
         .unwrap();
     let reviews = Arc::new(StructuralReviewSet::prepare(inspected).unwrap());
     assert_eq!(reviews.references().len(), 1);
-    assert_eq!(reviews.inspected().source_checks().len(), 1);
+    let python_components: std::collections::BTreeSet<_> = binding
+        .combination()
+        .iter()
+        .filter(|component| component.class_code == 22)
+        .map(|component| component.uuid)
+        .collect();
+    assert_eq!(python_components.len(), 2);
+    assert_eq!(
+        reviews
+            .inspected()
+            .source_checks()
+            .keys()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>(),
+        python_components
+    );
     let skill = binding.skill().uuid;
     let id = reviews.references()[&skill];
     let bytes = reviews.evidence(skill).unwrap();
@@ -159,6 +226,22 @@ async fn actual_structural_reviews_retain_exact_source_and_are_not_combination_a
         binding.combination().len()
     );
     assert_eq!(evidence["reviewed_evidence"], json!([]));
+    let reviewed_sources = evidence["report"]["sources"].as_object().unwrap();
+    assert_eq!(
+        reviewed_sources
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>(),
+        python_components.iter().map(ToString::to_string).collect()
+    );
+    for component in &python_components {
+        assert_eq!(
+            reviewed_sources[&component.to_string()]["source_checksum"],
+            reviews.inspected().source_checks()[component]
+                .observations()
+                .source_checksum
+        );
+    }
     assert_eq!(
         evidence["report"]["observations"]["source_checksum"],
         reviews.inspected().source_checks()[&binding.python().uuid]
@@ -174,11 +257,13 @@ async fn actual_structural_reviews_retain_exact_source_and_are_not_combination_a
     // A real replacement does not change the exact original review target.
     let selected = &program.inputs().instruction().snapshot().revisions()[&binding.python().uuid];
     let mut document = selected.draft().document().clone();
-    document["content"] =
-        json!("result = host.json(operation='parse', data=inputs['data'])\n# replacement revision");
+    document["content"] = json!(format!(
+        "{}\n# replacement revision",
+        document["content"].as_str().unwrap()
+    ));
     let replacement = ComponentRevisionDraft::from_json(
         &json!({"format":"component-revision/1", "uuid":binding.python().uuid,
-        "class_code":22, "document":document, "dependencies":[], "association":null})
+        "class_code":22, "document":document, "dependencies":selected.draft().dependencies(), "association":null})
         .to_string(),
     )
     .unwrap();
@@ -421,14 +506,18 @@ async fn pure_logic_workflow_evidence_observes_values_and_rejects_reordered_step
         (
             first,
             22,
-            json!({"content":"result = {'text': inputs['text']}","includes":[],"dependency_registry":null,
+            json!({"content":"def prepare_text(inputs):\n    values = [(last := item) for item in [inputs['text']]]\n    return {'text': last}","includes":[],"dependency_registry":null,
+            "preload":{"format":"python-preload/2","exports":{"prepare":{"symbol":"prepare_text","parameters":["inputs"],"mapping":true}},
+                "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"prepare"},
             "input_contract":{"text":{"type":"string","required":true,"checks":[]}},"result_contract":result}),
             Vec::new(),
         ),
         (
             second,
             22,
-            json!({"content":"result = {'text': inputs['previous'] + '!'}","includes":[],"dependency_registry":null,
+            json!({"content":"def consume_text(inputs):\n    return {'text': inputs['previous'] + '!'}","includes":[],"dependency_registry":null,
+            "preload":{"format":"python-preload/2","exports":{"consume":{"symbol":"consume_text","parameters":["inputs"],"mapping":true}},
+                "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"consume"},
             "input_contract":{"previous":{"type":"string","required":true,"checks":[]}},"result_contract":result}),
             Vec::new(),
         ),
@@ -1045,7 +1134,14 @@ async fn human_review_regression(
     let checksum = review.checksum().to_owned();
     assert_eq!(review.view()["scope"], "one-tool-usage");
     assert_eq!(review.view()["activates_catalogue"], false);
-    assert_eq!(review.view()["components"].as_array().unwrap().len(), 4);
+    let components = review.view()["components"].as_array().unwrap();
+    assert_eq!(components.len(), 5);
+    let mut classes: Vec<_> = components
+        .iter()
+        .map(|component| component["class_code"].as_i64().unwrap())
+        .collect();
+    classes.sort_unstable();
+    assert_eq!(classes, [0, 1, 13, 22, 22]);
     assert_eq!(review.view()["evidence"].as_array().unwrap().len(), 2);
     let selected_skill = review.view()["components"]
         .as_array()

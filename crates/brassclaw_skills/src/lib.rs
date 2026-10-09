@@ -40,6 +40,13 @@ pub mod association_contract;
 /// do not establish review provenance, activation or Tool authority.
 pub mod component_revision;
 
+/// Strict post-turn proposal decoding; parsing never approves or activates.
+pub mod completed_turn_analysis;
+
+/// Private consumer Recipe, canonical usage variants and executable associations.
+mod builtin_bootstrap;
+pub mod completed_turn_review_components;
+
 /// Packaged typed reply/history drafts and exact source-integrity comparison.
 /// Existing Tool artifacts, behavioral review, approval and activation are separate.
 pub mod global_bootstrap_components;

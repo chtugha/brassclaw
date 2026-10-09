@@ -668,6 +668,65 @@ pub async fn record_disambiguation_choice(
     Ok(result)
 }
 
+#[cfg(feature = "skills-db")]
+const INTENT_SEED_SQL: &str = "INSERT INTO reborn_intent_inputs
+                 (tenant_id, user_id, agent_id, project_id,
+                  input_text, input_class, component_id, component_class_code,
+                  score, source, needs_review, step_link,
+                  is_template, template_prefix, template_suffix)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,$13,$14)
+             ON CONFLICT (tenant_id, user_id, agent_id, project_id,
+                          input_text, input_class, component_id)
+             DO UPDATE SET
+                 source          = EXCLUDED.source,
+                 needs_review    = EXCLUDED.needs_review,
+                 step_link       = EXCLUDED.step_link,
+                 is_template     = EXCLUDED.is_template,
+                 template_prefix = EXCLUDED.template_prefix,
+                 template_suffix = EXCLUDED.template_suffix,
+                 updated_at      = now()";
+
+/// Publish the exact selected Recipe's physical anchors in the catalogue owner's
+/// transaction. This neither selects versions nor approves or activates them.
+#[cfg(feature = "skills-db")]
+pub async fn seed_retained_recipe_intents_in_transaction(
+    tx: &tokio_postgres::Transaction<'_>,
+    scope: &IntentScope,
+    instruction: &super::retained_instruction::RetainedRecipeInstruction,
+) -> Result<(), IntentSystemError> {
+    // Installation upgrades must not overwrite operator-owned routing metadata.
+    let sql = format!("{INTENT_SEED_SQL} WHERE reborn_intent_inputs.source='seeded'");
+    for input in &instruction.variant().intent_examples {
+        let anchors = crate::memory::template_extractor::parse_template(input);
+        let (is_template, prefix, suffix) = match anchors {
+            Some((prefix, suffix)) => (true, Some(prefix), Some(suffix)),
+            None => (false, None, None),
+        };
+        tx.execute(
+            &sql,
+            &[
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &input,
+                &classify_query(input).as_i16(),
+                &instruction.recipe().uuid,
+                &21i32,
+                &IntentSource::Seeded.as_str(),
+                &IntentSource::Seeded.needs_review(),
+                &instruction.variant().step_link,
+                &is_template,
+                &prefix,
+                &suffix,
+            ],
+        )
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// Seed (or update) an intent input row, typically called on component validation
 /// to populate `intent_examples` into `reborn_intent_inputs` (spec §1.5).
 ///
@@ -708,22 +767,7 @@ pub async fn seed_intent_input(
         .map_err(|e| IntentSystemError::Db(e.to_string()))?;
     client
         .execute(
-            "INSERT INTO reborn_intent_inputs
-                 (tenant_id, user_id, agent_id, project_id,
-                  input_text, input_class, component_id, component_class_code,
-                  score, source, needs_review, step_link,
-                  is_template, template_prefix, template_suffix)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,$13,$14)
-             ON CONFLICT (tenant_id, user_id, agent_id, project_id,
-                          input_text, input_class, component_id)
-             DO UPDATE SET
-                 source          = EXCLUDED.source,
-                 needs_review    = EXCLUDED.needs_review,
-                 step_link       = EXCLUDED.step_link,
-                 is_template     = EXCLUDED.is_template,
-                 template_prefix = EXCLUDED.template_prefix,
-                 template_suffix = EXCLUDED.template_suffix,
-                 updated_at      = now()",
+            INTENT_SEED_SQL,
             &[
                 &scope.tenant_id,
                 &scope.user_id,

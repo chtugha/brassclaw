@@ -27,26 +27,28 @@ pub(super) async fn program(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
 ) -> Arc<RetainedToolProgram> {
-    build_program(store, invalid_output, None, true).await
+    build_program(store, invalid_output, None, true, None).await
 }
 pub(super) async fn program_with_source(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
     source: Option<&str>,
 ) -> Arc<RetainedToolProgram> {
-    build_program(store, invalid_output, source, false).await
+    build_program(store, invalid_output, source, false, None).await
 }
 pub(super) async fn program_with_preload_source(
     store: &PgComponentRevisionStore,
     source: &str,
+    exports: Option<Value>,
 ) -> Arc<RetainedToolProgram> {
-    build_program(store, false, Some(source), true).await
+    build_program(store, false, Some(source), true, exports).await
 }
 async fn build_program(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
     source: Option<&str>,
     preload: bool,
+    exports: Option<Value>,
 ) -> Arc<RetainedToolProgram> {
     let (root, code, descriptor, tool, skill) = (
         Uuid::new_v4(),
@@ -104,6 +106,9 @@ async fn build_program(
             "parse":{"symbol":"parse_usage","parameters":["inputs"],"mapping":true},
             "unused":{"symbol":"unused_usage","parameters":["inputs"],"mapping":true}},
             "private_functions":{},"constants":[],"imports":[],"dependencies":[helper],"default_export":"parse"});
+        if let Some(exports) = exports {
+            code_document["preload"]["exports"] = exports;
+        }
         skill_document["interface"] = json!({"format":"skill-interface/1","python_code_uuid":code,
             "exports":code_document["preload"]["exports"],"inputs":inputs,"result":result,
             "failure":serde_json::from_str::<Value>(&association).unwrap()["failure"],

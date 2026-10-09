@@ -31,6 +31,12 @@ mod automation;
 mod available_extensions;
 mod budget;
 mod budget_events;
+#[cfg(all(
+    feature = "postgres",
+    feature = "skills-db",
+    feature = "root-llm-provider"
+))]
+mod completed_turn_review;
 #[cfg(feature = "postgres")]
 mod component_boot;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -103,6 +109,10 @@ pub(crate) mod embedding_providers;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 mod fetch_cached_content;
+#[cfg(feature = "skills-db")]
+pub mod mcp_chat_bridge;
+#[cfg(feature = "skills-db")]
+mod mcp_provider_gateway;
 #[cfg(feature = "skills-db")]
 pub mod mcp_recipe_catalogue;
 /// Phase V: McpServerService — lifecycle management (start/stop) for the MCP server.
@@ -1036,6 +1046,13 @@ mod normal_match_evidence;
 
 #[cfg(feature = "skills-db")]
 mod mcp_command_qualification;
+
+#[cfg(feature = "skills-db")]
+mod bootstrap_reply_approval;
+#[cfg(feature = "skills-db")]
+mod bootstrap_reply_validation;
+#[cfg(feature = "skills-db")]
+mod public_recipe_population;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_task_factory;

@@ -69,6 +69,18 @@ impl MontyTaskFence {
         self.state.changed.notify_waiters();
     }
 
+    pub(crate) async fn closed(&self) {
+        loop {
+            let changed = self.state.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.state.calls.lock().fenced {
+                return;
+            }
+            changed.await;
+        }
+    }
+
     pub(crate) fn check_open(&self) -> Result<(), AgentLoopHostError> {
         if self.state.calls.lock().fenced {
             Err(cancelled())

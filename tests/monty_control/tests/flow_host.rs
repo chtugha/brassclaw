@@ -35,8 +35,10 @@ async fn run(
         .unwrap();
     let mut bounds = boot(SOURCE).bounds.values;
     // Structured control metadata has more JSON wrapper depth than user data.
-    // Keep it below the transport ceiling; flow nesting has its own bound.
+    // Flow uses the same configurable typed-value bounds as other inputs.
     bounds.max_value_depth = 48;
+    bounds.max_value_nodes = 32768;
+    bounds.max_value_bytes = 256 * 1024;
     let output = execute(
         worker(),
         UtilityRequest::Evaluate {
@@ -55,7 +57,7 @@ async fn run(
 }
 
 #[tokio::test]
-async fn full_flow_preflight_rejects_bad_edges_unbounded_expansion_and_unknown_fields() {
+async fn full_flow_preflight_rejects_bad_edges_invalid_bounds_and_unknown_fields() {
     let valid = json!({"format":"recipe-flow/1","body":[
         step("prepare", "0:1", json!({"text":{"kind":"input","name":"user_input"}})),
         returning("complete", reference("0:1"))
@@ -85,13 +87,7 @@ async fn full_flow_preflight_rejects_bad_edges_unbounded_expansion_and_unknown_f
         "initial":constant(Value::Null),"body":loop_body,"update":constant(Value::Null)
     }]});
     let bool_bound = bad_bound.clone();
-    bad_bound["body"][0]["max_iterations"] = json!(65);
-    let too_large = json!({"format":"recipe-flow/1","body":[{
-        "kind":"repeat","node_id":"cycle","max_iterations":64,"initial":constant(Value::Null),
-        "body":[{"kind":"foreach","node_id":"calls","source":constant(json!([])),"max_items":256,
-            "body":[step("execute", "0:1", json!({}))],"result":reference("0:1")}],
-        "update":constant(Value::Null)
-    }]});
+    bad_bound["body"][0]["max_iterations"] = json!(0);
     let values = BTreeMap::from([
         ("valid".into(), valid),
         (
@@ -103,8 +99,7 @@ async fn full_flow_preflight_rejects_bad_edges_unbounded_expansion_and_unknown_f
                 unreachable,
                 duplicate,
                 bool_bound,
-                bad_bound,
-                too_large
+                bad_bound
             ]),
         ),
         ("admitted".into(), task()),
@@ -127,7 +122,96 @@ rejected
     )
     .await
     .unwrap();
-    assert_eq!(result, json!(8));
+    assert_eq!(result, json!(7));
+}
+
+#[tokio::test]
+async fn flow_capacity_uses_live_value_bounds_and_explicit_recipe_limits() {
+    let steps: Vec<_> = (0..520).map(|index| format!("0:{index}")).collect();
+    let mut body: Vec<_> = steps
+        .iter()
+        .enumerate()
+        .map(|(index, id)| step(&format!("node_{index}"), id, json!({})))
+        .collect();
+    body.push(returning("complete", reference(steps.last().unwrap())));
+    let flat = json!({"format":"recipe-flow/1","body":body});
+    // More than the old 4096 projected dispatches; preflight does not execute
+    // any step or fabricate a host answer. Exact eligible Tool occurrences
+    // still require the separate durable dispatch/recovery implementation.
+    let projected = json!({"format":"recipe-flow/1","body":[{
+        "kind":"repeat","node_id":"cycle","max_iterations":65,"initial":constant(Value::Null),
+        "body":[{"kind":"foreach","node_id":"items","source":constant(json!([])),"max_items":257,
+            "body":[step("execute", "0:1", json!({}))],"result":reference("0:1")}],
+        "update":constant(Value::Null)
+    }]});
+    let mut nested = returning("deep_return", constant(json!("deep value")));
+    for index in 0..18 {
+        nested = json!({"kind":"repeat","node_id":format!("level_{index}"),"max_iterations":1,
+            "initial":constant(Value::Null),"body":[nested],"update":constant(Value::Null)});
+    }
+    let nested = json!({"format":"recipe-flow/1","body":[nested]});
+    let mut deep_input = json!("long path value");
+    for _ in 0..17 {
+        deep_input = json!({"field":deep_input});
+    }
+    // The input grammar deliberately has no path. Traverse the path through
+    // an explicit loop item, as the actual prepared reference grammar requires.
+    let path = json!({"format":"recipe-flow/1","body":[{
+        "kind":"repeat","node_id":"path_item","max_iterations":1,"initial":constant(deep_input),
+        "body":[returning("path_return",json!({"kind":"item","loop_id":"path_item","path":vec!["field";17]}))],
+        "update":constant(Value::Null)
+    }]});
+    let immediate = json!({"format":"recipe-flow/1","body":[{
+        "kind":"repeat","node_id":"wide_bound","max_iterations":u64::MAX,"initial":constant(Value::Null),
+        "body":[returning("immediate_return",constant(json!("first iteration")))],"update":constant(Value::Null)
+    }]});
+    let result = run(
+        r#"
+_validate_flow(flat, step_ids, {})
+_validate_flow(projected, ["0:1"], {})
+values = []
+for flow in executable:
+    _validate_flow(flow, [], {})
+    state = {"inputs": {}, "results": {}, "previous_result": None}
+    outcome = asyncio.run(_run_flow_nodes("private_task", "pinned_program", flow["body"], state, {}, []))
+    values.append(outcome["value"])
+values
+"#,
+        BTreeMap::from([
+            ("flat".into(), flat),
+            ("step_ids".into(), json!(steps)),
+            ("projected".into(), projected),
+            ("executable".into(), json!([nested, path, immediate])),
+        ]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        result,
+        json!(["deep value", "long path value", "first iteration"])
+    );
+}
+
+#[tokio::test]
+async fn foreach_above_old_cap_returns_every_item_without_truncation() {
+    let expected: Vec<_> = (0..300).collect();
+    let empty = json!({"kind":"foreach","node_id":"empty","source":constant(json!([])),"max_items":1,
+        "body":[returning("unreachable_return",constant(Value::Null))],"result":constant(Value::Null)});
+    let flow = json!({"format":"recipe-flow/1","body":[{
+        "kind":"foreach","node_id":"items","source":constant(json!(expected)),"max_items":300,
+        "body":[empty],"result":{"kind":"item","loop_id":"items","path":[]}
+    },returning("all_items",reference("items"))]});
+    let result = run(
+        r#"
+_validate_flow(flow, [], {})
+state = {"inputs": {}, "results": {}, "previous_result": None}
+asyncio.run(_run_flow_nodes("private_task", "pinned_program", flow["body"], state, {}, []))
+"#,
+        BTreeMap::from([("flow".into(), flow)]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result, json!({"returned":true,"value":expected}));
 }
 
 #[tokio::test]

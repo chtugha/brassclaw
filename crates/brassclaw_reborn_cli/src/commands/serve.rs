@@ -18,6 +18,7 @@ use brassclaw_reborn_webui_ingress::{
 };
 use clap::Args;
 use secrecy::SecretString;
+use tokio_util::task::AbortOnDropHandle;
 
 use crate::context::RebornCliContext;
 use crate::runtime::{RuntimeInputOptions, resolve_google_oauth_config_from_env};
@@ -29,6 +30,11 @@ const DEFAULT_ENV_USER_ID_VAR: &str = "BRASSCLAW_REBORN_WEBUI_USER_ID";
 
 #[derive(Debug, Args)]
 pub(crate) struct ServeCommand {
+    /// Loopback port for the authenticated instance-owned inbound MCP listener.
+    #[cfg(feature = "skills-db")]
+    #[arg(long, default_value_t = 9090)]
+    mcp_port: u16,
+
     /// Host interface for the Reborn WebChat v2 HTTP listener.
     /// Overrides `[webui].listen_host` from the boot config file.
     /// Default (when neither is set) is `127.0.0.1`.
@@ -339,22 +345,17 @@ impl ServeCommand {
                 .context("failed to assemble Reborn runtime for `serve`")?;
             let runtime = Arc::new(runtime);
 
-            // Spawn the background retention sweep when a Postgres pool is
-            // available.  The handle is intentionally leaked (not awaited on
-            // shutdown) — the sweep is a best-effort background task that
-            // runs on a 24 h cadence, so aborting it on graceful shutdown is
-            // safe.  Only runs on the production Postgres path; local-dev
-            // without embedded PG has no pool to sweep.
-            if let Some(pg_pool) = runtime.services().pg_pool() {
-                brassclaw_reborn_composition::retention_sweep::spawn_retention_sweep(
-                    std::sync::Arc::clone(pg_pool),
-                );
-
-                // Phase N: the legacy Q1 auto-validation sweep (which used
-                // ComponentValidator::validate_by_class + the now-dropped
-                // queue_code column) has been removed. Q1 is now orchestrated
-                // via ValidationQueueStore + run_q1_validation.
-            }
+            // Own the sweep for the listener lifetime. Dropping a JoinHandle
+            // detaches its task and retains the entire pool across PG shutdown.
+            // Abort on startup errors too; the ordinary shutdown below also
+            // awaits cancellation before dropping runtime services.
+            let retention_sweep = runtime.services().pg_pool().map(|pg_pool| {
+                AbortOnDropHandle::new(
+                    brassclaw_reborn_composition::retention_sweep::spawn_retention_sweep(
+                        Arc::clone(pg_pool),
+                    ),
+                )
+            });
             // Open the canonical Reborn identity resolver on the runtime's
             // existing substrate handle (the same `reborn-local-dev.db` the
             // runtime owns) rather than opening a second handle to the file.
@@ -374,6 +375,14 @@ impl ServeCommand {
                 }
             } else {
                 None
+            };
+            #[cfg(feature = "skills-db")]
+            let mcp_listener = {
+                let bridge = runtime.mcp_chat_bridge().context("failed to attach ordinary MCP chat transport")?;
+                let listener = brassclaw_reborn_webui_ingress::mcp_listener_spawner::InboundMcpListener::start(self.mcp_port, bridge)
+                    .await.context("failed to start authenticated instance MCP listener")?;
+                runtime.attach_mcp_listener_status(listener.status()).context("failed to attach MCP listener observation")?;
+                listener
             };
             let bundle = build_webui_services(Arc::clone(&runtime), None)
                 .await
@@ -491,22 +500,53 @@ impl ServeCommand {
             // route-owned work must finish after ingress stops accepting new
             // requests but before shared runtime services are torn down.
             public_route_drains.drain().await;
+            drop(public_route_drains);
+            #[cfg(feature = "skills-db")]
+            let mcp_shutdown_result = mcp_listener.shutdown().await;
+
+
+            let retention_result = if let Some(sweep) = retention_sweep {
+                sweep.abort();
+                match sweep.await {
+                    Ok(()) => Ok(()),
+                    Err(error) if error.is_cancelled() => Ok(()),
+                    Err(error) => Err(anyhow!("retention sweep task failed: {error}")),
+                }
+            } else {
+                Ok(())
+            };
 
             // Always drain the Reborn runtime, even on serve error, so
             // background tasks and turn-runner state shut down cleanly.
-            // The runtime owns the Postgres pool (via `RebornServices`);
-            // dropping it here by consuming the runtime closes all pool
-            // connections BEFORE managed_pg.shutdown() is called below
-            // (§2.2, §5.5: pool must be dropped before pg_ctl stop).
+            // Keep the CLI-owned pool long enough to explicitly close it after
+            // all runtime work drains. Facade clones can outlive `runtime`, so
+            // dropping that one Arc alone does not close the database sessions.
+            let pg_pool = runtime.services().pg_pool().cloned();
             let shutdown_result = Arc::try_unwrap(runtime)
                 .map_err(|_| anyhow!("WebUI still holds the Reborn runtime during shutdown"))?
                 .shutdown()
                 .await;
 
-            // Shut down the embedded Postgres server only after the pool
-            // held by the runtime has been dropped (runtime.shutdown()
-            // consumed `runtime`). If `BRASSCLAW_PG_URL` was used instead,
-            // `managed_pg` is None and this is a no-op.
+            let pool_result = if let Some(pool) = pg_pool {
+                pool.close();
+                let remaining = pool.status();
+                if remaining.size == 0 && remaining.waiting == 0 {
+                    Ok(())
+                } else {
+                    Err(anyhow!(
+                        "runtime shutdown retained {} PostgreSQL connections and {} pool waiters",
+                        remaining.size,
+                        remaining.waiting,
+                    ))
+                }
+            } else {
+                Ok(())
+            };
+
+
+            // Stop embedded PostgreSQL after closing the application's pool.
+            // An external database remains running; closing this CLI's pool
+            // only disconnects its own sessions.
             if let Some(pg) = managed_pg
                 && let Err(error) = pg.shutdown().await
             {
@@ -514,7 +554,11 @@ impl ServeCommand {
             }
 
             serve_result.context("WebChat v2 serve loop failed")?;
+            retention_result.context("retention sweep shutdown failed")?;
             shutdown_result.context("Reborn runtime shutdown failed")?;
+            pool_result.context("PostgreSQL pool shutdown failed")?;
+            #[cfg(feature = "skills-db")]
+            mcp_shutdown_result.context("MCP listener shutdown failed")?;
             Ok::<(), anyhow::Error>(())
         })?;
 

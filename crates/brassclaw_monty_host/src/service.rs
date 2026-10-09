@@ -55,8 +55,17 @@ pub struct TaskInput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskOutcome {
-    Completed { reply_ref: String },
-    Failed { reason_kind: String },
+    Completed {
+        reply_ref: String,
+    },
+    /// A host-owned internal task produces a durable receipt, never a chat
+    /// publication. Its TaskPorts owner must verify the exact retained receipt.
+    InternalCompleted {
+        receipt_ref: String,
+    },
+    Failed {
+        reason_kind: String,
+    },
 }
 
 /// Safe classified host error, never arbitrary provider/Tool diagnostics.
@@ -96,8 +105,9 @@ pub trait TaskPorts: Send + Sync + 'static {
         kwargs: BTreeMap<String, Value>,
     ) -> BoxFuture<'static, Result<Value, PortFailure>>;
 
-    /// Verify a completed reply against this exact task's actual published
-    /// transcript. Failure outcomes must also retain actual effect evidence.
+    /// Verify a completed reply against this task's published transcript, or
+    /// an internal completion against its actual durable receipt. A chat owner
+    /// must reject internal completion. Failures retain actual effect evidence.
     /// This is lifecycle validation, not a replacement reply or task workflow.
     fn finish(
         self: Arc<Self>,
@@ -133,6 +143,7 @@ struct TaskSettingsPublication {
     max_retained_attempts: Option<u32>,
     actor_limits: Option<ActorLimits>,
     hosting_deadlines: Option<HostingDeadlines>,
+    adapter_reserve_bytes: Option<usize>,
     result: watch::Sender<Option<Result<Arc<SettingsReceipt>, ServiceFailure>>>,
 }
 #[derive(Default)]
@@ -142,6 +153,7 @@ struct HostingPolicyPatch {
     retained_attempts: Option<u32>,
     actor: Option<ActorLimits>,
     deadlines: Option<HostingDeadlines>,
+    adapter_reserve_bytes: Option<usize>,
 }
 struct HeapPublication {
     expected: u64,
@@ -187,6 +199,8 @@ impl SettingsCapacityObservation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceHostingLimits {
+    /// None preserves the worker's current adapter headroom.
+    pub adapter_reserve_bytes: Option<usize>,
     pub admission: AdmissionLimits,
     pub max_pending_settings: u32,
     pub max_retained_attempts: u32,
@@ -254,6 +268,7 @@ impl From<&ProcessSnapshot> for HeapObservation {
     }
 }
 pub struct SettingsReceipt {
+    pub allocator: crate::heap::AllocatorStatus,
     pub effective_settings: TaskSettings,
     pub recipe_context_capacity: crate::process::RecipeContextCapacity,
     pub admission: AdmissionObservation,
@@ -418,6 +433,36 @@ impl ServiceClient {
         *self.recipe_contexts.borrow()
     }
 
+    pub fn allocator_status(&self) -> crate::heap::AllocatorStatus {
+        self.transport.allocator_status()
+    }
+
+    pub fn validate_adapter_reserve(&self, reserve: usize) -> Result<(), ServiceFailure> {
+        let heap = self.observed_heap.borrow().status;
+        for heap in [heap.desired, heap.effective].into_iter().flatten() {
+            self.validate_memory_layout(heap.max_vm_bytes, reserve)?;
+        }
+        Ok(())
+    }
+
+    pub fn validate_memory_layout(
+        &self,
+        heap: usize,
+        reserve: usize,
+    ) -> Result<(), ServiceFailure> {
+        if heap == 0
+            || self
+                .frame
+                .checked_mul(2)
+                .and_then(|frames| frames.checked_add(reserve))
+                .and_then(|non_vm| heap.checked_add(non_vm))
+                .is_none_or(|bytes| bytes == usize::MAX)
+        {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        Ok(())
+    }
+
     pub fn hosting_deadlines(&self) -> Result<HostingDeadlines, ServiceFailure> {
         self.transport
             .hosting_deadlines()
@@ -523,6 +568,9 @@ impl ServiceClient {
         max_recipe_contexts: u32,
         hosting: ServiceHostingLimits,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        if let Some(reserve) = hosting.adapter_reserve_bytes {
+            self.validate_adapter_reserve(reserve)?;
+        }
         if hosting
             .deadlines
             .is_some_and(|deadlines| !deadlines.valid())
@@ -557,6 +605,7 @@ impl ServiceClient {
                 retained_attempts: Some(hosting.max_retained_attempts),
                 actor: hosting.actor,
                 deadlines: hosting.deadlines,
+                adapter_reserve_bytes: hosting.adapter_reserve_bytes,
             },
         )
         .await
@@ -645,6 +694,7 @@ impl ServiceClient {
             max_retained_attempts: hosting.retained_attempts,
             actor_limits: hosting.actor,
             hosting_deadlines: hosting.deadlines,
+            adapter_reserve_bytes: hosting.adapter_reserve_bytes,
             result,
         }))?;
         loop {
@@ -980,6 +1030,7 @@ impl ServiceOwner {
             process,
             actor,
             ServiceHostingLimits {
+                adapter_reserve_bytes: None,
                 admission: admission_limits,
                 max_pending_settings: 8,
                 max_retained_attempts: 256,
@@ -1190,6 +1241,56 @@ async fn exchange(
     receipt.outcome.map_err(|_| ServiceFailure::Transport)
 }
 
+/// Expected pre-publication resource denials leave the task policy and worker
+/// alive. Unexpected/uncertain outcomes retain their receipt and are contained.
+async fn update_runtime(
+    client: &TransportClient,
+    evidence: &mut ExchangeEvidence,
+    command: WorkerCommand,
+    previous: &ProcessSnapshot,
+) -> Result<(ProcessSnapshot, Option<ServiceFailure>), ServiceFailure> {
+    let ticket = client.try_submit(command).map_err(|error| {
+        evidence.rejected.push(*error.command);
+        ServiceFailure::Transport
+    })?;
+    let receipt = ticket.wait().await.map_err(|_| ServiceFailure::Transport)?;
+    let denial = match &receipt.outcome {
+        Err(error) => match error.kind {
+            ProcessFailure::Vm(crate::VmFailure::UnsafeHeapReduction) => {
+                Some(ServiceFailure::UnsafeHeapReduction)
+            }
+            ProcessFailure::Vm(crate::VmFailure::InvalidBounds) => {
+                Some(ServiceFailure::InvalidLimits)
+            }
+            ProcessFailure::Vm(crate::VmFailure::SettingsRevisionConflict) => {
+                Some(ServiceFailure::SettingsConflict)
+            }
+            _ => None,
+        },
+        Ok(_) => None,
+    };
+    if receipt.outcome.is_err() && denial.is_none() {
+        evidence.failed.push(receipt);
+        return Err(ServiceFailure::Transport);
+    }
+    if denial.is_some() && receipt.outcome.as_ref().err().and_then(|error| error.snapshot.as_deref())
+        .is_none_or(|next| next.boundary.is_some() || next.admitted_task.is_some()
+            || !next.withheld_answers.is_empty()
+            || !matches!(&next.recipe, Some(RecipeEvent::Failed { context: None, stdout }) if stdout.is_empty())
+            || next.effective_task_settings != previous.effective_task_settings
+            || next.vm_bounds != previous.vm_bounds
+            || next.recipe_context_capacity != previous.recipe_context_capacity
+            || next.allocator.adapter_reserve_bytes != previous.allocator.adapter_reserve_bytes) {
+        evidence.failed.push(receipt);
+        return Err(ServiceFailure::Protocol);
+    }
+    let snapshot = match receipt.outcome {
+        Ok(snapshot) => snapshot,
+        Err(mut error) => *error.snapshot.take().ok_or(ServiceFailure::Protocol)?,
+    };
+    Ok((snapshot, denial))
+}
+
 /// An expected rejected heap edit executes no Python or host effect. Its real
 /// receipt is consumed as a denial; transport/protocol failures retain evidence
 /// and trigger containment exactly like every other failed exchange.
@@ -1356,30 +1457,44 @@ async fn run(
                             // Do not mutate the worker or contain a healthy service.
                             publication.result.send_replace(Some(Err(ServiceFailure::Backpressure)));
                         } else {
-                            let update = exchange(&transport, &mut exchanges, WorkerCommand::Recipe {
+                            let update = update_runtime(&transport, &mut exchanges, WorkerCommand::Recipe {
                                 command: match publication.values {
                                     Some(values) => RecipeCommand::UpdateRuntimeSettings {
                                         expected_revision: publication.expected, settings: publication.settings, values,
                                         max_recipe_contexts: publication.max_recipe_contexts,
+                                        adapter_reserve_bytes: publication.adapter_reserve_bytes,
                                     },
                                     None => RecipeCommand::UpdateSettings {
                                         expected_revision: publication.expected, settings: publication.settings,
                                     },
                                 },
-                            }).await;
-                            let mut receipt = match update {
+                            }, &snapshot).await;
+                            let (mut receipt, denial) = match update {
                                 Ok(receipt) => receipt,
                                 Err(error) => {
                                     publication.result.send_replace(Some(Err(error)));
                                     return Err(error);
                                 }
                             };
+                            if let Some(denial) = denial {
+                                receipt.recipe = None;
+                                receipt.boundary = snapshot.boundary.take();
+                                snapshot = receipt;
+                                publication.result.send_replace(Some(Err(denial)));
+                                continue;
+                            }
                             if !matches!(receipt.recipe, Some(RecipeEvent::SettingsUpdated))
                                 || receipt.effective_task_settings != Some(publication.settings)
                                 || publication.values.is_some_and(|values| receipt.vm_bounds != Some(values))
                                 || receipt.recipe_context_capacity.is_none()
                                 || publication.max_recipe_contexts.is_some_and(|limit| receipt.recipe_context_capacity.is_none_or(|capacity| capacity.limit != limit))
                                 || receipt.boundary.is_some() {
+                                snapshot = receipt;
+                                publication.result.send_replace(Some(Err(ServiceFailure::Protocol)));
+                                return Err(ServiceFailure::Protocol);
+                            }
+                            if publication.adapter_reserve_bytes.is_some_and(|reserve|
+                                receipt.allocator.adapter_reserve_bytes != reserve) {
                                 snapshot = receipt;
                                 publication.result.send_replace(Some(Err(ServiceFailure::Protocol)));
                                 return Err(ServiceFailure::Protocol);
@@ -1414,6 +1529,7 @@ async fn run(
                                 return Err(ServiceFailure::SettingsConflict);
                             }
                             publication.result.send_replace(Some(Ok(Arc::new(SettingsReceipt {
+                                allocator: snapshot.allocator,
                                 effective_settings: publication.settings,
                                 recipe_context_capacity: snapshot.recipe_context_capacity.ok_or(ServiceFailure::Protocol)?,
                                 admission: shutdown.admission_credits.observation(),
@@ -1844,17 +1960,30 @@ struct FinishInput {
     status: String,
     reply_ref: Option<String>,
     reason_kind: Option<String>,
+    receipt_ref: Option<String>,
 }
 fn parse_finish(value: Value) -> Result<TaskOutcome, ServiceFailure> {
     let result: FinishInput =
         serde_json::from_value(value).map_err(|_| ServiceFailure::InvalidPortResult)?;
-    match (result.status.as_str(), result.reply_ref, result.reason_kind) {
-        ("completed", Some(reply_ref), None)
+    match (
+        result.status.as_str(),
+        result.reply_ref,
+        result.reason_kind,
+        result.receipt_ref,
+    ) {
+        ("completed", Some(reply_ref), None, None)
             if reply_ref.starts_with("msg:") && reply_ref.len() > 4 =>
         {
             Ok(TaskOutcome::Completed { reply_ref })
         }
-        ("failed", None, Some(reason_kind)) if valid_reason(&reason_kind) => {
+        ("internal_completed", None, None, Some(receipt_ref))
+            if receipt_ref.strip_prefix("review:").is_some_and(|id| {
+                uuid::Uuid::parse_str(id).is_ok_and(|uuid| !uuid.is_nil() && uuid.to_string() == id)
+            }) =>
+        {
+            Ok(TaskOutcome::InternalCompleted { receipt_ref })
+        }
+        ("failed", None, Some(reason_kind), None) if valid_reason(&reason_kind) => {
             Ok(TaskOutcome::Failed { reason_kind })
         }
         _ => Err(ServiceFailure::InvalidPortResult),

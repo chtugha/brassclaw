@@ -81,6 +81,22 @@ impl StructuralReviewSet {
                 .get(&binding.python().uuid)
                 .filter(|source| source.component() == binding.python())
                 .ok_or(StructuralReviewFailure::Integrity)?;
+            // A usage can dispatch through retained Python dependencies. Its
+            // review must preserve their real parser observations as well as
+            // the entry source; component checksums alone are not those facts.
+            let sources: BTreeMap<_, _> = binding
+                .combination()
+                .iter()
+                .filter(|component| component.class_code == 22)
+                .map(|component| {
+                    inspected
+                        .source_checks()
+                        .get(&component.uuid)
+                        .filter(|source| source.component() == *component)
+                        .map(|source| (component.uuid, source.observations()))
+                        .ok_or(StructuralReviewFailure::Integrity)
+                })
+                .collect::<Result<_, _>>()?;
             let id = Uuid::new_v4();
             let components: Vec<_> = binding
                 .combination()
@@ -99,6 +115,7 @@ impl StructuralReviewSet {
                     "format":"retained-binding-source-review/1", "scope":"structural-only",
                     "semantic_approval":false, "python_code_uuid":binding.python().uuid,
                     "observations":source.observations(),
+                    "sources":sources,
                 },
             });
             validate_data_bounds(&record, REVISION_LIMITS).map_err(|_| {

@@ -93,6 +93,12 @@ impl InterceptorStore for PgInterceptorStore {
         let client = self.pool.get().await.map_err(map_pool)?;
         let status = packet_status_str(packet.status);
         let prompt_json = serde_json::to_value(&packet.prompt).map_err(map_json)?;
+        let model_exchange_json = packet
+            .model_exchange
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(map_json)?;
         let sempai_review_json = packet
             .sempai_review
             .as_ref()
@@ -108,8 +114,8 @@ impl InterceptorStore for PgInterceptorStore {
                   prompt, kohai_response, \
                   kohai_input_tokens, kohai_output_tokens, \
                   kohai_cache_read_input_tokens, kohai_cache_creation_input_tokens, \
-                  sempai_review) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
+                  sempai_review, model_exchange) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
                  ON CONFLICT (id) DO UPDATE SET \
                   status = excluded.status, \
                   completed_at = excluded.completed_at, \
@@ -119,6 +125,7 @@ impl InterceptorStore for PgInterceptorStore {
                   kohai_cache_read_input_tokens = excluded.kohai_cache_read_input_tokens, \
                   kohai_cache_creation_input_tokens = excluded.kohai_cache_creation_input_tokens, \
                   sempai_review = excluded.sempai_review, \
+                  model_exchange = excluded.model_exchange, \
                   updated_at = now()",
                 &[
                     &packet.id.as_str(),
@@ -135,6 +142,7 @@ impl InterceptorStore for PgInterceptorStore {
                     &cache_read,
                     &cache_create,
                     &sempai_review_json,
+                    &model_exchange_json,
                 ],
             )
             .await
@@ -150,7 +158,7 @@ impl InterceptorStore for PgInterceptorStore {
                         prompt, kohai_response, \
                         kohai_input_tokens, kohai_output_tokens, \
                         kohai_cache_read_input_tokens, kohai_cache_creation_input_tokens, \
-                        sempai_review \
+                        sempai_review, model_exchange \
                  FROM brassclaw_forensic_packets \
                  WHERE id = $1 AND tenant_id = $2",
                 &[&packet_id.as_str(), &self.tenant_id],
@@ -168,7 +176,7 @@ impl InterceptorStore for PgInterceptorStore {
                         prompt, kohai_response, \
                         kohai_input_tokens, kohai_output_tokens, \
                         kohai_cache_read_input_tokens, kohai_cache_creation_input_tokens, \
-                        sempai_review \
+                        sempai_review, model_exchange \
                  FROM brassclaw_forensic_packets \
                  WHERE tenant_id = $1 \
                  ORDER BY captured_at DESC \
@@ -253,6 +261,12 @@ fn row_to_packet(row: &tokio_postgres::Row) -> Result<ForensicPacket, Intercepto
         captured_at: row.try_get("captured_at").map_err(map_col)?,
         completed_at: row.try_get("completed_at").map_err(map_col)?,
         prompt,
+        model_exchange: row
+            .try_get::<_, Option<serde_json::Value>>("model_exchange")
+            .map_err(map_col)?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(map_json)?,
         kohai_response: row.try_get("kohai_response").map_err(map_col)?,
         kohai_usage,
         sempai_review,

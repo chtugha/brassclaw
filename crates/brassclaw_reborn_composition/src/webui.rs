@@ -423,7 +423,10 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     // are wired. Never give MCP a ComponentPort or a dedicated composer.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     if services.pg_pool.is_some() {
-        let svc = crate::mcp_server_service::McpServerServiceImpl::new();
+        let mut svc = crate::mcp_server_service::McpServerServiceImpl::new();
+        if let Some(listener) = runtime.mcp_listener_status() {
+            svc = svc.with_listener(listener);
+        }
         api = api.with_mcp_server_service(Arc::new(svc));
     }
 

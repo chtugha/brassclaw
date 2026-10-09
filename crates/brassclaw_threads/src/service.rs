@@ -294,6 +294,19 @@ pub trait SessionThreadService: Send + Sync {
             .map(|history| history.thread)
     }
 
+    /// Close admission of new inbound messages without deleting transcript or
+    /// correlation evidence. The lifecycle owner must first settle its runs.
+    /// Repeating closure is safe; absent and cross-scope IDs are indistinguishable.
+    async fn close_thread(
+        &self,
+        _scope: &ThreadScope,
+        _thread_id: &ThreadId,
+    ) -> Result<(), SessionThreadError> {
+        Err(SessionThreadError::Backend(
+            "close_thread is not implemented by this SessionThreadService backend".to_string(),
+        ))
+    }
+
     /// Delete a thread and its transcript only when it belongs to the supplied
     /// exact scope. Implementations must return the same non-enumerating
     /// missing shape for absent and cross-scope threads.
@@ -525,6 +538,14 @@ where
         request: ThreadHistoryRequest,
     ) -> Result<SessionThreadRecord, SessionThreadError> {
         self.as_ref().read_thread(request).await
+    }
+
+    async fn close_thread(
+        &self,
+        scope: &ThreadScope,
+        thread_id: &ThreadId,
+    ) -> Result<(), SessionThreadError> {
+        self.as_ref().close_thread(scope, thread_id).await
     }
 
     async fn delete_thread(

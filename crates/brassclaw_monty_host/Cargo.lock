@@ -251,6 +251,7 @@ dependencies = [
 name = "brassclaw_monty_host"
 version = "0.1.0"
 dependencies = [
+ "brassclaw_host_api",
  "brassclaw_resources",
  "futures",
  "monty",

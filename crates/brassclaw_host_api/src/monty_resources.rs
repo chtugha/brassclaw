@@ -2,9 +2,14 @@
 //! carry no runtime handles, task values or platform-specific allocator state.
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_MONTY_ADAPTER_RESERVE_BYTES: u64 = 4 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MontyExecutionLimits {
+    /// Worker adapter/exception headroom, separate from VM heap and IPC frames.
+    #[serde(default = "default_adapter_reserve")]
+    pub worker_adapter_reserve_bytes: u64,
     /// Instance-wide retained child contexts, independent of task worker count.
     #[serde(default = "default_recipe_contexts")]
     pub max_recipe_contexts: u32,
@@ -49,6 +54,12 @@ pub struct MontyExecutionLimits {
     /// Awaiting real cancellation settlement; timeout never discards evidence.
     #[serde(default = "default_settings_uptake_timeout")]
     pub cancellation_ack_timeout_millis: u64,
+    /// Idle durable-settings reconciliation; operator saves wake it immediately.
+    #[serde(default = "default_settings_reconcile_interval")]
+    pub settings_reconcile_interval_millis: u64,
+    /// Browser status refresh while uptake/restart is pending; no idle polling.
+    #[serde(default = "default_status_poll_interval")]
+    pub status_poll_interval_millis: u32,
     pub max_source_bytes: u64,
     pub max_compiled_source_bytes: u64,
     pub max_feeds: u64,
@@ -62,6 +73,7 @@ pub struct MontyExecutionLimits {
 impl Default for MontyExecutionLimits {
     fn default() -> Self {
         Self {
+            worker_adapter_reserve_bytes: default_adapter_reserve(),
             max_recipe_contexts: default_recipe_contexts(),
             max_queued_tasks: default_queued_tasks(),
             max_queued_bytes: default_queued_bytes(),
@@ -79,6 +91,8 @@ impl Default for MontyExecutionLimits {
             ownership_heartbeat_interval_millis: default_settings_source_timeout(),
             max_pending_ownership_checks: default_actor_requests(),
             cancellation_ack_timeout_millis: default_settings_uptake_timeout(),
+            settings_reconcile_interval_millis: default_settings_reconcile_interval(),
+            status_poll_interval_millis: default_status_poll_interval(),
             max_source_bytes: 1024 * 1024,
             max_compiled_source_bytes: 2 * 1024 * 1024,
             max_feeds: 128,
@@ -108,6 +122,11 @@ impl MontyExecutionLimits {
             || self.ownership_heartbeat_interval_millis == 0
             || self.max_pending_ownership_checks == 0
             || self.cancellation_ack_timeout_millis == 0
+            || self.settings_reconcile_interval_millis == 0
+            || self.status_poll_interval_millis == 0
+            // Browser timers accept a signed 32-bit millisecond delay. Larger
+            // values can wrap into immediate polling; reject rather than clamp.
+            || self.status_poll_interval_millis > i32::MAX as u32
             || self.max_source_bytes == 0
             || self.max_compiled_source_bytes < self.max_source_bytes
             || self.max_feeds == 0
@@ -131,6 +150,10 @@ impl MontyExecutionLimits {
 
 fn default_recipe_contexts() -> u32 {
     64
+}
+
+fn default_adapter_reserve() -> u64 {
+    DEFAULT_MONTY_ADAPTER_RESERVE_BYTES
 }
 
 fn default_queued_tasks() -> u32 {
@@ -165,4 +188,12 @@ fn default_settings_source_timeout() -> u64 {
 
 fn default_settings_uptake_timeout() -> u64 {
     5_000
+}
+
+fn default_settings_reconcile_interval() -> u64 {
+    1_000
+}
+
+fn default_status_poll_interval() -> u32 {
+    3_000
 }

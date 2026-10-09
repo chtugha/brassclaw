@@ -286,10 +286,35 @@ impl CommandContract {
 pub struct McpRecipeDiscoverySnapshot {
     generation: Uuid,
     entries: BTreeMap<String, CommandContract>,
+    qualification_checksum: Option<[u8; 32]>,
 }
 impl McpRecipeDiscoverySnapshot {
+    pub(crate) fn validate_command(
+        &self,
+        name: &str,
+        command: &str,
+    ) -> Result<[u8; 32], McpDiscoveryError> {
+        let contract = self
+            .entries
+            .get(name)
+            .ok_or(McpDiscoveryError::StaleCommand)?;
+        contract.bind(command)?;
+        Ok(contract.checksum)
+    }
+    pub(crate) fn same_contracts(&self, other: &Self) -> bool {
+        self.entries.len() == other.entries.len()
+            && self.entries.iter().all(|(name, contract)| {
+                other
+                    .entries
+                    .get(name)
+                    .is_some_and(|other| other.checksum == contract.checksum)
+            })
+    }
     pub fn generation(&self) -> Uuid {
         self.generation
+    }
+    pub fn qualification_checksum(&self) -> Option<[u8; 32]> {
+        self.qualification_checksum
     }
     pub fn tools_list(&self) -> Value {
         json!({"tools":self.entries.values().map(CommandContract::tool).collect::<Vec<_>>()})
@@ -353,6 +378,19 @@ impl McpRecipeDiscovery {
         self.publish(expected, generation, programs, None)
     }
 
+    /// A coherent installed catalogue can be ready while no public command has
+    /// completed ordinary-chat qualification. Expose an empty list explicitly;
+    /// validate declarations, but never treat activation as advertising evidence.
+    pub(crate) fn publish_unadvertised_installed(
+        &self,
+        expected: Option<Uuid>,
+        generation: Uuid,
+        programs: &[&InspectedRetainedProgram],
+    ) -> Result<(), McpDiscoveryError> {
+        Self::contracts(generation, programs)?;
+        self.publish(expected, generation, &[], None)
+    }
+
     pub(crate) fn publish_qualified_installed(
         &self,
         expected: Option<Uuid>,
@@ -392,6 +430,7 @@ impl McpRecipeDiscovery {
             Ok(McpRecipeDiscoverySnapshot {
                 generation,
                 entries,
+                qualification_checksum: qualified.map(|proof| proof.checksum()),
             })
         });
         match result {
@@ -672,6 +711,7 @@ mod tests {
         let original = Arc::new(McpRecipeDiscoverySnapshot {
             generation: Uuid::from_u128(1),
             entries: BTreeMap::from([("read_interval".into(), contract.clone())]),
+            qualification_checksum: None,
         });
         *discovery.current.write().unwrap() = Some(original.clone());
         let command = "read file /tmp/a; interval 1:4";
@@ -686,6 +726,7 @@ mod tests {
         *discovery.current.write().unwrap() = Some(Arc::new(McpRecipeDiscoverySnapshot {
             generation: Uuid::from_u128(2),
             entries: BTreeMap::from([("read_interval".into(), changed)]),
+            qualification_checksum: None,
         }));
         assert!(matches!(
             discovery.validate_advertised_command(&original, "read_interval", command),

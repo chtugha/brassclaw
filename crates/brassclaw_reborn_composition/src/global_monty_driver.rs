@@ -423,6 +423,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             .await
             .map_err(|_| failed("monty_service_reconciliation_required"))?;
         match &receipt.outcome {
+            TaskOutcome::InternalCompleted { .. } => Err(failed("monty_reply_reference_invalid")),
             TaskOutcome::Completed { reply_ref } => {
                 let reference = LoopMessageRef::new(reply_ref.clone())
                     .map_err(|_| failed("monty_reply_reference_invalid"))?;

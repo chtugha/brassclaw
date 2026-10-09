@@ -204,8 +204,20 @@ pub struct RebornRuntime {
     services: RebornServices,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     global_monty_owner: crate::global_monty_owner::GlobalMontyOwner,
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    completed_turn_review_owner: crate::completed_turn_review::ReviewOwner,
     #[cfg(feature = "skills-db")]
     mcp_recipe_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
+    #[cfg(feature = "skills-db")]
+    mcp_chat_bridge: std::sync::OnceLock<Arc<crate::mcp_chat_bridge::McpChatBridge>>,
+    #[cfg(feature = "skills-db")]
+    mcp_listener_status: std::sync::OnceLock<Arc<dyn crate::mcp_server_service::McpListenerStatus>>,
+    #[cfg(feature = "skills-db")]
+    mcp_provider_binding: Arc<crate::mcp_provider_gateway::McpProviderBinding>,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     monty_settings_owner: crate::live_monty_settings::MontySettingsOwner,
     #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
@@ -601,6 +613,72 @@ impl RebornRuntime {
         self.mcp_recipe_discovery.clone()
     }
 
+    /// Attach the ordinary-chat transport to this runtime without a strong
+    /// ownership cycle. Products retain one bridge for the listener lifetime.
+    #[cfg(feature = "skills-db")]
+    pub fn mcp_chat_bridge(
+        self: &Arc<Self>,
+    ) -> Result<Arc<crate::mcp_chat_bridge::McpChatBridge>, RebornRuntimeError> {
+        let pool = self
+            .services
+            .pg_pool
+            .as_ref()
+            .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?
+            .clone();
+        let owner_scope = serde_json::to_value(&self.thread_scope).map_err(|error| {
+            RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            }
+        })?;
+        Ok(self
+            .mcp_chat_bridge
+            .get_or_init(|| {
+                crate::mcp_chat_bridge::McpChatBridge::new(
+                    Arc::downgrade(self),
+                    pool,
+                    self.mcp_recipe_discovery(),
+                    owner_scope,
+                )
+            })
+            .clone())
+    }
+
+    #[cfg(feature = "skills-db")]
+    pub fn attach_mcp_listener_status(
+        &self,
+        status: Arc<dyn crate::mcp_server_service::McpListenerStatus>,
+    ) -> Result<(), RebornRuntimeError> {
+        let observation = status.status();
+        if observation.state != crate::mcp_server_service::McpServerState::Running {
+            return Err(RebornRuntimeError::HostRuntimeUnavailable);
+        }
+        let endpoint = observation
+            .endpoint_url
+            .as_deref()
+            .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?;
+        let bridge = self
+            .mcp_chat_bridge
+            .get()
+            .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?;
+        self.mcp_provider_binding
+            .activate(bridge, endpoint)
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?;
+        self.mcp_listener_status
+            .set(status)
+            .map_err(|_| RebornRuntimeError::InvalidArgument {
+                reason: "MCP listener is already attached".into(),
+            })
+    }
+
+    #[cfg(feature = "skills-db")]
+    pub(crate) fn mcp_listener_status(
+        &self,
+    ) -> Option<Arc<dyn crate::mcp_server_service::McpListenerStatus>> {
+        self.mcp_listener_status.get().cloned()
+    }
+
     /// Snapshot of the substrate facades produced by `build_reborn_services`.
     /// Exposed for diagnostics / readiness reporting; **not** for traffic.
     pub fn services(&self) -> &RebornServices {
@@ -906,8 +984,16 @@ impl RebornRuntime {
     /// The thread is materialized inside the session thread service so
     /// `accept_inbound_message` does not error on the first send.
     pub async fn new_conversation(&self) -> Result<ConversationId, RebornRuntimeError> {
+        self.ensure_correlated_conversation(Uuid::new_v4()).await
+    }
+
+    /// Materialize the ordinary chat identified by an already persisted UUID.
+    pub async fn ensure_correlated_conversation(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<ConversationId, RebornRuntimeError> {
         let thread_id =
-            ThreadId::new(format!("reborn-conv-{}", Uuid::new_v4())).map_err(|reason| {
+            ThreadId::new(format!("reborn-conv-{conversation_id}")).map_err(|reason| {
                 RebornRuntimeError::InvalidArgument {
                     reason: reason.to_string(),
                 }
@@ -1006,7 +1092,7 @@ impl RebornRuntime {
         text: &str,
         cancellation: CancellationToken,
     ) -> Result<AssistantReply, RebornRuntimeError> {
-        self.send_user_message_internal(conversation, text, cancellation, None)
+        self.send_user_message_internal(conversation, text, cancellation, None, None)
             .await
     }
 
@@ -1027,8 +1113,139 @@ impl RebornRuntime {
         let source =
             SourceBindingRef::new(brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING)
                 .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
-        self.send_user_message_internal(conversation, text, CancellationToken::new(), Some(source))
+        self.send_user_message_internal(
+            conversation,
+            text,
+            CancellationToken::new(),
+            Some(source),
+            None,
+        )
+        .await
+    }
+
+    /// Submit an ordinary chat turn using a transport's previously persisted
+    /// correlation UUID. Repeating the exact submission retains message and run
+    /// identity; this grants no special matching or execution authority.
+    pub async fn send_correlated_user_message(
+        &self,
+        conversation: &ConversationId,
+        text: &str,
+        correlation_id: Uuid,
+        cancellation: CancellationToken,
+    ) -> Result<AssistantReply, RebornRuntimeError> {
+        self.send_user_message_internal(
+            conversation,
+            text,
+            cancellation,
+            None,
+            Some(correlation_id),
+        )
+        .await
+    }
+
+    /// Read the original run after an interrupted transport operation. This
+    /// never submits a message or restarts a Recipe.
+    pub async fn recover_correlated_user_message(
+        &self,
+        conversation: &ConversationId,
+        correlation_id: Uuid,
+    ) -> Result<Option<AssistantReply>, RebornRuntimeError> {
+        let run_id = TurnRunId::from_uuid(correlation_id);
+        let state = self
+            .turn_coordinator
+            .get_run_state(GetRunStateRequest {
+                scope: self.turn_scope_for(&conversation.0),
+                run_id,
+            })
+            .await?;
+        if !state.status.is_terminal() {
+            return Ok(None);
+        }
+        let text = self
+            .read_latest_assistant_text(&self.thread_scope, &conversation.0, run_id)
+            .await?;
+        Ok(Some(AssistantReply {
+            conversation: conversation.clone(),
+            run_id,
+            status: state.status,
+            text,
+        }))
+    }
+
+    #[cfg(feature = "skills-db")]
+    pub(crate) async fn correlated_chat_message_refs(
+        &self,
+        conversation: &ConversationId,
+        correlation_id: Uuid,
+        expected_command: &str,
+    ) -> Result<(String, Option<String>), RebornRuntimeError> {
+        let history = self
+            .thread_service
+            .list_thread_history(ThreadHistoryRequest {
+                scope: self.thread_scope.clone(),
+                thread_id: conversation.0.clone(),
+            })
             .await
+            .map_err(|error| RebornRuntimeError::ThreadService(error.to_string()))?;
+        let run_id = correlation_id.to_string();
+        let mut users = history.messages.iter().filter(|message| {
+            message.kind == MessageKind::User
+                && message.turn_run_id.as_deref() == Some(run_id.as_str())
+        });
+        let user = users.next().ok_or_else(|| {
+            RebornRuntimeError::ThreadService("original submitted message is missing".into())
+        })?;
+        if user.content.as_deref() != Some(expected_command) {
+            return Err(RebornRuntimeError::ThreadService(
+                "original command differs from its retained message".into(),
+            ));
+        }
+        if users.next().is_some() {
+            return Err(RebornRuntimeError::ThreadService(
+                "original submitted message is ambiguous".into(),
+            ));
+        }
+        let mut replies = history.messages.iter().filter(|message| {
+            message.kind == MessageKind::Assistant
+                && message.status == MessageStatus::Finalized
+                && message.turn_run_id.as_deref() == Some(run_id.as_str())
+        });
+        let reply = replies
+            .next()
+            .map(|message| format!("msg:{}", message.message_id));
+        if replies.next().is_some() {
+            return Err(RebornRuntimeError::ThreadService(
+                "original reply is ambiguous".into(),
+            ));
+        }
+        Ok((format!("msg:{}", user.message_id), reply))
+    }
+
+    /// Close a transport-owned chat only after its exact run is terminal.
+    /// Transcript, immutable selections and effect evidence remain retained.
+    pub async fn close_correlated_conversation(
+        &self,
+        conversation: &ConversationId,
+        correlation_id: Uuid,
+    ) -> Result<(), RebornRuntimeError> {
+        let lock = self.send_lock_for(conversation).await;
+        let _guard = lock.lock().await;
+        let state = self
+            .turn_coordinator
+            .get_run_state(GetRunStateRequest {
+                scope: self.turn_scope_for(&conversation.0),
+                run_id: TurnRunId::from_uuid(correlation_id),
+            })
+            .await?;
+        if !state.status.is_terminal() {
+            return Err(RebornRuntimeError::InvalidArgument {
+                reason: "cannot close a chat with an unsettled run".into(),
+            });
+        }
+        self.thread_service
+            .close_thread(&self.thread_scope, &conversation.0)
+            .await
+            .map_err(|error| RebornRuntimeError::ThreadService(error.to_string()))
     }
 
     async fn send_user_message_internal(
@@ -1037,7 +1254,11 @@ impl RebornRuntime {
         text: &str,
         cancellation: CancellationToken,
         source_binding_override: Option<SourceBindingRef>,
+        correlation_id: Option<Uuid>,
     ) -> Result<AssistantReply, RebornRuntimeError> {
+        if cancellation.is_cancelled() {
+            return Err(RebornRuntimeError::OperationCancelled);
+        }
         let send_lock = self.send_lock_for(conversation).await;
         let _send_guard = send_lock.lock().await;
         if self.worker_handle.is_finished() {
@@ -1069,6 +1290,9 @@ impl RebornRuntime {
             .explicit_owner_user_id()
             .cloned()
             .unwrap_or_else(|| self.actor_user_id.clone());
+        if cancellation.is_cancelled() {
+            return Err(RebornRuntimeError::OperationCancelled);
+        }
         let source_binding =
             source_binding_override.unwrap_or_else(|| self.source_binding_ref.clone());
         let accepted = self
@@ -1079,10 +1303,13 @@ impl RebornRuntime {
                 actor_id: actor_id.as_str().to_string(),
                 source_binding_id: Some(source_binding.as_str().to_string()),
                 reply_target_binding_id: Some(self.reply_target_binding_ref.as_str().to_string()),
-                // This task-level API does not receive an upstream stable
-                // event id, so mint a best-effort unique id scoped to the
-                // caller-provided source binding.
-                external_event_id: Some(format!("{}:{}", source_binding.as_str(), Uuid::new_v4())),
+                // Transport correlation uses its durable event UUID. Ordinary
+                // uncorrelated callers mint a fresh source-scoped event.
+                external_event_id: Some(format!(
+                    "{}:{}",
+                    source_binding.as_str(),
+                    correlation_id.unwrap_or_else(Uuid::new_v4)
+                )),
                 content: MessageContent::text(text.to_string()),
             })
             .await
@@ -1090,9 +1317,12 @@ impl RebornRuntime {
 
         let accepted_message_ref = AcceptedMessageRef::new(format!("msg:{}", accepted.message_id))
             .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
-        let idempotency_key =
-            IdempotencyKey::new(format!("{}-{}", source_binding.as_str(), Uuid::new_v4()))
-                .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
+        let idempotency_key = IdempotencyKey::new(format!(
+            "{}-{}",
+            source_binding.as_str(),
+            correlation_id.unwrap_or_else(Uuid::new_v4)
+        ))
+        .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
 
         if !is_internal_turn && let Some(skill_activation_source) = &self.skill_activation_source {
             skill_activation_source
@@ -1100,6 +1330,9 @@ impl RebornRuntime {
                 .map_err(|error| RebornRuntimeError::TurnSubmission(error.to_string()))?;
         }
 
+        if cancellation.is_cancelled() {
+            return Err(RebornRuntimeError::OperationCancelled);
+        }
         let response = match self
             .turn_coordinator
             .submit_turn(SubmitTurnRequest {
@@ -1111,7 +1344,7 @@ impl RebornRuntime {
                 requested_run_profile: None,
                 idempotency_key,
                 received_at: Utc::now(),
-                requested_run_id: None,
+                requested_run_id: correlation_id.map(TurnRunId::from_uuid),
                 parent_run_id: None,
                 subagent_depth: 0,
                 spawn_tree_root_run_id: None,
@@ -1219,6 +1452,12 @@ impl RebornRuntime {
                 .shutdown(TRIGGER_POLLER_SHUTDOWN_TIMEOUT)
                 .await;
         }
+        #[cfg(all(
+            feature = "postgres",
+            feature = "skills-db",
+            feature = "root-llm-provider"
+        ))]
+        self.completed_turn_review_owner.request_shutdown();
         self.worker_cancel.cancel();
         if let Some(projection) = self.budget_event_projection {
             projection.shutdown().await;
@@ -1241,6 +1480,8 @@ impl RebornRuntime {
                 .map_err(|error| RebornRuntimeError::InvalidArgument {
                     reason: error.to_string(),
                 })?;
+            #[cfg(feature = "root-llm-provider")]
+            self.completed_turn_review_owner.join().await?;
             crate::global_monty_startup::check_shutdown(exit)?;
             settings_result.map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
@@ -1481,16 +1722,17 @@ impl RebornRuntime {
             .await
             .map_err(|error| RebornRuntimeError::ThreadService(error.to_string()))?;
         let run_id_str = run_id.to_string();
-        let reply = history
-            .messages
-            .into_iter()
-            .rev()
-            .find(|message| {
-                matches!(message.kind, MessageKind::Assistant)
-                    && matches!(message.status, MessageStatus::Finalized)
-                    && message.turn_run_id.as_deref() == Some(run_id_str.as_str())
-            })
-            .and_then(|message| message.content);
+        let mut replies = history.messages.into_iter().filter(|message| {
+            matches!(message.kind, MessageKind::Assistant)
+                && matches!(message.status, MessageStatus::Finalized)
+                && message.turn_run_id.as_deref() == Some(run_id_str.as_str())
+        });
+        let reply = replies.next().and_then(|message| message.content);
+        if replies.next().is_some() {
+            return Err(RebornRuntimeError::ThreadService(
+                "run has ambiguous finalized replies".into(),
+            ));
+        }
         Ok(reply)
     }
 
@@ -1630,6 +1872,9 @@ impl RebornRuntime {
 pub async fn build_reborn_runtime(
     input: RebornRuntimeInput,
 ) -> Result<RebornRuntime, RebornRuntimeError> {
+    #[cfg(feature = "skills-db")]
+    let mcp_provider_binding = Arc::new(crate::mcp_provider_gateway::McpProviderBinding::default());
+
     let RebornRuntimeInput {
         services: services_input,
         #[cfg(feature = "root-llm-provider")]
@@ -2218,10 +2463,13 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.as_ref() {
         let booted_db = crate::booted_db::BootedDb::from_migrated_pool(Arc::clone(pool));
-        crate::component_boot::initialize_runtime_components(
+        // Component seeding carries large typed documents across awaits. Keep
+        // that state on the heap rather than enlarging every runtime startup
+        // future and overflowing a normal executor/test thread's stack.
+        Box::pin(crate::component_boot::initialize_runtime_components(
             &booted_db,
             validated_identity.tenant_id.as_str(),
-        )
+        ))
         .await?;
     }
 
@@ -2536,7 +2784,8 @@ pub async fn build_reborn_runtime(
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
-            })?,
+            })?
+            .with_mcp_provider_binding(mcp_provider_binding.clone()),
         );
         let driver = Arc::new(
             crate::global_monty_driver::GlobalMontyDriver::new(
@@ -2618,6 +2867,19 @@ pub async fn build_reborn_runtime(
     let capability_input_resolver = local_dev_capabilities.capability_input_resolver;
     let capability_result_writer = local_dev_capabilities.capability_result_writer;
     let model_gateway = local_dev_capabilities.model_gateway;
+    #[cfg(feature = "skills-db")]
+    let capability_factory: Arc<dyn brassclaw_loop_support::LoopCapabilityPortFactory> =
+        Arc::new(crate::mcp_provider_gateway::McpCommandPortFactory {
+            inner: capability_factory,
+            binding: mcp_provider_binding.clone(),
+            writer: capability_result_writer.clone(),
+        });
+    #[cfg(feature = "skills-db")]
+    let model_gateway: Arc<dyn brassclaw_loop_support::HostManagedModelGateway> =
+        Arc::new(crate::mcp_provider_gateway::McpProviderModelGateway {
+            inner: model_gateway,
+            binding: mcp_provider_binding.clone(),
+        });
     // Hook framework activation (#3934 + third-party projection), gated behind
     // the typed `HooksActivationConfig` carried in `RebornRuntimeInput` (master
     // flag default OFF; third-party sub-flag also default OFF). The env vars
@@ -2822,6 +3084,12 @@ pub async fn build_reborn_runtime(
             )) as Arc<dyn brassclaw_loop_support::SystemBundleSource>
         });
 
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    let review_accountant = model_budget_accountant.clone();
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
         turn_state: Arc::clone(&turn_state_store),
         thread_service: Arc::clone(&thread_service),
@@ -2923,6 +3191,36 @@ pub async fn build_reborn_runtime(
             reason: format!("could not resolve default run profile: {error}"),
         })?;
     let default_run_profile_id = default_resolved_run_profile.profile_id.as_str().to_string();
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider"
+    ))]
+    let completed_turn_review_owner = crate::completed_turn_review::ReviewOwner::start(
+        services
+            .pg_pool
+            .clone()
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "review journal requires PostgreSQL".into(),
+            })?,
+        services
+            .monty_kernel
+            .clone()
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "review requires captured kernel".into(),
+            })?,
+        global_monty_owner.client(),
+        global_monty_owner.ownership_check(),
+        thread_service.clone(),
+        thread_scope.clone(),
+        crate::completed_turn_review::ReviewSource {
+            provider: llm_reload.as_ref().and_then(|r| r.sempai_swappable.clone()),
+            accountant: review_accountant,
+            profile: default_resolved_run_profile.clone(),
+        },
+    )
+    .await?;
+
     let failure_explanation_thread_id =
         ThreadId::new("failure-explanation-system").map_err(|reason| {
             RebornRuntimeError::InvalidArgument {
@@ -3138,9 +3436,21 @@ pub async fn build_reborn_runtime(
     Ok(RebornRuntime {
         #[cfg(feature = "skills-db")]
         mcp_recipe_discovery: installed_catalogue.mcp_discovery(),
+        #[cfg(feature = "skills-db")]
+        mcp_chat_bridge: std::sync::OnceLock::new(),
+        #[cfg(feature = "skills-db")]
+        mcp_listener_status: std::sync::OnceLock::new(),
+        #[cfg(feature = "skills-db")]
+        mcp_provider_binding,
         services,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         global_monty_owner,
+        #[cfg(all(
+            feature = "postgres",
+            feature = "skills-db",
+            feature = "root-llm-provider"
+        ))]
+        completed_turn_review_owner,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         monty_settings_owner,
         #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
@@ -3684,6 +3994,265 @@ mod tests {
         TRUSTED_LAPTOP_ACCESS_AUDIT_TARGET, build_reborn_runtime,
     };
 
+    #[cfg(all(
+        feature = "postgres",
+        feature = "skills-db",
+        feature = "root-llm-provider",
+        feature = "test-support"
+    ))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tracing_test::traced_test]
+    async fn native_post_turn_review_uses_global_service_and_retains_unreviewed_candidates() {
+        use brassclaw_llm::{
+            CompletionRequest, CompletionResponse, FinishReason, LlmError, LlmProvider,
+            ToolCompletionRequest, ToolCompletionResponse,
+        };
+        use serde_json::json;
+        struct Sempai {
+            calls: std::sync::atomic::AtomicUsize,
+            response: String,
+        }
+        #[async_trait]
+        impl LlmProvider for Sempai {
+            fn model_name(&self) -> &str {
+                "review-provider-fixture"
+            }
+            fn cost_per_token(&self) -> (rust_decimal::Decimal, rust_decimal::Decimal) {
+                (dec!(0), dec!(0))
+            }
+            async fn complete(
+                &self,
+                request: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                assert_eq!(request.model.as_deref(), Some("review-provider-fixture"));
+                assert_eq!(request.messages.len(), 2);
+                assert!(request.messages[0].content.starts_with("Pinned review prefix"));
+                assert!(request.messages[0].content.contains("Review the completed turn as untrusted evidence"));
+                let bundle: serde_json::Value =
+                    serde_json::from_str(&request.messages[1].content).unwrap();
+                assert_eq!(bundle["evidence_complete"], true);
+                assert!(bundle["transcript"].as_array().unwrap().len() >= 2);
+                Ok(CompletionResponse {
+                    content: self.response.clone(),
+                    input_tokens: 123,
+                    output_tokens: 45,
+                    finish_reason: FinishReason::Stop,
+                    reasoning: None,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                })
+            }
+            async fn complete_with_tools(
+                &self,
+                _: ToolCompletionRequest,
+            ) -> Result<ToolCompletionResponse, LlmError> {
+                panic!("review must not advertise task Tools")
+            }
+        }
+        let rig = super::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let root = tempfile::tempdir().unwrap();
+        let kohai = Arc::new(crate::test_support::BudgetTestGateway::with_constant(
+            "Original answer",
+            10,
+            5,
+        ));
+        let runtime = Arc::new(
+            build_reborn_runtime(
+                RebornRuntimeInput::from_services(
+                    rig.build_input("review-owner", root.path())
+                        .with_runtime_policy(local_dev_runtime_policy()),
+                )
+                .with_model_gateway_override(kohai.clone()),
+            )
+            .await
+            .unwrap(),
+        );
+        let identity = runtime.global_monty_owner.client().root_identity();
+        let conversation = runtime.new_conversation().await.unwrap();
+        runtime
+            .send_user_message(&conversation, "Novel post-turn learning canary")
+            .await
+            .unwrap();
+        let client = rig.pool.get().await.unwrap();
+        let event = client
+            .query_one(
+                "SELECT run_id,event_bytes FROM brassclaw_monty_review_events",
+                &[],
+            )
+            .await
+            .unwrap();
+        let original: uuid::Uuid = event.get(0);
+        assert_eq!(
+            client
+                .query_one("SELECT count(*) FROM brassclaw_monty_review_work", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+        crate::db_config::save_config_key(
+            &rig.pool,
+            runtime.thread_scope.tenant_id.as_str(),
+            "interceptor.sempai_base_prompt",
+            "Pinned review prefix: immutable candidate authoring knowledge",
+            crate::db_config::ConfigWriteContext::Operator,
+        )
+        .await
+        .unwrap();
+        let candidate =
+            json!({"format":"component-revision/1","uuid":uuid::Uuid::new_v4(),"class_code":22,
+            "document":{"content":"def retain_value(inputs):\n    return inputs['value']",
+                "input_contract":{"value":{"type":"string","required":true,"checks":[]}},
+                "result_contract":{"type":"string"},
+                "preload":{"format":"python-preload/2","exports":{"retain_value":{"symbol":"retain_value",
+                    "parameters":["inputs"],"mapping":true}},"private_functions":{},"constants":[],
+                    "imports":[],"dependencies":[],"default_export":"retain_value"}},
+            "dependencies":[],"association":null})
+            .to_string();
+        let sempai=Arc::new(Sempai {calls:std::sync::atomic::AtomicUsize::new(0),response:json!({
+            "format":"completed-turn-sempai-analysis/1","analysis":"Retain a draft for separate behavioral and Q1/Q2 review",
+            "proposals":[{"candidate_bytes":candidate,"base":null,"dependencies":[]}]}).to_string()});
+        use brassclaw_turns::run_profile::{RunProfileResolutionRequest, RunProfileResolver};
+        let resolved = InMemoryRunProfileResolver::default()
+            .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
+            .await
+            .unwrap();
+        let provider = Arc::new(brassclaw_llm::SwappableLlmProvider::new(sempai.clone()));
+        let replacement = Arc::new(Sempai {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            response: "invalid replacement response".into(),
+        });
+        let review = crate::completed_turn_review::ReviewOwner::start(
+            rig.pool.clone(),
+            runtime.services.monty_kernel.clone().unwrap(),
+            runtime.global_monty_owner.client(),
+            runtime.global_monty_owner.ownership_check(),
+            runtime.thread_service.clone(),
+            runtime.thread_scope.clone(),
+            crate::completed_turn_review::ReviewSource {
+                provider: Some(provider.clone()),
+                accountant: None,
+                profile: resolved,
+            },
+        )
+        .await
+        .unwrap();
+        let waiting=tokio::time::timeout(Duration::from_secs(180),async {
+            let mut replaced = false;
+            loop {
+                let row=client.query_opt("SELECT phase,receipt_bytes,response_bytes FROM brassclaw_monty_review_work WHERE source_run_id=$1",&[&original]).await.unwrap();
+                if let Some(row)=row {
+                    let phase:String=row.get(0);
+                    if !replaced {
+                        assert_eq!(sempai.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+                        provider.swap(replacement.clone());
+                        crate::db_config::save_config_key(&rig.pool, runtime.thread_scope.tenant_id.as_str(),
+                            "interceptor.sempai_base_prompt", "Replacement prefix for later admissions only",
+                            crate::db_config::ConfigWriteContext::Operator).await.unwrap();
+                        replaced = true;
+                    }
+                    if phase=="acknowledged" {break;}
+                    assert!(!matches!(phase.as_str(),"failed"|"incomplete"|"uncertain"),"review phase {phase}, receipt {:?}, provider response {:?}, provider calls {}, operations {:?}",
+                        row.get::<_,Option<String>>(1),row.get::<_,Option<String>>(2),sempai.calls.load(std::sync::atomic::Ordering::SeqCst),client.query("SELECT operation,left(output_bytes,160) FROM brassclaw_monty_review_operations ORDER BY recorded_at",&[]).await.unwrap()
+                            .iter().map(|r|(r.get::<_,String>(0),r.get::<_,Option<String>>(1))).collect::<Vec<_>>());
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            loop {if client.query_one("SELECT count(*) FROM brassclaw_monty_review_settlements",&[]).await.unwrap().get::<_,i64>(0)==1 {break;}
+                tokio::time::sleep(Duration::from_millis(25)).await;}
+        }).await;
+        if let Err(error) = waiting {
+            panic!(
+                "actual consumer settles: {error:?}, work {:?}, operations {:?}",
+                client
+                    .query("SELECT phase FROM brassclaw_monty_review_work", &[])
+                    .await
+                    .unwrap()
+                    .iter()
+                    .map(|r| r.get::<_, String>(0))
+                    .collect::<Vec<_>>(),
+                client
+                    .query(
+                        "SELECT operation,left(output_bytes,160) FROM brassclaw_monty_review_operations",
+                        &[]
+                    )
+                    .await
+                    .unwrap()
+                    .iter()
+                    .map(|r| (r.get::<_, String>(0), r.get::<_, Option<String>>(1)))
+                    .collect::<Vec<_>>()
+            );
+        }
+        assert_eq!(sempai.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            replacement.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+        assert_eq!(
+            client
+                .query_one(
+                    "SELECT model_dispatch_count FROM brassclaw_monty_review_work",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, i32>(0),
+            1
+        );
+        assert_eq!(client.query_one("SELECT count(*) FROM brassclaw_monty_review_operations WHERE output_bytes IS NOT NULL", &[]).await.unwrap().get::<_,i64>(0), 7);
+        assert_eq!(kohai.call_count(), 1);
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            identity
+        );
+        assert_eq!(
+            client
+                .query_one("SELECT count(*) FROM brassclaw_monty_review_events", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        let receipt: String = client
+            .query_one("SELECT receipt_bytes FROM brassclaw_monty_review_work", &[])
+            .await
+            .unwrap()
+            .get(0);
+        let receipt: serde_json::Value = serde_json::from_str(&receipt).unwrap();
+        assert_eq!(receipt["status"], "submitted_unreviewed");
+        assert_eq!(
+            receipt["submission_receipts"]["submissions"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(receipt["catalogue_activated"], false);
+        let history = runtime
+            .thread_service
+            .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
+                scope: runtime.thread_scope.clone(),
+                thread_id: conversation.0.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            history
+                .messages
+                .iter()
+                .filter(|m| m.kind == brassclaw_threads::MessageKind::Assistant)
+                .count(),
+            1
+        );
+        review.request_shutdown();
+        review.join().await.unwrap();
+        drop(client);
+        shutdown_shared_runtime(runtime).await.unwrap();
+    }
+
     const RUNTIME_SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
     #[cfg(feature = "postgres")]
@@ -3718,13 +4287,188 @@ mod tests {
 
     #[cfg(all(feature = "skills-db", feature = "test-support"))]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_webui_reconcile_interval_preserves_wake_and_durable_uptake() {
+        use axum::{
+            body::Body,
+            http::{Method, Request, StatusCode},
+        };
+        use brassclaw_product_workflow::{MontyBudgetUptake, MontyVmSettingsStore};
+        use tower::ServiceExt;
+        struct Operator;
+        #[async_trait]
+        impl crate::WebuiAuthenticator for Operator {
+            async fn authenticate(&self, token: &str) -> Option<UserId> {
+                (token == "settings-owner").then(|| UserId::new(token).unwrap())
+            }
+            fn allows_operator_webui_config(&self) -> bool {
+                true
+            }
+        }
+        async fn save(app: &axum::Router, body: serde_json::Value) -> axum::response::Response {
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                app.clone().oneshot(
+                    Request::builder()
+                        .method(Method::PUT)
+                        .uri("/api/settings/monty-vm")
+                        .header("Authorization", "Bearer settings-owner")
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                ),
+            )
+            .await
+            .expect("operator wake must not wait for the thirty-second idle timer")
+            .unwrap()
+        }
+        let rig = super::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let root = tempfile::tempdir().unwrap();
+        let gateway = Arc::new(crate::test_support::BudgetTestGateway::new());
+        let input = RebornRuntimeInput::from_services(
+            rig.build_input("reconcile-interval-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_model_gateway_override(gateway.clone());
+        let runtime = Arc::new(build_reborn_runtime(input).await.unwrap());
+        let identity = runtime.global_monty_owner.client().root_identity();
+        let settings = runtime.webui_monty_settings_store();
+        let before = settings.get("default", "default").await.unwrap();
+        assert_eq!(
+            before.execution_limits.settings_reconcile_interval_millis,
+            1000
+        );
+        let bundle = build_webui_services(runtime.clone(), None).await.unwrap();
+        let app = crate::webui_v2_app(
+            bundle,
+            crate::WebuiServeConfig::new(
+                runtime.thread_scope.tenant_id.clone(),
+                Arc::new(Operator),
+                Vec::new(),
+            ),
+        )
+        .unwrap();
+        let mut limits = before.execution_limits;
+        limits.settings_reconcile_interval_millis = 100;
+        limits.status_poll_interval_millis = 11;
+        let mut invalid_interval = limits;
+        invalid_interval.status_poll_interval_millis = i32::MAX as u32 + 1;
+        assert_eq!(
+            save(
+                &app,
+                serde_json::json!({"expected_revision":before.revision,
+                "execution_limits":invalid_interval})
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            settings.get("default", "default").await.unwrap().revision,
+            before.revision
+        );
+        assert_eq!(
+            save(
+                &app,
+                serde_json::json!({"expected_revision":before.revision,
+                "execution_limits":limits})
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let fast = settings.get("default", "default").await.unwrap();
+        let status = settings.runtime_observation(&fast).unwrap();
+        assert_eq!(status.execution_limits.unwrap().limits, limits);
+        let desired = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        );
+        let update = serde_json::from_value(serde_json::json!({
+            "expected_revision":fast.revision,"max_duration_secs":733,
+        }))
+        .unwrap();
+        // This is the real durable writer, with no Notify connection to the
+        // controller. Only periodic reconciliation can discover the successor.
+        let external = desired.upsert("default", "default", &update).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if runtime
+                    .global_monty_owner
+                    .client()
+                    .live_task_settings()
+                    .current()
+                    .revision
+                    == external.revision
+                {
+                    let status = settings.runtime_observation(&external).unwrap();
+                    if status.execution_limits.unwrap().uptake == MontyBudgetUptake::Applied {
+                        break;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("real periodic settings uptake");
+        limits.settings_reconcile_interval_millis = 30_000;
+        assert_eq!(
+            save(
+                &app,
+                serde_json::json!({"expected_revision":external.revision,
+                "execution_limits":limits})
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let slow = settings.get("default", "default").await.unwrap();
+        assert_eq!(
+            settings
+                .runtime_observation(&slow)
+                .unwrap()
+                .execution_limits
+                .unwrap()
+                .limits,
+            limits
+        );
+        assert_eq!(
+            save(
+                &app,
+                serde_json::json!({"expected_revision":slow.revision,
+                "max_duration_secs":755})
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let changed = settings.get("default", "default").await.unwrap();
+        let status = settings.runtime_observation(&changed).unwrap();
+        let execution = status.execution_limits.unwrap();
+        assert_eq!(execution.effective_revision, changed.revision);
+        assert_eq!(execution.uptake, MontyBudgetUptake::Applied);
+        assert_eq!(execution.limits, limits);
+        assert_eq!(status.task_budget.unwrap().max_duration_secs, 755);
+        assert_eq!(status.memory_budget.unwrap().memory_sample_count, 0);
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            identity
+        );
+        assert_eq!(gateway.call_count(), 0);
+        drop((app, settings));
+        shutdown_shared_runtime(runtime).await.unwrap();
+    }
+
+    #[cfg(all(feature = "skills-db", feature = "test-support"))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_webui_cancellation_deadline_keeps_accepted_revision_and_evidence() {
         use crate::global_monty_driver::GlobalTaskPortsFactory;
         use axum::{
             body::Body,
             http::{Method, Request, StatusCode},
         };
-        use brassclaw_product_workflow::MontyVmSettingsStore;
         use brassclaw_turns::run_profile::{AgentLoopDriverError, MontyTurnDriverPort};
         use tower::ServiceExt;
         struct Operator;
@@ -5273,7 +6017,9 @@ mod tests {
             interval: Duration::from_millis(10),
             max_total: RUNTIME_SEND_TIMEOUT,
         });
-        let runtime = build_reborn_runtime(input).await.unwrap();
+        // This regression retains two complete startup futures across awaits.
+        // Heap-allocate them rather than doubling the test-thread stack frame.
+        let runtime = Arc::new(Box::pin(build_reborn_runtime(input)).await.unwrap());
         let discovery = runtime.mcp_recipe_discovery().snapshot().unwrap();
         assert!(!discovery.generation().is_nil());
         assert_eq!(discovery.tools_list(), serde_json::json!({"tools":[]}));
@@ -5401,10 +6147,82 @@ mod tests {
                 .any(|message| message.content == literal),
             "eligible prior reply survives the Monty handoff"
         );
+        // Activation uses the same ordinary chat matcher and real reply owner.
+        let public = runtime
+            .send_user_message(&conversation, "publish literal reply Ready.")
+            .await
+            .unwrap();
+        assert_eq!(public.status, TurnStatus::Completed);
+        assert_eq!(public.text.as_deref(), Some("Ready."));
+        let client = rig.pool.get().await.unwrap();
+        let selection: String = client.query_one(
+            "SELECT selection_bytes FROM brassclaw_monty_recipe_selections WHERE run_id=$1 AND recipe_id=$2",
+            &[&public.run_id.as_uuid(), &crate::installed_monty_catalogue::id("reply:recipe")],
+        ).await.unwrap().get(0);
+        let selection: serde_json::Value = serde_json::from_str(&selection).unwrap();
+        let pin = &selection["association_approvals"]["0:2"];
+        let approval_id: uuid::Uuid = serde_json::from_value(pin["approval_id"].clone()).unwrap();
+        let row = client
+            .query_one(
+                "SELECT checksum FROM reborn_skill_association_approvals WHERE approval_id=$1",
+                &[&approval_id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(pin["checksum"], row.get::<_, String>(0));
+        let invocation: String = client.query_one(
+            "SELECT selection_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND recipe_id=$2",
+            &[&public.run_id.as_uuid(), &crate::installed_monty_catalogue::id("reply:recipe")],
+        ).await.unwrap().get(0);
+        let invocation: serde_json::Value = serde_json::from_str(&invocation).unwrap();
+        assert_eq!(invocation["association_approvals"]["0:2"], *pin);
+
+        drop(client);
+        assert_eq!(
+            runtime
+                .mcp_recipe_discovery()
+                .snapshot()
+                .unwrap()
+                .tools_list(),
+            serde_json::json!({"tools":[]})
+        );
+        assert!(
+            runtime
+                .mcp_recipe_discovery()
+                .snapshot()
+                .unwrap()
+                .qualification_checksum()
+                .is_none()
+        );
+        for literal in [
+            "quoted ' Unicode ü and {{not_source}}",
+            "first line\nsecond line with \\ and %",
+        ] {
+            let isolated = runtime.new_conversation().await.unwrap();
+            let reply = runtime
+                .send_user_message(&isolated, &format!("publish literal reply {literal}"))
+                .await
+                .unwrap();
+            assert_eq!(reply.status, TurnStatus::Completed);
+            assert_eq!(reply.text.as_deref(), Some(literal));
+        }
+        assert_eq!(
+            runtime
+                .mcp_recipe_discovery()
+                .snapshot()
+                .unwrap()
+                .tools_list(),
+            serde_json::json!({"tools":[]})
+        );
+        assert_eq!(requests.lock().unwrap().len(), 2);
         let settings = runtime.monty_settings_owner.store();
         let identity_before_capacity_edits = runtime.global_monty_owner.client().root_identity();
         for (capacity, text, expected_status) in [
-            (1, "reply capacity effect once", TurnStatus::Failed),
+            (
+                1,
+                "publish literal reply policy-blocked qualification case",
+                TurnStatus::Failed,
+            ),
             (16, "reply capacity raised", TurnStatus::Completed),
         ] {
             let current = settings.get("default", "default").await.unwrap();
@@ -5473,7 +6291,7 @@ mod tests {
                 .iter()
                 .filter(|message| {
                     message.kind == MessageKind::Assistant
-                        && message.content.as_deref() == Some("capacity effect once")
+                        && message.content.as_deref() == Some("policy-blocked qualification case")
                 })
                 .count(),
             1,
@@ -5483,6 +6301,15 @@ mod tests {
             requests.lock().unwrap().len(),
             2,
             "capacity failure must not enter Tier 2"
+        );
+        assert!(
+            runtime
+                .mcp_recipe_discovery()
+                .snapshot()
+                .unwrap()
+                .qualification_checksum()
+                .is_none(),
+            "a capacity failure after a completed effect cannot qualify the required policy denial"
         );
         // A live block changes dispatch permission without replacing the pinned
         // Recipe or replaying its failure through the model path.
@@ -5524,7 +6351,71 @@ mod tests {
         assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
         let report = ports.settlement_report(&receipt).await.unwrap();
         assert_eq!(report["root_completed"], false);
+        let denied_chat = runtime.new_conversation().await.unwrap();
+        let denied_command = runtime
+            .send_user_message(
+                &denied_chat,
+                "publish literal reply policy-blocked qualification case",
+            )
+            .await
+            .unwrap();
+        assert_eq!(denied_command.status, TurnStatus::Failed);
+        assert!(denied_command.text.is_none());
+        let advertised = runtime.mcp_recipe_discovery().snapshot().unwrap();
+        assert_eq!(advertised.generation(), discovery.generation());
+        assert!(advertised.qualification_checksum().is_some());
+        assert_eq!(
+            advertised.tools_list()["tools"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(
+            advertised.tools_list()["tools"][0]["name"],
+            "publish_literal_reply"
+        );
+        runtime
+            .mcp_recipe_discovery()
+            .validate_advertised_command(
+                &advertised,
+                "publish_literal_reply",
+                "publish literal reply Ready.",
+            )
+            .unwrap();
+        assert!(
+            runtime
+                .mcp_recipe_discovery()
+                .validate_advertised_command(
+                    &discovery,
+                    "publish_literal_reply",
+                    "publish literal reply Ready."
+                )
+                .is_err(),
+            "an earlier empty snapshot never advertised this command"
+        );
         let qualified_program = ports.matched_program().await.unwrap();
+        crate::public_recipe_population::assert_public_candidate_retention(
+            rig.pool.clone(),
+            &qualified_program,
+            discovery.generation(),
+            &brassclaw_engine::memory::intent_system::IntentScope {
+                tenant_id: runtime.thread_scope.tenant_id.to_string(),
+                user_id: runtime.actor_user_id.to_string(),
+                agent_id: host
+                    .run_context()
+                    .scope
+                    .agent_id
+                    .as_ref()
+                    .unwrap()
+                    .to_string(),
+                project_id: host
+                    .run_context()
+                    .scope
+                    .project_id
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "default".into()),
+            },
+        )
+        .await;
         crate::mcp_command_qualification::assert_recorded_command_cases(
             &rig.pool,
             &brassclaw_engine::memory::intent_system::IntentScope {
@@ -5582,7 +6473,161 @@ mod tests {
             2,
             "internal No-Match must not call a model"
         );
-        runtime.shutdown().await.unwrap();
+        // Transport recovery must retain the original ordinary chat and run.
+        let transport_id = uuid::Uuid::new_v4();
+        let transport_chat = runtime
+            .ensure_correlated_conversation(transport_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime
+                .ensure_correlated_conversation(transport_id)
+                .await
+                .unwrap(),
+            transport_chat
+        );
+        let command = "publish literal reply transport recovery";
+        let first = runtime
+            .send_correlated_user_message(
+                &transport_chat,
+                command,
+                transport_id,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.run_id, TurnRunId::from_uuid(transport_id));
+        assert_eq!(first.status, TurnStatus::Failed); // current global Tool block
+        let before_retry: i64 = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+            .await
+            .unwrap()
+            .get(0);
+        let replay = runtime
+            .send_correlated_user_message(
+                &transport_chat,
+                command,
+                transport_id,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first, replay);
+        assert!(
+            runtime
+                .send_correlated_user_message(
+                    &transport_chat,
+                    "publish literal reply changed",
+                    transport_id,
+                    tokio_util::sync::CancellationToken::new(),
+                )
+                .await
+                .is_err()
+        );
+        runtime
+            .close_correlated_conversation(&transport_chat, transport_id)
+            .await
+            .unwrap();
+        runtime
+            .close_correlated_conversation(&transport_chat, transport_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime
+                .recover_correlated_user_message(&transport_chat, transport_id)
+                .await
+                .unwrap(),
+            Some(first)
+        );
+        assert!(
+            runtime
+                .send_user_message(&transport_chat, command)
+                .await
+                .is_err()
+        );
+        let preserved = runtime
+            .thread_service
+            .list_thread_history(ThreadHistoryRequest {
+                scope: runtime.thread_scope.clone(),
+                thread_id: transport_chat.0.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            preserved
+                .messages
+                .iter()
+                .filter(|message| message.kind == MessageKind::User)
+                .count(),
+            1
+        );
+        let after_retry: i64 = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            before_retry, after_retry,
+            "replay/closure/recovery cannot repeat dispatch"
+        );
+        let client = rig.pool.get().await.unwrap();
+        client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=true,revision=revision+1 WHERE tool_id IN(SELECT id FROM reborn_tools WHERE tenant_id=$1 AND capability_id='host.post_reply')", &[&runtime.thread_scope.tenant_id.as_str()]).await.unwrap();
+        drop(client);
+        Box::pin(crate::mcp_chat_bridge::assert_native_chat_transport(
+            runtime.clone(),
+            blocked.run_id.as_uuid(),
+        ))
+        .await;
+        let client = rig.pool.get().await.unwrap();
+        client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=false,revision=revision+1 WHERE tool_id IN(SELECT id FROM reborn_tools WHERE tenant_id=$1 AND capability_id='host.post_reply')", &[&runtime.thread_scope.tenant_id.as_str()]).await.unwrap();
+        drop(client);
+        shutdown_shared_runtime(runtime).await.unwrap();
+        let client = rig.pool.get().await.unwrap();
+        let before: i64 = client
+            .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+            .await
+            .unwrap()
+            .get(0);
+        drop(client);
+        let restart = Box::pin(build_reborn_runtime(
+            RebornRuntimeInput::from_services(
+                rig.build_input("global-runtime-owner", root.path())
+                    .with_runtime_policy(local_dev_runtime_policy()),
+            )
+            .with_model_gateway_override(Arc::new(RecordingGateway {
+                reply: "unused during bootstrap readback".into(),
+                requests: requests.clone(),
+            })),
+        ))
+        .await
+        .unwrap();
+        let restarted_discovery = restart.mcp_recipe_discovery().snapshot().unwrap();
+        assert_eq!(restarted_discovery.generation(), advertised.generation());
+        assert_eq!(restarted_discovery.tools_list(), advertised.tools_list());
+        assert_eq!(
+            restarted_discovery.qualification_checksum(),
+            advertised.qualification_checksum()
+        );
+        let client = rig.pool.get().await.unwrap();
+        let after: i64 = client
+            .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            before, after,
+            "actual restart must reuse bootstrap approval without replaying effects, even while the Tool is blocked"
+        );
+        drop(client);
+        restart.shutdown().await.unwrap();
     }
 
     #[cfg(feature = "skills-db")]
@@ -5764,6 +6809,8 @@ mod tests {
             "ownership_heartbeat_interval_millis",
             "max_pending_ownership_checks",
             "cancellation_ack_timeout_millis",
+            "settings_reconcile_interval_millis",
+            "status_poll_interval_millis",
         ] {
             let mut invalid = initial["settings"]["execution_limits"].clone();
             invalid[field] = serde_json::json!(0);
@@ -5927,6 +6974,9 @@ mod tests {
                 serde_json::json!(2500 + offset);
             execution_limits["max_pending_ownership_checks"] = serde_json::json!(1024 + offset);
             execution_limits["cancellation_ack_timeout_millis"] = serde_json::json!(4000 + offset);
+            execution_limits["settings_reconcile_interval_millis"] =
+                serde_json::json!(1000 + offset);
+            execution_limits["status_poll_interval_millis"] = serde_json::json!(3000 + offset);
             execution_limits["execution_slice_millis"] = serde_json::json!(5 + offset);
             let (code, result) = request(
                 &app,
@@ -6153,12 +7203,16 @@ mod tests {
         // returning to startup mode takes one sizing and stops measurements.
         let mut policy = initial["settings"]["memory_policy"].clone();
         policy["mode"] = serde_json::json!("automatic");
+        // A ten-minute durable-settings poll must not postpone the independent
+        // real sixty-second Automatic sample. Operator saves still wake it.
+        execution_limits["settings_reconcile_interval_millis"] = serde_json::json!(600_000);
         let (code, automatic) = request(
             &app,
             Method::PUT,
             "settings-a",
             "/api/settings/monty-vm",
-            serde_json::json!({"expected_revision":desired.revision,"memory_policy":policy}),
+            serde_json::json!({"expected_revision":desired.revision,"memory_policy":policy,
+                "execution_limits":execution_limits}),
         )
         .await;
         assert_eq!(code, StatusCode::OK, "{automatic}");
@@ -6167,6 +7221,10 @@ mod tests {
             .unwrap();
         assert_eq!(samples, boot_samples + 1);
         assert_eq!(automatic["runtime"]["memory_budget"]["mode"], "automatic");
+        assert_eq!(
+            automatic["runtime"]["execution_limits"]["limits"]["settings_reconcile_interval_millis"],
+            600_000
+        );
         let store = runtime.webui_monty_settings_store();
         tokio::time::sleep(Duration::from_secs(2)).await;
         assert_eq!(

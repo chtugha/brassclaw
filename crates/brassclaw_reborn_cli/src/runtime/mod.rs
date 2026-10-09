@@ -76,7 +76,19 @@ pub(crate) fn execute(
         // of the operator-seeded trigger access store, not the runtime build.
         let runtime_input =
             with_run_local_trigger_fire_access_checker(runtime_input, &boot_config).await?;
-        let runtime = build_reborn_runtime(runtime_input).await?;
+        let runtime = std::sync::Arc::new(build_reborn_runtime(runtime_input).await?);
+        #[cfg(feature = "skills-db")]
+        let mcp_listener = {
+            let listener =
+                brassclaw_reborn_webui_ingress::mcp_listener_spawner::InboundMcpListener::start(
+                    9090,
+                    runtime.mcp_chat_bridge()?,
+                )
+                .await
+                .context("failed to start authenticated instance MCP listener")?;
+            runtime.attach_mcp_listener_status(listener.status())?;
+            listener
+        };
         print_runtime_banner(&boot_config);
 
         let conversation = runtime.new_conversation().await?;
@@ -91,7 +103,12 @@ pub(crate) fn execute(
         // Shut down the runtime first so the Postgres pool (owned by
         // RebornServices) is dropped before stopping the embedded PG server
         // (§2.2, §5.5: pool must be dropped before pg_ctl stop).
-        runtime.shutdown().await?;
+        #[cfg(feature = "skills-db")]
+        let mcp_shutdown = mcp_listener.shutdown().await;
+        let runtime_shutdown = std::sync::Arc::try_unwrap(runtime)
+            .map_err(|_| anyhow::anyhow!("MCP chat transport still owns the runtime"))?
+            .shutdown()
+            .await;
         #[cfg(feature = "postgres")]
         if let Some(pg) = managed_pg
             && let Err(error) = pg.shutdown().await
@@ -99,6 +116,9 @@ pub(crate) fn execute(
             // Use debug! — info!/warn! in a background task corrupts the terminal UI (AGENTS.md §67).
             tracing::debug!(%error, "embedded Postgres shutdown failed (run path)");
         }
+        runtime_shutdown?;
+        #[cfg(feature = "skills-db")]
+        mcp_shutdown.context("MCP listener shutdown failed")?;
         outcome
     })?;
     Ok(())

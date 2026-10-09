@@ -26,6 +26,7 @@ postgres = [
 # installer is gated out and all system skills are served from reborn_skills DB rows.
 skills-db = [
     "brassclaw_reborn_composition/skills-db",
+    "brassclaw_reborn_webui_ingress/skills-db",
 ]
 # Wire a real LLM provider into the assembled runtime. Mirrors the same
 # `root-llm-provider` feature on `brassclaw_reborn_composition` /

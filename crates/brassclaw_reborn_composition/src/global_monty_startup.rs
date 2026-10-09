@@ -100,14 +100,19 @@ pub(crate) async fn start(
     )
     .map_err(|_| invalid("Monty heap cap out of range"))?;
     let frame = 64 * 1024 * 1024;
+    let adapter_reserve_bytes =
+        usize::try_from(settings.execution_limits.worker_adapter_reserve_bytes)
+            .map_err(|_| invalid("Monty adapter reserve out of range"))?;
     let hard = soft
-        .checked_add(2 * frame + 4 * 1024 * 1024)
+        .checked_add(2 * frame)
+        .and_then(|bytes| bytes.checked_add(adapter_reserve_bytes))
         .ok_or_else(|| invalid("Monty physical backstop overflow"))?;
     let values = crate::live_monty_settings::execution_bounds(settings.execution_limits)
         .map_err(|error| invalid(error.to_string()))?;
     let deadlines = crate::live_monty_settings::hosting_deadlines(settings.execution_limits)
         .map_err(|error| invalid(error.to_string()))?;
     let boot = RootBoot {
+        adapter_reserve_bytes,
         heap_settings: Some(HeapSettings {
             revision: 1,
             max_vm_bytes: soft,

@@ -12,15 +12,15 @@ use std::sync::{
 
 use async_trait::async_trait;
 use brassclaw_interceptor::{
-    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, PromptSegment,
-    TokenAccountingSnapshot,
+    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, ModelExchangeEvidence,
+    PromptSegment, TokenAccountingSnapshot,
 };
 #[cfg(feature = "root-llm-provider")]
 use brassclaw_interceptor::{SempaiProposalSink, SempaiReviewOutcome, SharedInterceptorMode};
 use brassclaw_loop_support::{
     HostManagedModelError, HostManagedModelErrorKind, HostManagedModelGateway,
     HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
-    HostManagedModelResponse,
+    HostManagedModelResponse, HostManagedToolResultContent,
 };
 use brassclaw_turns::run_profile::{LoopCapabilityPort, LoopRunContext, ParentLoopOutput};
 #[cfg(feature = "root-llm-provider")]
@@ -52,14 +52,18 @@ pub(super) struct InterceptingModelGateway<G: HostManagedModelGateway + ?Sized> 
 
 #[async_trait]
 impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for InterceptingModelGateway<G> {
+    fn supports_tool_exchange(&self) -> bool {
+        self.gateway.supports_tool_exchange()
+    }
+
     async fn stream_model(
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let (request, packet) = self.prepare(request).await?;
-        let response = self.gateway.stream_model(request).await?;
-        self.close(packet, &response).await;
-        Ok(response)
+        let result = self.gateway.stream_model(request).await;
+        self.finish(packet, &result).await;
+        result
     }
 
     async fn stream_model_with_capabilities(
@@ -69,12 +73,12 @@ impl<G: HostManagedModelGateway + ?Sized> HostManagedModelGateway for Intercepti
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
         let (request, packet) = self.prepare(request).await?;
         // Forward the exact filtered capability port, not the factory surface.
-        let response = self
+        let result = self
             .gateway
             .stream_model_with_capabilities(request, capabilities)
-            .await?;
-        self.close(packet, &response).await;
-        Ok(response)
+            .await;
+        self.finish(packet, &result).await;
+        result
     }
 }
 
@@ -113,21 +117,46 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
                 Err(actual) => iteration = actual,
             }
         }
-        let packet = capture(&request, iteration)?;
+        let mut packet = capture(&request, iteration)?;
+        packet.model_exchange = Some(ModelExchangeEvidence {
+            format: "host-model-exchange/1".into(),
+            original_request_bytes: request_snapshot(&request)?,
+            effective_request_bytes: None,
+            response_bytes: None,
+            failure: None,
+        });
         #[cfg(feature = "root-llm-provider")]
-        let (mut request, mut packet) = (request, packet);
+        let mut request = request;
         self.save(&packet, "assembled prompt").await;
         #[cfg(feature = "root-llm-provider")]
         if let (Some(gateway), Some(mode)) = (self.sempai_gateway.as_ref(), self.mode.as_ref())
             && mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting
         {
-            let review = self.review(&request, &packet, gateway).await?;
-            request.messages = recompose(&request.messages, &review, packet.id.as_str())?;
+            let review = match self.review(&request, &packet, gateway).await {
+                Ok(review) => review,
+                Err(error) => {
+                    self.record_failure(packet, "sempai_preparation", &error)
+                        .await;
+                    return Err(error);
+                }
+            };
+            request.messages = match recompose(&request.messages, &review, packet.id.as_str()) {
+                Ok(messages) => messages,
+                Err(error) => {
+                    self.record_failure(packet, "sempai_recomposition", &error)
+                        .await;
+                    return Err(error);
+                }
+            };
             // Review is not completion of the pending Kohai call.
             packet.sempai_review = Some(review);
             packet.status = brassclaw_interceptor::PacketStatus::SempaiReviewed;
             self.save(&packet, "Sempai review").await;
         }
+        if let Some(exchange) = packet.model_exchange.as_mut() {
+            exchange.effective_request_bytes = Some(request_snapshot(&request)?);
+        }
+        self.save(&packet, "effective host request").await;
         Ok((request, packet))
     }
 
@@ -138,7 +167,48 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         }
     }
 
-    async fn close(&self, packet: ForensicPacket, response: &HostManagedModelResponse) {
+    async fn finish(
+        &self,
+        packet: ForensicPacket,
+        result: &Result<HostManagedModelResponse, HostManagedModelError>,
+    ) {
+        match result {
+            Ok(response) => self.close(packet, response).await,
+            Err(error) => self.record_failure(packet, "kohai_gateway", error).await,
+        }
+    }
+
+    async fn record_failure(
+        &self,
+        mut packet: ForensicPacket,
+        stage: &str,
+        error: &HostManagedModelError,
+    ) {
+        if let Some(exchange) = packet.model_exchange.as_mut() {
+            exchange.failure = Some(serde_json::json!({
+                "stage": stage, "kind": error.kind, "reason_kind": error.reason_kind,
+                "observed_at": chrono::Utc::now(),
+                "kohai_gateway_entered": stage == "kohai_gateway",
+                // A host error is not evidence that the provider did no work.
+                "provider_outcome": "unresolved",
+            }));
+        }
+        // Legacy status/completed_at denote response/review, not failure.
+        // Keep them unchanged; the failure observation has its own timestamp.
+        self.save(&packet, stage).await;
+    }
+
+    async fn close(&self, mut packet: ForensicPacket, response: &HostManagedModelResponse) {
+        if let Some(exchange) = packet.model_exchange.as_mut() {
+            match serde_json::to_string(response) {
+                Ok(bytes) => exchange.response_bytes = Some(bytes),
+                Err(error) => {
+                    tracing::error!(packet_id = %packet.id, error = %error,
+                        "interceptor host response encoding failed");
+                    return;
+                }
+            }
+        }
         let text = match &response.output {
             ParentLoopOutput::AssistantReply(reply) => reply.content.clone(),
             ParentLoopOutput::CapabilityCalls(_) => match serde_json::to_string(&response.output) {
@@ -163,6 +233,42 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         };
         self.save(&closed, "Kohai response").await;
     }
+}
+
+/// HostManagedModelMessage's normal serializer intentionally skips Tool replay
+/// fields. Capture them explicitly here, without changing its transport contract.
+fn request_snapshot(request: &HostManagedModelRequest) -> Result<String, HostManagedModelError> {
+    let messages: Vec<_> = request.messages.iter().map(message_snapshot).collect();
+    serde_json::to_string(&serde_json::json!({
+        "model_profile_id": request.model_profile_id, "messages": messages,
+        "surface_version": request.surface_version,
+        "resolved_model_route": request.resolved_model_route,
+        "run_id": request.run_id, "turn_id": request.turn_id,
+    }))
+    .map_err(|_| {
+        HostManagedModelError::new(
+            HostManagedModelErrorKind::InvalidRequest,
+            "host request evidence encoding failed",
+        )
+    })
+}
+
+fn message_snapshot(message: &HostManagedModelMessage) -> serde_json::Value {
+    let tool_content = match &message.tool_result_content {
+        None => serde_json::Value::Null,
+        Some(HostManagedToolResultContent::Reference { envelope }) => {
+            serde_json::json!({"kind": "reference", "envelope": envelope})
+        }
+        Some(HostManagedToolResultContent::Resolved { safe_summary }) => {
+            serde_json::json!({"kind": "resolved", "safe_summary": safe_summary})
+        }
+    };
+    serde_json::json!({
+        "role": message.role, "content": message.content,
+        "content_ref": message.content_ref,
+        "tool_result_provider_call": message.tool_result_provider_call,
+        "tool_result_content": tool_content,
+    })
 }
 
 #[cfg(all(test, feature = "root-llm-provider"))]
@@ -203,6 +309,26 @@ mod tests {
             signature: Some("provider-signature".into()),
         });
         let original = vec![base.clone(), user.clone(), tool.clone()];
+        // Ordinary message serialization deliberately omits replay metadata.
+        assert!(
+            serde_json::to_value(&tool)
+                .unwrap()
+                .get("tool_result_provider_call")
+                .is_none()
+        );
+        let snapshot = message_snapshot(&tool);
+        assert_eq!(
+            snapshot["tool_result_provider_call"]["provider_call_id"],
+            "provider-call"
+        );
+        assert_eq!(
+            snapshot["tool_result_provider_call"]["arguments"]["message"],
+            "original input"
+        );
+        assert_eq!(
+            snapshot["tool_result_provider_call"]["signature"],
+            "provider-signature"
+        );
         let review = review(&message_pairs(&original[1..]));
         let adjusted = recompose(&original, &review, "packet").unwrap();
         assert_eq!(adjusted[0], base);

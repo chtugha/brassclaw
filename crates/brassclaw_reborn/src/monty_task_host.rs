@@ -35,6 +35,8 @@ pub struct MontyTaskHost {
     fence: MontyTaskFence,
     published_reply: Mutex<Option<PublishedReply>>,
     withheld: Mutex<Vec<WithheldTaskPortResult>>,
+    model_exchange_count: std::sync::atomic::AtomicU64,
+    capability_dispatch_count: std::sync::atomic::AtomicU64,
 }
 
 /// Trusted supervisor evidence. Payloads have no Debug/serde surface and never
@@ -72,11 +74,31 @@ impl MontyTaskHost {
             fence: MontyTaskFence::new(attempt),
             published_reply: Mutex::new(None),
             withheld: Mutex::new(Vec::new()),
+            model_exchange_count: std::sync::atomic::AtomicU64::new(0),
+            capability_dispatch_count: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
     pub fn run_context(&self) -> &LoopRunContext {
         self.host.run_context()
+    }
+
+    /// Transport cleanup observes the same durable cancellation signal as the
+    /// task host. This is not a VM acknowledgement or effect reconciliation.
+    pub async fn cancellation_requested(&self) {
+        tokio::select! {
+            _ = self.host.cancellation_requested() => {},
+            _ = self.fence.closed() => {},
+        }
+    }
+
+    /// Host observations, not inferred from potentially missing forensic writes.
+    pub fn review_dispatch_counts(&self) -> (u64, u64) {
+        use std::sync::atomic::Ordering;
+        (
+            self.model_exchange_count.load(Ordering::Acquire),
+            self.capability_dispatch_count.load(Ordering::Acquire),
+        )
     }
 
     /// Trusted supervisor access only; this contains the Rust-only lease token.
@@ -224,6 +246,8 @@ impl MontyTaskHost {
             ));
         }
         let call = self.begin_call()?;
+        self.model_exchange_count
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let result = self.host.stream_model(request).await;
         self.finish_call(call, result, WithheldTaskPortValue::ModelResponse)
     }
@@ -233,6 +257,8 @@ impl MontyTaskHost {
         request: CapabilityInvocation,
     ) -> Result<CapabilityOutcome, AgentLoopHostError> {
         let call = self.begin_call()?;
+        self.capability_dispatch_count
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let result = self.host.invoke_capability(request).await;
         self.finish_call(call, result, WithheldTaskPortValue::CapabilityOutcome)
     }
@@ -290,6 +316,15 @@ impl MontyTaskHost {
                 )
             });
         self.finish_call(call, result, WithheldTaskPortValue::PublishedReplyContent)
+    }
+
+    /// Read-only settlement evidence; this neither restores dispatch authority
+    /// nor performs a transcript operation after cancellation.
+    pub fn finalized_reply_evidence(&self) -> Option<(String, String)> {
+        self.published_reply
+            .lock()
+            .as_ref()
+            .map(|reply| (reply.reference.as_str().to_owned(), reply.content.clone()))
     }
 
     /// Trusted supervisor evidence, including success received after fencing.

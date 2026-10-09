@@ -378,3 +378,67 @@ Examples and acceptance
         })
         .collect()
 }
+
+/// Package candidate for the public form of the reply usage. Reuse
+/// stable identities and executable components; retaining this successor is
+/// neither activation nor bootstrap/combination approval. History stays private.
+pub fn public_reply_drafts(
+    ids: UsageComponentIds,
+) -> Result<Vec<ComponentRevisionDraft>, RevisionError> {
+    let drafts = usage_drafts(ids, GlobalBootstrapUsage::PostReply)?;
+    let sentence = "publish literal reply %";
+    let examples = vec![
+        "publish literal reply Ready.",
+        "publish literal reply quoted ' Unicode ü and {{not_source}}",
+        "publish literal reply first line\nsecond line with \\ and %",
+    ];
+    drafts.into_iter().map(|draft| {
+        let mut document = draft.document().clone();
+        if draft.uuid() == ids.recipe {
+            document["description"] = json!("Publish the supplied literal answer once in the owning ordinary chat. Bind the retained reply ToolSkill, invoke the pinned publish_turn_reply export and return its actual finalized message reference. The normal chat root owns history and completion; no second publication, automatic retry or Tier-2 replay is permitted.");
+            let legacy_examples = document["variants"][0]["intent_examples"].as_array().cloned().ok_or(RevisionError::Invalid("packaged reply examples missing"))?;
+            document["variants"][0]["intent_examples"] = json!([
+                sentence,
+                "please publish literal reply %",
+                "send literal reply %",
+                "please send literal reply %",
+                "post literal reply %",
+                "please post literal reply %",
+                "respond literally with %",
+                "please respond literally with %",
+                "publish the literal response %",
+                "please publish the literal response %",
+            ]);
+            document["variants"][0]["intent_examples"].as_array_mut().expect("packaged examples").extend(legacy_examples);
+            document["mcp_call"] = json!({
+                "format":"mcp-call-skill-recipe/1", "name":"publish_literal_reply",
+                "purpose":"Return the supplied literal text as the reply in this command's ordinary chat.",
+                "skill_uuid":ids.skill,"variant_key":"selected", "export_name":"publish_turn_reply",
+                "sentence":sentence,"variables":[{"name":"answer","position":0,"encoding":"verbatim"}],
+                "formatting_rules":"Use the exact prefix publish literal reply followed by one space and the literal answer. Supply nonblank text verbatim, including quotes, newlines, backslashes, Unicode and percent signs. Do not JSON-encode or escape the value. Values remain typed data; nothing is evaluated as Python.",
+                "examples":examples,
+                "negative_examples":["publish literal response Ready.","save completed turn user=u; answer=a; reply=r"],
+                "result_description":"The exact supplied text, published once by the normal chat reply owner. Its message reference is internal correlation data, not the public answer.",
+                "error_description":"Invalid input, current Tool-policy denial, cancellation, stale execution or host failure stops the Recipe. No automatic retry, duplicate reply or model fallback."
+            });
+            let successes: Vec<_> = examples.iter().map(|command| json!({
+                "command":command,"reply":command.strip_prefix("publish literal reply ").expect("packaged command prefix")
+            })).collect();
+            document["mcp_qualification"] = json!({"format":"mcp-command-cases/1",
+                "success_examples":successes,"failure_examples":[{
+                    "command":"publish literal reply policy-blocked qualification case",
+                    "reason_kind":"recipe_execution_failed",
+                    "tool_failure_kind":"retained_tool_authorization"
+                }]});
+        } else if draft.uuid() == ids.skill {
+            let body = document["body"].as_str().ok_or(RevisionError::Invalid("packaged Skill prose is missing"))?;
+            document["body"] = json!(format!("{body}\n\nExports and preload\npublish_turn_reply(inputs) is the only public export; its input mapping contains answer:string. Python preload dependencies: none. The Skill association still retains its exact code, ToolSkill and Tool dependencies. Load definitions without dispatch and invoke the pinned export after the matching ToolSkill binding. All mutable values remain invocation/task-owned.\n\nExecution Recipe and command\nCanonical Recipe UUID {recipe}, variant selected, command: publish literal reply %. Position 0 is answer:string, required, non-null and nonblank, with verbatim encoding and no default. The public response is the literal answer; the message reference remains internal. History is written by the existing chat root, never this Skill. Exposure requires exact combination/bootstrap approval, command qualification and normal chat transport acceptance; these candidate definitions confer none of them.", recipe=ids.recipe));
+        } else {
+            return Ok(draft);
+        }
+        ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1",
+            "uuid":draft.uuid(),"class_code":draft.class_code(),"document":document,
+            "dependencies":draft.dependencies(),"association":draft.association().map(|association| association.exact_bytes())
+        }).to_string())
+    }).collect()
+}

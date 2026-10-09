@@ -70,6 +70,14 @@ The event explicitly has `evidence_complete=false`. The consumer, qualified
 model/proposal usages and durable review acknowledgement remain prerequisites.
 Follow the [completed-turn Recipe authoring record and acceptance contract](../reborn/contracts/completed-turn-sempai-review.md).
 
+**Model evidence implementation:** V127 and the resolved host interceptor retain
+original/effective request JSON separately, including explicitly captured provider
+Tool replay metadata that ordinary message serialization omits. Returned response
+JSON preserves structured output and usage; returned preparation/provider errors
+retain classified unresolved evidence. New settlement events snapshot this column.
+This repairs a consumer prerequisite; it does not qualify complete turn evidence,
+provide raw provider wire bytes, enable automatic retry, or implement delivery.
+
 ## 1. Legacy components containing Python code to update and convert
 
 This list contains class-22 PythonCode components and their identified legacy Skill usage companions: **101 conversion candidates** after reviewing **134 distinct seeded PythonCode names**. **92 Skill companions** are grouped with their code so that a usage is converted once. Recipes, Actions, Tools, ToolSkills, prose-only overviews, catalogues and class-10 roots are excluded from the list. Each link identifies the seeder call or generated definition that installs that name; UUIDs are instance-assigned and must be resolved during implementation.
@@ -1634,3 +1642,280 @@ Strict affected-package Clippy also passed:
 using the stable NVMe target and `CARGO_INCREMENTAL=0`,
 `CARGO_PROFILE_DEV_DEBUG=0`. No lint was suppressed. This replaces the current
 nested-if blocker; the earlier section's validation record remains historical.
+
+## 30. Public Recipe population: retained candidate (2026-10-09)
+
+Startup now retains an immutable public successor of the existing reply Recipe
+and Skill, with stable UUIDs and unchanged PythonCode and ToolSkill revisions.
+The command is `publish literal reply %`; slot 0 is the required verbatim
+`answer:string`. The existing `publish_turn_reply(inputs)` export performs one
+reply operation. The normal chat root remains the history/completion owner.
+No additional Rust Tool, reply code copy or history effect is introduced.
+
+The successor contains the actual supported retained Recipe schema, ten distinct
+intent templates, explicit Skill interface/association, public command metadata,
+three positive cases (including source-looking and multiline Unicode data) and
+a policy-denial failure case. Positive fixtures require reply policy enabled;
+the failure fixture requires it blocked. Startup runs no examples. It retains
+exact package bytes, compiles real typed IBS, prepares the binding, inspects the
+actual Monty preload/export source and validates command metadata. Repeated
+retention reuses the same revisions, without replacing later operator drafts or
+changing any retained running selection.
+
+This is candidate population, **not activation or public advertising**. The
+candidate remains outside active catalogue bytes, prefix compilation, ordinary
+matching and discovery. Internal history remains private. The current installed
+path does not yet consume a trusted exact system-seed association approval;
+source inspection, an integrity comparison and command-observation artifacts
+cannot substitute for that missing producer/reader. Do not fabricate Q1,
+behavioral receipts or a null-Q2 approval from a system label.
+
+Next implement noncircular installation-owned qualification and its trusted
+approval reader, contained behavioral cases and coherent candidate activation.
+Only then collect the normal-chat command observations and publish a nonempty
+qualified discovery generation. Bundled reviewed upgrades require no additional
+external maintainer or installed-instance human Q2. Keep authored post-install
+approval separate. MCP ordinary-chat admission/correlation/closure and provider
+connection windows remain subsequent acceptance work.
+
+Validation: five focused command/discovery tests passed. The real native
+PostgreSQL/Monty `native_global_runtime_retains_one_root_across_match_and_no_match`
+regression passed (34.08 seconds) with freshly captured worker/test artifacts.
+It now also verifies exact candidate reuse, unchanged executable/binding
+revisions, preservation of a later operator draft/head, exclusion from normal
+routing and active prefix/catalogue bytes, and rejection of publication without
+qualification evidence. This verifies candidate preparation and exclusion, not
+public successor behavioral approval or activation. Native PostgreSQL required
+unsandboxed shared-memory access.
+
+Strict library Clippy passed for `brassclaw_reborn_composition` and
+`brassclaw_skills`, with composition `skills-db`, `--no-deps` and warnings denied;
+no lint was suppressed. Scoped formatting and whitespace checks passed. Shared
+target cleanup interrupted the first build; validation used subsequently
+rebuilt, independently captured binaries rather than that failed attempt.
+
+## 31. Trusted public-reply bootstrap approval and behavior (2026-10-09)
+
+This advances section 30's pending bootstrap gate for the exact packaged
+`publish_literal_reply` successor. Installation startup owns qualification;
+authoring/MCP inputs cannot call it or supply successful evidence. It accepts
+only the shipped stable Recipe/Skill/code/binding identities and exact package
+definitions. Recompute real typed IBS/binding/source inspection under a private
+retained copy of the actual Monty worker, and verify the retained application
+artifact and reply adapter identity. Bind Q1 and approval to the complete exact
+usage dependency combination, Recipe selection, worker/application checksums,
+producer revision, validator-root checksum and fixed acceptance cases.
+
+Before global-orchestrator startup or ingress, run the pinned candidate with
+observations enabled in constrained validation workers. Reuse the production
+kernel reply registration, current global policy, durable admission/invocation
+journal and actual PostgreSQL transcript publication. Each case has a separate
+private validation chat/run/task. The restricted host exposes the real transcript
+and cancellation ports; model, workflow lookup and other capability ports deny
+access. Validate three literal positive cases, an additional restrictive-policy
+denial and blank-text rejection. Reject missing/null/non-string/extra task inputs
+before invocation. Compare observed arguments, classified Tool answers, returned
+message references, exact published text, completion/failure and invocation count
+with the fixed expectations. Preload remains effect-free. Reap each validation
+worker before releasing its case or starting the global instance.
+
+Persist immutable `component-review-evidence/1` Q1 intent before effects, then
+commit the actual successful behavioral record and `skill-association-approval/1`
+atomically through the installation owner. Mode is `system_seed`, Q2 is null,
+and Q1/behavior refs resolve to actual records. The trusted reader checks exact
+bytes/checksums, selected revisions and graph, producer/package/artifact scope,
+case completeness, distinct task identities, answered one-attempt journals and
+settled private validation admissions. An ordinary component status or caller
+JSON flag never creates approval. The authored Q1/human-Q2 path is unchanged.
+
+Successful startup/restart reads reuse committed evidence without re-running
+effects, including under a subsequently blocked Tool policy. Approval grants
+nothing. A first qualification with the global reply Tool blocked remains
+pending; the denial fixture cannot enable it. Incomplete or uncertain Q1 intent
+requires supervised reconciliation and fails closed instead of replaying the
+Recipe, resetting attempt counts or manufacturing success. This implementation
+does not supply an automatic recovery path.
+
+Contained validation has its own fenced settlement; it never manufactures a
+completed ordinary chat root or normal-match evidence. The public successor
+remains outside the active catalogue, prefix and advertising. Coherent activation
+with pinned approval references, real normal-command observations and MCP chat/
+provider-window acceptance remain separate work. This narrow shipped-reply
+adapter does not establish general system-seed approval for history, arbitrary
+Tools, authored usages or the full validator catalogue.
+
+Validation: the real PostgreSQL/Monty
+`native_global_runtime_retains_one_root_across_match_and_no_match` regression
+passed (170.44 seconds), using freshly compiled and independently captured
+worker/test binaries with the normal test-thread stack. It observes the five
+contained cases, exact bootstrap approval readback, rejection of changed
+provenance and incomplete Q1 intent, database evidence immutability, and actual
+restart under a blocked Tool without additional invocations. Original matched/
+unmatched behavior, candidate exclusion and preservation of operator drafts
+remain covered. The trusted reader separately verifies the complete Recipe
+selection and the exact per-call journal selection; these are distinct records
+and checksums. Expected failure cases retain the kernel boundary's actual
+`authorization` and `invalid_input` classifications and the actual child Python
+failure, rather than manufacturing a successful child feed.
+
+Five focused command/discovery regressions passed. Strict library Clippy passed
+for the changed `brassclaw_reborn_composition` package with `skills-db`,
+`--no-deps` and warnings denied; no lint was suppressed. A broader two-package
+run initially hit the unrelated `chunks_exact_to_as_chunks` warning in
+`brassclaw_skills/src/completed_turn_analysis.rs:63`. The follow-up replaces
+`chunks_exact(2)` with `as_chunks::<2>()`, preserving the validated fixed-length
+checksum decoding. Strict two-package library Clippy subsequently passed with
+the same feature configuration and warnings denied.
+Scoped formatting and whitespace checks passed. This evidence qualifies the
+narrow bundled public-reply bootstrap path, not public activation, ordinary MCP
+command admission or general authored/system-seed approval.
+
+
+## 32. Coherent public-reply activation and approval pins (2026-10-09)
+
+Following section 31's exact trusted bootstrap qualification, activate the shipped
+public reply successor as the installed catalogue's reply workflow. Preserve its
+stable UUIDs, reusable export/code/binding and the original command aliases; new
+aliases remain in the same typed variant. An alias upgrade creates immutable
+successor bytes and requires fresh exact bootstrap evidence. Keep operator drafts
+and old revisions; do not treat a newer unapproved head as active.
+
+The installation owner rechecks trusted approval/evidence and the complete exact
+graph in a repeatable-read transaction, then retains the generation and seeds its
+physical intent anchors in that same transaction. Validate those anchors before
+commit. Operator-owned anchors are not overwritten. Build the knowledge prefix
+from the same selected component documents and include the approved reply manifest
+in the generation identity. Publish the in-memory catalogue only after commit.
+
+Assembly pins each selected usage's approval ID and exact approval-byte checksum
+in the retained instruction/Recipe selection. The durable per-call journal carries
+the same pins. Structural pinning checks the exact association and dependency
+combination; trusted provenance still comes from the installation reader, never
+this generic assembly helper. Bootstrap review subjects remain separate unpinned
+manifests to avoid a circular approval checksum. Activated manifests additionally
+retain approval pins. Untouched legacy/unapproved validation manifest encodings
+remain byte-compatible when no pins exist.
+
+Task capture rechecks generation, graph and trusted approval in a coherent view.
+Actual matching recompiles the selected immutable Recipe and checks the complete
+approval-pinned selection before committing normal-match evidence. Named child/
+reply selection, execution and journal retention carry that same program and its
+pins; they cannot acquire a newer head. Current kernel Tool policy remains a
+separate check before every dispatch. A first blocked qualification stays pending;
+a previously activated public workflow cannot silently downgrade if the current
+artifact's qualification is missing. Incomplete evidence still forbids replay.
+
+An activated declaration alone exposes no MCP command. Serve an explicit empty
+discovery snapshot while complete ordinary-command qualification is missing;
+refresh may replace it only with exact qualified evidence. Full command cases,
+MCP ordinary-chat correlation/closure and Kohai provider windows remain separate
+acceptance work. This is the narrow packaged reply activation path, not a general
+authored catalogue activation engine or full v3 completion.
+
+Validation record (2026-10-09): the activation changes compiled with the normal
+`skills-db`/default production features. Five focused discovery/command checks
+passed. Strict library Clippy for composition, engine and Skills passed with
+`--no-deps -- -D warnings`; no warning suppression was introduced. Scoped
+formatting and whitespace checks passed. The real PostgreSQL/Monty regression
+reached public ordinary-chat execution, checked the same exact approval ID and
+checksum in the Recipe and invocation records, rejected an unapproved operator
+successor and checked live blocking. It then exposed an obsolete test expectation
+that the now-public Recipe could receive empty qualification. That expectation
+was corrected to require `Unqualified`, no committed command qualification and
+an explicitly empty advertising snapshot. The corrected test compiled. After rebuilding the concurrent migration/review
+changes, the complete real PostgreSQL/Monty regression passed (193.07 seconds),
+including restart reuse of the same generation and approval without additional
+Tool invocations. The current shared test binary overflowed its default test-thread
+stack; the passing run used `RUST_MIN_STACK=16777216`. This is a test-thread setting,
+not a runtime resource-policy change. The earlier strict lint result predates the
+concurrent review-module additions and does not certify those later edits. Full
+MCP command qualification/advertising, transport and general authored activation
+remain separate acceptance work.
+
+
+## 33. Full declared-command qualification
+
+Reuse the public reply execution Recipe and its preloadable Skill export; do not
+add a new Tool, executor or model-assisted validation path. Its immutable command
+cases declare three exact literal replies and one policy-denial command, including
+`tool_failure_kind: retained_tool_authorization`. Changing these reviewed bytes
+requires fresh exact bootstrap qualification and coherent activation.
+
+After acknowledged ordinary-chat settlement, refresh pending discovery even when
+an empty snapshot already exists. Publish only after all required observations
+pass together. Retain the qualification checksum in the discovery snapshot and
+restore the same qualified entry on restart through read-only verification.
+
+In the coherent qualification transaction, recheck the trusted bootstrap approval
+and full approval-pinned workflow against the installation generation. Read actual
+normal-match selections, task settlement, typed arguments, immutable invocation
+selection/answer checksums and durable attempt count. For the accepted single-usage
+profile, require exactly one answered invocation for the selected Recipe and
+supported task/constant inputs. Success must agree with the real finalized chat
+message and its content; failure must show the declared kernel policy denial and
+no finalized reply. Capacity/output/history failures, unfinished dispatches and
+unrelated replies cannot substitute. Retain evidence separately from activation
+approval and Tool permission. Do not dispatch examples or toggle global policy
+from the observer. Other activation owners, result-dependent usages and multi-usage
+command profiles require separate acceptance. MCP chat transport/provider windows
+remain open integration work.
+
+Acceptance: run all three examples through ordinary chat in separate task contexts;
+show that success-only coverage and a generic failed task leave discovery empty;
+then observe the exact live-policy denial, automatic publication, immutable proof,
+negative matcher cases and restart without new effects. Reuse the existing native
+PostgreSQL/global-Monty regression and focused discovery checks.
+
+Validation (2026-10-09): the normal default-feature/`skills-db` library build
+passed. All five focused discovery/command checks passed. The real native
+PostgreSQL/global-Monty regression passed in 177.91 seconds, using the retained
+worker/test executables and `RUST_MIN_STACK=16777216` for the test thread. It
+observed all three public commands through separate tasks, success-only pending
+coverage, a completed reply followed by capacity failure that could not qualify
+policy denial, actual live-policy denial, automatic empty-to-qualified publication,
+stale empty snapshot rejection, immutable qualification evidence and restoration
+of the same entry/evidence checksum on restart with no additional Tool invocations.
+The existing approval-pin, operator-successor, isolation and no-Tier-2-replay checks
+also passed. Strict Clippy for composition, engine and Skills with default features
+and `brassclaw_reborn_composition/skills-db`, library targets and
+`--no-deps -- -D warnings` passed (35.28 seconds), with no suppressions. Scoped
+formatting and `git diff --check` passed. Evidence covers the packaged public
+reply qualification path; it does not claim deployed-instance qualification,
+MCP `tools/call` chat transport or Kohai provider-window acceptance.
+
+## 34. Ordinary MCP chat transport and instance listener (in progress)
+
+The transport now has a runtime-owned ordinary-chat bridge. An authenticated
+provider exchange pins its qualified advertising snapshot and receives a fresh
+credential. Initialization and `tools/list` precede command calls. Calls contain
+only a listed name and completed command; no component, Python source, pinned
+Recipe, Monty executor or Rust Tool dispatcher is passed to the HTTP server.
+The existing chat admission, intent matching, IBS and global Monty paths execute
+these commands.
+
+Migration V131 retains exchange/advertisement identity and original request,
+chat, run, accepted-message and terminal-reply correlation. A durable reservation
+precedes submission. Only its original winner submits. Repeated requests recover
+that original run or cached result; changed payloads under one request ID fail.
+Unknown sends remain unresolved and do not create another chat. Terminal results
+are persisted before non-destructive closure, then forwarded. Closing a chat
+retains its transcript and rejects new messages. Startup recovery observes old
+runs and retries closure alone; it never resubmits uncertain commands.
+
+The host ingress now has a dedicated loopback listener owner with graceful
+shutdown and actual listener status. `serve` starts it after runtime readiness,
+retains it until instance shutdown and exposes its observation to WebUI settings.
+Its port is selected at startup with `--mcp-port`; provider disconnect cannot
+stop the listener. Kohai/provider exchange wiring and host-listener acceptance
+are still in progress; this section does not claim those requirements complete.
+
+The extended real PostgreSQL/retained-worker/global-Monty regression passed in
+215.71 seconds. It exercised ordinary correlated submission/replay, changed-input
+rejection, repeated closure, original-run recovery, two authenticated MCP
+exchanges with the same request ID, distinct literal replies, matched Recipe
+execution, retained message references, missing credentials, cached forwarding,
+unknown-send containment and revocation of one exchange without revoking another.
+This evidence covers the captured chat-transport implementation. Later listener
+and recovery guard changes require their own acceptance. The attempted broader
+listener/CLI lint check was interrupted by disappearing shared target artifacts;
+it did not establish a successful lint result.

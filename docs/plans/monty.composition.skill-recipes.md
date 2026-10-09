@@ -1,5 +1,16 @@
 # monty.composition — per-Skill execution Recipe instructions
 
+Implementation update (2026-10-09): the public reply successor uses
+`publish literal reply %` and preserves the original reply command aliases.
+After section 31's exact trusted bootstrap approval/behavior gate, section 32
+activates the selected successor coherently with approval IDs/checksums pinned
+in the Recipe manifest and invocation journal. Routing and prefix data share that
+catalogue generation. Advertising remains empty until full ordinary-command
+qualification. Section 33 now implements that qualification and publication from
+complete durable ordinary-chat observations; MCP chat/provider acceptance remains
+required. History stays private. See sections 30–33 of `monty.composition.md`; this does not waive the
+migration review gate below.
+
 ## Reply/history migration review gate
 
 The existing packaged `host-post-reply` and `host-save-history` Recipes, their

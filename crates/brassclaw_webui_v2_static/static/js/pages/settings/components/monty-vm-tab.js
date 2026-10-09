@@ -18,20 +18,20 @@ import {
   fetchMontyVmStatus,
 } from "../lib/settings-api.js";
 
-// ── Poll interval for live status while restarting ────────────────────────────
-const STATUS_POLL_MS = 3000;
 const EXECUTION_FIELDS = [
+  "worker_adapter_reserve_bytes",
   "max_recipe_contexts", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
   "max_actor_requests", "max_actor_reserved_bytes", "max_actor_control_requests", "max_actor_control_reserved_bytes",
   "startup_timeout_millis", "response_timeout_millis",
   "settings_source_timeout_millis", "settings_uptake_timeout_millis",
   "ownership_check_timeout_millis", "ownership_heartbeat_interval_millis", "max_pending_ownership_checks",
-  "cancellation_ack_timeout_millis",
+  "cancellation_ack_timeout_millis", "settings_reconcile_interval_millis", "status_poll_interval_millis",
   "max_source_bytes", "max_compiled_source_bytes", "max_feeds", "max_stdout_bytes",
   "execution_slice_millis", "max_value_depth", "max_value_nodes", "max_value_bytes",
 ];
-const pendingSettings = (status) => status.state === "running" &&
-  (status.execution_limits?.recipe_contexts_over_capacity === true ||
+const pendingSettings = (status, desiredRevision) => status.state === "running" &&
+  ((Number.isSafeInteger(desiredRevision) && status.task_budget?.desired_revision < desiredRevision) ||
+    status.execution_limits?.recipe_contexts_over_capacity === true ||
     status.execution_limits?.queue_over_capacity === true ||
     status.execution_limits?.settings_over_capacity === true ||
     status.execution_limits?.retention_over_capacity === true ||
@@ -45,7 +45,7 @@ export function MontyVmTab({ searchQuery = "" }) {
 
   // Settings state.
   const [settings, setSettings] = React.useState(null);
-  const persistedMemory = React.useRef(null);
+  const persistedSettings = React.useRef(null);
   const [isLoadingSettings, setIsLoadingSettings] = React.useState(true);
   const [settingsError, setSettingsError] = React.useState(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -57,6 +57,25 @@ export function MontyVmTab({ searchQuery = "" }) {
   const [statusError, setStatusError] = React.useState(null);
   const [isPolling, setIsPolling] = React.useState(false);
 
+  // Share an actual outstanding status request across timer restarts and saves.
+  // An interval change cannot create a second request while the first awaits IO.
+  const statusRequest = React.useRef(null);
+  const fetchStatus = React.useCallback(() => {
+    if (statusRequest.current) return statusRequest.current.promise;
+    const controller = new AbortController();
+    const request = { controller, promise: fetchMontyVmStatus({ signal: controller.signal }) };
+    statusRequest.current = request;
+    const clear = () => { if (statusRequest.current === request) statusRequest.current = null; };
+    request.promise.then(clear, clear);
+    return request.promise;
+  }, []);
+  // A newer acknowledged instance policy can come from another open tab or
+  // durable writer. Follow it while monitoring without replacing unsaved inputs.
+  const acknowledgedLimits = status?.execution_limits;
+  const statusPollMs = acknowledgedLimits?.effective_revision >= persistedSettings.current?.revision
+    ? acknowledgedLimits.limits?.status_poll_interval_millis
+    : persistedSettings.current?.execution_limits?.status_poll_interval_millis;
+
   // Restart state.
   const [showConfirm, setShowConfirm] = React.useState(false);
   const [isRestarting, setIsRestarting] = React.useState(false);
@@ -65,19 +84,20 @@ export function MontyVmTab({ searchQuery = "" }) {
   // Load settings on mount.
   React.useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setIsLoadingSettings(true);
-    Promise.allSettled([fetchMontyVmSettings(), fetchMontyVmStatus()])
+    Promise.allSettled([fetchMontyVmSettings({ signal: controller.signal }), fetchStatus()])
       .then(([s, st]) => {
         if (cancelled) return;
         if (s.status === "fulfilled") {
           setSettings(s.value.settings);
-          persistedMemory.current = s.value.settings;
+          persistedSettings.current = s.value.settings;
           if (s.value.runtime) setStatus(s.value.runtime);
         }
         else setSettingsError(s.reason);
         if (st.status === "fulfilled") {
           setStatus(st.value);
-          setIsPolling(pendingSettings(st.value));
+          setIsPolling(pendingSettings(st.value, persistedSettings.current?.revision));
         } else setStatusError(st.reason.message || String(st.reason));
       })
       .finally(() => {
@@ -85,23 +105,43 @@ export function MontyVmTab({ searchQuery = "" }) {
       });
     return () => {
       cancelled = true;
+      controller.abort();
+      const request = statusRequest.current;
+      // Clear synchronously so a subsequent mount/effect cannot reuse a read
+      // that has already been aborted. Its completion cannot clear a new read.
+      statusRequest.current = null;
+      request?.controller.abort();
     };
-  }, []);
+  }, [fetchStatus]);
+
+  React.useEffect(() => {
+    if (!savedOk) return;
+    const timer = setTimeout(() => setSavedOk(false), 2500);
+    return () => clearTimeout(timer);
+  }, [savedOk]);
 
   // Serial polling while a saved revision awaits acknowledgement.
   React.useEffect(() => {
     if (!isPolling) return;
+    // Use the accepted settings snapshot, never an unsaved form value.
+    if (!Number.isInteger(statusPollMs) || statusPollMs < 1 || statusPollMs > 2147483647) {
+      // Settings are still loading; retain pending status until they arrive.
+      if (statusPollMs === undefined && isLoadingSettings) return;
+      setIsPolling(false);
+      setStatusError(t("montyVm.statusPollInvalid"));
+      return;
+    }
     let cancelled = false;
     let timer;
     const poll = async () => {
       try {
-        const st = await fetchMontyVmStatus();
+        const st = await fetchStatus();
         if (!cancelled) {
           setStatus(st);
           setStatusError(null);
-          if ((st.state === "running" && !pendingSettings(st)) || st.state === "stopped" || st.state === "error") {
+          if ((st.state === "running" && !pendingSettings(st, persistedSettings.current?.revision)) || st.state === "stopped" || st.state === "error") {
             setIsPolling(false);
-          } else timer = setTimeout(poll, STATUS_POLL_MS);
+          } else timer = setTimeout(poll, statusPollMs);
         }
       } catch (err) {
         if (!cancelled) {
@@ -110,12 +150,12 @@ export function MontyVmTab({ searchQuery = "" }) {
         }
       }
     };
-    timer = setTimeout(poll, STATUS_POLL_MS);
+    timer = setTimeout(poll, statusPollMs);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isPolling]);
+  }, [isPolling, statusPollMs, isLoadingSettings, fetchStatus, t]);
 
   const handleSave = React.useCallback(async () => {
     if (!settings) return;
@@ -129,9 +169,11 @@ export function MontyVmTab({ searchQuery = "" }) {
       if (!Number.isSafeInteger(recipeCapacity) || recipeCapacity < 1 || recipeCapacity > 2147483647) throw new Error(t("montyVm.recipeCapacityInvalid"));
       const executionLimits = {};
       for (const key of EXECUTION_FIELDS) {
+        if (String(settings.execution_limits?.[key] ?? "").trim() === "") throw new Error(t("montyVm.executionLimitsInvalid"));
         const value = Number(settings.execution_limits?.[key]);
-        if (!Number.isSafeInteger(value) || value <= 0) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (!Number.isSafeInteger(value) || value < (key === "worker_adapter_reserve_bytes" ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (["max_recipe_contexts", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (key === "status_poll_interval_millis" && value > 2147483647) throw new Error(t("montyVm.statusPollInvalid"));
         executionLimits[key] = value;
       }
       if (executionLimits.response_timeout_millis < executionLimits.startup_timeout_millis ||
@@ -147,10 +189,10 @@ export function MontyVmTab({ searchQuery = "" }) {
       }
       if (!Number.isSafeInteger(memory) || memory < 536870912 || policy.sample_interval_secs < 60) throw new Error(t("montyVm.memoryInvalid"));
       const memoryPatch = {};
-      if (memory !== persistedMemory.current?.max_memory_bytes) memoryPatch.max_memory_bytes = memory;
+      if (memory !== persistedSettings.current?.max_memory_bytes) memoryPatch.max_memory_bytes = memory;
       // A cap-only legacy request means manual mode. The current form must
       // preserve its explicit mode when changing a startup fallback or ceiling.
-      if (memoryPatch.max_memory_bytes !== undefined || JSON.stringify(policy) !== JSON.stringify(persistedMemory.current?.memory_policy)) memoryPatch.memory_policy = policy;
+      if (memoryPatch.max_memory_bytes !== undefined || JSON.stringify(policy) !== JSON.stringify(persistedSettings.current?.memory_policy)) memoryPatch.memory_policy = policy;
       const updated = await updateMontyVmSettings({
         ...memoryPatch,
         execution_limits: executionLimits,
@@ -165,15 +207,14 @@ export function MontyVmTab({ searchQuery = "" }) {
       });
       if (updated?.settings) {
         setSettings(updated.settings);
-        persistedMemory.current = updated.settings;
+        persistedSettings.current = updated.settings;
       }
       if (updated?.runtime) {
         setStatus(updated.runtime);
         setStatusError(null);
-        setIsPolling(pendingSettings(updated.runtime));
+        setIsPolling(pendingSettings(updated.runtime, persistedSettings.current?.revision));
       }
       setSavedOk(true);
-      setTimeout(() => setSavedOk(false), 2500);
     } catch (err) {
       setSaveError(err.message || String(err));
     } finally {
@@ -301,6 +342,9 @@ function StatusCard({ status, isPolling, t }) {
         ${status.execution_limits && html`
           <div className="text-sm text-[var(--v2-text-muted)]">
             ${t("montyVm.executionLimitsTitle")}
+            · ${t("montyVm.workerMemoryBudget")}: ${(status.execution_limits.worker_memory_budget_bytes / 1048576).toFixed(2)} MiB
+            · ${t("montyVm.workerNonVmReserve")}: ${(status.execution_limits.worker_non_vm_reserve_bytes / 1048576).toFixed(2)} MiB
+            · ${t("montyVm.execution.worker_adapter_reserve_bytes")}: ${status.execution_limits.limits.worker_adapter_reserve_bytes}
             · ${t("montyVm.desiredRevision")}: ${status.execution_limits.desired_revision}
             · ${t("montyVm.effectiveRevision")}: ${status.execution_limits.effective_revision}
             · ${t(`montyVm.uptake.${status.execution_limits.uptake}`)}
@@ -320,6 +364,8 @@ function StatusCard({ status, isPolling, t }) {
             · ${t("montyVm.execution.ownership_check_timeout_millis")}: ${status.execution_limits.limits.ownership_check_timeout_millis}
             · ${t("montyVm.execution.ownership_heartbeat_interval_millis")}: ${status.execution_limits.limits.ownership_heartbeat_interval_millis}
             · ${t("montyVm.execution.cancellation_ack_timeout_millis")}: ${status.execution_limits.limits.cancellation_ack_timeout_millis}
+            · ${t("montyVm.execution.settings_reconcile_interval_millis")}: ${status.execution_limits.limits.settings_reconcile_interval_millis}
+            · ${t("montyVm.execution.status_poll_interval_millis")}: ${status.execution_limits.limits.status_poll_interval_millis}
             · ${t("montyVm.pendingOwnershipChecks")}: ${status.execution_limits.pending_ownership_checks} / ${status.execution_limits.limits.max_pending_ownership_checks}
             · ${t("montyVm.ownershipEffectiveRevision")}: ${status.execution_limits.ownership_effective_revision}
             ${status.execution_limits.ownership_over_capacity && html`<span> · ${t("montyVm.ownershipDraining")}</span>`}
@@ -374,11 +420,12 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
   const field = (key, label, desc, type = "number") => html`
     <div className="grid grid-cols-1 sm:grid-cols-3 items-start gap-x-4 gap-y-1 py-3 border-t border-[var(--v2-panel-border)] first:border-0">
       <div>
-        <label className="text-sm font-medium text-[var(--v2-text-strong)]">${label}</label>
+        <label htmlFor=${`monty-setting-${key}`} className="text-sm font-medium text-[var(--v2-text-strong)]">${label}</label>
         ${desc &&
           html`<p className="mt-0.5 text-xs text-[var(--v2-text-muted)]">${desc}</p>`}
       </div>
       <input
+        id=${`monty-setting-${key}`}
         type=${type}
         min=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "1" : undefined}
         max=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "2147483647" : undefined}
@@ -455,7 +502,7 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
         ${EXECUTION_FIELDS.map((key) => html`
           <div key=${key} className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
             <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
-            <input id=${`monty-${key}`} type="number" min="1" step="1"
+            <input id=${`monty-${key}`} type="number" min=${key === "worker_adapter_reserve_bytes" ? "0" : "1"} step="1"
               className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
               value=${settings.execution_limits?.[key] ?? ""} disabled=${isSaving}
               onInput=${(event) => {

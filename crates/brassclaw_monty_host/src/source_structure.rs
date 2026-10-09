@@ -5,8 +5,8 @@
 use std::collections::BTreeSet;
 
 use ruff_python_ast::{
-    Expr, ExprContext, Stmt,
-    visitor::{Visitor, walk_expr, walk_stmt},
+    ExceptHandler, Expr, ExprContext, Stmt,
+    visitor::{Visitor, walk_except_handler, walk_expr, walk_stmt},
 };
 use ruff_text_size::Ranged;
 use serde::{Deserialize, Serialize};
@@ -283,8 +283,21 @@ struct FunctionNames {
     value_references: BTreeSet<String>,
     nested_functions: bool,
     loop_depth: usize,
+    comprehension_scope: bool,
+    enclosing_bindings: BTreeSet<String>,
 }
 impl<'a> Visitor<'a> for FunctionNames {
+    fn visit_except_handler(&mut self, handler: &'a ExceptHandler) {
+        let ExceptHandler::ExceptHandler(handler_body) = handler;
+        // Ruff's default visitor walks the exception type and body, but not
+        // the optional binding identifier. It is local to this function, just
+        // like an assignment; a nested function uses its own FunctionNames.
+        if let Some(name) = &handler_body.name {
+            self.bound.insert(name.to_string());
+        }
+        walk_except_handler(self, handler);
+    }
+
     fn visit_stmt(&mut self, statement: &'a Stmt) {
         match statement {
             Stmt::Import(import) => {
@@ -340,6 +353,44 @@ impl<'a> Visitor<'a> for FunctionNames {
         self.loop_depth -= usize::from(repeatable);
     }
     fn visit_expr(&mut self, expression: &'a Expr) {
+        if let Expr::Named(assignment) = expression
+            && self.comprehension_scope
+        {
+            // Unlike iteration targets, := binds the nearest enclosing
+            // function/lambda, crossing any number of comprehension scopes.
+            // Keep it separate until that owning scope merges this visitor.
+            self.visit_expr(&assignment.value);
+            if let Expr::Name(name) = assignment.target.as_ref() {
+                self.enclosing_bindings.insert(name.id.to_string());
+            } else {
+                self.visit_expr(&assignment.target);
+            }
+            return;
+        }
+        if let Expr::Lambda(lambda) = expression {
+            self.nested_functions = true;
+            let mut nested = FunctionNames::default();
+            if let Some(parameters) = &lambda.parameters {
+                // Defaults are evaluated where the lambda is created. The
+                // parameter names bind only its body, never the outer scope.
+                self.visit_parameters(parameters);
+                nested
+                    .bound
+                    .extend(parameters.iter().map(|p| p.name().to_string()));
+            }
+            nested.visit_expr(&lambda.body);
+            self.read
+                .extend(nested.read.difference(&nested.bound).cloned());
+            self.value_references
+                .extend(nested.value_references.difference(&nested.bound).cloned());
+            for (name, count) in nested.calls {
+                if !nested.bound.contains(&name) {
+                    let value = self.calls.entry(name).or_default();
+                    *value = value.saturating_add(count).min(2);
+                }
+            }
+            return;
+        }
         let comprehension = match expression {
             Expr::ListComp(value) => Some((value.generators.as_slice(), vec![value.elt.as_ref()])),
             Expr::SetComp(value) => Some((value.generators.as_slice(), vec![value.elt.as_ref()])),
@@ -358,6 +409,7 @@ impl<'a> Visitor<'a> for FunctionNames {
         if let Some((generators, values)) = comprehension {
             let mut nested = FunctionNames {
                 loop_depth: 1,
+                comprehension_scope: true,
                 ..Default::default()
             };
             for (index, generator) in generators.iter().enumerate() {
@@ -373,6 +425,16 @@ impl<'a> Visitor<'a> for FunctionNames {
             }
             for value in values {
                 nested.visit_expr(value);
+            }
+            // Comprehensions isolate their target names, not their execution
+            // shape. A lambda nested here can invoke a Tool-calling helper on
+            // every iteration; preserve the closure qualification when merging
+            // free references back into the enclosing function.
+            self.nested_functions |= nested.nested_functions;
+            if self.comprehension_scope {
+                self.enclosing_bindings.extend(nested.enclosing_bindings);
+            } else {
+                self.bound.extend(nested.enclosing_bindings);
             }
             self.read
                 .extend(nested.read.difference(&nested.bound).cloned());

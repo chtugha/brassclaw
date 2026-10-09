@@ -111,6 +111,7 @@ async fn execute_draft_flow(
     let (mut owner, ready) = TransportOwner::start(
         &executable,
         RootBoot {
+            adapter_reserve_bytes: brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize,
             checksum: Sha256::digest(source.as_bytes()).into(),
             source,
             aliases: [

@@ -54,6 +54,8 @@ fn map_json(e: serde_json::Error) -> SessionThreadError {
 /// Full per-thread snapshot stored in `brassclaw_session_threads.metadata`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct ThreadSnapshot {
+    #[serde(default)]
+    closed: bool,
     record: Option<SessionThreadRecord>,
     #[serde(serialize_with = "crate::stored_message::serialize_messages")]
     messages: Vec<ThreadMessageRecord>,
@@ -293,12 +295,24 @@ impl SessionThreadService for PgSessionThreadService {
                         uuid::Uuid::parse_str(&entry.message_id)
                             .map_err(|e| SessionThreadError::Backend(e.to_string()))?,
                     );
-                    let seq = snapshot
+                    let stored = snapshot
                         .messages
                         .iter()
                         .find(|m| m.message_id == message_id)
-                        .map(|m| m.sequence)
-                        .unwrap_or(0);
+                        .ok_or_else(|| {
+                            SessionThreadError::Backend(
+                                "inbound receipt has no message".to_string(),
+                            )
+                        })?;
+                    if stored.actor_id.as_deref() != Some(request.actor_id.as_str())
+                        || stored.content.as_deref() != Some(request.content.as_text())
+                        || stored.reply_target_binding_id != request.reply_target_binding_id
+                    {
+                        return Err(SessionThreadError::Backend(
+                            "inbound event conflicts with its original message".to_string(),
+                        ));
+                    }
+                    let seq = stored.sequence;
                     return Ok((
                         AcceptedInboundMessage {
                             thread_id: request.thread_id,
@@ -308,6 +322,12 @@ impl SessionThreadService for PgSessionThreadService {
                         },
                         snapshot,
                     ));
+                }
+
+                // Original event receipts remain recoverable after closure.
+                // Only a genuinely new admission is rejected.
+                if snapshot.closed {
+                    return Err(SessionThreadError::Backend("thread is closed".to_string()));
                 }
 
                 let message_id = Self::new_message_id();
@@ -949,6 +969,29 @@ impl SessionThreadService for PgSessionThreadService {
         snapshot
             .record
             .ok_or(SessionThreadError::UnknownThread { thread_id })
+    }
+
+    async fn close_thread(
+        &self,
+        scope: &ThreadScope,
+        thread_id: &ThreadId,
+    ) -> Result<(), SessionThreadError> {
+        self.apply(thread_id, |mut snapshot| {
+            let scope = scope.clone();
+            let thread_id = thread_id.clone();
+            async move {
+                if snapshot
+                    .record
+                    .as_ref()
+                    .is_none_or(|record| record.scope != scope)
+                {
+                    return Err(SessionThreadError::UnknownThread { thread_id });
+                }
+                snapshot.closed = true;
+                Ok(((), snapshot))
+            }
+        })
+        .await
     }
 
     async fn delete_thread(

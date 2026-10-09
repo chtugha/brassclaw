@@ -9,11 +9,14 @@ use std::{
 };
 
 use brassclaw_skills::{
-    association_contract::{AssociationError, ComponentRevisionRef, SkillAssociation},
+    association_contract::{
+        AssociationApprovalDeclaration, AssociationError, ComponentRevisionRef, SkillAssociation,
+    },
     component_revision::REVISION_LIMITS,
     value_contract::{ContractError, InputContract},
 };
 use serde_json::Value;
+use sha2::Digest;
 use uuid::Uuid;
 
 use super::{
@@ -102,6 +105,49 @@ pub struct RetainedToolProgram {
 impl RetainedToolProgram {
     pub fn inputs(&self) -> &RetainedRecipeInputs {
         &self.inputs
+    }
+    /// Pin structurally compatible exact approval records. The catalogue owner
+    /// must establish their trusted provenance in its coherent database view;
+    /// this assembly method creates no approval or Tool permission.
+    pub fn with_association_approvals(
+        mut self,
+        approvals: &BTreeMap<String, &AssociationApprovalDeclaration>,
+    ) -> Result<Self, RetainedToolError> {
+        if approvals.len() != self.bindings.len() {
+            return Err(invalid("approval coverage differs from selected bindings"));
+        }
+        let mut pinned = BTreeMap::new();
+        for (step, binding) in &self.bindings {
+            let approval = approvals
+                .get(step)
+                .ok_or_else(|| invalid("selected usage approval missing"))?;
+            approval.require_selected_combination(binding.association(), binding.combination())?;
+            pinned.insert(step.clone(), serde_json::json!({
+                "approval_id": approval.approval_id(),
+                "checksum": format!("{:x}", sha2::Sha256::digest(approval.exact_bytes().as_bytes())),
+            }));
+        }
+        self.inputs.instruction.association_approvals = pinned;
+        Ok(self)
+    }
+    /// Carry an existing selection's pins across recompilation of its actual
+    /// matcher result. No latest lookup or newly reviewed combination occurs.
+    pub fn retain_approvals_from(mut self, original: &Self) -> Result<Self, RetainedToolError> {
+        if self.bindings.len() != original.bindings.len()
+            || self.bindings.iter().any(|(step, binding)| {
+                original.bindings.get(step).is_none_or(|old| {
+                    old.association().exact_bytes() != binding.association().exact_bytes()
+                        || old.combination() != binding.combination()
+                })
+            })
+        {
+            return Err(invalid(
+                "approval inheritance differs from selected combination",
+            ));
+        }
+        self.inputs.instruction.association_approvals =
+            original.inputs.instruction.association_approvals.clone();
+        Ok(self)
     }
     pub fn program(&self) -> &ComposedProgram {
         &self.program

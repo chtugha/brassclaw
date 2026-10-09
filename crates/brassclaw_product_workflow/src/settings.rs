@@ -427,6 +427,10 @@ pub struct MontyMemoryBudgetStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyExecutionLimitsStatus {
+    /// Acknowledged budget above the worker allocator baseline; not RSS.
+    pub worker_memory_budget_bytes: u64,
+    /// Two transport frames plus configured adapter/exception headroom.
+    pub worker_non_vm_reserve_bytes: u64,
     pub pending_ownership_checks: u64,
     pub ownership_over_capacity: bool,
     pub ownership_effective_revision: u64,
@@ -956,7 +960,9 @@ mod execution_limits_update_tests {
     #[test]
     fn execution_limit_updates_require_every_current_field() {
         let limits = MontyExecutionLimits {
+            worker_adapter_reserve_bytes: 0,
             max_pending_ownership_checks: 17,
+            status_poll_interval_millis: 7000,
             ..Default::default()
         };
         let complete = serde_json::to_value(limits).unwrap();

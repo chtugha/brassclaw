@@ -3,7 +3,10 @@
 //! The production catalogue owner must resolve trusted activation/combination
 //! evidence before accepting the result; draft validation can use it separately.
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
@@ -37,6 +40,7 @@ pub struct RetainedRecipeInstruction {
     variant: RecipeVariant,
     class: WorkflowClass,
     ordered: OrderedBuildInstruction,
+    pub(crate) association_approvals: BTreeMap<String, Value>,
 }
 impl RetainedRecipeInstruction {
     pub fn snapshot(&self) -> &RetainedComponentSnapshot {
@@ -53,6 +57,9 @@ impl RetainedRecipeInstruction {
     }
     pub fn ordered(&self) -> &OrderedBuildInstruction {
         &self.ordered
+    }
+    pub fn association_approvals(&self) -> &BTreeMap<String, Value> {
+        &self.association_approvals
     }
 
     /// Exact task/review subject derived from the actual IBS selection. This
@@ -77,7 +84,7 @@ impl RetainedRecipeInstruction {
             .values()
             .map(|revision| revision_reference(revision.reference()))
             .collect();
-        let selection = json!({
+        let mut selection = json!({
             "format":"monty-retained-recipe-selection/1",
             "recipe":revision_reference(self.recipe), "variant":self.variant,
             "workflow_class":match self.class {
@@ -88,6 +95,9 @@ impl RetainedRecipeInstruction {
             "step_order":self.ordered.step_order(),
             "components":references,
         });
+        if !self.association_approvals.is_empty() {
+            selection["association_approvals"] = json!(self.association_approvals);
+        }
         validate_data_bounds(&selection, REVISION_LIMITS)
             .map_err(|_| RetainedSelectionError::Capacity)?;
         let bytes = selection.to_string();
@@ -345,5 +355,6 @@ pub fn compile_retained_recipe(
         variant,
         class,
         ordered,
+        association_approvals: BTreeMap::new(),
     })
 }

@@ -59,8 +59,8 @@ pub use config_store::{InterceptorConfig, InterceptorConfigStore};
 pub use error::InterceptorError;
 pub use mode::{InterceptorMode, SharedInterceptorMode};
 pub use packet::{
-    CapturedPrompt, ComponentProposal, ForensicPacket, KohaiUsage, PacketId, PacketStatus,
-    PromptSegment, SempaiReviewOutcome, TokenAccountingSnapshot,
+    CapturedPrompt, ComponentProposal, ForensicPacket, KohaiUsage, ModelExchangeEvidence, PacketId,
+    PacketStatus, PromptSegment, SempaiReviewOutcome, TokenAccountingSnapshot,
 };
 pub use pg_store::PgInterceptorStore;
 pub use proposal_sink::{NoopProposalSink, ProposalSubmitResult, SempaiProposalSink};

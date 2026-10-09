@@ -103,8 +103,37 @@ impl native_evidence::ReviewObserver for HttpReviewObserver {
         }
         assert_eq!(status, StatusCode::OK);
         assert_eq!(view["review"]["skill_uuid"], skill.to_string());
-        assert_eq!(view["review"]["components"].as_array().unwrap().len(), 4);
+        let components = view["review"]["components"].as_array().unwrap();
+        assert_eq!(components.len(), 5);
+        let mut classes: Vec<_> = components
+            .iter()
+            .map(|component| component["class_code"].as_i64().unwrap())
+            .collect();
+        classes.sort_unstable();
+        assert_eq!(classes, [0, 1, 13, 22, 22]);
         assert_eq!(view["review"]["evidence"].as_array().unwrap().len(), 2);
+        let q1_record = view["review"]["evidence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|record| record["evidence_id"] == q1.to_string())
+            .unwrap();
+        let q1_evidence: Value =
+            serde_json::from_str(q1_record["evidence_bytes"].as_str().unwrap()).unwrap();
+        let python_ids: std::collections::BTreeSet<_> = components
+            .iter()
+            .filter(|component| component["class_code"] == 22)
+            .map(|component| component["uuid"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(
+            q1_evidence["report"]["sources"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            python_ids
+        );
         let approval = Uuid::new_v4();
         let request = json!({"approval_id":approval,"selection":selection,
             "review_checksum":view["review_checksum"],

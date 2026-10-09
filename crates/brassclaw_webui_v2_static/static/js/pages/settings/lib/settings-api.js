@@ -222,8 +222,8 @@ export function fetchSettingsComponentGraph() {
 }
 
 // Phase 6 — Monty VM settings + lifecycle.
-export function fetchMontyVmSettings() {
-  return apiFetch("/api/settings/monty-vm");
+export function fetchMontyVmSettings({ signal } = {}) {
+  return apiFetch("/api/settings/monty-vm", { signal });
 }
 export function updateMontyVmSettings(payload) {
   return apiFetch("/api/settings/monty-vm", {
@@ -237,8 +237,8 @@ export function restartMontyVm(payload = {}) {
     body: JSON.stringify(payload),
   });
 }
-export function fetchMontyVmStatus() {
-  return apiFetch("/api/settings/monty-vm/status");
+export function fetchMontyVmStatus({ signal } = {}) {
+  return apiFetch("/api/settings/monty-vm/status", { signal });
 }
 
 // Step C.4 — Operator-level mode-driven security posture (per-layer overrides).

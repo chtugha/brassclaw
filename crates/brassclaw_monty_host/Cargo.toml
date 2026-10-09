@@ -11,6 +11,7 @@ description = "Isolated Monty 1.0 task program hosting for the global orchestrat
 
 [dependencies]
 futures = "0.3"
+brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_resources = { path = "../brassclaw_resources" }
 monty = { path = "../../vendor/monty-control/crates/monty" }
 monty-types = { path = "../../vendor/monty-control/crates/monty-types" }

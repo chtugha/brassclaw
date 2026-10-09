@@ -40,7 +40,8 @@ const DEFAULT_FORENSIC_PACKETS_DAYS: i64 = 42;
 
 /// Spawn the background retention sweep task.
 ///
-/// Returns a [`tokio::task::JoinHandle`] — drop it or abort it to stop the sweep.
+/// Returns a [`tokio::task::JoinHandle`]. Abort and await it before shutting down
+/// the database. Dropping the handle alone detaches the task and retains its pool.
 pub fn spawn_retention_sweep(pool: Arc<PgPool>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = interval(SWEEP_INTERVAL);

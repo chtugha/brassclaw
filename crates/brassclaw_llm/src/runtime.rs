@@ -177,6 +177,14 @@ impl SwappableLlmProvider {
     fn current(&self) -> Arc<dyn LlmProvider> {
         read(&self.state).inner.clone()
     }
+
+    /// Retain the actual provider object and model from one atomic snapshot.
+    /// Long-lived work must also use an explicit model override: subsequent
+    /// swaps or mutable provider defaults must not change an admitted call.
+    pub fn pinned_provider(&self) -> (Arc<dyn LlmProvider>, String) {
+        let snapshot = read(&self.state);
+        (snapshot.inner.clone(), snapshot.active_model_name.to_string())
+    }
 }
 
 #[async_trait]

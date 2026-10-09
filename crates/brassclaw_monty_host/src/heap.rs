@@ -31,6 +31,15 @@ pub struct HeapStatus {
     pub effective: Option<HeapSettings>,
     pub pending_reduction: bool,
 }
+
+/// Acknowledged worker budget, relative to its allocator baseline; not RSS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AllocatorStatus {
+    pub adapter_reserve_bytes: usize,
+    pub non_vm_reserve_bytes: usize,
+    pub memory_budget_bytes: usize,
+}
 impl HeapStatus {
     pub fn desired_revision(self) -> u64 {
         self.desired.map_or(0, |settings| settings.revision)
@@ -41,14 +50,21 @@ pub(crate) struct WorkerHeap {
     status: HeapStatus,
     initial_max_soft_bytes: usize,
     non_vm_reserve_bytes: usize,
+    frame_bytes: usize,
+    adapter_reserve_bytes: usize,
+    memory_budget_bytes: usize,
 }
 impl WorkerHeap {
-    pub(crate) fn new(physical: usize, frame: usize) -> Result<Self, VmError> {
+    pub(crate) fn new(
+        physical: usize,
+        frame: usize,
+        adapter_reserve: usize,
+    ) -> Result<Self, VmError> {
         // Incoming frame, outgoing frame and exception/adapter headroom remain
         // separate from the logical domain. No cap is silently saturated.
         let non_vm_reserve_bytes = frame
             .checked_mul(2)
-            .and_then(|frames| frames.checked_add(4 * 1024 * 1024))
+            .and_then(|frames| frames.checked_add(adapter_reserve))
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
         let initial_max_soft_bytes = physical
             .checked_sub(non_vm_reserve_bytes)
@@ -62,11 +78,55 @@ impl WorkerHeap {
             },
             initial_max_soft_bytes,
             non_vm_reserve_bytes,
+            frame_bytes: frame,
+            adapter_reserve_bytes: adapter_reserve,
+            memory_budget_bytes: physical,
         })
     }
 
     pub(crate) fn status(&self) -> HeapStatus {
         self.status
+    }
+
+    pub(crate) fn allocator_status(&self) -> AllocatorStatus {
+        AllocatorStatus {
+            adapter_reserve_bytes: self.adapter_reserve_bytes,
+            non_vm_reserve_bytes: self.non_vm_reserve_bytes,
+            memory_budget_bytes: self.memory_budget_bytes,
+        }
+    }
+
+    /// The synchronous worker owns this quiescent boundary. The allocator
+    /// validates actual live VM/physical bytes before changing either limit.
+    /// Heap publications and pending automatic reductions retain their revisions.
+    pub(crate) fn update_adapter_reserve(&mut self, reserve: usize) -> Result<(), VmError> {
+        let non_vm = self
+            .frame_bytes
+            .checked_mul(2)
+            .and_then(|frames| frames.checked_add(reserve))
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        let current = self
+            .status
+            .effective
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        let capacity = current
+            .max_vm_bytes
+            .checked_add(non_vm)
+            .filter(|bytes| *bytes != usize::MAX)
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        if self.status.desired.is_some_and(|desired| {
+            desired
+                .max_vm_bytes
+                .checked_add(non_vm)
+                .is_none_or(|bytes| bytes == usize::MAX)
+        }) {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        monty_alloc::set_worker_limits(current.max_vm_bytes, non_vm).map_err(limit_error)?;
+        self.non_vm_reserve_bytes = non_vm;
+        self.adapter_reserve_bytes = reserve;
+        self.memory_budget_bytes = capacity;
+        Ok(())
     }
 
     pub(crate) fn update(
@@ -96,6 +156,7 @@ impl WorkerHeap {
         } else {
             match monty_alloc::set_worker_limits(next.max_vm_bytes, self.non_vm_reserve_bytes) {
                 Ok(()) => {
+                    self.memory_budget_bytes = next.max_vm_bytes + self.non_vm_reserve_bytes;
                     self.status = HeapStatus {
                         desired: Some(next),
                         effective: Some(next),
@@ -129,6 +190,10 @@ impl WorkerHeap {
                     self.non_vm_reserve_bytes,
                 ) {
                     Ok(()) => {
+                        self.memory_budget_bytes = desired
+                            .max_vm_bytes
+                            .checked_add(self.non_vm_reserve_bytes)
+                            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
                         self.status.effective = Some(desired);
                         self.status.pending_reduction = false;
                     }

@@ -1,5 +1,5 @@
-# Global class-10 orchestrator source for the Phase 3a hosting cutover.
-# Not activated by the legacy driver. The host must validate and pin each task's
+# Global class-10 orchestrator, retained at ordinary skills-db startup.
+# The host must validate and pin each task's
 # BuildInstruction and retain its scoped host ports across pending calls.
 # No claim token, credential or shared conversation history belongs in this VM.
 import asyncio
@@ -42,7 +42,7 @@ def _validate_ref(ref, available, input_names, items):
         if ref[field] not in allowed:
             raise RuntimeError("recipe_composition_failed")
         path = ref["path"]
-        if not isinstance(path, list) or len(path) > 16:
+        if not isinstance(path, list):
             raise RuntimeError("recipe_composition_failed")
         for part in path:
             if not isinstance(part, str) or part == "":
@@ -51,27 +51,28 @@ def _validate_ref(ref, available, input_names, items):
         raise RuntimeError("recipe_composition_failed")
 
 
-def _flow_bound(value, maximum):
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1 or value > maximum:
+def _flow_bound(value):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise RuntimeError("recipe_composition_failed")
     return value
 
 
-def _validate_flow_nodes(nodes, step_ids, input_names, available, items, seen, depth):
+def _validate_flow_nodes(nodes, step_ids, input_names, available, items, seen):
     # A structured tree has no arbitrary back edges. Only repeat/foreach nodes
-    # repeat work, with explicit technical bounds and unique occurrence IDs.
-    if depth > 16 or not isinstance(nodes, list) or len(nodes) == 0:
+    # repeat work, with explicit Recipe bounds and unique occurrence IDs.
+    # Live typed-value, memory and compute budgets bound the tree and work;
+    # this validator must not impose a second fixed capacity or truncate it.
+    if not isinstance(nodes, list) or len(nodes) == 0:
         raise RuntimeError("recipe_composition_failed")
     available = list(available)
-    maximum = 0
     returned = False
     for node in nodes:
         if returned or not isinstance(node, dict):
             raise RuntimeError("recipe_composition_failed")
         node_id = node.get("node_id")
-        if not _input_name(node_id) or node_id in seen or len(seen) >= 512:
+        if not _input_name(node_id) or node_id in seen:
             raise RuntimeError("recipe_composition_failed")
-        seen.append(node_id)
+        seen[node_id] = True
         kind = node.get("kind")
         if kind == "step":
             _exact_fields(node, ["kind", "node_id", "step_id", "inputs"])
@@ -87,9 +88,8 @@ def _validate_flow_nodes(nodes, step_ids, input_names, available, items, seen, d
             # that declaration; duplicate declarations cannot change bindings.
             if step_id in seen:
                 raise RuntimeError("recipe_composition_failed")
-            seen.append(step_id)
+            seen[step_id] = True
             available.append(step_id)
-            maximum = maximum + 1
         elif kind == "branch":
             _exact_fields(node, ["kind", "node_id", "source", "cases"])
             _validate_ref(node["source"], available, input_names, items)
@@ -97,39 +97,34 @@ def _validate_flow_nodes(nodes, step_ids, input_names, available, items, seen, d
             if not isinstance(cases, dict) or len(cases) == 0:
                 raise RuntimeError("recipe_composition_failed")
             common = None
-            branch_maximum = 0
             all_returned = True
             for tag in cases:
                 if not _input_name(tag):
                     raise RuntimeError("recipe_composition_failed")
-                checked = _validate_flow_nodes(cases[tag], step_ids, input_names, available, items, seen, depth + 1)
-                branch_maximum = max(branch_maximum, checked[1])
-                all_returned = all_returned and checked[2]
-                if not checked[2]:
+                checked = _validate_flow_nodes(cases[tag], step_ids, input_names, available, items, seen)
+                all_returned = all_returned and checked[1]
+                if not checked[1]:
                     if common is None:
                         common = checked[0]
                     else:
                         common = [name for name in common if name in checked[0]]
             if common is not None:
                 available = common
-            maximum = maximum + branch_maximum
             returned = all_returned
         elif kind == "foreach":
             _exact_fields(node, ["kind", "node_id", "source", "max_items", "body", "result"])
             _validate_ref(node["source"], available, input_names, items)
-            count = _flow_bound(node["max_items"], 256)
-            checked = _validate_flow_nodes(node["body"], step_ids, input_names, available, items + [node_id], seen, depth + 1)
+            _flow_bound(node["max_items"])
+            checked = _validate_flow_nodes(node["body"], step_ids, input_names, available, items + [node_id], seen)
             _validate_ref(node["result"], checked[0], input_names, items + [node_id])
             # Only the declared collected result escapes, including [] for no items.
             available.append(node_id)
-            maximum = maximum + count * checked[1]
         elif kind == "repeat":
             _exact_fields(node, ["kind", "node_id", "max_iterations", "initial", "body", "update"])
-            count = _flow_bound(node["max_iterations"], 64)
+            _flow_bound(node["max_iterations"])
             _validate_ref(node["initial"], available, input_names, items)
-            checked = _validate_flow_nodes(node["body"], step_ids, input_names, available, items + [node_id], seen, depth + 1)
+            checked = _validate_flow_nodes(node["body"], step_ids, input_names, available, items + [node_id], seen)
             _validate_ref(node["update"], checked[0], input_names, items + [node_id])
-            maximum = maximum + count * checked[1]
             # Exhaustion fails; an explicit return exits the entire Recipe.
             returned = True
         elif kind == "return":
@@ -138,9 +133,7 @@ def _validate_flow_nodes(nodes, step_ids, input_names, available, items, seen, d
             returned = True
         else:
             raise RuntimeError("recipe_composition_failed")
-        if maximum > 4096:
-            raise RuntimeError("recipe_composition_failed")
-    return [available, maximum, returned]
+    return [available, returned]
 
 
 def _validate_flow(flow, step_ids, inputs):
@@ -149,9 +142,13 @@ def _validate_flow(flow, step_ids, inputs):
     _exact_fields(flow, ["format", "body"])
     if flow["format"] != "recipe-flow/1":
         raise RuntimeError("recipe_composition_failed")
-    seen = []
-    checked = _validate_flow_nodes(flow["body"], step_ids, list(inputs), [], [], seen, 0)
-    if not checked[2]:
+    # Membership checks stay linear overall for large flat workflows.
+    selected = {}
+    for step_id in step_ids:
+        selected[step_id] = True
+    seen = {}
+    checked = _validate_flow_nodes(flow["body"], selected, inputs, [], [], seen)
+    if not checked[1]:
         raise RuntimeError("recipe_composition_failed")
     for step_id in step_ids:
         if step_id not in seen:
@@ -225,7 +222,8 @@ async def _run_flow_nodes(task_token, program_ref, nodes, state, items, occurren
             state["results"][node_id] = collected
         elif kind == "repeat":
             carried = _flow_value(node["initial"], state, items)
-            for index in range(node["max_iterations"]):
+            index = 0
+            while index < node["max_iterations"]:
                 local = {"inputs": state["inputs"], "results": dict(state["results"]), "previous_result": state["previous_result"]}
                 local_items = dict(items)
                 local_items[node_id] = carried
@@ -233,6 +231,7 @@ async def _run_flow_nodes(task_token, program_ref, nodes, state, items, occurren
                 if outcome["returned"]:
                     return outcome
                 carried = _flow_value(node["update"], local, local_items)
+                index = index + 1
             raise RuntimeError("recipe_execution_failed")
     return {"returned": False, "value": None}
 
@@ -391,6 +390,14 @@ async def _execute_task(task):
     if not isinstance(intent, dict):
         raise RuntimeError("intent_resolution_failed")
     status = intent.get("status")
+    if status == "internal_review":
+        # Only trusted task ports can issue this selection. Ordinary chat ports
+        # reject internal completion, even if a Recipe fabricates its shape.
+        receipt = await _execute_recipe(task_token, intent.get("component_id"),
+                                        intent.get("step_link"), intent.get("inputs"))
+        if not isinstance(receipt, str) or not receipt.startswith("review:"):
+            raise RuntimeError("recipe_execution_failed")
+        return {"receipt_ref": receipt}
     if status == "match":
         recipe_id = intent.get("component_id")
         step_link = intent.get("step_link")
@@ -461,6 +468,7 @@ async def _worker(worker_id):
             raise RuntimeError("task_envelope_invalid")
         outcome = "completed"
         reply_ref = None
+        receipt_ref = None
         reason_kind = None
         try:
             # VM hosting control, not a Tool invocation or permission grant.
@@ -468,6 +476,10 @@ async def _worker(worker_id):
             # permanent worker or poisoning the instance control latch.
             host.enter_task(task_token)
             reply_ref = await _execute_task(task)
+            if isinstance(reply_ref, dict) and sorted(reply_ref) == ["receipt_ref"]:
+                receipt_ref = reply_ref["receipt_ref"]
+                reply_ref = None
+                outcome = "internal_completed"
         except Exception as error:
             # The service retains the actual host failure/cancellation reason.
             # Do not expose arbitrary exception text or replay as Tier 2.
@@ -484,13 +496,15 @@ async def _worker(worker_id):
                 reason_kind = safe_reason
             safe_reason = None
         await host.finish_task(task_token, {
-            "status": outcome, "reply_ref": reply_ref, "reason_kind": reason_kind
+            "status": outcome, "reply_ref": reply_ref, "reason_kind": reason_kind,
+            "receipt_ref": receipt_ref
         })
         # Release all task-local history and values before the next work wait.
         task = None
         task_token = None
         outcome = None
         reply_ref = None
+        receipt_ref = None
         reason_kind = None
 
 

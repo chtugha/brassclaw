@@ -332,6 +332,7 @@ pub struct TransportClient {
     inbox: CompletionInbox,
     values: watch::Receiver<VmBounds>,
     recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
+    allocator: watch::Receiver<crate::heap::AllocatorStatus>,
     frame: usize,
     stopped: watch::Receiver<Option<StopKind>>,
 }
@@ -432,6 +433,10 @@ impl TransportClient {
 
     pub fn live_recipe_contexts(&self) -> watch::Receiver<crate::process::RecipeContextCapacity> {
         self.recipe_contexts.clone()
+    }
+
+    pub fn allocator_status(&self) -> crate::heap::AllocatorStatus {
+        *self.allocator.borrow()
     }
 
     pub fn completions(&self) -> CompletionInbox {
@@ -669,12 +674,14 @@ impl TransportOwner {
         };
         let (values_tx, values_rx) = watch::channel(values);
         let (contexts_tx, contexts_rx) = watch::channel(context_capacity);
+        let (allocator_tx, allocator_rx) = watch::channel(ready.allocator);
         let client = TransportClient {
             tx,
             control_tx,
             inbox: inbox.clone(),
             values: values_rx,
             recipe_contexts: contexts_rx,
+            allocator: allocator_rx,
             frame: process_limits.max_frame_bytes,
             stopped: observed_stop,
         };
@@ -688,6 +695,7 @@ impl TransportOwner {
             RuntimeObservations {
                 values: values_tx,
                 recipe_contexts: contexts_tx,
+                allocator: allocator_tx,
             },
         ));
         Ok((
@@ -737,6 +745,7 @@ impl Drop for TransportOwner {
 struct RuntimeObservations {
     values: watch::Sender<VmBounds>,
     recipe_contexts: watch::Sender<crate::process::RecipeContextCapacity>,
+    allocator: watch::Sender<crate::heap::AllocatorStatus>,
 }
 
 async fn run(
@@ -809,6 +818,9 @@ async fn run(
             && let Some(capacity) = snapshot.recipe_context_capacity
         {
             observed.recipe_contexts.send_replace(capacity);
+        }
+        if let Ok(snapshot) = &outcome {
+            observed.allocator.send_replace(snapshot.allocator);
         }
         let graceful = outcome
             .as_ref()

@@ -61,7 +61,7 @@ fn record<'a>(
 /// exact component references. A caller cannot replace a contract with one
 /// loaded from a newer mutable row. Monty still owns runtime values/results.
 pub struct RetainedRecipeInputs {
-    instruction: RetainedRecipeInstruction,
+    pub(crate) instruction: RetainedRecipeInstruction,
     task: InputContract,
     contracts: BTreeMap<String, StepContracts>,
     components: BTreeMap<String, ComponentRevisionRef>,

@@ -832,6 +832,26 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
             .unwrap();
         assert_eq!(packet.status, PacketStatus::Complete);
         assert!(packet.completed_at.is_some());
+        let exchange = packet.model_exchange.as_ref().unwrap();
+        assert_eq!(exchange.format, "host-model-exchange/1");
+        assert_eq!(
+            exchange.original_request_bytes,
+            exchange.effective_request_bytes.as_deref().unwrap()
+        );
+        let retained: HostManagedModelRequest =
+            serde_json::from_str(&exchange.original_request_bytes).unwrap();
+        assert_eq!(retained.run_id.to_string(), run_id);
+        let response: HostManagedModelResponse =
+            serde_json::from_str(exchange.response_bytes.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            response.output,
+            brassclaw_turns::run_profile::ParentLoopOutput::AssistantReply(
+                brassclaw_turns::run_profile::AssistantReply {
+                    content: "actual scoped reply".into()
+                }
+            )
+        );
+        assert!(exchange.failure.is_none());
     }
     {
         let requests = provider.requests.lock().unwrap();
@@ -905,7 +925,7 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
         },
     })
     .unwrap();
-    let (input, handoff, threads, scope, _) = admitted(
+    let (input, handoff, threads, scope, packets) = admitted(
         database.pool.clone(),
         provider.clone(),
         "tools",
@@ -1057,6 +1077,54 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
         assert_eq!(requests.len(), 2);
         assert_work_matches_provider(&provider, &requests);
     }
+    let captured = packets.list_recent(10).await.unwrap();
+    let followup = captured
+        .iter()
+        .find(|packet| packet.iteration == 1)
+        .unwrap();
+    let exchange = followup.model_exchange.as_ref().unwrap();
+    let effective: Value =
+        serde_json::from_str(exchange.effective_request_bytes.as_deref().unwrap()).unwrap();
+    let replay = effective["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["role"] == "tool_result")
+        .unwrap();
+    assert_eq!(
+        replay["tool_result_provider_call"]["provider_call_id"],
+        "native-call-1"
+    );
+    assert_eq!(
+        replay["tool_result_provider_call"]["signature"],
+        "native-provider-signature"
+    );
+    assert_eq!(
+        replay["tool_result_provider_call"]["capability_id"],
+        "builtin.list_dir"
+    );
+    assert!(!replay["tool_result_content"].is_null());
+    let client = database.pool.get().await.unwrap();
+    let event: String = client
+        .query_one(
+            "SELECT event_bytes FROM brassclaw_monty_review_events WHERE run_id=$1",
+            &[&uuid::Uuid::parse_str(&context.run_id.to_string()).unwrap()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let event: Value = serde_json::from_str(&event).unwrap();
+    let retained = event["model_packets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|packet| packet["iteration"] == 1)
+        .unwrap();
+    assert_eq!(
+        retained["model_exchange"],
+        serde_json::to_value(exchange).unwrap()
+    );
+    assert_eq!(event["evidence_complete"], false);
     owner.request_shutdown();
     let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
         .await

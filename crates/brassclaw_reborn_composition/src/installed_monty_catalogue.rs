@@ -11,8 +11,8 @@ use brassclaw_engine::{
     },
     memory::{
         intent_system::{
-            IntentResolution, IntentScope, IntentSource, RetainedIntentEligibility, classify_query,
-            resolve_catalogue_intent_in_transaction, seed_intent_input,
+            IntentResolution, IntentScope, RetainedIntentEligibility,
+            resolve_catalogue_intent_in_transaction, seed_retained_recipe_intents_in_transaction,
         },
         retained_instruction::{
             WorkflowClass, compile_matched_retained_recipe, compile_retained_recipe,
@@ -70,7 +70,7 @@ fn failed() -> AgentLoopDriverError {
         reason_kind: "monty_catalogue_capture_failed".into(),
     }
 }
-fn id(name: &str) -> Uuid {
+pub(crate) fn id(name: &str) -> Uuid {
     Uuid::new_v5(
         &Uuid::from_u128(0x19ddf38d_487e_4732_b008_5a1ec57d2ef9),
         name.as_bytes(),
@@ -95,6 +95,9 @@ pub(crate) struct InstalledMontyCatalogue {
     prefix: String,
     mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
     qualification_scope: IntentScope,
+    // Retain the bootstrap subject independently of its approved active selection.
+    _public_reply_candidate: Arc<InspectedRetainedProgram>,
+    reply_approval: Option<crate::bootstrap_reply_approval::BootstrapReplyApproval>,
     // Retain the actual executable, independently of a mutable source pathname.
     _image: Arc<NativeExecutableImage>,
 }
@@ -229,6 +232,54 @@ impl InstalledMontyCatalogue {
         let reply = prepared
             .pop()
             .ok_or_else(|| invalid("installed reply Recipe is missing"))?;
+        let public_reply_candidate =
+            crate::public_recipe_population::retain_public_reply_candidate(
+                pool.clone(),
+                &reply,
+                worker,
+            )
+            .await?;
+        // Policy initialization precedes contained qualification, without enabling
+        // an existing blocked Tool. Activation is published only after evidence.
+        let client = pool
+            .get()
+            .await
+            .map_err(|_| invalid("Tool settings unavailable"))?;
+        for tool in tools.values() {
+            client.execute("INSERT INTO brassclaw_instance_tool_settings(tool_id) VALUES($1) ON CONFLICT(tool_id) DO NOTHING", &[tool])
+                .await.map_err(|_| invalid("instance Tool setting initialization failed"))?;
+        }
+        drop(client);
+        let public_reply_approval = Box::pin(crate::bootstrap_reply_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            public_reply_candidate.clone(),
+            worker,
+        ))
+        .await?;
+        if let Some(approval) = &public_reply_approval {
+            tracing::info!(approval_id=%approval.approval_id(), selection_checksum=%hex::encode(approval.selection_checksum()),
+                "public reply bootstrap qualification retained");
+        }
+        let reply = match &public_reply_approval {
+            Some(approval) => approval.activated_program(pool.clone()).await?,
+            None => {
+                let client = pool
+                    .get()
+                    .await
+                    .map_err(|_| invalid("activation history unavailable"))?;
+                let active: bool = client.query_one(
+                    "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_boot_catalogues WHERE catalogue_bytes::jsonb #>> '{reply_selection,recipe,uuid}'=$1 AND catalogue_bytes::jsonb #> '{reply_selection,association_approvals}' IS NOT NULL)",
+                    &[&id("reply:recipe").to_string()],
+                ).await.map_err(|_| invalid("activation history invalid"))?.get(0);
+                if active {
+                    return Err(invalid(
+                        "an activated public reply cannot downgrade while its successor awaits qualification",
+                    ));
+                }
+                reply // Never-activated candidate remains pending under a first-time block.
+            }
+        };
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -264,7 +315,8 @@ impl InstalledMontyCatalogue {
             json!({"format":"installation-monty-catalogue/1", "validation_mode":"system_seed",
             "components":documents,"references":references,"root":reference_value(root),
             "prefix_checksum":hex::encode(Sha256::digest(prefix.as_bytes())),
-            "artifact_checksum":hex::encode(image.checksum())})
+            "artifact_checksum":hex::encode(image.checksum()),
+            "reply_selection":serde_json::from_str::<Value>(reply.program().inputs().instruction().retained_selection().map_err(|e| invalid(e.to_string()))?.exact_bytes()).map_err(|e| invalid(e.to_string()))?})
             .to_string();
         let generation = id(&hex::encode(Sha256::digest(generation_bytes.as_bytes())));
         let checksum = hex::encode(Sha256::digest(generation_bytes.as_bytes()));
@@ -273,7 +325,9 @@ impl InstalledMontyCatalogue {
             .await
             .map_err(|_| invalid("installation catalogue database unavailable"))?;
         let tx = client
-            .transaction()
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
             .await
             .map_err(|_| invalid("installation catalogue transaction failed"))?;
         tx.execute("INSERT INTO brassclaw_monty_boot_catalogues(catalogue_id,catalogue_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(catalogue_id) DO NOTHING",
@@ -284,29 +338,45 @@ impl InstalledMontyCatalogue {
         {
             return Err(invalid("installation catalogue integrity failed"));
         }
-        for tool in tools.values() {
-            tx.execute("INSERT INTO brassclaw_instance_tool_settings(tool_id) VALUES($1) ON CONFLICT(tool_id) DO NOTHING", &[tool])
-                .await.map_err(|_| invalid("instance Tool setting initialization failed"))?;
+        if let Some(approval) = &public_reply_approval {
+            approval.verify_in_transaction(&tx).await?;
+        }
+        for selected in [&reply, &history] {
+            let instruction = selected.program().inputs().instruction();
+            let refs: Vec<_> = instruction
+                .snapshot()
+                .revisions()
+                .values()
+                .map(|r| r.reference())
+                .collect();
+            PgComponentRevisionStore::read_exact_in_transaction(
+                &tx,
+                &[instruction.recipe().uuid],
+                &refs,
+            )
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
+        }
+        seed_retained_recipe_intents_in_transaction(
+            &tx,
+            scope,
+            reply.program().inputs().instruction(),
+        )
+        .await
+        .map_err(|e| invalid(e.to_string()))?;
+        if public_reply_approval.is_some() {
+            crate::mcp_command_qualification::verify_routing_metadata(
+                &tx,
+                scope,
+                &[reply.program().inputs().instruction()],
+            )
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
         }
         tx.commit()
             .await
             .map_err(|_| invalid("installation catalogue commit failed"))?;
         drop(client);
-        let instruction = reply.program().inputs().instruction();
-        for example in &instruction.variant().intent_examples {
-            seed_intent_input(
-                &pool,
-                scope,
-                example,
-                classify_query(example),
-                instruction.recipe().uuid,
-                21,
-                IntentSource::Seeded,
-                instruction.variant().step_link.as_deref(),
-            )
-            .await
-            .map_err(|_| invalid("installation intent retention failed"))?;
-        }
         // Discovery uses exactly this qualified normal-chat catalogue, never
         // raw Skill/Recipe tables or a parallel latest-version selection.
         let mcp_discovery = Arc::new(crate::mcp_recipe_catalogue::McpRecipeDiscovery::new());
@@ -316,6 +386,7 @@ impl InstalledMontyCatalogue {
             generation,
             &[&reply, &history],
             &[&reply],
+            public_reply_approval.as_ref(),
         )
         .await;
         match qualified {
@@ -323,6 +394,9 @@ impl InstalledMontyCatalogue {
                 .publish_qualified_installed(None, generation, &[&reply, &history], &qualified)
                 .map_err(|error| invalid(error.to_string()))?,
             Err(crate::mcp_recipe_catalogue::McpDiscoveryError::Unqualified) => {
+                mcp_discovery
+                    .publish_unadvertised_installed(None, generation, &[&reply, &history])
+                    .map_err(|e| invalid(e.to_string()))?;
                 tracing::info!("MCP discovery awaits complete normal-command evidence");
             }
             Err(error) => return Err(invalid(error.to_string())),
@@ -330,6 +404,8 @@ impl InstalledMontyCatalogue {
         Ok(Arc::new(Self {
             mcp_discovery,
             qualification_scope: scope.clone(),
+            _public_reply_candidate: public_reply_candidate,
+            reply_approval: public_reply_approval,
             pool,
             kernel,
             reply,
@@ -409,6 +485,12 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                 != hex::encode(Sha256::digest(self.generation_bytes.as_bytes()))
         {
             return Err(failed());
+        }
+        if let Some(approval) = &self.reply_approval {
+            approval
+                .verify_in_transaction(&tx)
+                .await
+                .map_err(|_| failed())?;
         }
         for selected in [&self.reply, &self.history] {
             let instruction = selected.program().inputs().instruction();
@@ -512,11 +594,60 @@ fn copy_selection(selected: &SelectedMontyRecipe) -> SelectedMontyRecipe {
     }
 }
 
+/// The contained installation validator reuses the exact production dispatcher,
+/// kernel reply registration, current global policy and durable effect journal.
+pub(crate) fn bootstrap_reply_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    let binding = program
+        .bindings()
+        .get("0:2")
+        .ok_or_else(|| invalid("bootstrap reply binding missing"))?;
+    if binding.capability_id() != "host.post_reply" || program.bindings().len() != 1 {
+        return Err(invalid("bootstrap only accepts the packaged reply usage"));
+    }
+    let descriptor = crate::monty_kernel::reply_package()?
+        .capabilities
+        .into_iter()
+        .next()
+        .ok_or_else(|| invalid("bootstrap reply descriptor missing"))?;
+    let policy = Arc::new(PgSelectedToolPolicy {
+        host: host.clone(),
+        pool,
+        tool: binding.tool().uuid,
+        capability: descriptor.id.clone(),
+        effects: descriptor.effects,
+        mounts: MountView::default(),
+    });
+    let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
+        live: policy,
+        denied,
+    });
+    let runtime = kernel.reply(host.clone(), policy)?;
+    Ok(Arc::new(SelectedTools {
+        host,
+        admission,
+        program,
+        runtime: Arc::new(runtime),
+        mounts: MountView::default(),
+        answers: tokio::sync::Mutex::new(BTreeMap::new()),
+    }))
+}
+
 #[async_trait]
 impl MontyTaskCatalogue for TaskCatalogue {
     async fn refresh_command_qualification(&self) {
         let package = &self._package;
-        if package.mcp_discovery.snapshot().is_ok() {
+        if package
+            .mcp_discovery
+            .snapshot()
+            .is_ok_and(|snapshot| snapshot.qualification_checksum().is_some())
+        {
             return;
         }
         let result = async {
@@ -526,10 +657,15 @@ impl MontyTaskCatalogue for TaskCatalogue {
                 package.generation,
                 &[&package.reply, &package.history],
                 &[&package.reply],
+                package.reply_approval.as_ref(),
             )
             .await?;
             package.mcp_discovery.publish_qualified_installed(
-                None,
+                package
+                    .mcp_discovery
+                    .snapshot()
+                    .ok()
+                    .map(|snapshot| snapshot.generation()),
                 package.generation,
                 &[&package.reply, &package.history],
                 &qualified,
@@ -609,7 +745,20 @@ impl MontyTaskCatalogue for TaskCatalogue {
                     WorkflowClass::Deterministic,
                 )
                 .map_err(|_| failure())?;
+                let actual = prepare_retained_tool_program(actual).map_err(|_| failure())?;
+                let actual = match &self._package.reply_approval {
+                    Some(approval) => {
+                        approval
+                            .verify_in_transaction(&tx)
+                            .await
+                            .map_err(|_| failure())?;
+                        approval.pin_program(actual).map_err(|_| failure())?
+                    }
+                    None => actual,
+                };
                 if actual
+                    .inputs()
+                    .instruction()
                     .retained_selection()
                     .map_err(|_| failure())?
                     .checksum()

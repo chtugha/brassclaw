@@ -1505,6 +1505,13 @@ where
 /// profile policy, retry/circuit behavior, and sanitization.
 #[async_trait]
 pub trait HostManagedModelGateway: Send + Sync {
+    /// Whether this gateway actually forwards provider Tool definitions and
+    /// structured Tool calls. Text-only defaults must not silently accept an
+    /// enabled request-local command exchange.
+    fn supports_tool_exchange(&self) -> bool {
+        false
+    }
+
     async fn stream_model(
         &self,
         request: HostManagedModelRequest,

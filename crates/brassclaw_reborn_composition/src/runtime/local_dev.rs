@@ -601,6 +601,10 @@ impl LocalDevResultHydratingModelGateway {
 
 #[async_trait::async_trait]
 impl HostManagedModelGateway for LocalDevResultHydratingModelGateway {
+    fn supports_tool_exchange(&self) -> bool {
+        self.inner.supports_tool_exchange()
+    }
+
     async fn stream_model(
         &self,
         request: HostManagedModelRequest,

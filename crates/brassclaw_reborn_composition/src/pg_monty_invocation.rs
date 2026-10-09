@@ -153,21 +153,7 @@ impl PgMontyAdmission {
         }
         let instruction = program.inputs().instruction();
         let workflow = workflow_selection(instruction)?;
-        let references: Vec<_> = instruction
-            .snapshot()
-            .revisions()
-            .values()
-            .map(|revision| reference(revision.reference()))
-            .collect();
-        let selection = encoded(&json!({
-            "format":"monty-stop-invocation-selection/1",
-            "recipe":reference(instruction.recipe()), "variant_key":instruction.variant().variant_key,
-            "step_link":instruction.variant().step_link, "step_order":instruction.ordered().step_order(),
-            "step_id":step_id, "components":references,
-            "association":binding.association().exact_bytes(),
-            "capability_id":binding.capability_id(), "tool":reference(binding.tool()),
-            "tool_skill":reference(binding.tool_skill()), "skill":reference(binding.skill()), "python":reference(binding.python()),
-        }))?;
+        let selection = Self::invocation_selection(program, step_id)?;
         let arguments = encoded(arguments)?;
         let id = Uuid::new_v4();
         let key: [u8; 32] = Sha256::digest(Uuid::new_v4().as_bytes()).into();
@@ -203,6 +189,41 @@ impl PgMontyAdmission {
             id,
             key,
         })
+    }
+}
+
+impl PgMontyAdmission {
+    /// Exact occurrence identity shared by the journal producer and trusted readers.
+    /// It includes the usage association; the separate workflow selection retains
+    /// the complete typed input layout and dependency graph.
+    pub(crate) fn invocation_selection(
+        program: &RetainedToolProgram,
+        step_id: &str,
+    ) -> Result<String, AgentLoopDriverError> {
+        let binding = program
+            .bindings()
+            .get(step_id)
+            .ok_or_else(|| failed("monty_invocation_selection_invalid"))?;
+        let instruction = program.inputs().instruction();
+        let references: Vec<_> = instruction
+            .snapshot()
+            .revisions()
+            .values()
+            .map(|revision| reference(revision.reference()))
+            .collect();
+        let mut selection = json!({
+            "format":"monty-stop-invocation-selection/1",
+            "recipe":reference(instruction.recipe()), "variant_key":instruction.variant().variant_key,
+            "step_link":instruction.variant().step_link, "step_order":instruction.ordered().step_order(),
+            "step_id":step_id, "components":references,
+            "association":binding.association().exact_bytes(),
+            "capability_id":binding.capability_id(), "tool":reference(binding.tool()),
+            "tool_skill":reference(binding.tool_skill()), "skill":reference(binding.skill()), "python":reference(binding.python()),
+        });
+        if !instruction.association_approvals().is_empty() {
+            selection["association_approvals"] = json!(instruction.association_approvals());
+        }
+        encoded(&selection)
     }
 }
 

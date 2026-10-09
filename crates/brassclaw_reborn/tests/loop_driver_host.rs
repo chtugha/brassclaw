@@ -2523,6 +2523,16 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
             if denied.reason_kind.as_str() == "surface_profile_denied"
     ));
     assert!(runtime.invocations().is_empty());
+    // The actual coordinator owns the completion observer through its
+    // lifecycle bus. Its resume back-reference must not form an Arc cycle
+    // retaining the coordinator and its stores after composition shutdown.
+    let coordinator = Arc::downgrade(&composition.coordinator);
+    drop(host);
+    drop(composition);
+    assert!(
+        coordinator.upgrade().is_none(),
+        "runtime completion callbacks must release the coordinator and stores"
+    );
 }
 
 // ─── Hook framework activation (#3934) e2e through build_default_planned_runtime ──
@@ -7317,6 +7327,19 @@ async fn monty_model_capture_persists_resolved_prompt_and_structured_response() 
                     && content == "question with {{vars.literal}} and quotes '")
         );
         assert_eq!(packet.prompt.segments.len(), sent.len());
+        let exchange = packet.model_exchange.as_ref().unwrap();
+        assert_eq!(exchange.format, "host-model-exchange/1");
+        assert_eq!(
+            exchange.original_request_bytes,
+            exchange.effective_request_bytes.as_deref().unwrap()
+        );
+        let request: HostManagedModelRequest =
+            serde_json::from_str(&exchange.original_request_bytes).unwrap();
+        assert_eq!(request, requests[index]);
+        let response: HostManagedModelResponse =
+            serde_json::from_str(exchange.response_bytes.as_deref().unwrap()).unwrap();
+        assert_eq!(response.output, expected_outputs[index]);
+        assert!(exchange.failure.is_none());
     }
     assert_eq!(packets[0].kohai_response.as_deref(), Some("model says hi"));
     assert_eq!(
@@ -7330,6 +7353,59 @@ async fn monty_model_capture_persists_resolved_prompt_and_structured_response() 
     ));
     // No tool or reply is dispatched merely because telemetry observes it.
     assert!(task.finalized_reply_ref().is_none());
+    // A returned error is retained without claiming the provider did no work.
+    fixture.gateway.set_response(Err(HostManagedModelError::new(
+        HostManagedModelErrorKind::Unavailable,
+        "private provider detail",
+    )));
+    let bundle = task
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    assert!(
+        task.stream_model(LoopModelRequest {
+            messages: bundle.messages,
+            surface_version: bundle.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .is_err()
+    );
+    let failed = store
+        .list_recent(10)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|packet| packet.iteration == 2)
+        .unwrap();
+    assert!(failed.completed_at.is_none());
+    assert!(failed.kohai_response.is_none());
+    let exchange = failed.model_exchange.unwrap();
+    assert!(exchange.response_bytes.is_none());
+    assert!(exchange.effective_request_bytes.is_some());
+    assert_eq!(exchange.failure.as_ref().unwrap()["stage"], "kohai_gateway");
+    assert_eq!(
+        exchange.failure.as_ref().unwrap()["provider_outcome"],
+        "unresolved"
+    );
+    assert_eq!(
+        exchange.failure.as_ref().unwrap()["kohai_gateway_entered"],
+        true
+    );
+    assert!(
+        !serde_json::to_string(&exchange)
+            .unwrap()
+            .contains("private provider detail")
+    );
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -7570,6 +7646,37 @@ async fn monty_model_capture_rerouting_keeps_selected_system_prefix_and_records_
     let checked = sempai.requests();
     assert_eq!(sent.len(), 2);
     assert_eq!(checked.len(), 1);
+    let exchange = packet.model_exchange.as_ref().unwrap();
+    let original: serde_json::Value =
+        serde_json::from_str(&exchange.original_request_bytes).unwrap();
+    let effective: serde_json::Value =
+        serde_json::from_str(exchange.effective_request_bytes.as_deref().unwrap()).unwrap();
+    assert_ne!(original, effective);
+    assert_eq!(
+        original["messages"][0]["content"],
+        baseline.messages[0].content
+    );
+    for (retained, (role, content)) in original["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(&packet.prompt.messages)
+    {
+        assert_eq!(retained["content"], *content);
+        assert!(matches!(role.as_str(), "system" | "user" | "assistant"));
+    }
+    assert_eq!(
+        effective["messages"].as_array().unwrap().len(),
+        sent[1].messages.len()
+    );
+    for (actual, retained) in sent[1]
+        .messages
+        .iter()
+        .zip(effective["messages"].as_array().unwrap())
+    {
+        assert_eq!(retained["content"], actual.content);
+        assert_eq!(retained["content_ref"], actual.content_ref.as_str());
+    }
     let prefix_length = packet
         .prompt
         .messages
@@ -7698,6 +7805,17 @@ async fn monty_model_capture_policy_denial_prevents_both_provider_calls() {
     assert_eq!(packets[0].status, PacketStatus::AwaitingKohai);
     assert!(packets[0].completed_at.is_none());
     assert!(packets[0].kohai_response.is_none());
+    let exchange = packets[0].model_exchange.as_ref().unwrap();
+    assert!(exchange.effective_request_bytes.is_none());
+    assert!(exchange.response_bytes.is_none());
+    assert_eq!(
+        exchange.failure.as_ref().unwrap()["stage"],
+        "sempai_preparation"
+    );
+    assert_eq!(
+        exchange.failure.as_ref().unwrap()["kohai_gateway_entered"],
+        false
+    );
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -7815,4 +7933,10 @@ async fn monty_model_capture_review_budget_denial_releases_primary_hold() {
     assert_eq!(packets.len(), 1);
     assert_eq!(packets[0].status, PacketStatus::AwaitingKohai);
     assert!(packets[0].completed_at.is_none());
+    let exchange = packets[0].model_exchange.as_ref().unwrap();
+    assert!(exchange.effective_request_bytes.is_none());
+    assert_eq!(
+        exchange.failure.as_ref().unwrap()["kind"],
+        "budget_exceeded"
+    );
 }

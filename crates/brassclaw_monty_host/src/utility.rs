@@ -266,6 +266,13 @@ pub async fn execute(
             return Err(error);
         }
     };
+    let frame_length = match u32::try_from(frame.len()) {
+        Ok(length) => length,
+        Err(_) => {
+            error.kind = ProcessFailure::FrameLimit;
+            return Err(error);
+        }
+    };
     let mut child = match Command::new(executable)
         .env_clear()
         .arg(limits.hard_memory_bytes.to_string())
@@ -286,7 +293,7 @@ pub async fn execute(
     let operation = async {
         let mut input = child.stdin.take().ok_or(ProcessFailure::Transport)?;
         input
-            .write_all(&(frame.len() as u32).to_be_bytes())
+            .write_all(&frame_length.to_be_bytes())
             .await
             .map_err(|_| ProcessFailure::Transport)?;
         input

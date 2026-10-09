@@ -365,6 +365,10 @@ impl<P> HostManagedModelGateway for LlmProviderModelGateway<P>
 where
     P: LlmProvider + ?Sized + Send + Sync,
 {
+    fn supports_tool_exchange(&self) -> bool {
+        true
+    }
+
     async fn stream_model(
         &self,
         request: HostManagedModelRequest,
@@ -573,6 +577,10 @@ impl<P> HostManagedModelGateway for RoutedLlmProviderModelGateway<P>
 where
     P: ModelRouteProviderPool + ?Sized + Send + Sync,
 {
+    fn supports_tool_exchange(&self) -> bool {
+        true
+    }
+
     async fn stream_model(
         &self,
         request: HostManagedModelRequest,

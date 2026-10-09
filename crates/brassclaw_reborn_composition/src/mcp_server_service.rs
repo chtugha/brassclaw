@@ -34,6 +34,11 @@ pub trait McpListenerSpawner: Send + Sync {
     ) -> Result<(u16, tokio::task::JoinHandle<()>), brassclaw_product_workflow::McpServerServiceError>;
 }
 
+/// Read-only actual listener observation supplied by its host lifecycle owner.
+pub trait McpListenerStatus: Send + Sync {
+    fn status(&self) -> brassclaw_product_workflow::McpServerStatusResponse;
+}
+
 #[cfg(feature = "skills-db")]
 mod inner {
     use crate::orchestrator_mcp_server::MCP_CHAT_UNAVAILABLE;
@@ -50,13 +55,28 @@ mod inner {
     /// must wire the complete qualified chat service before claiming Running.
     pub(crate) struct McpServerServiceImpl {
         settings: Mutex<McpServerSettings>,
+        listener: Option<std::sync::Arc<dyn super::McpListenerStatus>>,
     }
 
     impl McpServerServiceImpl {
         pub(crate) fn new() -> Self {
             Self {
                 settings: Mutex::new(McpServerSettings::default()),
+                listener: None,
             }
+        }
+        pub(crate) fn with_listener(
+            mut self,
+            listener: std::sync::Arc<dyn super::McpListenerStatus>,
+        ) -> Self {
+            if let Some(port) = listener.status().port {
+                self.settings = Mutex::new(McpServerSettings {
+                    port,
+                    auto_start: true,
+                });
+            }
+            self.listener = Some(listener);
+            self
         }
         fn lock_settings(
             &self,
@@ -88,6 +108,16 @@ mod inner {
                     "the inbound MCP server must run for the instance lifetime".into(),
                 ));
             }
+            if let Some(listener) = &self.listener
+                && req
+                    .port
+                    .is_some_and(|port| listener.status().port != Some(port))
+            {
+                return Err(McpServerServiceError::Invalid(
+                    "listener port is fixed for this instance lifetime; configure it at startup"
+                        .into(),
+                ));
+            }
             let mut settings = self.lock_settings()?;
             if let Some(port) = req.port {
                 settings.port = port;
@@ -98,6 +128,9 @@ mod inner {
         }
 
         async fn get_status(&self) -> Result<McpServerStatusResponse, McpServerServiceError> {
+            if let Some(listener) = &self.listener {
+                return Ok(listener.status());
+            }
             Ok(McpServerStatusResponse {
                 state: McpServerState::Error,
                 port: None,
@@ -108,8 +141,22 @@ mod inner {
 
         async fn start(
             &self,
-            _req: McpServerStartRequest,
+            req: McpServerStartRequest,
         ) -> Result<McpServerActionResponse, McpServerServiceError> {
+            if let Some(listener) = &self.listener {
+                let status = listener.status();
+                if req.port.is_some_and(|port| status.port != Some(port)) {
+                    return Err(McpServerServiceError::Invalid(
+                        "listener port is fixed at startup".into(),
+                    ));
+                }
+                if status.state == McpServerState::Running {
+                    return Ok(McpServerActionResponse {
+                        state: status.state,
+                        message: "instance-owned MCP listener is running".into(),
+                    });
+                }
+            }
             Err(McpServerServiceError::Unavailable(
                 MCP_CHAT_UNAVAILABLE.into(),
             ))
@@ -187,7 +234,9 @@ impl McpListenerSpawner for NoopMcpListenerSpawner {
 /// [`McpListenerSpawner`] contract without taking a direct dependency on
 /// `brassclaw_product_workflow` (which is architecturally forbidden from the
 /// ingress crate per `reborn_crate_dependency_boundaries_hold`).
-pub use brassclaw_product_workflow::McpServerServiceError;
+pub use brassclaw_product_workflow::{
+    McpServerServiceError, McpServerState, McpServerStatusResponse,
+};
 
 #[cfg(feature = "skills-db")]
 pub(crate) use inner::McpServerServiceImpl;

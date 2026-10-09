@@ -33,13 +33,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{global_monty_owner::GlobalOwnerCheck, pg_monty_vm_settings::PgMontyVmSettingsStore};
 
-const RECONCILE_INTERVAL: Duration = Duration::from_secs(1);
-
 #[derive(Clone, Copy)]
 struct SettingsDeadlines {
     source: Duration,
     uptake: Duration,
     cancellation: Duration,
+    reconcile_interval: Duration,
+    status_poll_interval_millis: u32,
 }
 impl SettingsDeadlines {
     fn from_limits(limits: MontyExecutionLimits) -> Self {
@@ -47,6 +47,8 @@ impl SettingsDeadlines {
             source: Duration::from_millis(limits.settings_source_timeout_millis),
             uptake: Duration::from_millis(limits.settings_uptake_timeout_millis),
             cancellation: Duration::from_millis(limits.cancellation_ack_timeout_millis),
+            reconcile_interval: Duration::from_millis(limits.settings_reconcile_interval_millis),
+            status_poll_interval_millis: limits.status_poll_interval_millis,
         }
     }
     fn validate(self) -> Result<(), MontyVmSettingsError> {
@@ -57,6 +59,8 @@ impl SettingsDeadlines {
             || now.checked_add(self.uptake).is_none()
             || self.cancellation.is_zero()
             || now.checked_add(self.cancellation).is_none()
+            || self.reconcile_interval.is_zero()
+            || now.checked_add(self.reconcile_interval).is_none()
         {
             return Err(MontyVmSettingsError::Invalid(
                 "settings deadlines exceed the host clock representation".into(),
@@ -74,6 +78,7 @@ struct Observation {
     memory_revision: u64,
     measurement_status: &'static str,
     memory_sample_count: u64,
+    last_memory_sample: Option<Instant>,
 }
 
 struct MemoryControl {
@@ -127,6 +132,8 @@ impl MontySettingsOwner {
                 )
             || task_settings(&initial) != TaskSettings::from(service.live_task_settings().current())
             || execution_bounds(initial.execution_limits)? != service.vm_bounds()
+            || adapter_reserve(initial.execution_limits)?
+                != service.allocator_status().adapter_reserve_bytes
             || initial.execution_limits.max_recipe_contexts
                 != service.recipe_context_capacity().limit
             || admission_limits(initial.execution_limits)? != service.admission_observation().limits
@@ -148,18 +155,20 @@ impl MontySettingsOwner {
                 "initial task revision mismatch".into(),
             ));
         }
+        let last_sample =
+            (initial.memory_policy.mode == MontyMemoryMode::Automatic).then(Instant::now);
         let edit = Arc::new(Mutex::new(MemoryControl {
             configured: initial.max_memory_bytes,
             policy: initial.memory_policy,
             settings_revision: initial.revision,
             last_critical: measurement_status == "startup_critical",
-            last_sample: (initial.memory_policy.mode == MontyMemoryMode::Automatic)
-                .then(Instant::now),
+            last_sample,
             measurement_status,
             memory_sample_count: u64::from(initial.memory_policy.mode != MontyMemoryMode::Manual),
             inflight_probe: None,
         }));
         let (observed, _) = watch::channel(Observation {
+            last_memory_sample: last_sample,
             memory_revision: initial.revision,
             memory_sample_count: u64::from(initial.memory_policy.mode != MontyMemoryMode::Manual),
             measurement_status,
@@ -303,6 +312,12 @@ pub(crate) fn execution_bounds(
         max_value_bytes: native(limits.max_value_bytes)?,
     })
 }
+
+pub(crate) fn adapter_reserve(limits: MontyExecutionLimits) -> Result<usize, MontyVmSettingsError> {
+    usize::try_from(limits.worker_adapter_reserve_bytes).map_err(|_| {
+        MontyVmSettingsError::Invalid("adapter reserve exceeds native representation".into())
+    })
+}
 pub(crate) fn admission_limits(
     limits: MontyExecutionLimits,
 ) -> Result<AdmissionLimits, MontyVmSettingsError> {
@@ -355,7 +370,7 @@ pub(crate) fn hosting_deadlines(
 }
 
 fn observed_limits(
-    bounds: VmBounds,
+    resources: (VmBounds, brassclaw_monty_host::heap::AllocatorStatus),
     max_recipe_contexts: u32,
     admission: AdmissionLimits,
     max_pending_settings: u32,
@@ -367,8 +382,10 @@ fn observed_limits(
         crate::global_monty_owner::OwnershipLimits,
     ),
 ) -> MontyExecutionLimits {
+    let (bounds, allocator) = resources;
     let (deadlines, settings_deadlines, ownership) = deadlines;
     MontyExecutionLimits {
+        worker_adapter_reserve_bytes: allocator.adapter_reserve_bytes as u64,
         max_recipe_contexts,
         max_queued_tasks: admission.max_tasks,
         max_queued_bytes: admission.max_bytes as u64,
@@ -383,6 +400,9 @@ fn observed_limits(
         settings_source_timeout_millis: settings_deadlines.source.as_millis() as u64,
         settings_uptake_timeout_millis: settings_deadlines.uptake.as_millis() as u64,
         cancellation_ack_timeout_millis: settings_deadlines.cancellation.as_millis() as u64,
+        settings_reconcile_interval_millis: settings_deadlines.reconcile_interval.as_millis()
+            as u64,
+        status_poll_interval_millis: settings_deadlines.status_poll_interval_millis,
         ownership_check_timeout_millis: ownership.check_timeout.as_millis() as u64,
         ownership_heartbeat_interval_millis: ownership.heartbeat_interval.as_millis() as u64,
         max_pending_ownership_checks: ownership.max_pending_checks,
@@ -492,6 +512,11 @@ impl LiveMontySettingsStore {
         }
         let values = execution_bounds(desired.execution_limits)
             .map_err(|_| (revision, "invalid_execution_limits"))?;
+        let reserve = adapter_reserve(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_adapter_reserve"))?;
+        self.service
+            .validate_adapter_reserve(reserve)
+            .map_err(|_| (revision, "unsupported_adapter_reserve"))?;
         let hosting = hosting_deadlines(desired.execution_limits)
             .map_err(|_| (revision, "invalid_hosting_deadlines"))?;
         self.service
@@ -513,6 +538,7 @@ impl LiveMontySettingsStore {
                     .map_err(|_| (revision, "hosting_accounting_unavailable"))?
                 || task_settings(&desired) != TaskSettings::from(effective)
                 || values != self.service.vm_bounds()
+                || reserve != self.service.allocator_status().adapter_reserve_bytes
                 || desired.execution_limits.max_recipe_contexts
                     != self.service.recipe_context_capacity().limit
                 || admission_limits(desired.execution_limits)
@@ -548,6 +574,7 @@ impl LiveMontySettingsStore {
                     values,
                     desired.execution_limits.max_recipe_contexts,
                     brassclaw_monty_host::service::ServiceHostingLimits {
+                        adapter_reserve_bytes: Some(reserve),
                         admission: admission_limits(desired.execution_limits)
                             .map_err(|_| (revision, "invalid_admission_limits"))?,
                         max_pending_settings: desired.execution_limits.max_pending_settings,
@@ -572,6 +599,7 @@ impl LiveMontySettingsStore {
         // The service publishes the shared Rust revision only after its real
         // worker acknowledges the same limits. Keep retrieval's whole snapshot.
         self.observed.send_replace(Observation {
+            last_memory_sample: memory.last_sample,
             memory_revision: memory.settings_revision,
             measurement_status: memory.measurement_status,
             memory_sample_count: memory.memory_sample_count,
@@ -795,10 +823,11 @@ impl LiveMontySettingsStore {
         let admission = self.service.admission_observation();
         let settings_capacity = self.service.settings_capacity();
         let retained_attempts = self.service.retained_attempts();
+        let allocator = self.service.allocator_status();
         let hosting = actor.zip(deadlines).zip(ownership);
         let limits = hosting.map(|((actor, deadlines), ownership)| {
             observed_limits(
-                self.service.vm_bounds(),
+                (self.service.vm_bounds(), allocator),
                 contexts.limit,
                 admission.limits,
                 settings_capacity.limit,
@@ -870,8 +899,10 @@ impl LiveMontySettingsStore {
                     None
                 },
             }),
-            execution_limits: hosting.map(|((actor, deadlines), ownership)| {
+            execution_limits: hosting.map(|((actor, _deadlines), ownership)| {
                 MontyExecutionLimitsStatus {
+                    worker_memory_budget_bytes: allocator.memory_budget_bytes as u64,
+                    worker_non_vm_reserve_bytes: allocator.non_vm_reserve_bytes as u64,
                     pending_ownership_checks: ownership.pending_checks,
                     ownership_over_capacity: ownership.over_capacity(),
                     ownership_effective_revision: ownership.revision,
@@ -892,15 +923,7 @@ impl LiveMontySettingsStore {
                     recipe_contexts_over_capacity: contexts.active > contexts.limit as usize,
                     desired_revision: desired.revision,
                     effective_revision: effective.revision,
-                    limits: observed_limits(
-                        self.service.vm_bounds(),
-                        contexts.limit,
-                        admission.limits,
-                        settings_capacity.limit,
-                        retained_attempts.limit,
-                        actor.limits,
-                        (deadlines, settings_deadlines, ownership.limits),
-                    ),
+                    limits: limits.expect("same hosting observation"),
                     uptake: limits_uptake,
                     failure_reason: if limits_uptake == MontyBudgetUptake::Failed {
                         failure.map(str::to_owned)
@@ -974,6 +997,13 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
             ));
         }
         if let Some(limits) = update.execution_limits {
+            self.service
+                .validate_adapter_reserve(adapter_reserve(limits)?)
+                .map_err(|_| {
+                    MontyVmSettingsError::Invalid(
+                        "adapter reserve and heap exceed native capacity".into(),
+                    )
+                })?;
             admission_limits(limits)?;
             self.service.validate_actor_limits(actor_limits(limits)?)
                 .map_err(|_| MontyVmSettingsError::Invalid("ordinary actor bytes must exceed one frame; control bytes must reserve a full request and response".into()))?;
@@ -1035,6 +1065,18 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                 update.memory_policy = Some(policy);
             }
             let expected = patched_snapshot(&before, &update)?;
+            if let Some(bytes) = expected.max_memory_bytes {
+                let heap = usize::try_from(bytes).map_err(|_| {
+                    MontyVmSettingsError::Invalid("heap budget exceeds native capacity".into())
+                })?;
+                service
+                    .validate_memory_layout(heap, adapter_reserve(expected.execution_limits)?)
+                    .map_err(|_| {
+                        MontyVmSettingsError::Invalid(
+                            "heap, frames and adapter reserve exceed native capacity".into(),
+                        )
+                    })?;
+            }
             let manual_selection = update.memory_policy.is_some_and(|policy| {
                 policy.mode == MontyMemoryMode::Manual && policy.mode != before.memory_policy.mode
             });
@@ -1360,15 +1402,87 @@ impl MontyVmSettingsStore for EffectiveSettings {
     }
 }
 
+fn reconciliation_deadline(
+    limits: MontyExecutionLimits,
+    policy: MontyMemoryPolicy,
+    last_sample: Option<Instant>,
+    failed: bool,
+    now: Instant,
+) -> Result<Instant, &'static str> {
+    let cadence = Duration::from_millis(limits.settings_reconcile_interval_millis);
+    if cadence.is_zero() {
+        return Err("settings_reconcile_clock_unsupported");
+    }
+    let poll = now
+        .checked_add(cadence)
+        .ok_or("settings_reconcile_clock_unsupported")?;
+    if policy.mode != MontyMemoryMode::Automatic {
+        return Ok(poll);
+    }
+    let interval = Duration::from_secs(policy.sample_interval_secs);
+    // On failure, back off instead of repeatedly waking on an already due
+    // sample. Keep retries within the separately configured sampling cadence.
+    let sample = if failed {
+        now.checked_add(interval)
+    } else {
+        last_sample.map_or(Some(now), |last| last.checked_add(interval))
+    }
+    .ok_or("settings_reconcile_clock_unsupported")?;
+    Ok(poll.min(sample.max(now)))
+}
+
+async fn wait_reconciliation_deadline(at: Instant) {
+    // Tokio's native timer driver saturates very distant absolute ticks.
+    // Preserve the operator's logical deadline with representable timer chunks;
+    // intermediate wakes perform no reconciliation, OS read or policy effect.
+    while let Some(remaining) = at.checked_duration_since(Instant::now()) {
+        if remaining.is_zero() {
+            return;
+        }
+        tokio::time::sleep(remaining.min(Duration::from_millis(u32::MAX as u64))).await;
+    }
+}
+
 async fn reconcile_loop(store: Arc<LiveMontySettingsStore>, cancel: CancellationToken) {
-    let mut interval = tokio::time::interval(RECONCILE_INTERVAL);
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
+        // Capture only the complete acknowledged policy. One accepted timer
+        // retains its deadline; a save has an independent, lossless Notify wake.
+        let deadline = {
+            let observed = store.observed.borrow();
+            reconciliation_deadline(
+                observed.effective.execution_limits,
+                observed.effective.memory_policy,
+                observed.last_memory_sample,
+                observed.failure.is_some(),
+                Instant::now(),
+            )
+        };
+        if let Err(reason) = deadline {
+            let mut next = store.observed.borrow().clone();
+            let failure = (Some(next.effective.revision), reason);
+            if next.failure != Some(failure) {
+                tracing::error!(
+                    reason,
+                    revision = failure.0,
+                    "Monty settings timer unavailable"
+                );
+            }
+            next.failure = Some(failure);
+            store.observed.send_replace(next);
+        }
+        let periodic = async {
+            match deadline {
+                Ok(at) => wait_reconciliation_deadline(at).await,
+                // Preserve a visible technical error, but allow a valid save
+                // or shutdown to recover without spinning or killing Monty.
+                Err(_) => std::future::pending::<()>().await,
+            }
+        };
         tokio::select! {
             biased;
             _ = cancel.cancelled() => return,
             _ = store.wake.notified() => {},
-            _ = interval.tick() => {},
+            _ = periodic => {},
         }
         tokio::select! {
             biased;
@@ -1390,6 +1504,44 @@ async fn reconcile_loop(store: Arc<LiveMontySettingsStore>, cancel: Cancellation
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconciliation_schedule_preserves_sampling_and_failure_backoff() {
+        let now = Instant::now();
+        let limits = MontyExecutionLimits {
+            settings_reconcile_interval_millis: 3_600_000,
+            ..Default::default()
+        };
+        let mut policy = MontyMemoryPolicy::default();
+        for mode in [MontyMemoryMode::Manual, MontyMemoryMode::Startup] {
+            policy.mode = mode;
+            assert_eq!(
+                reconciliation_deadline(limits, policy, None, false, now).unwrap(),
+                now + Duration::from_secs(3600)
+            );
+        }
+        policy.mode = MontyMemoryMode::Automatic;
+        let last = now.checked_sub(Duration::from_secs(20)).unwrap();
+        assert_eq!(
+            reconciliation_deadline(limits, policy, Some(last), false, now).unwrap(),
+            now + Duration::from_secs(40)
+        );
+        assert_eq!(
+            reconciliation_deadline(limits, policy, Some(last), true, now).unwrap(),
+            now + Duration::from_secs(60)
+        );
+        for last in [None, now.checked_sub(Duration::from_secs(70))] {
+            assert_eq!(
+                reconciliation_deadline(limits, policy, last, false, now).unwrap(),
+                now
+            );
+        }
+        let invalid = MontyExecutionLimits {
+            settings_reconcile_interval_millis: 0,
+            ..limits
+        };
+        assert!(reconciliation_deadline(invalid, policy, None, false, now).is_err());
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_settings_edit_retains_source_deadline_and_rejects_same_revision_mutation() {

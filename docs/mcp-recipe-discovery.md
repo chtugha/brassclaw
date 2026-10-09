@@ -9,14 +9,53 @@ failed qualification makes new discovery unavailable; it does not silently
 continue advertising a known invalid catalogue. A losing stale publisher does
 not replace the current generation.
 
-The current installation catalogue contains the packaged reply and internal
-history workflows. Neither opts into public MCP discovery. Startup publishes a
-qualified **empty** discovery generation, rather than projecting those Skills as
-tools. This is different from an unavailable catalogue. The default transport
+The current installation catalogue contains the packaged public reply and internal
+history workflows. History stays private. Until complete ordinary-command evidence
+exists, startup publishes an explicitly unadvertised empty snapshot. Once the
+public reply qualifies, startup/refresh publishes its command entry. An empty
+pending snapshot is different from an unavailable catalogue. The default transport
 router still reports unavailable without an attached discovery facade. A host
 can attach the runtime facade through `orchestrator_mcp_router_with_discovery`;
 authentication belongs to host ingress. This change starts no listener, enables
 no provider connection and enables no `tools/call` execution.
+
+Startup retains and qualifies the packaged public successor of `host-post-reply`:
+`publish_literal_reply`, command `publish literal reply %`, with the answer in
+verbatim slot 0. It reuses the canonical Recipe/Skill UUIDs and unchanged
+PythonCode/ToolSkill revisions, preserving the original reply command aliases.
+The installation owner runs the exact candidate through constrained Monty workers
+and the real kernel reply adapter in isolated durable validation chats. Positive
+literal cases, restrictive policy denial, blank-text rejection and invalid typed
+inputs establish its narrow behavior. The denial fixture cannot enable a globally
+blocked Tool. Internal history stays private.
+
+After trusted qualification, startup activates the public successor coherently:
+the exact Recipe/Skill/dependency selection, approval pins, physical intent anchors
+and prefix/catalogue identity are verified and committed in one repeatable-read
+transaction before global startup or ingress. The retained Recipe manifest and
+per-call journal carry each usage's exact approval ID and checksum. Task capture
+and matching reread the immutable evidence and exact graph in a coherent database
+view; child/named selections keep the same pins. Recompilation of actual matcher
+results retains compatible approval pins, never reads latest versions, and cannot
+apply the approval to a changed Recipe subject. Operator drafts and routing
+metadata are preserved. Old immutable artifacts/manifests are not deleted.
+
+The private producer/reader retains exact `system_seed` Q1, observed behavior and
+`skill-association-approval/1` evidence with null Q2. Caller flags and component
+status labels cannot create approval. Q1 intent precedes effects; incomplete
+qualification requires supervised reconciliation rather than restart replay.
+Successful readback reuses evidence under a subsequently blocked Tool. A first
+blocked qualification remains pending; a previously activated public workflow
+cannot silently downgrade when its successor lacks qualification.
+
+Activation permits ordinary chat routing, not advertising. An installed catalogue
+with valid declarations but incomplete ordinary-command qualification serves an
+explicit empty `tools/list`. Qualification refresh can later replace that empty
+snapshot only with complete exact ordinary-chat evidence. Contained validation
+never manufactures normal-match/root-completion evidence. Ordinary-command
+qualification is implemented for the packaged public reply; it still requires all
+real declared cases. MCP chat correlation/closure and Kohai/provider-window
+acceptance remain separate gates; this does not enable MCP `tools/call` transport.
 
 ## Retained command declaration
 
@@ -100,13 +139,18 @@ retention document (not a legacy INSERT field):
      "reply": "The exact expected formatted reply for this controlled fixture."}
   ],
   "failure_examples": [
-    {"command": "read file /workspace/missing.txt; interval 1:4",
-     "reason_kind": "recipe_execution_failed"}
+    {"command": "read file /workspace/example.txt; interval 1:4",
+     "reason_kind": "recipe_execution_failed",
+     "tool_failure_kind": "retained_tool_authorization"}
   ]
 }
 ```
 
-This is an example contract, not a qualified file-reading implementation. Every
+This is an illustrative contract, not a qualified file-reading implementation.
+The current installation qualification owner supports the exact approved packaged
+public reply workflow. Additional usages require their own trusted activation
+owner and runner acceptance. The supported failure example is a real kernel
+policy denial; missing-file and arbitrary failures cannot substitute for it. Every
 `mcp_call.examples` command must occur exactly once in `success_examples`; extras,
 duplicates, missing cases and unknown fields fail. At least one unique, correctly
 formatted failure case is required (at most 64). Case expectations belong to the
@@ -143,8 +187,11 @@ The immutable proof includes the observed routing-metadata checksum.
 The selected public export must be the actual inspected invocation for the
 matching Skill binding. Every executable step must use the inspected preload
 path. Exact interface/code/transitive dependencies and association references
-remain in the retained selection; the normal catalogue owner separately verifies
-package integrity, semantic approval and actual immutable Tool implementations.
+remain in the retained selection. The normal catalogue owner must separately
+verify package integrity, trusted exact semantic/association approval and actual
+immutable Tool implementations before activating a public successor. The public
+bootstrap producer/reader currently covers only the exact packaged public reply
+successor; it does not approve arbitrary authored or bundled usages.
 Qualification neither creates approval nor grants Tool permission.
 
 The committed `mcp-command-qualification/1` artifact records command/selection
@@ -156,7 +203,7 @@ complete command-contract set; advertised fingerprints also include the proof.
 An empty proof cannot qualify a newly declared command.
 
 To avoid circular bootstrap, missing execution observations leave MCP discovery
-unavailable while the already approved normal Recipe catalogue continues to
+unavailable while the existing retained normal Recipe catalogue continues to
 serve ordinary chat. After acknowledged durable task settlement, that same
 catalogue owner retries qualification. It performs no example replay or hidden
 qualification effects. Structural/DB failures remain errors, and a stale
@@ -224,3 +271,33 @@ capture and advertise the selected view for its request window; the chat bridge
 must still provide durable correlation, non-destructive closure and no-replay
 recovery. Neither connection lifecycle nor call admission is established by a
 successful discovery response. Legacy outbound MCP clients remain suspended.
+
+## Full public reply qualification and refresh
+
+The pending empty snapshot carries no qualification checksum. After each durable
+ordinary-chat settlement, the catalogue owner keeps checking until all three
+reviewed public examples and the reviewed policy-denial command have real
+observations. It then replaces the empty snapshot with the qualified entry in the
+same catalogue generation. A ready empty snapshot must not suppress refresh.
+No example is executed by this observer, and it never changes global Tool policy
+to manufacture evidence. Restart rechecks the exact existing records without
+replaying commands. A qualified snapshot carries its immutable evidence checksum.
+
+Qualification rechecks installation-owned approval/integrity/behavior evidence
+in the same repeatable-read transaction as component selection, catalogue bytes,
+physical matching anchors and command observations. The complete pinned workflow
+must equal the trusted approved subject and the retained catalogue selection.
+
+For the supported single-usage profile, every example also requires one answered
+Tool invocation, count one, exact pinned invocation selection and checksums,
+arguments agreeing with the typed task/constant bindings and association contract,
+and the actual host answer. Success must return the correlated finalized message,
+whose real PostgreSQL transcript content has the expected checksum. Policy denial
+must retain `TerminalError(retained_tool_authorization)` and publish no finalized
+assistant message for that run. A capacity failure after a completed publication
+cannot qualify this denial. Unresolved calls, changed selections and prior-result
+or multi-usage profiles outside this accepted runner remain unqualified.
+
+These records authorize advertising only. Current kernel policy still governs
+every dispatch. Full MCP chat transport and Kohai provider connection windows are
+separate integration work.

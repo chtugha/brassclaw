@@ -108,6 +108,7 @@ pub enum RecipeCommand {
         settings: TaskSettings,
         values: VmBounds,
         max_recipe_contexts: Option<u32>,
+        adapter_reserve_bytes: Option<usize>,
     },
     UpdateSettings {
         expected_revision: u64,
@@ -219,6 +220,24 @@ pub(crate) struct WorkerRecipes {
     bounds: VmBounds,
 }
 impl WorkerRecipes {
+    pub(crate) fn validate_runtime_settings(
+        &self,
+        expected_revision: u64,
+        settings: TaskSettings,
+        values: VmBounds,
+        max_recipe_contexts: Option<u32>,
+    ) -> Result<(), VmError> {
+        if expected_revision != self.settings().revision || settings.revision <= expected_revision {
+            return Err(VmError::kind(VmFailure::SettingsRevisionConflict));
+        }
+        if !values.valid()
+            || max_recipe_contexts == Some(0)
+            || LiveMontyTaskSettings::new(settings.into()).is_err()
+        {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        Ok(())
+    }
     pub(crate) fn context_capacity(&self) -> RecipeContextCapacity {
         RecipeContextCapacity {
             limit: self.max_contexts as u32,
@@ -548,10 +567,14 @@ impl WorkerRecipes {
                 settings,
                 values,
                 max_recipe_contexts,
+                adapter_reserve_bytes: _,
             } => {
-                if !values.valid() || max_recipe_contexts == Some(0) {
-                    return Err(VmError::kind(VmFailure::InvalidBounds));
-                }
+                self.validate_runtime_settings(
+                    expected_revision,
+                    settings,
+                    values,
+                    max_recipe_contexts,
+                )?;
                 // Publish first: failed validation/CAS leaves every VM unchanged.
                 self.apply(
                     RecipeCommand::UpdateSettings {
