@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9c07a72a84d568a5",
+  "object": "chat.completion",
+  "created": 1791517395,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"BrassClaw authored PythonCode forbids eval/exec and direct open as an explicit authoring contract, which is stricter than upstream Monty's restricted eval; obtain I/O through registered Tools instead. See 91e48baa1f2c.\"\n  ,\n  \"citations\": [\n    \"91e48baa1f2c\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113993,
+    "total_tokens": 114092,
+    "completion_tokens": 99,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

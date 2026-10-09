@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ac405e6578eadc6c",
+  "object": "chat.completion",
+  "created": 1791514583,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"answer\": true, \"reason\": \"Yes. skills.md \u00a76/\u00a77 and toolskills.md \u00a78/\u00a7C require BrassClaw PythonCode to read step-local typed values from inputs[...], assign module-level result, and invoke only registered host.<tool>(...) callables \u2014 never construct another Monty VM/pool/agent runner inside the component (sempai-monty-compatibility.md \u00a760aa027acf73, \u00a7794ef642fd1f).\", \"citations\": [\"60aa027acf73\", \"794ef642fd1f\"]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112736,
+    "total_tokens": 112873,
+    "completion_tokens": 137,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

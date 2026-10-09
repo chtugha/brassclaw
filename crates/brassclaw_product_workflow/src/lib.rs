@@ -157,19 +157,19 @@ pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigReq
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore};
 pub use settings::{
     CONFIG_ALLOWED_PREFIXES, ChatPreferenceStore, ConfigStore, ConfigStoreError,
-    IntentInputListResponse, IntentInputRow, IntentInputsStore, McpServerActionResponse,
-    McpServerService, McpServerServiceError, McpServerSettings, McpServerSettingsResponse,
-    McpServerStartRequest, McpServerState, McpServerStatusResponse, MontyBudgetUptake,
-    MontyExecutionLimitsStatus, MontyMemoryBudgetStatus, MontyMemoryMode, MontyMemoryPolicy,
-    MontyTaskBudgetStatus, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings,
-    MontyVmSettingsError, MontyVmSettingsResponse, MontyVmSettingsStore, MontyVmState,
-    MontyVmStatusResponse, SecuritySettingsError, SecuritySettingsStore, SettingsComponentDetail,
-    SettingsComponentGraph, SettingsComponentGraphEdge, SettingsComponentGraphNode,
-    SettingsComponentSummary, SettingsComponentType, SettingsConfigResponse, SettingsListResponse,
-    SettingsListingError, SettingsListingService, UpdateChatPreferenceRequest,
-    UpdateChatPreferenceResponse, UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest,
-    UpdateSettingRequest, UpdateSettingResponse, UpsertIntentInputRequest,
-    default_monty_vm_settings,
+    DEFAULT_MONTY_HEAP_BYTES, IntentInputListResponse, IntentInputRow, IntentInputsStore,
+    McpServerActionResponse, McpServerService, McpServerServiceError, McpServerSettings,
+    McpServerSettingsResponse, McpServerStartRequest, McpServerState, McpServerStatusResponse,
+    MontyBudgetUptake, MontyExecutionLimitsStatus, MontyMemoryBudgetStatus, MontyMemoryMode,
+    MontyMemoryPolicy, MontyRecipeBudgetStatus, MontyTaskBudgetStatus, MontyVmRestartRequest,
+    MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsError, MontyVmSettingsResponse,
+    MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse, SecuritySettingsError,
+    SecuritySettingsStore, SettingsComponentDetail, SettingsComponentGraph,
+    SettingsComponentGraphEdge, SettingsComponentGraphNode, SettingsComponentSummary,
+    SettingsComponentType, SettingsConfigResponse, SettingsListResponse, SettingsListingError,
+    SettingsListingService, UpdateChatPreferenceRequest, UpdateChatPreferenceResponse,
+    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpdateSettingRequest,
+    UpdateSettingResponse, UpsertIntentInputRequest, default_monty_vm_settings,
 };
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;

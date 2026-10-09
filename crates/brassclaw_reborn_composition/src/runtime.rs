@@ -2522,6 +2522,7 @@ pub async fn build_reborn_runtime(
                 owner.ownership_check(),
                 Arc::new(catalogue.clone()),
                 256,
+                settings_owner.store().recipe_capacity_source(),
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
@@ -4151,6 +4152,8 @@ mod tests {
 
         let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-yolo-audit-owner", root.path())
                 .with_runtime_policy(policy)
@@ -4797,6 +4800,8 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_global_runtime_retains_one_root_across_match_and_no_match() {
+        use brassclaw_product_workflow::MontyVmSettingsStore;
+
         let root = tempfile::tempdir().unwrap();
         let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
@@ -4878,6 +4883,81 @@ mod tests {
                 .iter()
                 .any(|message| message.content == literal),
             "eligible prior reply survives the Monty handoff"
+        );
+        let settings = runtime.monty_settings_owner.store();
+        let identity_before_capacity_edits = runtime.global_monty_owner.client().root_identity();
+        for (capacity, text, expected_status) in [
+            (1, "reply capacity effect once", TurnStatus::Failed),
+            (16, "reply capacity raised", TurnStatus::Completed),
+        ] {
+            let current = settings.get("default", "default").await.unwrap();
+            let update = serde_json::from_value(serde_json::json!({
+                "expected_revision":current.revision,"max_recipes_per_task":capacity,
+            }))
+            .unwrap();
+            let changed = settings
+                .upsert("default", "default", &update)
+                .await
+                .unwrap();
+            let observed = settings
+                .runtime_observation(&changed)
+                .unwrap()
+                .recipe_budget
+                .unwrap();
+            assert_eq!(
+                observed.uptake,
+                brassclaw_product_workflow::MontyBudgetUptake::Applied
+            );
+            assert_eq!(observed.max_recipes_per_task, capacity);
+            assert_eq!(observed.effective_revision, changed.revision);
+            let result = runtime
+                .send_user_message(&conversation, text)
+                .await
+                .unwrap();
+            assert_eq!(result.status, expected_status);
+            let client = rig.pool.get().await.unwrap();
+            let row = client.query_one(
+                "SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",
+                &[&result.run_id.as_uuid()],
+            ).await.unwrap();
+            let outcome: serde_json::Value = row.get(0);
+            assert_eq!(
+                outcome["execution"]["checked_recipe_capacity"]["max_recipes"],
+                capacity
+            );
+            assert_eq!(
+                outcome["execution"]["checked_recipe_capacity"]["revision"],
+                changed.revision
+            );
+            assert_eq!(
+                runtime.global_monty_owner.client().root_identity(),
+                identity_before_capacity_edits
+            );
+        }
+        let history = runtime
+            .thread_service
+            .list_thread_history(ThreadHistoryRequest {
+                scope: runtime.thread_scope.clone(),
+                thread_id: conversation.0.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            history
+                .messages
+                .iter()
+                .filter(|message| {
+                    message.kind == MessageKind::Assistant
+                        && message.content.as_deref() == Some("capacity effect once")
+                })
+                .count(),
+            1,
+            "the reply completed before capacity denial must never be replayed"
+        );
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            2,
+            "capacity failure must not enter Tier 2"
         );
         // A live block changes dispatch permission without replacing the pinned
         // Recipe or replaying its failure through the model path.
@@ -5030,6 +5110,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Startup)
+            .await;
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Semaphore::new(0));
         let input = RebornRuntimeInput::from_services(
@@ -5065,6 +5147,23 @@ mod tests {
         .await;
         assert_eq!(code, StatusCode::OK);
         assert_eq!(initial["settings"]["memory_policy"]["mode"], "startup");
+        assert_eq!(
+            initial["runtime"]["memory_budget"]["measurement_status"],
+            "startup_floor"
+        );
+        assert_eq!(
+            initial["runtime"]["memory_budget"]["max_memory_bytes"],
+            brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES
+        );
+        assert_eq!(initial["settings"]["max_recipes_per_task"], 8);
+        let (code, _) = request(&app, Method::PUT, "settings-a", "/api/settings/monty-vm",
+            serde_json::json!({"expected_revision":initial["settings"]["revision"],"max_memory_bytes":brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES-1})).await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        for capacity in [0u64, i32::MAX as u64 + 1] {
+            let (code, _) = request(&app, Method::PUT, "settings-a", "/api/settings/monty-vm",
+                serde_json::json!({"expected_revision":initial["settings"]["revision"],"max_recipes_per_task":capacity})).await;
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+        }
         let boot_samples = initial["runtime"]["memory_budget"]["memory_sample_count"]
             .as_u64()
             .unwrap();
@@ -5175,7 +5274,7 @@ mod tests {
                 "/api/settings/monty-vm",
                 serde_json::json!({"expected_revision":initial_revision + offset - 1,
                     "max_duration_secs":duration,"token_budgets_enabled":enabled,
-                    "execution_limits": execution_limits}),
+                    "execution_limits": execution_limits,"max_recipes_per_task": 16 + offset}),
             )
             .await;
             assert_eq!(code, StatusCode::OK, "{result}");
@@ -5189,6 +5288,15 @@ mod tests {
             );
             assert_eq!(result["runtime"]["task_budget"]["uptake"], "applied");
             assert_eq!(result["runtime"]["execution_limits"]["uptake"], "applied");
+            assert_eq!(result["runtime"]["recipe_budget"]["uptake"], "applied");
+            assert_eq!(
+                result["runtime"]["recipe_budget"]["max_recipes_per_task"],
+                16 + offset
+            );
+            assert_eq!(
+                result["runtime"]["recipe_budget"]["effective_revision"],
+                initial_revision + offset
+            );
             assert_eq!(
                 result["runtime"]["execution_limits"]["limits"],
                 execution_limits
@@ -5464,6 +5572,8 @@ mod tests {
         let gateway_for_runtime: Arc<dyn HostManagedModelGateway> = gateway.clone();
         let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-tools-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),

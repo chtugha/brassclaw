@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9a6b881ce6ce02fa",
+  "object": "chat.completion",
+  "created": 1791513667,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"Monty rejects class inheritance at parse time. The pinned Monty v1.0.0 documentation (commit 85c5d1f6bef038405cfc40a4eed94806e303567e) lists base classes / metaclasses as a parse-time rejection, raising NotImplementedError before any code runs. A BrassClaw PythonCode component runs inside that same Monty execution context, so it cannot inherit from a Python base class. Use simple classes (instance methods, __init__, class variables) instead, which are supported. This is a language limitation, not a BrassClaw authoring restriction.\",\n  \"citations\": [\n    \"scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md\",\n    \"scripts/prefix/monty-reference/v1.0.0/docs/limitations/index.md\",\n    \"scripts/prefix/sempai-monty-compatibility.md\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112493,
+    "total_tokens": 112719,
+    "completion_tokens": 226,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

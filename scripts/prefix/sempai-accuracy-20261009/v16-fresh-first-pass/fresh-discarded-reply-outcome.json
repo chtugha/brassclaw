@@ -1,0 +1,91 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Make a reusable Discarded workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. One class-21 recipe-fresh-discarded-reply draft with trigger null, empty steps and dependency_registry null. Step 1 (rust) binds ToolSkill 3f75ea20-c8c0-5b6a-9e88-00623ccb9951 for host.post_reply(answer:string); step 2 (orchestrator) executes PythonCode b310004d-c2cc-5e14-b8a7-b0d07c638369 which posts the fixed word 'Discarded' once. One variant step_link 0:1-0:E, empty variable_patterns, ten unique matching intents in both lists. Zero inputs and zero dependencies. The draft is unapproved; it retains Q1, human Q2 and the current live-sink gap (class-21 export drops step_descriptions/variants/dependency_registry). No execution, Q1, Q2, submission or activation occurred.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fresh-discarded-reply",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python posts host.post_reply(answer='Discarded') once. Unapproved documentation fixture; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "say discarded",
+          "reply discarded",
+          "post discarded",
+          "send the discarded reply",
+          "respond with discarded",
+          "tell me discarded",
+          "please say discarded",
+          "please reply discarded",
+          "post the fixed discarded message",
+          "send the fixed discarded message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python posts host.post_reply(answer='Discarded') once",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "3f75ea20-c8c0-5b6a-9e88-00623ccb9951"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "b310004d-c2cc-5e14-b8a7-b0d07c638369"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fresh-discarded-reply",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python posts host.post_reply(answer='Discarded') once",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say discarded",
+              "reply discarded",
+              "post discarded",
+              "send the discarded reply",
+              "respond with discarded",
+              "tell me discarded",
+              "please say discarded",
+              "please reply discarded",
+              "post the fixed discarded message",
+              "send the fixed discarded message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

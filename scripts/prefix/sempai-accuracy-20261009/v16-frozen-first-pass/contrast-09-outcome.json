@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved class-22 pure-logic component pc-contrast-09. Raw records is a list of 1..2 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list is invalid; missing/null/wrong types/extra fields are invalid without exceptions or coercion. Module body uses inputs.get('records') so absence and null both reach the validator as invalid, and assigns result on every path. No I/O, imports, host calls, upstream validation assumption, tests or approval claims. Conversation preserved unchanged.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-09",
+        "description": "Raw records is a list of 1..2 items. Every object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty is invalid; missing/null/wrong types/extra fields invalid without exceptions or coercion. Always result={ok:boolean, records:original if valid else []}. Target typed-inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "records = inputs.get('records')\nok = type(records) is list and 1 <= len(records) <= 2\nif ok:\n    for record in records:\n        if type(record) is not dict or set(record) != {'code', 'enabled'}:\n            ok = False\n            break\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5 and type(record['enabled']) is bool):\n            ok = False\n            break\nresult = {'ok': ok, 'records': records if ok else []}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

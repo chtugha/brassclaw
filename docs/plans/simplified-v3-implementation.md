@@ -1,5 +1,76 @@
 # Simplified v3 implementation record
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../../skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
+## Startup/manual heap floor — operator revision, 2026-10-09
+
+The existing 512 MiB default is now the minimum configured heap budget. This
+supersedes the earlier startup downsizing requirement. It is an allocation
+ceiling, not an eagerly allocated reservation. Startup sizing may select between
+this floor and a larger configured ceiling; low headroom/reserve readings retain
+the floor with explicit status and do not fail startup solely for that reading.
+Manual mode retains its configured value without measurements. Optional automatic
+mode keeps its separately requested safe pressure/capacity behavior.
+
+Implement one public default/floor constant, reject below-floor requests before
+live publication and durable CAS, and enforce the configured floor in PostgreSQL.
+Upgrade existing smaller values by one revision; preserve larger values, unrelated
+settings and modes, and fail explicitly on exhausted revision arithmetic. Keep
+worker live-allocation feasibility checks for reductions above the floor. WebUI
+must display 512 MiB as its minimum and explain the budget/reservation distinction.
+Verify actual migration, invalid CAS without mutation, startup low-capacity floor,
+manual uptake and retained global VM identity through the existing production-path
+checks. Earlier acceptance predates this new operator requirement.
+
+V114 and the settings reader/writers now enforce that floor. Reconciliation
+also restores the manual value or startup floor when switching out of optional
+automatic mode; configured ceilings stay at or above the floor. The English and
+German WebUI labels explain the retained startup minimum.
+
+The serial local Rust 1.96 queue passes the native migration and atomic CAS
+regressions, including unchanged larger budgets/revisions and actual SQL CHECK
+rejection. The ordinary WebUI/startup/restart regression passes in 116.98 seconds
+with the real retained worker and native PostgreSQL: an oversized reserve forces
+below-floor headroom, the acknowledged startup budget remains 512 MiB, invalid
+edits do not mutate the DB, valid manual edits retain VM identity, and periodic
+measurements remain confined to optional automatic mode. Composition all-target
+strict linting passes with `test-support,libsql,skills-db`. JavaScript syntax
+checks pass.
+This is acceptance of the operator floor, not the complete hosting/control or
+component cutover.
+
 ## Recipe architecture target clarification — 2026-10-06
 
 [recipe.md](../../recipe.md) defines the binding authoring/input/version contract.
@@ -184,6 +255,80 @@ Release run 37872337895 passed Linux x86_64 and both macOS architecture builds
 for commit 17a8920d5a2862ab5be39ab432a010e7d222c62b (`v1.7.0-rc.2`). That
 release contains the revised memory modes; it does not include this subsequent
 duration/CI follow-up diff or certify Windows runtime support or the full plan.
+
+### Next hosting control: task Recipe selections — implementation contract
+
+Replace both hidden eight-Recipe checks in `GlobalRecipePorts` with the existing
+instance settings publication owner. Add `max_recipes_per_task`, default 8 to
+preserve current behavior, with positive PostgreSQL INT representation. Persist
+and patch it with the same CAS revision; do not create per-chat settings or a
+second control service. Expose desired/effective value and revision in the WebUI.
+
+The factory must supply a required, read-only capacity source backed by the
+acknowledged complete settings view. New intent/named selections check the
+current capacity under the task's selection lock immediately before retaining
+them. A slow catalogue lookup must not retain against an obsolete preflight
+value. Duplicate selections remain distinct composition errors. A reduction
+retains every existing selection and its execution/results; only further
+selections above capacity fail with an explicit resource reason. No truncation,
+eviction, newest-version lookup, retry reset, Tier-2 fallback or VM restart.
+Report the capacity/revision actually checked in retained settlement evidence.
+The limit belongs to Rust's retained-selection owner; worker heap/context limits
+remain independently enforced and must not be falsely reported as enlarged.
+
+Acceptance needs real migration/CAS validation and ordinary global runtime/WebUI
+edits, including a bound violation, a successful later task after raising the
+limit, unchanged VM identity and no repeated completed effect. Retain isolated
+control-caller compatibility; run checks serially after the coherent change.
+This entry is a plan, not implementation or acceptance evidence.
+
+### GitHub rc.3 diagnostics — 2026-10-09
+
+Release run 37874982504 passed Linux x86_64 and both macOS architecture builds
+for 351568dd3bce811bb82802a6ea8f8fcee031d9fd (`v1.7.0-rc.3`). Test run
+37874986009 exposed two further failures: the Linux memory probe's unnecessary
+borrow under Rust 1.96 Clippy, and seven composition turn callers compiled
+without `skills-db`. The CI feature selector now includes the production
+global-driver feature rather than substituting a Rust execution fallback.
+The Linux borrow is removed. Deprecated Monty atomic updates use `try_update`
+with identical checked arithmetic and ordering; all 228 upstream hashes and
+the updated control patch's complete reconstruction are verified. The CI
+rerun and current Recipe-capacity runtime acceptance remain pending.
+
+### Recipe capacity, fixture repairs and floor acceptance — 2026-10-09
+
+V113, the existing CAS settings path and the WebUI now expose live Recipe
+selection capacity. The task checks the acknowledged complete revision after
+catalogue lookup under its selection lock. Capacity reductions preserve selected
+workflows, results and completed effects; settlement records the checked policy.
+The ordinary native runtime regression passes a capacity-one violation without
+Tier-2 replay or repeated reply, then a successful later task after raising to
+16 in the same VM. Native migration/CAS and the original seven callers pass.
+The isolated real model/worker target passes 18 tests; all 58 HTTP contracts pass.
+
+The broader composition run passed 705 of 735 tests and exposed 30 fixture
+failures: omitted explicit runtime policy in successful builders and three
+startup-reserve dependencies on machine headroom. Their constructors now supply
+the supported policy and durable test settings. All 30 formerly failing callers
+pass through the actual compiled library/worker/native PostgreSQL after repair;
+the production missing-policy guard remains enforced. The subsequent floor
+queue passes the three affected migration/CAS/live-WebUI cases described above.
+
+Rust 1.96 all-target composition/control lints pass, together with three actual
+allocator cases. Shared Rust-1.92 crates use checked compare-and-exchange loops;
+their library regressions and strict all-target lints pass. Four real native
+PostgreSQL model-capture tests pass, preserving iteration capture and budget
+holds. Cargo commands ran serially in local screen queues with the NVMe target,
+incremental/debug info disabled and disk cleanup before each required command.
+
+Current teaching-source integrity was reverified with the bounded Linux Python
+checker: 29 examples, 132 behavior cases and six rejected defect mutations.
+Historical receipts are preserved alongside the new exact-source receipt;
+the local prefix source-preservation regression passes. These checks are draft
+teaching evidence, not Monty/Q1/Q2 activation or the whole prefix migration.
+GitHub acceptance of this new checkpoint remains pending. The complete retained
+function loader, authored activation, MCP chat relay, other hosting controls,
+durable recovery and full authorization/catalogue/prefix cutovers remain open.
 
 ## Phase 0 evidence
 
@@ -3744,7 +3889,7 @@ control alone does not establish runtime uptake.
 | Actor ordinary/control lanes | 8 unclaimed requests and 16 frame reservations each | Adjustable count/byte credits checked atomically; retain a bounded available completion/settings/cancellation lane during work saturation and unsafe reductions. |
 | Settings publication lane | `ServiceOwner` fixed channel capacity 8 | Adjustable logical credits or removal in favour of the common bounded control lane; dropped HTTP waiters do not withdraw accepted publications. |
 | Retained admissions/attempts | Factory and driver each start with independent 256 slots | One live instance retention capacity used by both owners; completed durable settlements release slots, unresolved effects keep their evidence and trigger visible backpressure. |
-| Recipes retained per task | `GlobalRecipePorts` separately rejects at 8 recipes in two places | Adjustable per-task bound or removal in favour of tracked memory/selection capacity; no hidden eight-Recipe limit. |
+| Recipes retained per task | V113/settings `max_recipes_per_task`, default 8; both selection paths read the acknowledged revision | Implemented with live WebUI/CAS and actual task acceptance above. Lowering retains selections/results and rejects only further distinct selections; remaining hosting capacities are separate. |
 | Hosting deadlines and VM slice | Startup/response 30 s, slice 5 ms; settings source/uptake 2/5 s | Expose hosting/control parameters with validated relationships. Task compute time remains distinct from IPC, startup, idle and external waits. |
 | Prepared flow limits | Root `_validate_flow*`: depth 16, 512 identifiers, foreach 256, repeat 64, total 4096 executions | Inventory matching IBS/Q1 validators; configurable common contract or removal of redundant runtime maxima. Approved Recipe iteration counts remain explicit workflow inputs, not silent global truncation. |
 

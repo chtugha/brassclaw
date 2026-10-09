@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-05 per the current contract. Raw rank may omit or hold any JSON value; accepts exact int 1..10 (rejecting bool/float); always returns {accepted:boolean, rank:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. No imports, I/O or host calls. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-05",
+        "description": "Raw rank may omit or contain any JSON value. Accept exact integers 1..10 inclusive (not bool/float). Always result={accepted:boolean, rank:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. No imports/I/O/host calls. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "rank = inputs.get('rank')\naccepted = type(rank) is int and not type(rank) is bool and 1 <= rank <= 10\nresult = {'accepted': accepted, 'rank': rank if accepted else None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

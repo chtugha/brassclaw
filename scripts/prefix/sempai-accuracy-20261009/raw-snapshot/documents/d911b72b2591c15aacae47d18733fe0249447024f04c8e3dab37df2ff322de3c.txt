@@ -1,0 +1,637 @@
+# Tool definition and authoring instructions — final v3
+
+This guide defines a BrassClaw Reborn v3 **Tool**, its relationship to the
+component library, and the requirements for creating, binding and invoking it.
+MUST means required. The final architecture is the target contract, not a claim
+that every existing store, host adapter or production dispatch path implements it.
+
+Read [recipe.md](recipe.md), [skills.md](skills.md),
+[simplified_v3.md](simplified_v3.md), [AGENTS.md](AGENTS.md) and
+[the development policy](docs/development-policy.md). Recipe and Skill authoring
+contracts remain authoritative for their respective components; simplified v3
+controls the final authorization and global-orchestrator model.
+
+[The built-in archive](docs/archive/builtin_stuff_v3.md) supplies useful examples
+of Tool/ToolSkill/PythonCode/Skill/Recipe stacks. It is historical material.
+Do not copy its signatures, permission labels, effect labels, Tier-0 shell
+examples or JSON diagrams as proof of the final contract or current behavior.
+
+## 1. Exact definition
+
+**A Tool is a registered Rust-side primitive that performs one declared operation
+when the Orchestrator invokes it through the supported host boundary, then
+returns a result, a classified failure, or an explicitly supported wait/handle.**
+
+Its durable component definition is **class 0**, stored today in `reborn_tools`.
+That definition identifies the capability, parameters, effects and technical
+requirements. The corresponding registered Rust implementation performs the
+operation. A database row alone is not executable Rust and cannot install a
+callable merely by describing one.
+
+A Tool provides the system capability: access a permitted file, make a permitted
+HTTP request, execute a sandboxed process, or perform another registered host
+operation. Its implementation may use other infrastructure or communicate with
+an external service. The Rust Tool/adapter remains the kernel-controlled boundary;
+a remote service or its text output does not gain orchestration authority.
+
+A Tool is not a Skill, ToolSkill, Recipe, PythonCode snippet or autonomous agent.
+It does not choose the user's workflow, advance Recipe steps, reinterpret Skill
+prose, resolve missing task goals or invent follow-up actions. The Orchestrator
+owns that sequencing. A Tool may have deterministic internal parsing, validation,
+I/O and implementation logic needed for its declared operation; those internals
+are not a second agent loop.
+
+Some reusable primitives have an explicit operation selector, such as the JSON
+Tool's `parse`, `query`, `stringify` and `validate` operations. That does not
+require a new Tool for each usage. Each selected operation must have a concrete
+input/result/effect contract; distinct usage patterns belong in Skills and
+PythonCode, and multi-step workflows belong in Recipes.
+
+## 2. Keep the component roles separate
+
+The intended library contains Rust Tools, many ToolSkills, many Skills, very
+many small PythonCode components, and Recipes that connect them to achieve goals.
+The goal is reusable, editable behavior with clear steps, not fewer Recipe steps
+or a dedicated Rust workflow Tool for every task.
+
+| Component | Exact role | What it does at runtime |
+| --- | --- | --- |
+| Tool, class 0 | Registered Rust primitive plus durable definition | Performs the declared operation after an authorized dispatch |
+| ToolSkill, class 13 | Rust-side IBS binding descriptor: Tool identity, parameters and technical binding requirements | Prepares availability; executes nothing and grants no permission |
+| Skill, classes 1–3 | One Tool-usage pattern: prose plus explicitly associated executable PythonCode | Its code implements the usage; prose can guide explicit Tier-1 reasoning |
+| PythonCode, class 22 | Small reusable executable component, Tool-calling or pure logic | Monty executes it; Tool calls cross `host.<name>(...)` |
+| Recipe, class 21 | Ordered instructions, component inventory, bindings, result flow and completion | IBS assembles instructions; Monty sequences their execution |
+| ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | Supplies domain context, not dispatch authority |
+
+**Tool and ToolSkill are on the Rust side.** The Tool performs the primitive;
+the ToolSkill tells IBS how to prepare its binding. A ToolSkill is descriptor
+data, not another Rust executable to compile. Several ToolSkills or Skills may
+reuse the same Tool when their binding/usage contracts differ.
+
+**A Skill is not prose-only.** Its prose and associated class-22 code form one
+usage unit even when stored in separate rows. Prose code examples are not
+implicit executable entry points. A dependent-chain PythonCode exception does
+not turn a multi-Tool workflow into one leaf Skill.
+
+## 3. Identity, implementation, binding and permission are different
+
+Never treat one of these facts as proving the others:
+
+| Fact | Meaning | Does not establish |
+| --- | --- | --- |
+| A Tool UUID exists | A durable component identity exists | Implementation, registration, approval or permission |
+| A name/description exists | Humans can identify its purpose | An executable entry point or a unique revision |
+| A `capability_id` exists | A dispatch identity names a capability | That the selected implementation is loaded and compatible |
+| An implementation compiled | A Rust artifact passed the build | Behavioral correctness, Q1/Q2, activation or permission |
+| A handler is registered | The host can resolve a capability implementation | Approval of its component/usage combination or permission to call it |
+| A ToolSkill is bound | The task has the declared callable binding | Execution or a permission grant |
+| A component is approved | Its reviewed version may enter the approved library | That current global Tool policy allows a dispatch |
+| The Tool is globally allowed | The current permission decision permits it | Valid inputs, external authentication, technical access or freshness |
+
+The **stable UUID** identifies the Tool component. The **immutable revision and
+checksum** identify approved metadata and the retained implementation artifact.
+The **capability ID** identifies the dispatch surface; the **Python callable**
+identifies the exposed host function. Map these explicitly; do not guess a
+callable by stripping a prefix from a capability ID.
+
+**Global policy follows the stable Tool identity across versions.** The trusted
+registration/policy mapping must associate every retained version's capability
+ID and host callable, including aliases, with that same Tool UUID. Before every
+dispatch, resolve the selected implementation through this mapping and apply
+the current global rule for that Tool plus the applicable technical constraints.
+Blocking the Tool blocks dispatch through all its retained versions and aliases;
+renaming a callable or changing a capability ID must not create a fresh allow
+decision or preserve an old one. An absent, ambiguous or conflicting mapping
+fails closed. Do not reuse an identity for an unrelated primitive.
+
+This is a target identity contract, not a new persisted schema or a claim that
+the current authorizer is UUID-keyed. Current policy infrastructure uses
+capability IDs; its supported mapping must enforce the same global decision for
+all dispatch identities of one Tool. Updating a version must preserve that
+mapping while old tasks/checkpoints retain the version.
+
+For example, the archive identifies `builtin.read_file` as the capability and
+shows `host.read_file(...)` as the Python call. Those are related names, not
+interchangeable namespaces. The supported adapter/registration must establish
+that relationship. Names and IDs used in archive examples must be resolved to
+actual component UUIDs and selected implementations before execution.
+
+## 4. What happens on a matched Recipe
+
+1. Intent matching selects the Recipe variant and input layout.
+2. IBS reads one consistent activated, approved catalogue snapshot. It resolves
+   the Recipe, variant, exact `step_link`, selected steps, inputs, Tools,
+   ToolSkills, Skills, PythonCode and their transitive dependencies.
+3. IBS checks structured contracts, exact-version association approval evidence
+   and implementation availability. It records the selected UUID/revision/checksum
+   manifest and approval identifiers in the ephemeral BuildInstruction.
+4. A `channel:"rust"` component step references exactly one ToolSkill UUID and
+   prepares its Tool binding. **No Tool operation happens at this step.**
+5. Its immediately following matching `channel:"orchestrator"` component step
+   references exactly one PythonCode UUID. Monty executes that code.
+6. When Python calls `host.<tool>(...)`, the kernel checks current global policy,
+   technical constraints and the task/run/attempt's execution validity before
+   the actual operation. A bound or approved Tool can still be denied.
+7. The selected Rust implementation performs the declared operation. The host
+   returns its result/failure through the supported adapter. Monty validates
+   results and keeps the needed data in this Recipe's execution context.
+8. Monty decides the next Recipe step, supported wait/resume action or completion.
+   Rust does not independently advance the Recipe or reinterpret its goals.
+
+`channel` is conceptual authoring notation here. The inspected persisted IBS
+schema uses `StepDescriptionEntry.steps`, `stepnumber` and `knowledge`; follow
+[recipe.md, section 7](recipe.md#7-emit-the-actual-persisted-ibs-schema). Do not
+insert a diagram as database JSON or invent `type:"llm"` in that persisted enum.
+
+Pure-logic PythonCode makes zero Tool calls and needs no fictional Tool binding.
+Tool-calling PythonCode normally makes one call. Independent dispatches require
+separate executable steps, including calls hidden inside internal code includes.
+Only recipe.md's direct dependent-chain exception permits multiple dependent
+calls in one logical body, with explicit binding coverage. Prefer separate
+reusable steps when the supported runtime can transport their results.
+
+## 5. Global authority and technical enforcement
+
+### Current global Tool policy applies before every dispatch
+
+The instance-token operator administers supported instance functions without
+additional user, tenant, project or feature-role checks. Tool permission is the
+current **instance-wide allow/block setting and supported technical parameters**.
+It is not an invocation-, operation-, run- or attempt-specific approval lease.
+
+The kernel MUST enforce that effective policy before every actual Tool dispatch
+in Tier 0, Tier 1 and Tier 2, including validation/component-creation workflows
+and permitted retries. Binding-time availability or a previous permission check
+cannot replace this check. A Recipe, LLM, ToolSkill or approved version cannot
+turn a globally blocked Tool into an allowed call.
+
+Missing, invalid or unavailable policy must not be treated as permission.
+Prepared work must be admitted against the effective policy at the actual
+execution boundary; do not use a stale cached setting to authorize a later call.
+A block published before the next dispatch prevents that dispatch's effects.
+
+A policy change does not retroactively undo an already completed effect. An
+already running Tool call is handled according to its real in-flight status and
+supported cancellation contract; do not assume it was prevented or reissue it
+because the setting changed. Distinguish dispatch admission from completion.
+
+### Approval and execution validity remain separate
+
+Authored component versions and exact Skill/code/ToolSkill/Tool combinations
+retain their required Q1 and human Q2 paths. Approval is performed before
+activation. It is not another per-call Tool-permission gate, and Tier-0 startup
+must not ask an LLM to reapprove semantics. Trusted first-party system bootstrap
+uses its distinct integrity-checked path; authors cannot bypass Q2 by setting
+`source: system`.
+
+Conversation/message/run/invocation/attempt identifiers still identify the
+correct inputs, replies, cancellation, state, idempotency and audit records.
+They do not grant Tool permission. A stale or cancelled attempt cannot start
+new effects or post a stale reply even when a Tool is globally allowed.
+
+External-service authentication, sandboxing, filesystem/network restrictions,
+secret resolution and resource limits remain mandatory. Removing legacy scopes
+or operation approvals is not permission to remove these boundaries. Paths,
+account IDs or other business data can remain technical/function inputs without
+becoming a user/project-role authorization system. Keep credentials and claim
+secrets out of model-visible or ordinary Recipe state.
+
+Effect classifications describe what the Tool can do and which technical
+constraints apply. They do not introduce a new `Ask` permission or automatic
+per-operation approval. An archive row's `Permission: Allow` is not the current
+operator's global setting. Historical `PermissionMode::Ask`, scoped grants and
+approval leases are legacy implementation until the coordinated cutover.
+
+## 6. Define a Tool's contract exactly
+
+Before implementing or registering a Tool, complete this authoring specification:
+
+```text
+Stable Tool UUID (allocated/resolved through the supported component path):
+Name and one-sentence primitive purpose:
+Capability ID and exact Python host callable/adapter mapping:
+Immutable revision/checksum and implementation artifact/handle:
+Supported operation(s), if a selector is used:
+Inputs: required fields, exact types, defaults and permitted extra fields:
+Nested object/list shapes, nullability and numeric/transport bounds:
+Registered parameter schema and implementation-side validation:
+Successful result type/fields, including empty/null results:
+Error representation, classifications and completion certainty:
+Effects for each operation, including external writes/process/network access:
+Technical filesystem/network/secret/auth prerequisites:
+Resource limits, deadlines, output bounds and cancellation behavior:
+Read-only/idempotency/deduplication evidence and retry restrictions:
+Registration/loading/activation path and supported runtime/ABI:
+ToolSkills and Skill/PythonCode usages reusing the primitive:
+Verification Recipe/intent variants and tier requirements:
+Observed behavioral evidence and remaining implementation gaps:
+```
+
+This is a design record, not the fields of a new database constructor. Use the
+actual supported stores and extension/host registration contracts. An unknown
+ABI, loading route or unverified callable is a blocker to claiming the Tool is
+usable; it is not solved by a prose name or a successfully compiled library.
+
+### Input and result rules
+
+- The Tool's registered parameter schema and Rust implementation must agree on
+  names, required values, operation-specific arguments, types, defaults and
+  extra-field policy. If the declared schema forbids an argument, the adapter
+  must not silently pass it through as supported input.
+- Skill usage contracts may restrict the primitive further, for example requiring
+  positive line numbers although a backend accepts zero. The usage restriction
+  must be validated before dispatch. Do not broaden it based on backend behavior.
+- Use skills.md's recursive value schemas for usage inputs, results and computed
+  arguments. These are distinct from a Tool's registered JSON Schema representation;
+  validate the correspondence rather than pasting one format into the other.
+- Check integer representability at the Monty, transport and Rust boundaries.
+  JSON numbers do not guarantee arbitrary-precision or exact floating-point
+  transport. Reject booleans as numeric arguments, unexpected coercions,
+  overflow, nonfinite numbers and values outside the approved profile.
+- Runtime arguments are typed data. `%` belongs to intent templates;
+  `{{vars.name}}` is recipe.md's whole-value metadata reference; Python consumes
+  the target `inputs["local_name"]` mapping. None is permission to substitute
+  uncontrolled text into approved source.
+- Validate known required inputs before effects and concrete computed/prior-result
+  inputs when they become available. Runtime outputs must satisfy the successful
+  result schema before downstream consumption. Defaults never repair bad outputs.
+- Distinguish the primitive payload, adapter envelope and `host.run_program`
+  wrapper. Do not assume every Tool returns `{ok, result}` or that a truthy error
+  object means success. A valid empty/null result is not necessarily a failure.
+- Report actual completion certainty. A timeout or lost response may mean the
+  effect completed. Do not label such an outcome confirmed-no-effect without
+  trusted evidence or hide it behind an automatic retry.
+
+### Effects and implementation grain
+
+Declare effects conservatively for the actual selected operation. Read-only
+metadata cannot cover an implementation that writes, launches a process or
+sends a mutating external request. Existing `effect_type` strings and Rust
+`EffectKind` are different representations; inspect their actual mappings.
+Do not invent a universal effect enum from archive labels.
+
+A primitive can have internal atomic/transactional logic, error handling and
+technical cleanup. Multi-operation user workflows and follow-up Tool calls belong
+to Recipes. Do not hide search/read/transform/write/reply sequencing in a new
+Rust Tool merely to reduce Recipe steps. Rust still owns VM hosting, transport,
+startup, kernel checks and technical supervision; those infrastructure duties
+are not autonomous task planning.
+
+## 7. Immutable implementations and live settings
+
+Recipes and reusable Skill associations reference stable component UUIDs without
+version numbers. At task start IBS selects the newest activated, approved versions
+from one consistent catalogue snapshot and pins the complete workflow/dependency
+manifest. No independently racing lookups of Tool metadata, ToolSkills or code.
+
+For the exact selected Tool version, retain both its immutable definition and
+its executable implementation handle/artifact. Pinning a metadata checksum while
+loading a mutable file or looking up the latest handler under the same name does
+not preserve the Tool version. Registration must resolve the retained artifact
+with a compatible supported ABI/runtime. Required version/artifact storage and
+loading support remain target implementation work.
+
+Running/suspended tasks, child execution, retries and checkpoint restoration use
+that original selection. New tasks use the new activated selection. Replacement
+does not invalidate, overwrite or delete the original or require new approval
+of its old combination merely because a replacement exists. Retain versions,
+association approval records and artifacts while tasks/checkpoints need them.
+
+Use skills.md's separate exact-version association approval record to establish
+which combination was reviewed. The task manifest establishes selection, not
+approval. A new Tool implementation/dependency combination needs its required
+validation/approval evidence before coherent activation; individually approved
+rows or matching schemas alone are insufficient.
+
+**Pin code and contracts; read policy/settings live.** Current global Tool
+permission and supported technical settings are checked independently before
+every dispatch, including a retained old Tool version. Expose desired/effective
+settings through the supported operator path. A valid settings edit must not
+require replacing the global orchestrator or changing task code to become
+operative; do not silently claim an incompatible setting was applied.
+
+## 8. Retries, waits, cancellation and completion
+
+Follow [skills.md](skills.md)'s exact failure contract. `max_attempts` is a positive
+integer including the initial dispatch; counts survive waits and worker reclaim.
+A retry requires declared eligible outcomes plus verified read-only or durable
+idempotency-key/deduplication evidence for the exact usage. Preserve the same key
+and arguments for deduplicated recovery, and check live policy/freshness again.
+
+A confirmed transient failure with no effect differs from unknown completion.
+Unknown completion can be retried only under the explicitly approved safe
+contract; otherwise stop or use an explicit reconciliation Recipe step. Never
+replay completed effects because validation, another step or reply posting failed.
+A new worker attempt does not make an old operation safe to replay.
+
+Long-lived work, waits or process handles must use an explicit supported contract:
+what was admitted, what operation/handle is tracked, how results arrive, how
+cancellation is fenced, and how the exact task resumes. A returned handle is not
+proof of successful task completion. Monty owns sequencing and state handoff;
+child VM/process boundaries must preserve required typed inputs/results without
+sharing unrelated tasks or secrets.
+
+Exactly one global Monty Orchestrator starts at instance boot and remains alive
+throughout ordinary task execution. Only instance shutdown or supervised
+fatal-runtime recovery may end that VM's lifetime.
+A Tool call or `host.run_program` delegation is bounded work, not another global
+orchestrator lifecycle. Finishing/cancelling a Tool invocation or task must not
+terminate the instance VM. Rust's infrastructure may supervise admission,
+shutdown and technical cleanup; it does not add a second Recipe executor.
+
+**Crash recovery requires durable effect reconciliation.** Follow
+[simplified_v3.md](simplified_v3.md)'s Phase 3a shutdown/recovery contract. VM
+memory is not a durable checkpoint. Use supported persistence to retain the
+run/attempt identity, pinned workflow references, continuation position,
+dispatch attempt counts, operation identity, any idempotency key and arguments,
+and confirmed or unresolved effect status needed for safe recovery. Record
+dispatch intent/count through the durable recovery contract before dispatch;
+an interrupted dispatch remains unresolved unless evidence establishes its
+outcome. Do not infer that no effect occurred because its completion record is
+missing. Keep secrets out of model-visible continuation data.
+
+A VM crash, timeout or reply-database failure must not automatically replay the
+entire Recipe or reset its Tool attempt counts. Preserve confirmed effects.
+Expose unknown effect status as unresolved and use supported operation-specific
+status lookup, durable deduplication or explicit reconciliation before deciding
+whether the approved retry contract permits another dispatch. Without such
+evidence, do not replay the operation or claim exactly-once external execution.
+Reconciliation is recovery work, not a new Tool permission grant; any Tool call
+still requires current policy, technical constraints and a fresh valid attempt.
+
+On fatal VM failure, close admission/dispatch and fence the old service/attempt
+generation. Only the supervisor may activate a replacement global VM, after
+required status reconciliation; never run parallel replacement orchestrators or
+silently fall back to Tier 2 or a per-chat VM. Restore only an explicitly
+validated continuation with its retained versions and recorded effects. During
+normal shutdown, stop admission/producers, boundedly drain or address cancellation/
+suspension, persist results/status, stop and join the orchestrator, then release
+remaining services and stop embedded PostgreSQL last. These are target runtime
+requirements; this guide does not implement durable recovery.
+
+## 9. Source-checked examples inspired by the archive
+
+These examples illustrate definitions and expected source behavior, not
+activated components, production-path test evidence or guaranteed callable
+adapters. Resolve actual UUIDs, compatible registrations, ToolSkills and approved
+usage associations before execution. The target `inputs` mapping still requires
+runner support. No archive `source: system` field grants permission.
+
+### A. Read a line interval: one Tool, several reusable usages
+
+The archive's Step 2 defines `builtin.read_file` and file-reading usage stacks.
+Its `range` parameter and `{content, line_count, path}` output are historical.
+The inspected [current backend](crates/brassclaw_first_party_extensions/src/coding/file.rs)
+uses `path`, optional `offset` and optional `limit`, returning:
+
+```json
+{
+  "content": "     2│ beta\n     3│ gamma",
+  "total_lines": 4,
+  "lines_shown": 2,
+  "truncated_by_default": false,
+  "path": "/workspace/notes.txt"
+}
+```
+
+For an explicitly provisioned permitted text fixture containing
+`alpha\nbeta\ngamma\ndelta\n`, arguments `offset=2`, `limit=2` yield that payload
+according to source. The backend treats offset as one-based (zero is also
+accepted), clamps to EOF, prefixes line numbers, probes for binary content and
+rejects files above its current 10 MiB read limit. Without an explicit range,
+it applies the current default line cap; inspect the selected version's limits.
+
+The reusable interval Skill in skills.md deliberately restricts
+`1 <= start_line <= end_line <= 2147483647` and computes the inclusive length.
+Its associated PythonCode is:
+
+```python
+# Target typed-input interface; binding first rejects missing/wrong-type values.
+start_line = inputs["start_line"]
+end_line = inputs["end_line"]
+if not (1 <= start_line <= end_line <= 2147483647):
+    raise ValueError("Invalid or unrepresentable line interval")
+limit = end_line - start_line + 1
+if not (1 <= limit <= 2147483647):
+    raise ValueError("Invalid or unrepresentable interval length")
+result = host.read_file(path=inputs["path"], offset=start_line, limit=limit)
+```
+
+The Tool remains the file-reading primitive. The Skill/code implement one
+bounded interval usage. A Recipe supplies the path/numbers, binds the ToolSkill,
+executes the code and uses its result in separate later steps. Another usage
+may read a file head using the same Tool; neither needs a new Rust primitive.
+Confirm the host adapter really accepts these keywords and that the selected
+Monty runtime supports the guards before activation.
+
+### B. JSON operations: operation selection does not create a workflow Tool
+
+Archive Step 15 describes `builtin.json`. Its current
+[Rust handler](crates/brassclaw_host_runtime/src/first_party_tools/json.rs)
+implements `parse`, `stringify`, `query` and `validate` behind an explicit selector.
+For example, the `parse` branch accepts a string under `data` and returns the
+parsed JSON value; malformed input fails. A conceptual single-call usage is:
+
+```python
+# Target interface; a registered compatible host.json adapter must exist.
+result = host.json(operation="parse", data=inputs["json_text"])
+```
+
+Input `{"name":"Ada"}` as one string produces the corresponding object. It
+remains data, never Python source. A Recipe that also queries, transforms or
+posts the object expresses those usages as separate reusable steps, subject to
+the documented dependent-chain exception; it does not require a new Rust
+parse-and-answer Tool.
+
+The archive says a missing query path returns null. The inspected current
+`query_json` instead returns an input error on a missing field/index. The current
+`validate` branch checks JSON syntax, returning `{"valid": boolean}`; it does
+not validate an arbitrary recursive Skill schema. Use the actual operation
+contract rather than assuming validation means program-logic correctness.
+
+### C. Shell and process work: approval does not change the tier
+
+Archive Step 1 describes `builtin.shell` as the sandboxed process primitive.
+**Every Recipe using `builtin.shell` is Tier 1**, including fixed commands such
+as `cargo build`. `builtin.spawn_subagent` Recipes are also always Tier 1.
+Historical `shell-safe-fixed` Tier-0 examples do not apply to final v3.
+
+A shell Tool provides permitted process execution, not a replacement agent loop.
+The Recipe supplies explicit work, validates required inputs, uses a compatible
+ToolSkill/PythonCode usage and interprets the result according to the actual
+process/output contract. Global allow/block, sandbox, network/secret limits and
+cancellation still apply. A compiler exit code alone does not establish Tool
+approval, loading, behavioral correctness or availability in `host.*`.
+
+### D. Composition and Python execution are Rust-side host operations
+
+`host.compose_orchestrator` and `host.run_program` have Rust handlers in the
+[current orchestrator bridge](crates/brassclaw_engine/src/executor/orchestrator.rs).
+They are infrastructure Tools/host operations; they do not compile a new Rust
+program merely because a Recipe is composed.
+
+- Composition asks IBS/composition to assemble the selected Recipe's executable
+  structure, component context and binding directives. It is not proof that
+  the resulting Python logic achieves the user's goal.
+- Program execution delegates supplied Python to the supported Monty path.
+  Parsing catches syntax errors; runtime checks catch supported execution/type
+  errors. Neither proves general business logic correct. Required Q1/Q2,
+  exact-combination approval and behavioral acceptance happen before activation.
+- The inspected `handle_run_program` accepts an explicit object `recipe_state`
+  as its second positional argument and delegates it as data. This is evidence
+  of a state-handoff path, not proof of the complete target `inputs` interface,
+  recursive schema validation or global-Monty production cutover.
+- The inspected composer still substitutes values into source and does not
+  establish the complete target immutable manifest/binding preparation. These
+  are implementation gaps; ordinary inputs/results must use typed data in v3.
+
+Do not infer a universal keyword schema from seed prose. The reply adapter now
+accepts the canonical `host.post_reply(answer=<string>)` contract. It retains
+`text=<string>` and one positional string for already-selected legacy code.
+Exactly one argument is permitted: missing, duplicate/conflicting, unknown,
+non-string or empty replies fail before transcript/event mutation. Values are
+not coerced into reply text. The legacy engine adapter still returns null after
+an in-memory append; that is not the global task host's durable `msg:` reply
+reference contract. Global production wiring must use the admitted task's
+transcript port and resolve its actual finalized reference.
+
+## 10. When and how to create a new Tool
+
+1. Start with the Recipe goal. Search existing Tools, ToolSkills, Skills and
+   PythonCode. If existing primitives can achieve it with more steps, author or
+   reuse those components. Do not write a specialized Rust workflow Tool.
+2. Identify the genuinely missing system-level primitive. Complete section 6's
+   contract, including why no existing Tool provides it. A different parameter
+   combination, workflow order, format or user phrase normally needs a usage or
+   Recipe variant, not a new primitive.
+3. Implement that primitive through the actual supported Rust host/extension
+   contract. Preserve kernel boundaries; inspect signatures, effects, inputs,
+   output/error adapters, ABI and technical services before coding.
+4. Compile and verify the implementation under the development policy. A Tier-1
+   Recipe may author Rust and call an existing approved build/compiler or shell
+   Tool. Generated source is an intentional artifact to review; normal arguments
+   still travel as data. Creating a ToolSkill descriptor needs no Rust compilation.
+5. Prepare the Tool definition and compatible ToolSkill, small PythonCode and
+   complete Skill usage; define a verification Recipe with meaningful inputs,
+   effects and failure cases. Reuse existing components where contracts fit.
+6. Submit authored new versions through the supported Q1/human-Q2 path. Verify
+   behavior through the real host/kernel/runner, record exact-combination approval
+   evidence, and distinguish expected results from observed acceptance.
+7. Register/load the validated implementation and activate the compatible
+   approved component set coherently through supported lifecycle paths. Required
+   validation occurs before normal task exposure; never use an ordinary matched
+   task as an unapproved test runner. Do not invent a functioning loader/API.
+8. Following tasks may select the new active versions. An already running task
+   does not silently acquire a freshly created Tool; use a subsequent task or
+   an explicitly specified, validated continuation/version-selection contract.
+9. Report UUIDs/revisions/artifact identities, registration, approval evidence,
+   actual callable signatures, test evidence and missing support. A compiled
+   binary or Markdown row is not an activated callable.
+
+Trusted validation can exercise draft artifacts in its explicit constrained
+validation environment. That does not expose drafts to ordinary matched tasks
+or bypass the kernel. New Rust is warranted only for the missing primitive;
+most capability additions remain component-library work.
+
+## 11. Storage and implementation status today
+
+The [current Tool store](crates/brassclaw_reborn_composition/src/pg_tool_store.rs)
+provides `NewPgTool` with existing storage identity fields, name, description,
+parameter schema/template, effect type, preconditions, error-handling metadata,
+consumer tags, source, validation status and `capability_id`. Class 0 and other
+fields are supplied by current database defaults. It does not implement this
+guide's complete immutable artifact/approval/snapshot contract.
+
+Its insert path is scoped and uses `ON CONFLICT DO NOTHING`; an existing row is
+not replaced by inserting new text under the same name. Its current
+`source: system` insert behavior is not an authoring mechanism for bypassing Q2.
+Use supported APIs only; do not add invented version/artifact fields to that
+constructor or mutate approved rows to simulate immutable version activation.
+
+The current [ToolRegistry](crates/brassclaw_capabilities/src/tool_registry.rs)
+is a validation snapshot of names, not a loader, executable implementation,
+complete runtime registry or live permission source. Its scoped storage behavior
+is existing implementation, not final v3's operator role model.
+
+The [instance policy authorizer](crates/brassclaw_authorization/src/instance_policy.rs)
+and [prepared-dispatch admission](crates/brassclaw_capabilities/src/host.rs)
+provide initial live-policy infrastructure. Legacy grants/approval paths still
+exist. These pieces do not certify a complete production cutover for every
+host operation. Verify the selected production caller before making that claim.
+
+The global Monty lifecycle, typed input interface, recursive binding validation,
+immutable implementation retention and exact association approval records require
+coordinated implementation and acceptance. This file creates none of those paths.
+
+## 12. Acceptance and authoring checklist
+
+Use real implementations and relevant production paths where supported. This
+matrix specifies required outcomes; it is not a record of passing tests.
+
+| Case | Required outcome |
+| --- | --- |
+| Existing primitive solves the task | Reuse components/Recipe; no unnecessary Rust Tool |
+| Valid binding with no execution step | Binding causes no operation; missing matching executable usage is rejected |
+| Allowed valid invocation | Correct selected handler executes once; actual payload matches its contract |
+| Invalid nested/type/numeric input | Rejected before the declared effect; no implicit conversion or source substitution |
+| Tool blocked after binding or wait | Next dispatch refused despite retained approved code; no new effect |
+| Tool dispatch ID/alias changes between retained versions | Current block applies to every version/alias of the same Tool; missing/conflicting identity mapping refuses dispatch |
+| Policy unavailable/invalid | Fail closed; previous allow setting is not silently reused |
+| New implementation activated during pause | Old task resumes old artifact/contracts; new task selects coherent new versions |
+| Metadata/artifact or association approval mismatch | Assembly fails before effects; no newest-handler substitution or approval inference |
+| Timeout after possible external effect | Classified unknown completion; no unsafe replay |
+| VM crash after possible external effect | Durable counts and confirmed/unresolved effects retained; no whole-Recipe replay; continuation/retry only after safe reconciliation |
+| Fatal VM recovery or shutdown | Old generation fenced; supervised replacement only after required reconciliation; no parallel VM or silent fallback; orderly persistence and shutdown |
+| Completed effect followed by bad output/reply | Dependent execution fails; completed Tool call is not repeated |
+| Supported safe retry | Same approved usage/key/arguments and persistent attempt count; live policy/freshness rechecked |
+| Stale/cancelled attempt | No new dispatch/reply; task state/results remain correctly fenced |
+| Draft or merely compiled Tool | No ordinary task exposure until required validation/activation/registration |
+| Shell or spawn_subagent usage | Tier 1 even when fixed, seeded or approved |
+| Pure logic or deterministic input checks | No artificial Tool or LLM call; Tier 0 remains possible |
+| Task completion/cancellation | Global Monty stays alive; task resources released through supported cleanup |
+
+- [ ] One primitive purpose and its operations/effects are explicit.
+- [ ] Existing Tools and usage components were searched before writing Rust.
+- [ ] Stable Tool UUID, capability ID, host callable and implementation identity are mapped.
+- [ ] Every retained dispatch ID/alias resolves to the same Tool's current global policy; invalid mappings fail closed.
+- [ ] Registered schemas, actual Rust parameters and host adapters agree.
+- [ ] Recursive usage contracts and transport/computed numeric bounds are explicit.
+- [ ] Result payload, wrapper, error classification and completion certainty are distinguished.
+- [ ] ToolSkill binding executes nothing and grants no permission.
+- [ ] Recipe step grain, internal composition and dependent-chain limits are observed.
+- [ ] Required Q1/human Q2 or trusted system-bootstrap integrity evidence exists.
+- [ ] Exact-version association approval covers the selected Tool/usage/dependency combination.
+- [ ] Workflow snapshots retain actual immutable Tool artifacts across waits/child execution/resume.
+- [ ] Current global policy and technical constraints apply before every dispatch/retry.
+- [ ] No legacy role checks or invocation approval leases are added as final v3 requirements.
+- [ ] Retry counts, durable idempotency evidence and unknown-completion handling are explicit.
+- [ ] Durable crash reconciliation preserves counts, selected versions and effect status; supervised recovery never blindly replays a Recipe.
+- [ ] Behavioral evidence covers success, denial, failure, cancellation and update races as relevant.
+- [ ] Registration/loading and actual runner support are verified, not inferred from compilation.
+- [ ] Archive differences and missing implementation support are reported honestly.
+
+Read `LOCAL_TEST_ENV.md` if present before remote tests/provider setup. Follow
+the development policy for meaningful checks and evidence reuse. Prose-only
+creation of this guide does not require Cargo execution; implementing a Tool,
+changing executable seeds or claiming runtime enforcement requires applicable
+schema, integrity, Q1/Q2 and real behavioral acceptance evidence.
+
+## References
+
+- [Recipe authoring and actual IBS schema](recipe.md)
+- [Skill contracts, association approval, schemas and retry rules](skills.md)
+- [Final simplified-v3 architecture and authorization](simplified_v3.md)
+- [Historical built-in component stacks](docs/archive/builtin_stuff_v3.md)
+- [Tools subsystem and legacy/current implementation notes](docs/agents-v3/06-tools-system.md)
+- [Current Tool store](crates/brassclaw_reborn_composition/src/pg_tool_store.rs)
+- [Current validation name registry](crates/brassclaw_capabilities/src/tool_registry.rs)
+- [Capability descriptors and effect kinds](crates/brassclaw_host_api/src/capability.rs)
+- [Live instance policy infrastructure](crates/brassclaw_authorization/src/instance_policy.rs)
+- [Capability dispatch and prepared admission](crates/brassclaw_capabilities/src/host.rs)
+- [Current file-read implementation](crates/brassclaw_first_party_extensions/src/coding/file.rs)
+- [Current file numeric decoding](crates/brassclaw_first_party_extensions/src/coding/inputs.rs)
+- [Current file technical limits](crates/brassclaw_first_party_extensions/src/coding/config.rs)
+- [Current JSON implementation](crates/brassclaw_host_runtime/src/first_party_tools/json.rs)
+- [Current Rust orchestrator host bridge](crates/brassclaw_engine/src/executor/orchestrator.rs)
+- [Current Python composer](crates/brassclaw_engine/src/memory/composition.rs)
+- [Current IBS types and builder](crates/brassclaw_engine/src/memory/instruction_builder.rs)

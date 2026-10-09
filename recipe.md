@@ -1,5 +1,39 @@
 # Recipe authoring instructions
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 This is the authoring checklist for BrassClaw Reborn Recipes. Follow it in order.
 MUST means required. A Recipe with an unresolved input, component reference,
 binding, result handoff or execution dependency is incomplete. Do not label it
@@ -32,7 +66,8 @@ Keep reusable Rust Tools as the primitives. Build many ToolSkills describing
 their Rust-side IBS bindings, and many Skills describing how the orchestrator
 uses a Tool for a particular purpose. Binding descriptors and usage instructions
 are separate responsibilities; neither replaces the other. Each
-Skill includes its associated executable PythonCode. **Build a large library
+Skill includes an explicit preloadable function interface backed by associated
+PythonCode, with exported names/signatures and private dependencies. **Build a large library
 of small, reusable PythonCode components as well.** These are executable
 building blocks, similar to objects in the sense that they can be referenced
 and recombined; this analogy does not require Python classes or object-oriented
@@ -106,7 +141,8 @@ The Recipe tells IBS **what to assemble, in which order, and what each step
 needs**. IBS/composition builds the executable Python chiefly by assembling
 existing PythonCode components, supplying captured input values, and preparing
 the associated Skills, ToolSkills and existing Rust Tools for the orchestrator.
-The orchestrator then runs each resulting Python step in the specified order.
+The orchestrator then invokes each pinned exported function or pure step in
+the specified order; preloading definitions is assembly preparation.
 It calls a Rust Tool only when that step's Python calls `host.<tool>(...)`.
 
 The component inventory is linked to individual steps by UUID; it is not just
@@ -120,12 +156,13 @@ step inputs and how results become inputs to later steps.
 | Tool, class 0 | Existing Rust primitive that performs an operation when called | Registered host capability |
 | ToolSkill, class 13 | Descriptor for binding one Tool usage; grants no authority | Rust-channel component reference |
 | PythonCode, class 22 | Executable implementation of a usage or pure logic | Orchestrator-channel component reference |
-| Skill, classes 1–3 | One reusable usage: prose **and explicitly associated PythonCode** | Prose for explicit Tier-1 context; associated class-22 code for execution |
+| Skill, classes 1–3 | One usage: prose **and an explicitly associated preloadable function interface** | Prose for explicit Tier-1 context; associated class-22 code for execution |
 | Recipe, class 21 | Orders and connects the components | Recipe store |
 | ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | Extension catalogue store |
 
 A code example in Skill prose is documentation. It is not an executable entry
-point. Tier-0 execution references the associated PythonCode UUID directly.
+point. Tier-0 invocation references the associated PythonCode UUID and resolves its
+selected preloaded export through the retained interface.
 Record the Skill/PythonCode UUID association explicitly; do not pretend that
 matching names establish a validated association. Recipes reference stable
 component UUIDs without version numbers. During task-start assembly,
@@ -142,7 +179,7 @@ matched intent + Recipe variant + user message
   -> IBS BuildInstruction
   -> referenced component bodies + captured input values
   -> composed execution steps
-  -> Monty executes PythonCode
+  -> Monty invokes pinned preloaded exports or pure logic
   -> host tool calls, checked by the kernel
   -> reply and task completion
 ```
@@ -175,7 +212,8 @@ it. Syntax acceptance is not behavioral correctness.
 
 The required assembly outcome for **every executable step** is:
 
-1. Its executable PythonCode component is resolved and its inputs supplied safely.
+1. Its canonical code/interface/export and dependency graph are resolved and
+   preloaded without effects; typed invocation inputs are supplied safely.
 2. Its needed Skill usage and PythonCode association are identified; any prose
    needed by an explicit Tier-1 reasoning step is supplied as context.
 3. Its ToolSkill descriptors identify the existing Tools to bind, and the
@@ -226,6 +264,8 @@ Required inputs, types, source and validation:
 Optional inputs and explicit defaults:
 Tool prerequisites and external authentication:
 Ordered steps and exact component references:
+Declared Skill exports/signatures and dependency preload order:
+Pinned invocation selection and mutable-state ownership:
 Result fields consumed by later steps:
 Failure, cancellation and retry behavior:
 Final reply and which step posts it:
@@ -388,7 +428,7 @@ assembled code; do not leave it to the orchestrator to guess from prose.
 | Step | Channel | Component UUID/class/revision | Input origin | Output contract | Failure action |
 | --- | --- | --- | --- | --- | --- |
 | Bind operation | Rust | ToolSkill / 13 | Binding descriptor | Tool availability only | Stop if unavailable |
-| Execute operation | Orchestrator | PythonCode / 22 | Validated inputs or prior result | Named result fields and types | Stop or explicit safe retry |
+| Invoke preloaded export | Orchestrator | PythonCode / 22 | Validated inputs or prior result | Named result fields and types | Stop or explicit safe retry |
 
 Rules:
 

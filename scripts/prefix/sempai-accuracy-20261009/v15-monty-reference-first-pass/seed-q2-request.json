@@ -1,0 +1,54 @@
+{
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "temperature": 0,
+  "messages": [
+    {
+      "role": "system",
+      "content": "Review the precise selected Monty and BrassClaw contracts. Answer the question with a boolean and an explanatory reason. Cite exact 12-character evidence-card IDs from the supplied reference. No invented APIs or permissions."
+    },
+    {
+      "role": "user",
+      "content": "Must reviewed bundled system_seed installation components receive a human Q2 click on every installed instance?"
+    }
+  ],
+  "max_tokens": 512,
+  "cache_salt": "sempai-v15-monty-20261009",
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  },
+  "kv_transfer_params": {
+    "cached_token_stats": true
+  },
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "compatibility",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "answer",
+          "reason",
+          "citations"
+        ],
+        "properties": {
+          "answer": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 3
+          }
+        }
+      }
+    }
+  }
+}

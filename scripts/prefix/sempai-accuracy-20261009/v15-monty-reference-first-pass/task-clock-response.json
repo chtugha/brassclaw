@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ad5fc68ee41f2917",
+  "object": "chat.completion",
+  "created": 1791513699,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"The reference does not support a single cumulative task time budget across feeds. The Monty resource-limits docs (resource-limits.md L229-246) state there is no cumulative per-session budget: every limit restarts, so a long-lived session is bounded per request rather than over its lifetime (card 265076cf8950). The two duration budgets, max_feed_duration_secs and max_turn_duration_secs, both restart at their respective boundaries (feed and host answer) rather than accumulating (card 265076cf8950). The BrassClaw task account persists consumption and effective settings across steps/waits/retries, but the reference does not describe a single cumulative time budget spanning all feeds (card 9ee64db8b0ee). The removed max_allocations setting must not be reinvented to get around a limit (card 9ee64db8b0ee).\",\n  \"citations\": [\n    \"265076cf8950\",\n    \"9ee64db8b0ee\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112500,
+    "total_tokens": 112753,
+    "completion_tokens": 253,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

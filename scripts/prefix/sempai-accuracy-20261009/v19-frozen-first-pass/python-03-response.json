@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8e48823cd7fbe212",
+  "object": "chat.completion",
+  "created": 1791515836,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-transfer-03. Raw lag may be absent or any JSON value; accepts exact integers -1..8 inclusive, rejecting bool/float/missing/null/out-of-range. Helper classify_lag receives the mapping, checks presence first (missing and null both yield accepted=false, lag=null), then exact int type and range, returning {accepted,lag} on every path. Module scope invokes it and assigns its returned object to result. No imports, I/O, host calls, Tool dispatch, submission, Q1/Q2 or activation. Target typed inputs requires selected-runner support.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-transfer-03\", \"description\": \"Raw lag may omit or contain any JSON value. Accept exact integers -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Helper receives the mapping, module invokes it and assigns its returned object to result. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.\", \"content\": \"def classify_lag(mapping):\\n    if 'lag' not in mapping:\\n        return {'accepted': False, 'lag': None}\\n    lag = mapping['lag']\\n    if not (type(lag) is int and not type(lag) is bool and -1 <= lag <= 8):\\n        return {'accepted': False, 'lag': None}\\n    return {'accepted': True, 'lag': lag}\\nresult = classify_lag(inputs)\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114665,
+    "total_tokens": 115068,
+    "completion_tokens": 403,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

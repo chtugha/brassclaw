@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8f4092435f18dda7",
+  "object": "chat.completion",
+  "created": 1791514575,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Make a reusable Sent workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Drafted one unapproved class-21 recipe-fresh-sent-data with trigger null, empty steps, empty dependency_registry, one desc_idx=0 step referencing the supplied fixture PythonCode 87cce336-5dad-5ab2-b406-0cf100426698 (result = {'phase': 'Sent'}), one variant step_link 0:1-0:E, empty variable_patterns, and ten distinct data-returning intents. The body returns phase DATA only; no message is posted regardless of the word Sent. Prior knowledge retains Q1, human Q2, unapproved dependencies and the current sink gap. No version/approval/runtime claims. Root compatibility arrays empty.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-fresh-sent-data\", \"description\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message. Returns phase DATA only; the word Sent does not select a reply effect. Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation.\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.\", \"intent_examples\": [\"compute the fresh sent state data\", \"return the fresh sent state object\", \"produce the fixed fresh sent object\", \"obtain the fresh sent result data\", \"calculate the fresh sent state result\", \"yield the fresh sent state object\", \"get the fixed fresh sent state data\", \"build the fresh sent state object\", \"evaluate the fresh sent data subworkflow\", \"derive the fixed fresh sent state result\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"orchestrator\", \"goal\": \"Return state data\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"87cce336-5dad-5ab2-b406-0cf100426698\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"fresh-sent-data\", \"description\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"compute the fresh sent state data\", \"return the fresh sent state object\", \"produce the fixed fresh sent object\", \"obtain the fresh sent result data\", \"calculate the fresh sent state result\", \"yield the fresh sent state object\", \"get the fixed fresh sent state data\", \"build the fresh sent state object\", \"evaluate the fresh sent data subworkflow\", \"derive the fixed fresh sent state result\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113716,
+    "total_tokens": 114449,
+    "completion_tokens": 733,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

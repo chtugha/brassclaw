@@ -512,15 +512,22 @@ impl SubagentSpawnCapabilityPort {
     }
 
     fn try_reserve_spawn_slot(&self) -> bool {
-        self.spawned_this_turn
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                if current < self.limits.max_spawn_per_turn {
-                    current.checked_add(1)
-                } else {
-                    None
-                }
-            })
-            .is_ok()
+        let mut current = self.spawned_this_turn.load(Ordering::Acquire);
+        while current < self.limits.max_spawn_per_turn {
+            let Some(next) = current.checked_add(1) else {
+                return false;
+            };
+            match self.spawned_this_turn.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return true,
+                Err(actual) => current = actual,
+            }
+        }
+        false
     }
 
     fn reserve_spawn_slot(&self) -> Option<SpawnSlotGuard<'_>> {
@@ -531,18 +538,23 @@ impl SubagentSpawnCapabilityPort {
     }
 
     fn release_spawn_slot(&self) {
-        let previous =
-            self.spawned_this_turn
-                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                    current.checked_sub(1)
-                });
-        if previous.is_err() {
-            tracing::warn!(
-                run_id = %self.run_context.run_id,
-                spawn_id = %self.spawn_id,
-                "subagent spawn slot release ignored because no slot was reserved"
-            );
+        let mut current = self.spawned_this_turn.load(Ordering::Acquire);
+        while let Some(next) = current.checked_sub(1) {
+            match self.spawned_this_turn.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(actual) => current = actual,
+            }
         }
+        tracing::warn!(
+            run_id = %self.run_context.run_id,
+            spawn_id = %self.spawn_id,
+            "subagent spawn slot release ignored because no slot was reserved"
+        );
     }
 
     async fn handle_spawn_with_gate(

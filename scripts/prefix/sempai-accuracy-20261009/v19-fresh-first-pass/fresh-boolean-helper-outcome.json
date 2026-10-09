@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. Raw armed accepts exact bool True and False (False is valid), rejects missing/null/0/1/strings with no coercion. Module-level result is assigned by calling the helper. No execution, submission, Q1/Q2 or activation occurred.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-boolean-helper",
+        "description": "Raw armed accepts exact bool True and False, rejects missing/null/0/1/strings with no coercion. Always result={checked:boolean, armed:original bool if checked else null}. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "def fresh_boolean_helper(mapping):\n    if 'armed' not in mapping:\n        return {'checked': False, 'armed': None}\n    armed = mapping['armed']\n    checked = type(armed) is bool\n    return {'checked': checked, 'armed': armed if checked else None}\nresult = fresh_boolean_helper(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

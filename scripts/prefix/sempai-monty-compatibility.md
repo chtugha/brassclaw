@@ -21,9 +21,11 @@ and binding authoring contracts take precedence over historical implementation g
    access are compiler operations, not abilities granted to generated PythonCode.
 2. Upstream quickstart code creates a Monty host/session in Python, Rust or JS.
    Never paste that host setup into a BrassClaw PythonCode component.
-3. A BrassClaw component runs inside the selected Monty execution context. Use
-   step-local typed inputs["name"], assign module-level result, and invoke only
-   registered host.<tool>(...) callables through prepared bindings. Do not construct
+3. A BrassClaw component runs inside the selected Monty execution context. Load
+   Skill function definitions without effects; invoke their pinned exports with
+   typed arguments and capture their returned results. A standalone invocation
+   body uses step-local inputs["name"] and module-level result. Actual Tool calls
+   use registered host.<tool>(...) through prepared bindings. Do not construct
    another Monty VM, pool, event loop or agent runner inside that component.
 
 Upstream feed_run(inputs={...}) supplies named values from the embedding host.
@@ -112,3 +114,31 @@ CPython or a model's own review is insufficient. Bundled system_seed components 
 installation-owned structural/behavioral/integrity qualification without additional
 installed-instance human Q2. Post-installation authored components use Q1, behavioral
 evidence and human Q2. Labels alone never convert a draft into a trusted seed.
+
+## Preloaded Skill exports versus invocation bodies
+
+The current skills.md contract defines a preloadable Skill function interface.
+Preload qualified definitions and immutable constants in pinned dependency-first
+order, without Tool/model/I/O calls or effectful default expressions. Declare
+public names/signatures, implementation symbols and private dependencies. Functions
+return typed results; the invocation boundary calls the selected pinned export and
+captures its return as the step result. Loading a definition is not invocation.
+A definitions-only preload artifact is not an incomplete invocation body.
+
+Standalone step-body tests that require module-level result are a different artifact
+kind. Do not apply their result-assignment gate to a preload-only artifact or move
+Tool calls into preload to satisfy it. Conversely, a standalone called-helper draft
+is incomplete when it only defines a function without invoking it. Select the
+validator and executable shape from the actual trusted artifact/runner contract.
+
+Each real Skill has a canonical execution Recipe or variant with a matching command.
+MCP tools/list supplies the exact command sentence, variable types/positions,
+escaping and examples. MCP accepts the completed listed command, creates a normal
+chat and sends that command as a user message. Ordinary chat ingress, matching and
+Recipe execution produce its correlated response; MCP forwards it and closes the
+chat without deleting evidence or replaying pending work. MCP accepts no Python
+source and has no direct Monty/IBS/Tool execution connection. Invocation creates
+no component or per-call Q1/Q2. Prepared bindings and live policy govern dispatch.
+Pinned export resolution, isolated mutable defaults/closures/arrays and retained old
+versions require real loader/store/host acceptance; upstream function support alone
+does not implement them. Do not invent export fields in existing Recipe INSERTs.

@@ -1,0 +1,64 @@
+{
+  "engine": "upstream Monty 1.0.0",
+  "checks": [
+    {
+      "id": "exact-bool-int",
+      "actual": [
+        false,
+        true
+      ],
+      "expected": [
+        false,
+        true
+      ],
+      "passed": true
+    },
+    {
+      "id": "eager-generator",
+      "actual": true,
+      "expected": true,
+      "passed": true
+    },
+    {
+      "id": "upstream-restricted-eval",
+      "actual": 3,
+      "expected": 3,
+      "passed": true
+    },
+    {
+      "id": "reject-yield",
+      "passed": true,
+      "observed_error": "NotImplementedError: The monty syntax parser does not yet support yield expressions"
+    },
+    {
+      "id": "reject-match",
+      "passed": true,
+      "observed_error": "NotImplementedError: The monty syntax parser does not yet support pattern matching (match statements)"
+    },
+    {
+      "id": "reject-inheritance",
+      "passed": true,
+      "observed_error": "NotImplementedError: The monty syntax parser does not yet support class inheritance and metaclasses"
+    },
+    {
+      "id": "reject-package",
+      "passed": true,
+      "observed_error": "ModuleNotFoundError: No module named 'requests'"
+    },
+    {
+      "id": "definition-before-invocation",
+      "preload_effect_free": true,
+      "calls": [
+        7
+      ],
+      "actual": {
+        "item": 7
+      },
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "brassclaw_export_loader_verified": false,
+  "tool_registration_policy_verified": false,
+  "production_q1_q2_verified": false
+}

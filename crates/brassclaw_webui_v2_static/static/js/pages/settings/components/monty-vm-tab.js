@@ -112,6 +112,8 @@ export function MontyVmTab({ searchQuery = "" }) {
     try {
       const duration = Number(settings.max_duration_secs);
       if (!Number.isSafeInteger(duration) || duration < 1 || duration > 2147483647) throw new Error(t("montyVm.durationInvalid"));
+      const recipeCapacity = Number(settings.max_recipes_per_task);
+      if (!Number.isSafeInteger(recipeCapacity) || recipeCapacity < 1 || recipeCapacity > 2147483647) throw new Error(t("montyVm.recipeCapacityInvalid"));
       const executionLimits = {};
       for (const key of EXECUTION_FIELDS) {
         const value = Number(settings.execution_limits?.[key]);
@@ -125,7 +127,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         if (!Number.isSafeInteger(value) || value < (key === "reserve_bytes" ? 0 : 1)) throw new Error(t("montyVm.memoryInvalid"));
         policy[key] = value;
       }
-      if (!Number.isSafeInteger(memory) || memory <= 0 || policy.sample_interval_secs < 60) throw new Error(t("montyVm.memoryInvalid"));
+      if (!Number.isSafeInteger(memory) || memory < 536870912 || policy.sample_interval_secs < 60) throw new Error(t("montyVm.memoryInvalid"));
       const memoryPatch = {};
       if (memory !== persistedMemory.current?.max_memory_bytes) memoryPatch.max_memory_bytes = memory;
       // A cap-only legacy request means manual mode. The current form must
@@ -137,6 +139,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         expected_revision: settings.revision,
         token_budgets_enabled: settings.token_budgets_enabled,
         max_duration_secs: duration,
+        max_recipes_per_task: recipeCapacity,
         failure_rollback_threshold: settings.failure_rollback_threshold,
         prior_knowledge_token_budget: settings.prior_knowledge_token_budget,
         q4_retention_days: settings.q4_retention_days,
@@ -268,6 +271,15 @@ function StatusCard({ status, isPolling, t }) {
             · ${t(`montyVm.uptake.${status.task_budget.uptake}`)}
           </div>
         `}
+        ${status.recipe_budget && html`
+          <div className="text-sm text-[var(--v2-text-muted)]">
+            ${t("montyVm.maxRecipes")}: ${status.recipe_budget.max_recipes_per_task}
+            · ${t("montyVm.desiredRevision")}: ${status.recipe_budget.desired_revision}
+            · ${t("montyVm.effectiveRevision")}: ${status.recipe_budget.effective_revision}
+            · ${t(`montyVm.uptake.${status.recipe_budget.uptake}`)}
+            ${status.recipe_budget.failure_reason && html`<span role="alert"> · ${status.recipe_budget.failure_reason}</span>`}
+          </div>
+        `}
         ${status.execution_limits && html`
           <div className="text-sm text-[var(--v2-text-muted)]">
             ${t("montyVm.executionLimitsTitle")}
@@ -326,9 +338,9 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       </div>
       <input
         type=${type}
-        min=${key === "max_duration_secs" ? "1" : undefined}
-        max=${key === "max_duration_secs" ? "2147483647" : undefined}
-        step=${key === "max_duration_secs" ? "1" : undefined}
+        min=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "1" : undefined}
+        max=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "2147483647" : undefined}
+        step=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "1" : undefined}
         className="col-span-2 w-full rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm text-[var(--v2-text-strong)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-accent)]"
         value=${settings[key] ?? ""}
         disabled=${isSaving}
@@ -344,7 +356,7 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
   const memoryField = (key, label, factor = 1048576, policy = true) => html`
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
       <label htmlFor=${`monty-memory-${key}`} className="text-sm">${label}</label>
-      <input id=${`monty-memory-${key}`} type="number" min=${key === "reserve_bytes" ? "0" : key === "sample_interval_secs" ? "60" : "1"} step="any"
+      <input id=${`monty-memory-${key}`} type="number" min=${key === "max_memory_bytes" ? "512" : key === "reserve_bytes" ? "0" : key === "sample_interval_secs" ? "60" : "1"} step="any"
         className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
         value=${(policy ? settings.memory_policy?.[key] : settings[key]) / factor}
         disabled=${isSaving} onInput=${(event) => {
@@ -362,6 +374,7 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       <p className="mb-3 text-xs text-[var(--v2-text-muted)]">${t("montyVm.allocationCountRetired")}</p>
       ${settings.retired_max_allocations != null && html`<p className="mb-3 text-xs text-[var(--v2-text-muted)]">${t("montyVm.retiredAllocationValue")}: ${settings.retired_max_allocations}</p>`}
       ${field("max_duration_secs", t("montyVm.maxDuration"), t("montyVm.maxDurationDesc"))}
+      ${field("max_recipes_per_task", t("montyVm.maxRecipes"), t("montyVm.maxRecipesDesc"))}
       <div className="py-3 border-t border-[var(--v2-panel-border)]">
         <label htmlFor="monty-memory-mode" className="text-sm font-medium">${t("montyVm.memoryTitle")}</label>
         <p className="mt-1 mb-2 text-xs text-[var(--v2-text-muted)]">${t("montyVm.memoryDesc")}</p>

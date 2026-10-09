@@ -1,5 +1,39 @@
 # Sempai prompt review and component authoring procedure
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../../skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 This is a reviewed authoring procedure, not an activated component, Tool grant or
 proof that target runtime support is implemented. The complete current recipe.md,
 skills.md, tools.md, toolskills.md, AGENTS.md and simplified_v3.md take precedence.
@@ -84,7 +118,7 @@ Choose the narrowest role:
   implementation/build/registration contract, not only generated source text.
 - ToolSkill, class 13: IBS binding metadata for that Tool; binding executes nothing.
 - PythonCode, class 22: one Tool usage or pure logic, with declared typed contracts.
-- Skill, classes 1–3: one usage's prose plus an explicit executable association.
+- Skill, classes 1–3: one usage's prose plus an explicitly associated preloadable function interface.
 - Recipe, class 21: ordered workflow, input/result flow, variants and completion.
 - Extension/ExtensionCatalogue: domain overview and grouping of reusable workflows.
   Do not mistake Skill consumer classes for hierarchy levels; classes 10/50 remain

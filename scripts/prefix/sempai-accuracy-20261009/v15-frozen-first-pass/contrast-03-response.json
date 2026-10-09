@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a4f8bbde603ea07a",
+  "object": "chat.completion",
+  "created": 1791513781,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-contrast-03. Raw slots is a list of length 1..2 with every item an exact integer 3..7; empty is invalid; no bool/float/coercion. Module-level result is assigned on every path. No execution, submission, Q1/Q2 or activation was performed by this reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-03\", \"description\": \"Raw slots must be a list with length 1..2 inclusive, all items exact integers 3..7 inclusive. Empty is invalid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"slots = inputs.get('slots')\\nvalid = type(slots) is list and 1 <= len(slots) <= 2\\nif valid:\\n    for s in slots:\\n        if not (type(s) is int and 3 <= s <= 7):\\n            valid = False\\n            break\\nresult = {'ok': valid, 'slots': slots if valid else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113353,
+    "total_tokens": 113677,
+    "completion_tokens": 324,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

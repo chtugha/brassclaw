@@ -1,0 +1,37 @@
+{
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_config": "/opt/vLLM/huggingface/hub/models--cyankiwi--Ornith-1.5-9B-AWQ-INT4/snapshots/cacab98cede368fca72a795946ec26545c58bb6d/config.json",
+  "model_config_sha256": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+  "tokenizer_files_sha256": {
+    "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+    "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+    "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+    "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+    "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+  },
+  "linear_layers": 24,
+  "full_attention_layers": 8,
+  "max_model_len": 131072,
+  "tokenizer_path": "/opt/vLLM/huggingface/hub/models--cyankiwi--Ornith-1.5-9B-AWQ-INT4/snapshots/cacab98cede368fca72a795946ec26545c58bb6d",
+  "cache_block_tokens": 1056,
+  "cache_block_origin": "single-GPU state geometry; LMCache process chunk size verified",
+  "serving_configuration_verified": true,
+  "kv_cache_dtype": "fp8",
+  "attention_kv_bytes_per_token_per_layer": 2048,
+  "recurrent_state_bytes_per_layer": 2097152,
+  "convolution_state_bytes_per_layer": 49152,
+  "runtime_cache_configuration": {
+    "lmcache_chunk_size": "1056",
+    "lmcache_separate_object_groups": true,
+    "--kv-cache-dtype": "fp8",
+    "--max-model-len": "131072",
+    "--max-num-batched-tokens": "8192",
+    "--max-num-seqs": "1",
+    "--enable-prefix-caching": true,
+    "--no-disable-hybrid-kv-cache-manager": true,
+    "--enable-chunked-prefill": true
+  },
+  "recurrent_state_dtype": "float32",
+  "weight_bits": 4,
+  "prefix_cache_note": "full-attention KV and linear recurrent state are managed by vLLM; no manual padding"
+}

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-82a95b33c5f810ed",
+  "object": "chat.completion",
+  "created": 1791514293,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"Static type-check success is not recursive runtime validation or proof of behavior. The type-checker is static only: no annotation is ever checked at runtime, class annotations are stored stringized, and passing the check does not mean the code runs. Code compiled at runtime (eval/exec) is not checked either. Parser-rejected constructs (match, yield) are not modelled. Five stub-only modules resolve during checking but raise ModuleNotFoundError at runtime. The authoritative list is limitations/index.md, which states that a behaviour missing from the divergence record can be assumed to match CPython 3.14, but that is a per-builtin record, not a blanket guarantee. The type-checker resolves only the bundled stdlib modules; absent names fail type checking as well as raising AttributeError at runtime. The caveats page explicitly warns that passing the type check does not mean the code runs, and that parser-rejected constructs are not modelled. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker is static only, and class annotations are stored in stringized form. The type-checker",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "length",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112718,
+    "total_tokens": 113230,
+    "completion_tokens": 512,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

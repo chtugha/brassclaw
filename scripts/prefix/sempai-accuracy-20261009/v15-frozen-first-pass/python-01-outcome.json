@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-01 per the current contract. Raw window may be absent or any JSON value; accepts exact int -3..6 inclusive (bool/float rejected); always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null with no exceptions or coercion. No imports/I/O/host calls. Conversation preserved unchanged. Unapproved target-typed-inputs draft; selected-runner support, Q1/Q2 and activation are prerequisites. No execution, submission, Q1/Q2 or activation was performed.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-01",
+        "description": "Raw window may omit or contain any JSON value. Accept exact integers -3..6 inclusive (not bool/float). Always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. No imports/I/O/host calls. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "window = inputs.get('window')\naccepted = type(window) is int and not isinstance(window, bool) and -3 <= window <= 6\nresult = {'accepted': accepted, 'window': window if accepted else None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

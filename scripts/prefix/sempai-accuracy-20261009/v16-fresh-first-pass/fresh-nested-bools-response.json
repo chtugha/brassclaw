@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9e9d5d8071e9e0ce",
+  "object": "chat.completion",
+  "created": 1791514505,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved class-22 pure-logic component per the current target-input contract: raw frames list length 0..2, each object exactly {toggles} which is itself a list length 0..2 of exact bools including False; missing/null/wrong shapes/extra fields/numeric bools invalid; result={ok:boolean, frames:original if valid else []}. The plan's truncated branch was completed in a single module-scope helper that returns the complete object and is invoked at module scope. No imports, host calls, exceptions or coercion. No execution, submission, Q1/Q2 or activation occurred; this is an unapproved target-input draft only.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-nested-bools\", \"description\": \"Raw frames list length 0..2; each object has exactly toggles, itself a list length 0..2 of exact bools including False. Missing/null/wrong shapes/extra fields/numeric bools invalid. result={ok:boolean, frames:original if valid else []}. Target typed-input interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"def inspect_frames(mapping):\\n    frames = mapping.get('frames')\\n    ok = type(frames) is list and 0 <= len(frames) <= 2\\n    if ok:\\n        for frame in frames:\\n            if type(frame) is not dict or set(frame) != {'toggles'}:\\n                ok = False\\n                break\\n            toggles = frame['toggles']\\n            if not (type(toggles) is list and 0 <= len(toggles) <= 2):\\n                ok = False\\n                break\\n            for toggle in toggles:\\n                if type(toggle) is not bool:\\n                    ok = False\\n                    break\\n            if not ok:\\n                break\\n    result = {'ok': ok, 'frames': frames if ok else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113538,
+    "total_tokens": 114015,
+    "completion_tokens": 477,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

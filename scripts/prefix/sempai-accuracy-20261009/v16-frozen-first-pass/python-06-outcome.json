@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. The helper receives the whole mapping, checks membership before reading the value, and returns the complete result object on every path. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-06",
+        "description": "Classify raw offset: missing -> {kind:\"missing\",offset:null}; explicit null -> {kind:\"null\",offset:null}; exact integer 2..11 -> {kind:\"integer\",offset:original}; other -> {kind:\"invalid\",offset:null}. No bool/float/coercion/defaults/exceptions. Helper receives the mapping, checks membership before reading. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.",
+        "content": "def classify_offset(mapping):\n    if 'offset' not in mapping:\n        return {'kind': 'missing', 'offset': None}\n    value = mapping['offset']\n    if value is None:\n        return {'kind': 'null', 'offset': None}\n    if type(value) is int and 2 <= value <= 11:\n        return {'kind': 'integer', 'offset': value}\n    return {'kind': 'invalid', 'offset': None}\nresult = classify_offset(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

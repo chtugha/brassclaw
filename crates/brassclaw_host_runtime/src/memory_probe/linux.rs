@@ -74,7 +74,7 @@ fn containing_capacity(
             }
             _ => return Err(HostMemoryProbeError::Inconsistent),
         }
-        if !directory.pop() || !directory.starts_with(&mount) {
+        if !directory.pop() || !directory.starts_with(mount) {
             return Err(HostMemoryProbeError::ContainingLimitsUnknown);
         }
     }

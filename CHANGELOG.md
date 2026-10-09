@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.4] - 2026-10-09
+
+This checkpoint makes task Recipe capacity configurable and repairs the rc.3
+CI configuration. The paired application/worker protocol remains version 6.
+The new preloadable Skill interface is a binding target; its complete retained
+loader, activation and runtime migration remain implementation work.
+
+### Added
+
+- Keep startup/manual heap budgets at or above the existing 512 MiB default.
+  V114 raises older smaller settings with a new revision; WebUI/API reject
+  below-floor values. Low startup sizing retains the floor with visible status.
+
+- Live `max_recipes_per_task` in the existing Monty settings API and WebUI.
+  Migration V113 preserves current behavior at eight selections and existing
+  settings revisions. Each new selection reads the acknowledged capacity;
+  reductions retain earlier results and completed effects.
+- The revised Skill interface and related architecture/authoring guidance:
+  qualified function preloading, exact exports and isolated mutable state.
+  Updated planning and prefix evidence remain distinct from runtime acceptance.
+
+### Fixed
+
+- Run composition CI with `skills-db` so its turn callers use the global Monty
+  driver, and remove the unnecessary Linux memory-probe borrow.
+- Replace deprecated atomic updates while preserving checked arithmetic and
+  ordering. Shared Rust 1.92 crates use compare-and-exchange; the Monty fork
+  uses `try_update` under its Rust 1.96 minimum.
+
+
 ## [1.7.0-rc.3] - 2026-10-09
 
 This development checkpoint repairs task-duration controls and the identified

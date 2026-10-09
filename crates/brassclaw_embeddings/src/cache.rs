@@ -439,6 +439,22 @@ mod tests {
                 remaining_failures: AtomicU32::new(fail_count),
             }
         }
+
+        fn take_failure(&self) -> bool {
+            let mut remaining = self.remaining_failures.load(Ordering::SeqCst);
+            while let Some(next) = remaining.checked_sub(1) {
+                match self.remaining_failures.compare_exchange_weak(
+                    remaining,
+                    next,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => return true,
+                    Err(actual) => remaining = actual,
+                }
+            }
+            false
+        }
     }
 
     #[async_trait]
@@ -453,24 +469,14 @@ mod tests {
             MOCK_MAX_INPUT_LENGTH
         }
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-            let prev =
-                self.remaining_failures
-                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
-                        if v > 0 { Some(v - 1) } else { None }
-                    });
-            if prev.is_ok() {
+            if self.take_failure() {
                 return Err(EmbeddingError::HttpError("simulated failure".to_string()));
             }
             let val = text.len() as f32 / MOCK_EMBEDDING_NORM_DIVISOR;
             Ok(vec![val; self.dimension])
         }
         async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-            let prev =
-                self.remaining_failures
-                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
-                        if v > 0 { Some(v - 1) } else { None }
-                    });
-            if prev.is_ok() {
+            if self.take_failure() {
                 return Err(EmbeddingError::HttpError("simulated failure".to_string()));
             }
             texts

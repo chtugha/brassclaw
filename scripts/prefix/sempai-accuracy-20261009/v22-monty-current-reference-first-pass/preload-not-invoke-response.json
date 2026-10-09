@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a536dd63fdf57a31",
+  "object": "chat.completion",
+  "created": 1791517476,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"answer\": true, \"reason\": \"skills.md \u00a73 (L102-140) and toolskills.md \u00a74 (L182-216) state that preloading qualified definitions makes functions available but is not an invocation or a new Recipe effect step, while invocation calls the pinned export with typed data and captures its return as the step result.\", \"citations\": [\"1086b833f7f0\", \"74559eeace59\"]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113987,
+    "total_tokens": 114095,
+    "completion_tokens": 108,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

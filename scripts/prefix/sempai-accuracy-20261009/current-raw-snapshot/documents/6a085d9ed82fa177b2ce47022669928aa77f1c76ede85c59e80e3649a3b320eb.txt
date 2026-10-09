@@ -1,0 +1,138 @@
+# Monty language and BrassClaw execution compatibility
+
+## Authority and version identity
+
+The official source package is Monty v1.0.0 at commit
+85c5d1f6bef038405cfc40a4eed94806e303567e. Complete documentation originals and
+licensing remain in monty-reference/v1.0.0. Selected whole documentation units are
+reference data, not permissions or executable components. API documentation
+templates are not complete rendered API references; consult actual registered
+signatures and pinned implementation where a template contains only directives.
+
+BrassClaw currently vendors 1.0.0-brassclaw.control.7. Its ExecutionControl/task
+accounting and global orchestration are BrassClaw extensions, not generic upstream
+session APIs. Check the actual selected runtime, ABI and host adapter before using
+a feature. Older status passages are dated observations; the current host evidence
+and binding authoring contracts take precedence over historical implementation gaps.
+
+## Three different Python contexts
+
+1. The prefix compiler is ordinary host Python. Its network, subprocess and file
+   access are compiler operations, not abilities granted to generated PythonCode.
+2. Upstream quickstart code creates a Monty host/session in Python, Rust or JS.
+   Never paste that host setup into a BrassClaw PythonCode component.
+3. A BrassClaw component runs inside the selected Monty execution context. Use
+   step-local typed inputs["name"], assign module-level result, and invoke only
+   registered host.<tool>(...) callables through prepared bindings. Do not construct
+   another Monty VM, pool, event loop or agent runner inside that component.
+
+Upstream feed_run(inputs={...}) supplies named values from the embedding host.
+BrassClaw's inputs mapping is its own binding contract. Passing a callable as input
+does not register a Tool. A name or quoted call in documentation proves neither
+binding, retained implementation identity, compatibility nor global permission.
+
+## Supported language is a subset, not all CPython
+
+Read the pinned language, builtin and module limitations before emitting code.
+Use small data-oriented functions, exact type/presence checks, finite containers,
+explicit returns and final result assignment. Do not assume all stdlib packages or
+all methods of an available module exist. Third-party packages are unavailable in
+the sandbox. Host dependencies installed for the compiler are not sandbox imports.
+
+Unsupported constructs include inheritance/metaclasses, generator functions/yield,
+match statements, method decorators such as property/classmethod/staticmethod,
+del statements, exception groups and async-for/async-with. Generator expressions
+and several iterable builtins materialize eagerly; unbounded input can exhaust
+memory. Use the pinned limitations for precise behavior rather than CPython habit.
+Simple classes being supported does not grant arbitrary host object access.
+
+Annotations/type-check success are not recursive runtime validation or proof of
+behavior. Check actual input/result contracts, boolean versus integer, missing
+versus null, bounds, extra fields and complete invalid outputs. CPython probes and
+AST checks are separate evidence from actual Monty execution and production Q1.
+
+## Policy is stricter than upstream capability
+
+Upstream Monty has restricted eval/exec and host-mediated filesystem mechanisms.
+BrassClaw authored PythonCode forbids eval/exec, direct open, os/subprocess imports
+and unapproved I/O. Do not describe these as generally absent from Monty; describe
+them as forbidden by this authoring contract. Obtain I/O through registered Tools.
+Upstream mounts, OS callbacks and lazy external_lookup are embedding examples,
+not permission to add arbitrary paths/callbacks or replace host handlers.
+
+Independent Tool calls belong to separate Recipe execution steps. Upstream examples
+that use asyncio.gather do not override that rule or prove concurrency support in
+the selected host. Only the documented directly dependent chain exception applies,
+with every binding covered. Binding executes nothing and grants no permission;
+current global Tool policy is checked independently before every actual dispatch.
+
+## Transport and resource behavior
+
+Cross-host data is not ordinary shared Python memory. Containers can cross as
+copies; unsupported/cyclic/deep values can have lossy upstream conversions. Emit
+the supported finite typed data boundary only; validate actual converted results.
+Never depend on object identity or mutation propagating across host calls. Rust
+transport limits can be stricter than upstream Python/JS limits: BrassClaw's current
+private transport caps frames at 64 MiB and depth at 64. Do not claim the upstream
+256 MiB wire allowance is available to a BrassClaw task.
+
+Upstream feed/turn execution clocks exclude host waits; they are not automatically
+one cumulative BrassClaw task budget. The BrassClaw task account persists consumption
+and effective settings across steps/waits/retries. Global heap policy and physical
+worker backstops are distinct. Never invent the removed max_allocations setting or
+reset consumed time to get around a limit. Finite execution does not bound external
+callbacks: their technical timeouts/cancellation still apply.
+
+Upstream terminal memory/time failures can leave session heap state untrustworthy.
+Do not continue a damaged global interpreter or silently create a per-chat fallback.
+Fence stale execution and reconcile recorded effects before supervised replacement;
+ordinary task cancellation must not discard unrelated global tasks. The exact
+selected control extension determines whether a task-scoped failure is contained.
+
+## Snapshots, retained bindings and retries
+
+A dump must come from a trusted compatible producer with verified integrity.
+Interpreter bytes are not approval, authentication or a durable effect ledger.
+Use BrassClaw's supported continuation records to retain exact selected component/
+Tool artifacts, inputs, results, claim/attempt fences and confirmed/unresolved effects.
+Neither restored memory nor a timeout establishes that no external effect happened.
+Never replay a whole Recipe or a completed operation after an output/reply failure.
+
+Upstream host proxies can dispatch by the current mapping for a name. BrassClaw
+must retain exact selected implementation/adapter identity while rechecking the
+same Tool's live global policy across aliases. Do not hot-swap latest code under a
+name used by a retained task. Source documentation cannot establish these runtime
+guarantees; report unsupported runner/store contracts explicitly.
+
+## Evidence before claiming a component works
+
+Check the actual schema, parse/type behavior, pure logic behavior in the pinned
+Monty host and registered binding path as separate gates. Passing only JSON, AST,
+CPython or a model's own review is insufficient. Bundled system_seed components use
+installation-owned structural/behavioral/integrity qualification without additional
+installed-instance human Q2. Post-installation authored components use Q1, behavioral
+evidence and human Q2. Labels alone never convert a draft into a trusted seed.
+
+## Preloaded Skill exports versus invocation bodies
+
+The current skills.md contract defines a preloadable Skill function interface.
+Preload qualified definitions and immutable constants in pinned dependency-first
+order, without Tool/model/I/O calls or effectful default expressions. Declare
+public names/signatures, implementation symbols and private dependencies. Functions
+return typed results; the invocation boundary calls the selected pinned export and
+captures its return as the step result. Loading a definition is not invocation.
+A definitions-only preload artifact is not an incomplete invocation body.
+
+Standalone step-body tests that require module-level result are a different artifact
+kind. Do not apply their result-assignment gate to a preload-only artifact or move
+Tool calls into preload to satisfy it. Conversely, a standalone called-helper draft
+is incomplete when it only defines a function without invoking it. Select the
+validator and executable shape from the actual trusted artifact/runner contract.
+
+Each real Skill has a canonical execution Recipe or variant with a matching command.
+MCP sends that command and typed data through the existing global matcher/IBS/child
+path; it accepts no arbitrary Python source and creates no component or per-call
+Q1/Q2. Prepared ToolSkill bindings and live policy still govern actual dispatch.
+Pinned export resolution, isolated mutable defaults/closures/arrays and retained old
+versions require real loader/store/host acceptance; upstream function support alone
+does not implement them. Do not invent export fields in existing Recipe INSERTs.

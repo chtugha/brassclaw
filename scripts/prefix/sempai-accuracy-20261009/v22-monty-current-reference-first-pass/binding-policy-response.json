@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b797c3bc6cd2f28b",
+  "object": "chat.completion",
+  "created": 1791517451,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": true,\n  \"reason\": \"Yes \u2014 toolskills.md \u00a78 and tools.md \u00a79 state that current instance-wide Tool policy is checked independently before every actual dispatch, including retries and continuations, and that a bound or approved component cannot turn a globally blocked Tool into an allowed call.\",\n  \"citations\": [\"a7d7c70fceac\", \"0385d6d1be78\"]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113992,
+    "total_tokens": 114090,
+    "completion_tokens": 98,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

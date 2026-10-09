@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-814b073f02823d6e",
+  "object": "chat.completion",
+  "created": 1791515792,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'frames' not in inputs\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"else\", \"result\": \"value = inputs['frames']; if value is None: result = {'ok': False, 'frames': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_input_draft_only\", \"no_execution\", \"no_host_calls\", \"no_imports\", \"no_exceptions\", \"no_coercion\", \"preserve_messages\", \"unapproved\"], \"notes\": \"frames is a raw list (0..2) of objects, each with exactly toggles (list 0..2 of exact bools incl False). Missing key -> ok False, frames []. Explicit null -> ok\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114262,
+    "total_tokens": 114448,
+    "completion_tokens": 186,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,2258 @@
+{
+  "engine": "upstream Monty 1.0.0",
+  "source_sha256": "aea55e499d71b25d6df063d30b90d143995f299c3fed4099a82c6228d78a6e19",
+  "manifest_sha256": "f80cff3f706bb6d2484a8447b511e1de135b07bed589cdc16982e8142fb87233",
+  "custom_brassclaw_host_verified": false,
+  "q1_q2_verified": false,
+  "examples": [
+    {
+      "id": "helper-range",
+      "code_sha256": "ff6921e37156a73f8927aa5020814d25a07d7fb8d123573390c899a9a273a9d2",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": null
+          },
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": true
+          },
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": 2
+          },
+          "expected": {
+            "valid": true,
+            "duration_ticks": 2
+          },
+          "actual": {
+            "valid": true,
+            "duration_ticks": 2
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": 12
+          },
+          "expected": {
+            "valid": true,
+            "duration_ticks": 12
+          },
+          "actual": {
+            "valid": true,
+            "duration_ticks": 12
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": 1
+          },
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": 13
+          },
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": 2.0
+          },
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "duration_ticks": "2"
+          },
+          "expected": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "actual": {
+            "valid": false,
+            "duration_ticks": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "empty-allowed",
+      "code_sha256": "b10545f7ea4fe0ab4270a4ffdae91d55e01b4ff328af83e67a3299b98bedbe6e",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": null
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": []
+          },
+          "expected": {
+            "valid": true,
+            "measurements": []
+          },
+          "actual": {
+            "valid": true,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "expected": {
+            "valid": true,
+            "measurements": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "actual": {
+            "valid": true,
+            "measurements": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "expected": {
+            "valid": true,
+            "measurements": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "actual": {
+            "valid": true,
+            "measurements": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              true
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              -3
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              3
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              0.0
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "nonempty-required",
+      "code_sha256": "675577379050d7543c4861f9df8cc91f12589ae77b3953ce61224964d45979ad",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": null
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": []
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "expected": {
+            "valid": true,
+            "measurements": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "actual": {
+            "valid": true,
+            "measurements": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "expected": {
+            "valid": true,
+            "measurements": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "actual": {
+            "valid": true,
+            "measurements": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              true
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              -3
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              3
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "measurements": [
+              0.0
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "measurements": []
+          },
+          "actual": {
+            "valid": false,
+            "measurements": []
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "recursive-shape",
+      "code_sha256": "facbb3cc45f7502a5abe23a9567aa482817e7267c3370090c252884dc90ea057",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": null
+          },
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": []
+          },
+          "expected": {
+            "ok": true,
+            "devices": []
+          },
+          "actual": {
+            "ok": true,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              {
+                "id": 1,
+                "active": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "devices": [
+              {
+                "id": 1,
+                "active": false
+              }
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "devices": [
+              {
+                "id": 1,
+                "active": false
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              {
+                "id": 8,
+                "active": true
+              },
+              {
+                "id": 8,
+                "active": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "devices": [
+              {
+                "id": 8,
+                "active": true
+              },
+              {
+                "id": 8,
+                "active": true
+              }
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "devices": [
+              {
+                "id": 8,
+                "active": true
+              },
+              {
+                "id": 8,
+                "active": true
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              {
+                "id": 1,
+                "active": false
+              },
+              {
+                "id": 1,
+                "active": false
+              },
+              {
+                "id": 1,
+                "active": false
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              {
+                "id": true,
+                "active": true
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              {
+                "id": 1,
+                "active": 0
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              {
+                "id": 1,
+                "active": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "devices": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "devices": []
+          },
+          "actual": {
+            "ok": false,
+            "devices": []
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "missing-null",
+      "code_sha256": "905c5e6eb0076695c4b4553198404170e0e788a4f15d687e737f55abfd8164c7",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "state": "absent",
+            "reading": null
+          },
+          "actual": {
+            "state": "absent",
+            "reading": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": null
+          },
+          "expected": {
+            "state": "null",
+            "reading": null
+          },
+          "actual": {
+            "state": "null",
+            "reading": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": 20
+          },
+          "expected": {
+            "state": "number",
+            "reading": 20
+          },
+          "actual": {
+            "state": "number",
+            "reading": 20
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": 30
+          },
+          "expected": {
+            "state": "number",
+            "reading": 30
+          },
+          "actual": {
+            "state": "number",
+            "reading": 30
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": 19
+          },
+          "expected": {
+            "state": "invalid",
+            "reading": null
+          },
+          "actual": {
+            "state": "invalid",
+            "reading": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": 31
+          },
+          "expected": {
+            "state": "invalid",
+            "reading": null
+          },
+          "actual": {
+            "state": "invalid",
+            "reading": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": true
+          },
+          "expected": {
+            "state": "invalid",
+            "reading": null
+          },
+          "actual": {
+            "state": "invalid",
+            "reading": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "reading": 20.0
+          },
+          "expected": {
+            "state": "invalid",
+            "reading": null
+          },
+          "actual": {
+            "state": "invalid",
+            "reading": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "default-missing",
+      "code_sha256": "9c68fd31bcc2f9a39b75f38b3dd4a787825bb3f87af6e78afa8db7cf305a13de",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": true,
+            "retry_count": 2
+          },
+          "actual": {
+            "valid": true,
+            "retry_count": 2
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": null
+          },
+          "expected": {
+            "valid": false,
+            "retry_count": null
+          },
+          "actual": {
+            "valid": false,
+            "retry_count": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": false
+          },
+          "expected": {
+            "valid": false,
+            "retry_count": null
+          },
+          "actual": {
+            "valid": false,
+            "retry_count": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": 0
+          },
+          "expected": {
+            "valid": true,
+            "retry_count": 0
+          },
+          "actual": {
+            "valid": true,
+            "retry_count": 0
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": 4
+          },
+          "expected": {
+            "valid": true,
+            "retry_count": 4
+          },
+          "actual": {
+            "valid": true,
+            "retry_count": 4
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": 5
+          },
+          "expected": {
+            "valid": false,
+            "retry_count": null
+          },
+          "actual": {
+            "valid": false,
+            "retry_count": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": -1
+          },
+          "expected": {
+            "valid": false,
+            "retry_count": null
+          },
+          "actual": {
+            "valid": false,
+            "retry_count": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "retry_count": "2"
+          },
+          "expected": {
+            "valid": false,
+            "retry_count": null
+          },
+          "actual": {
+            "valid": false,
+            "retry_count": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "enum-exact",
+      "code_sha256": "d717b972381c526938ff0ca5d6cbf9a24f421dab502be91b28ed30b9506a9db1",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "policy": null
+          },
+          "actual": {
+            "ok": false,
+            "policy": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": "inspect"
+          },
+          "expected": {
+            "ok": true,
+            "policy": "inspect"
+          },
+          "actual": {
+            "ok": true,
+            "policy": "inspect"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": "hold"
+          },
+          "expected": {
+            "ok": true,
+            "policy": "hold"
+          },
+          "actual": {
+            "ok": true,
+            "policy": "hold"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": "Inspect"
+          },
+          "expected": {
+            "ok": false,
+            "policy": null
+          },
+          "actual": {
+            "ok": false,
+            "policy": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": " hold"
+          },
+          "expected": {
+            "ok": false,
+            "policy": null
+          },
+          "actual": {
+            "ok": false,
+            "policy": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": null
+          },
+          "expected": {
+            "ok": false,
+            "policy": null
+          },
+          "actual": {
+            "ok": false,
+            "policy": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": true
+          },
+          "expected": {
+            "ok": false,
+            "policy": null
+          },
+          "actual": {
+            "ok": false,
+            "policy": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "policy": []
+          },
+          "expected": {
+            "ok": false,
+            "policy": null
+          },
+          "actual": {
+            "ok": false,
+            "policy": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "flag-both",
+      "code_sha256": "94614aba7ba3cbd0bac5fa26a1976a09e4b68226245c4294c46c2ca803568843",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": false,
+            "enabled": null
+          },
+          "actual": {
+            "valid": false,
+            "enabled": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "enabled": true
+          },
+          "expected": {
+            "valid": true,
+            "enabled": true
+          },
+          "actual": {
+            "valid": true,
+            "enabled": true
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "enabled": false
+          },
+          "expected": {
+            "valid": true,
+            "enabled": false
+          },
+          "actual": {
+            "valid": true,
+            "enabled": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "enabled": null
+          },
+          "expected": {
+            "valid": false,
+            "enabled": null
+          },
+          "actual": {
+            "valid": false,
+            "enabled": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "enabled": 0
+          },
+          "expected": {
+            "valid": false,
+            "enabled": null
+          },
+          "actual": {
+            "valid": false,
+            "enabled": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "enabled": 1
+          },
+          "expected": {
+            "valid": false,
+            "enabled": null
+          },
+          "actual": {
+            "valid": false,
+            "enabled": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "enabled": "true"
+          },
+          "expected": {
+            "valid": false,
+            "enabled": null
+          },
+          "actual": {
+            "valid": false,
+            "enabled": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "exact-output",
+      "code_sha256": "a4cbbaa1ec4762e5d20f5fd80ed85db94ef2b054edb5d28f8ce1ed678adaa48a",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "eligible": false
+          },
+          "actual": {
+            "eligible": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "approved": true
+          },
+          "expected": {
+            "eligible": true
+          },
+          "actual": {
+            "eligible": true
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "approved": false
+          },
+          "expected": {
+            "eligible": false
+          },
+          "actual": {
+            "eligible": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "approved": null
+          },
+          "expected": {
+            "eligible": false
+          },
+          "actual": {
+            "eligible": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "approved": 1
+          },
+          "expected": {
+            "eligible": false
+          },
+          "actual": {
+            "eligible": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "approved": "true"
+          },
+          "expected": {
+            "eligible": false
+          },
+          "actual": {
+            "eligible": false
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "two-level",
+      "code_sha256": "6682b240087eaf0a1d4289d8d5e445c05dced8b31b9ec4921ab64fd0b5208d41",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": []
+          },
+          "expected": {
+            "ok": true,
+            "groups": []
+          },
+          "actual": {
+            "ok": true,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              [
+                4,
+                6
+              ]
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "groups": [
+              [
+                4,
+                6
+              ]
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "groups": [
+              [
+                4,
+                6
+              ]
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              [
+                4
+              ],
+              [
+                5
+              ]
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "groups": [
+              [
+                4
+              ],
+              [
+                5
+              ]
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "groups": [
+              [
+                4
+              ],
+              [
+                5
+              ]
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              [
+                4
+              ],
+              [
+                4
+              ],
+              [
+                4
+              ]
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              []
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              [
+                4,
+                5,
+                6
+              ]
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              [
+                true
+              ]
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              [
+                7
+              ]
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "groups": [
+              null
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "groups": []
+          },
+          "actual": {
+            "ok": false,
+            "groups": []
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "all-fields",
+      "code_sha256": "5fec988e54cb6ff73790aa6df12ac4f39cb5e38258d26553d2b9bf08b073123a",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "allowed": false
+          },
+          "actual": {
+            "allowed": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "state": "open",
+            "assessment": "eligible",
+            "consumed": 0,
+            "ceiling": 2,
+            "inspect_only": true,
+            "receipt_verified": false
+          },
+          "expected": {
+            "allowed": true
+          },
+          "actual": {
+            "allowed": true
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "state": "open",
+            "assessment": "eligible",
+            "consumed": 0,
+            "ceiling": 2,
+            "inspect_only": true,
+            "receipt_verified": "yes"
+          },
+          "expected": {
+            "allowed": false
+          },
+          "actual": {
+            "allowed": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "state": "closed",
+            "assessment": "eligible",
+            "consumed": 0,
+            "ceiling": 2,
+            "inspect_only": true,
+            "receipt_verified": true
+          },
+          "expected": {
+            "allowed": false
+          },
+          "actual": {
+            "allowed": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "state": "open",
+            "assessment": "eligible",
+            "consumed": true,
+            "ceiling": 2,
+            "inspect_only": true,
+            "receipt_verified": true
+          },
+          "expected": {
+            "allowed": false
+          },
+          "actual": {
+            "allowed": false
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "mapping-presence-helper",
+      "code_sha256": "c3af44a26f2fb36821bea26c0b5b2bb27c8f04f83ea8f40df31d5766d20340a3",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "kind": "missing",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "missing",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": null
+          },
+          "expected": {
+            "kind": "null",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "null",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": -18
+          },
+          "expected": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": -17
+          },
+          "expected": {
+            "kind": "integer",
+            "pressure_ticks": -17
+          },
+          "actual": {
+            "kind": "integer",
+            "pressure_ticks": -17
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": -9
+          },
+          "expected": {
+            "kind": "integer",
+            "pressure_ticks": -9
+          },
+          "actual": {
+            "kind": "integer",
+            "pressure_ticks": -9
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": -8
+          },
+          "expected": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": true
+          },
+          "expected": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": -17.0
+          },
+          "expected": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": "x"
+          },
+          "expected": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "pressure_ticks": []
+          },
+          "expected": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "actual": {
+            "kind": "invalid",
+            "pressure_ticks": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "parameterized-presence",
+      "code_sha256": "25f7d99db5f533704cc3ed6e247b396b8099f8812ba06137810e23316cac3c16",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "phase": "absent",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "absent",
+            "budget_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": null
+          },
+          "expected": {
+            "phase": "unset",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "unset",
+            "budget_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": 36
+          },
+          "expected": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": 37
+          },
+          "expected": {
+            "phase": "number",
+            "budget_ticks": 37
+          },
+          "actual": {
+            "phase": "number",
+            "budget_ticks": 37
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": 41
+          },
+          "expected": {
+            "phase": "number",
+            "budget_ticks": 41
+          },
+          "actual": {
+            "phase": "number",
+            "budget_ticks": 41
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": 42
+          },
+          "expected": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": false
+          },
+          "expected": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": 37.0
+          },
+          "expected": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "budget_ticks": []
+          },
+          "expected": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "actual": {
+            "phase": "bad",
+            "budget_ticks": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "parameterized-recursive",
+      "code_sha256": "d02d6c859ad8f03a70cc7765dd182689559e4e48a829424e68d77f0838711914",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": []
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "accepted": true,
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "accepted": true,
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "accepted": true,
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "actual": {
+            "accepted": true,
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              },
+              {
+                "tag": "abc",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abcdefg",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "accepted": true,
+            "units": [
+              {
+                "tag": "abcdefg",
+                "enabled": true
+              }
+            ]
+          },
+          "actual": {
+            "accepted": true,
+            "units": [
+              {
+                "tag": "abcdefg",
+                "enabled": true
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "ab",
+                "enabled": false
+              }
+            ]
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abcdefgh",
+                "enabled": true
+              }
+            ]
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": 0
+              }
+            ]
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": [
+              {
+                "tag": "abc",
+                "enabled": true,
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "units": null
+          },
+          "expected": {
+            "accepted": false,
+            "units": []
+          },
+          "actual": {
+            "accepted": false,
+            "units": []
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "result-initialization",
+      "code_sha256": "107fbd549c1fad24a158afc7f3779242f87cdd29597d42aee15850cf75b87b68",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "tag": "omitted",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "omitted",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": null
+          },
+          "expected": {
+            "tag": "unset",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "unset",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": 52
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": 53
+          },
+          "expected": {
+            "tag": "bounded",
+            "ordinal": 53
+          },
+          "actual": {
+            "tag": "bounded",
+            "ordinal": 53
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": 57
+          },
+          "expected": {
+            "tag": "bounded",
+            "ordinal": 57
+          },
+          "actual": {
+            "tag": "bounded",
+            "ordinal": 57
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": 58
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": true
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": 53.0
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": "53"
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": []
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "ordinal": {}
+          },
+          "expected": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "actual": {
+            "tag": "rejected",
+            "ordinal": null
+          },
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "passed": true,
+  "probe_count": 132
+}

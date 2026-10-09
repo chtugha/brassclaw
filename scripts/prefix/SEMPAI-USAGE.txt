@@ -3,19 +3,24 @@ HOW TO CREATE A SEMPAI PREFIX — EXACT PROMPT
 BEGIN PROMPT
 From this BrassClaw repository, prepare a Sempai reviewer reference with
 scripts/prefix/sempai-compiler.py. Use a separate compiler cache and a pinned local
-Ornith tokenizer/config snapshot. Collect the twelve allowlisted source documents,
-including the full recipe.md, skills.md, tools.md, toolskills.md, AGENTS.md,
-CLAUDE.md, simplified_v3.md, validation queue, Sempai proposal transport/persona
-and scripts/prefix/sempai-authoring-reference.md plus the complete verified
-sempai-worked-examples.md teaching source. Do not fetch HA sources.
-Require its matching JSON manifest and real Linux verification receipt; preserve
+Ornith tokenizer/config snapshot. Collect the current allowlisted BrassClaw documents,
+including the four complete binding guides, reviewer procedure, proposal transport
+and complete verified worked examples. Preserve the complete pinned official Monty
+v1.0.0 documentation package in scripts/prefix/monty-reference/v1.0.0 (commit
+85c5d1f6bef038405cfc40a4eed94806e303567e) and the separate BrassClaw compatibility
+guide. Do not fetch HA sources or substitute changing upstream main-branch pages.
+Require the teaching JSON manifest and real Linux verification receipt; preserve
 both sidecars with the originals. A stale or missing receipt blocks compilation.
-Preserve all originals. For the reviewed 100000-token selection, set
-SEMPAI_REFERENCE_POLICY to scripts/prefix/sempai-reference-policy.json. It keeps
-the four full binding guides, full reviewer procedure and proposal transport,
-the complete verified worked-example tutorial,
-plus explicitly reviewed source units from the other documents. Reject source
-hash/unit drift or missing mandatory contracts; do not greedily shorten them.
+Use scripts/prefix/sempai-reference-policy-preload-v22.json for the reviewed whole-unit
+selection. The policy pins this source snapshot, not a permanent license to accept
+future source drift. If another author changes components or guides, preserve
+that work, capture a new coherent source package, review the changed selection
+and rerun affected teaching verification before compiling again. Keep old
+bundles/receipts; never edit compiler integrity checks or overwrite published
+generations to make a digest mismatch disappear. Preserve all raw originals; reject changed hashes, missing
+mandatory contracts or corrupted upstream artifacts before invalidating the cache.
+Compile to 114688 tokens with PREFIX_WORKSPACE_RESERVE_TOKENS=16384. The current
+rendered reference uses about 114000 tokens; never truncate guides to make it fit.
 
 The reference must teach provider-specific Kohai prompt diagnosis and reusable
 component/Recipe proposals, exact typed IBS authoring, associations, failure/retry
@@ -28,7 +33,7 @@ or secrets in the reusable prefix. Source collection is not component approval.
 Set SEMPAI_SOURCE_ROOT to the checkout or installed source-package directory,
 CODING_DISTILL_CACHE to an independent evidence directory and ORNITH_MODEL_CONFIG
 to a local snapshot's config.json. Run collect, distill and doctor, then compile
-with --mode context --offline --context-tokens 100000. Use existing dependencies;
+with --mode context --offline --context-tokens 114688. Use existing dependencies;
 never alter vLLM services, Compose, model environments or templates. If the complete
 required reference cannot fit, report Capacity blocked with the measured size and
 preserve the originals. Do not reduce coverage or claim a prefix was deployed.
@@ -49,12 +54,14 @@ dependencies; compiling needs tokenizer/config files, not model weights.
 cd /path/to/brassclaw
 export PREFIX_PYTHON=/path/to/existing/compiler-environment/bin/python
 export ORNITH_MODEL_CONFIG=/path/to/pinned/model/config.json
+export TOKENIZER_MODEL=/path/to/pinned/model
+export PREFIX_WORKSPACE_RESERVE_TOKENS=16384
 export SEMPAI_SOURCE_ROOT="$PWD"
 export CODING_DISTILL_CACHE="$PWD/sempai-evidence"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export TRIAGE_MODE=local
-export SEMPAI_REFERENCE_POLICY="$PWD/scripts/prefix/sempai-reference-policy.json"
+export SEMPAI_REFERENCE_POLICY="$PWD/scripts/prefix/sempai-reference-policy-preload-v22.json"
 
 "$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode plan
 "$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode collect
@@ -66,7 +73,7 @@ For a reproducible rebuild, pin the generated inventory before recollecting:
 cp "$CODING_DISTILL_CACHE/raw/source_manifest.json" "$CODING_DISTILL_CACHE/pinned-source-manifest.json"
 export SEMPAI_SOURCE_MANIFEST="$CODING_DISTILL_CACHE/pinned-source-manifest.json"
 
-"$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode context --offline --context-tokens 100000
+"$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode context --offline --context-tokens 114688
 
 Successful output lives under "$CODING_DISTILL_CACHE/generations/<generation>/":
 context_100k.md, vllm_prefix_template.jinja, evidence_cards.jsonl, prefix_manifest.json,
@@ -77,7 +84,7 @@ from the complete preserved originals. Unset SEMPAI_REFERENCE_POLICY to request
 the original full-document model-visible policy (currently exceeds Ornith capacity).
 The current pointer publishes a local compiler bundle; it does not activate a server.
 Full raw documents remain under raw/documents/<sha256>.txt even on capacity failure.
-The 100000 target is an explicit preview setting, not BrassClaw's disabled global
+The 114688 target is an explicit preview setting, not BrassClaw's disabled global
 token budget. The copied model/cache adapter currently targets Ornith's measured
 hybrid geometry; offline results do not prove runtime/native/external cache reuse.
 
@@ -400,3 +407,24 @@ python3 scripts/prefix/diagnose_sempai_cache.py \
 Read external_restore_check_passed in both receipts. These sentinel checks isolate
 serving corruption; they do not establish Sempai accuracy or replace whole-draft
 behavioral validation and Q1/Q2. See sempai-accuracy-20261007/README.md for evidence.
+
+PINNED MONTY LANGUAGE CHECKS — LINUX TEST HOST
+
+Use an existing test environment with pydantic-monty==1.0.0; it is separate from
+the inference server environment. These checks execute only gated pure logic.
+They do not verify BrassClaw custom host adapters, Tool dispatch or Q1/Q2.
+
+python3 scripts/prefix/validate_sempai_monty_teaching.py \
+  --source scripts/prefix/sempai-worked-examples.md \
+  --manifest scripts/prefix/sempai-worked-examples.json \
+  --receipt ./teaching-monty-new-run.json
+
+python3 scripts/prefix/check_sempai_candidates.py ./sempai-evaluation-new-run
+python3 scripts/prefix/check_sempai_monty.py ./sempai-evaluation-new-run \
+  --output ./sempai-monty-new-run.json
+
+For long live regressions, pass --prefix-bundle /path/to/immutable/generation to
+evaluate_sempai_prefix.py. It verifies the server-injected token root before every
+case, so a changed deployment or repeated connection failure cannot silently become
+a model-accuracy score. First-pass runs never receive oracle answers or repair feedback.
+Keep prototype failures, first-pass results and bounded repairs in separate folders.

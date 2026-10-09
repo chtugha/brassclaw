@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "manifest_sha256": "f281474590669e1a0e35a9a2ec31c7d147ef12663e0a6967060248421ced1c0b",
+  "first_pass_accepted": 10,
+  "total": 12,
+  "accepted_after_bounded_repairs": 11,
+  "repair_rounds": 2,
+  "remaining_rejected": [
+    "fresh-presence-helper"
+  ],
+  "stages": [
+    {
+      "stage": 0,
+      "accepted": 10,
+      "total": 12,
+      "model_evaluation_sha256": "c748e8524de9ca4eb6e2ebd000ae031e30e837c3c5711de79306e95ee7ed20ec",
+      "candidate_checks_sha256": "84cb43f7546537314a85ad8d432941d1cdee2d621898607f0b07a6b50243be70"
+    },
+    {
+      "stage": 1,
+      "attempted": 2,
+      "newly_accepted": [
+        "fresh-missing-default"
+      ],
+      "repair_feedback_presentation": "system",
+      "accepted_after_stage": 11,
+      "model_evaluation_sha256": "46a53711bc730740a37be0b98233db68d4a9c38be42be9250cf814609073d38d",
+      "candidate_checks_sha256": "cc192914f54ee5243b9972c06e57dd8e4a709f13f4a740d6d7e6f5a0b9dac951"
+    },
+    {
+      "stage": 2,
+      "attempted": 1,
+      "newly_accepted": [],
+      "repair_feedback_presentation": "system",
+      "accepted_after_stage": 11,
+      "model_evaluation_sha256": "7097f42719b46692fb08d625b9ad678202e1cb92e9274fd6c5efe945cf2c91a1",
+      "candidate_checks_sha256": "b14aa4832bd4ec4386444bcebde04df848eaf5636c191528b6ccadb68a93438e"
+    }
+  ],
+  "accepted_sources": {
+    "fresh-boolean-helper": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "3ba0624b92ee5dab53f9777e1c9d062d2383c05357c4489f227423d99a283a2f"
+    },
+    "fresh-nested-bools": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "98ee072794b1ed520658a5797262e23a605222fa27d1941a42b34133d924bec8"
+    },
+    "fresh-sent-data": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "d5891aa587431f8794b9a706efed7376bc6bdba7c7a6d7a1ffba68253d1ce473"
+    },
+    "fresh-sent-reply": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "1be9544a6bdcae4b84f28cd37b430df5f983f7c74107f243499b5d160ed1221c"
+    },
+    "fresh-discarded-data": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "9f48b0c5c624ea15f07bf36f74d9e4beda3b3e4bab8dc2dcf6c7dc542be91216"
+    },
+    "fresh-discarded-reply": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "b747f54cdf2aaa75d17966f6fd7b6c259878770a5dcc7c8fded30a14755f7219"
+    },
+    "fresh-evidence-completed": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "e3e54cbf6b9da71b1a122c6eea4ce188d548e0bc79bf4435348e496185d7e9ff"
+    },
+    "fresh-evidence-unknown": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "1e2bc22b15f8d59841404ad29b5d7cf5737075bf9d4930d3291540736cf2b3c1"
+    },
+    "fresh-authorized-0": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "2ddc03b2830dc31893b87be4d3eddec163efd5a3a47251861bdc49b5caad1469"
+    },
+    "fresh-authorized-1": {
+      "stage": 0,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-first-pass",
+      "response_sha256": "bbd3c826be60b5ef377e91ef2df9bd0c29eeb48da53146d1c4a79e2843c977a5"
+    },
+    "fresh-missing-default": {
+      "stage": 1,
+      "directory": "scripts/prefix/sempai-accuracy-20261009/v19-fresh-repair-round1",
+      "response_sha256": "3f572a2668193b9deea95cdff4840e1dd6168098881927f546c3a2fe093613c8"
+    }
+  },
+  "first_pass_score_includes_repairs": false,
+  "production_q1_q2_verified": false,
+  "base_decoder_and_presentation_controls_unchanged": true,
+  "summary_semantics_fully_verified": false
+}

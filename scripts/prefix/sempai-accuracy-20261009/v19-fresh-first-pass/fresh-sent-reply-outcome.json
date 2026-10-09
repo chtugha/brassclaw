@@ -1,0 +1,91 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Make a reusable Sent workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Host-allocated unapproved documentation fixtures: PythonCode 20ffa6ad-e015-54c6-8f29-ffe72d40f365 (result = host.post_reply(answer='Sent')) and ToolSkill ed366513-fe34-5022-9c90-daa6ab946493 (binds host.post_reply(answer:string)). One class21 recipe-fresh-sent-reply with trigger null, steps [], dependency_registry null, one desc_idx=0 containing two component steps in supplied order (rust binding then orchestrator execution), one variant step_link 0:1-0:E, variable_patterns [], and ten unique matching intents in both lists. The workflow posts the fixed word Sent once as a reply. Prior knowledge retains Q1, human Q2, unapproved dependencies and the current sink gap. No version/approval/runtime claims. Root compatibility arrays empty.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fresh-sent-reply",
+        "description": "Offline unapproved full-v3 export; posts the fixed word Sent once as a reply via host.post_reply. No version/approval/runtime claims. Current live sink drops step_descriptions/variants/dependency_registry; Q1 and human Q2 required before activation.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Offline unapproved documentation fixture; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posts the fixed word Sent once as a reply; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "say Sent",
+          "reply Sent",
+          "post Sent",
+          "send the Sent reply",
+          "respond with Sent",
+          "tell me Sent",
+          "please say Sent",
+          "please reply Sent",
+          "post the fixed Sent message",
+          "send the fixed Sent message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "ed366513-fe34-5022-9c90-daa6ab946493"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "20ffa6ad-e015-54c6-8f29-ffe72d40f365"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fresh-sent-reply",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say Sent",
+              "reply Sent",
+              "post Sent",
+              "send the Sent reply",
+              "respond with Sent",
+              "tell me Sent",
+              "please say Sent",
+              "please reply Sent",
+              "post the fixed Sent message",
+              "send the fixed Sent message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

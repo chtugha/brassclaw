@@ -1,0 +1,534 @@
+{
+  "cases": [
+    {
+      "id": "eval-policy",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "BrassClaw authored PythonCode forbids eval/exec and direct open as an authoring contract, which is stricter than upstream Monty's restricted eval; obtain I/O through registered Tools instead. See 7f10ec7c1d6e.",
+        "citations": [
+          "7f10ec7c1d6e"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 10.727,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Restoring a snapshot only re-announces a paused host call; it does not establish that no external effect occurred, so replaying an unresolved operation is not authorized. Use durable effect records and safe reconciliation before any re-dispatch.",
+        "citations": [
+          "ba60231f8cc2"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 13.027,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-trust",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "No. Parsing the byte format is not sufficient; skills.md \u00a711.12 and sempai-monty-compatibility 24950430d189 require the snapshot to come from a trusted, compatible producer with verified integrity before it can be restored.",
+        "citations": [
+          "24950430d189",
+          "cdcb169e2204"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 21.342,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "generator-function",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects yield/yield from at parse time (no generator functions); generator expressions parse but materialize to a list. Card 6ae8c4c80d41.",
+        "citations": [
+          "6ae8c4c80d41"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 13.692,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "match-language",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects match statements at parse time (limitations/language.md card 6ae8c4c80d41), so a Monty component cannot use them.",
+        "citations": [
+          "6ae8c4c80d41"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 16.926,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "inheritance",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects class inheritance and metaclasses at parse time (card 6ae8c4c80d41, 9e4d23dfc0e1, 1227250866f5). A component may define simple classes with instance methods and class variables, but `class Foo(Bar):` is not supported.",
+        "citations": [
+          "6ae8c4c80d41",
+          "9e4d23dfc0e1",
+          "1227250866f5"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.298,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "typed-proof",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Type-check success is static only and does not prove recursive runtime validation or behavior; it is separate evidence from actual Monty execution and production Q1.",
+        "citations": [
+          "1db6a93471ac",
+          "0d4579916fd9"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 21.449,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "private-frame",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference states BrassClaw's private transport caps frames at 64 MiB and depth at 64, and explicitly says not to claim the upstream 256 MiB wire allowance is available to a BrassClaw task.",
+        "citations": [
+          "7b2614880d49"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.386,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "task-clock",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Upstream feed/turn clocks restart per request and are not automatically one cumulative BrassClaw task budget; the BrassClaw task account persists consumption across steps/waits/retries. Card 7b2614880d49.",
+        "citations": [
+          "7b2614880d49"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 19.201,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "global-lifecycle",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A completed or cancelled turn must not terminate the global Monty orchestrator; only instance shutdown or supervised fatal-runtime recovery may end its lifetime (toolskills.md L495-500, card 11bd53698f3f).",
+        "citations": [
+          "11bd53698f3f"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 11.701,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "seed-q2",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference states that bundled system_seed components use installation-owned integrity/structural/behavioral qualification without additional installed-instance human Q2, while post-installation authored components require Q1, behavioral evidence and human Q2.",
+        "citations": [
+          "ba60231f8cc2"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 25.403,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "binding-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes. tools.md \u00a75 and toolskills.md \u00a78 state that current instance-wide allow/block policy and technical settings are checked independently before every actual dispatch, including a retained pinned old Tool version; approval and version pinning are not Tool permission.",
+        "citations": [
+          "dbf899077c53",
+          "d7ebf1871cce"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.551,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "upstream-eval",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 scripts/prefix/sempai-monty-compatibility.md card ba60231f8cc2 states upstream Monty has restricted eval/exec, while BrassClaw forbids them by authoring contract, not because they are absent from Monty.",
+        "citations": [
+          "ba60231f8cc2"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 28.195,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "eager-generator",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "The pinned Monty v1.0.0 documentation states generator expressions currently materialize to a list rather than a lazy iterator, a known temporary divergence. Card 15376363079d (comprehensions.md) and card 6ae8c4c80d41 (limitations/index.md) both confirm this behavior.",
+        "citations": [
+          "15376363079d",
+          "6ae8c4c80d41"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 13.078,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "host-inputs",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes: a BrassClaw component runs inside the selected Monty execution context and must use step-local inputs[name] plus registered host.<tool>(...) calls; it must not construct another Monty pool/VM/session or feed_run, which is an embedding-host artifact, not a component capability.",
+        "citations": [
+          "66e7be319969",
+          "0d4579916fd9",
+          "7f10ec7c1d6e"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 29.01,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-ledger",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 snapshot bytes are not a durable effect ledger and cannot establish that no external effect occurred, so BrassClaw needs retained continuation/effect records for safe reconciliation. toolskills.md \u00a78 and tools.md \u00a78 require durable run/attempt identity, pinned references, dispatch counts, idempotency keys and confirmed/unresolved effect status; ba60231f8cc2 confirms restored memory or a timeout does not establish no effect.",
+        "citations": [
+          "ba60231f8cc2",
+          "fc63511ac257",
+          "27ad375f0f06"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.435,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "preload-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Loading is effect-free and must run no Tool calls, model calls, I/O, or effectful initializers; a Tool call during load would violate the preload contract. See card aae8e878c95b and card 27ad375f0f06.",
+        "citations": [
+          "aae8e878c95b",
+          "27ad375f0f06"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 31.222,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "preload-not-invoke",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "skills.md \u00a71 states 'Loading its definitions makes the selected functions available for later invocation; it does not execute the usage or enable a Tool,' and \u00a76 distinguishes 'Preloading the definition and invoking it are separate operations.' Card aae8e878c95b confirms 'Loading a definition is not invocation.'",
+        "citations": [
+          "aae8e878c95b",
+          "51cd230d7111"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 12.111,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-source",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "MCP submits a canonical matching command plus typed data through the existing global matcher/IBS/child path and accepts no Python source; invoking a Skill by pasting arbitrary Python is not a supported invocation form.",
+        "citations": [
+          "51cd230d7111",
+          "aae8e878c95b"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 19.179,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "shared-defaults",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "skills.md \u00a73 forbids shared mutable function defaults, captured task objects, and closures over another task's inputs; each invocation/task owns its own mutable state.",
+        "citations": [
+          "cdcb169e2204"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 11.737,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "export-api",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The Skill interface documentation explicitly states the association record has exactly its listed fields and rejects unknown fields or duplicate keys, and that no invented export fields are added to persisted Recipe JSON. It repeatedly frames these as target specifications requiring implemented store/runtime support, not proof of current API acceptance.",
+        "citations": [
+          "d41be1831045",
+          "5c7502aeb7e9",
+          "aae8e878c95b"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 20.242,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "exports-live-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 preloaded Skill exports do not enable a Tool; the matching ToolSkill binding and current global kernel policy are still required before every actual host.<tool>(...) dispatch (skills.md \u00a7215-229, card 51cd230d7111; tools.md \u00a75, card dbf899077c53).",
+        "citations": [
+          "51cd230d7111",
+          "dbf899077c53"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 11.806,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "temperature": 0,
+  "repair": false,
+  "citations_constrained_to_manifest": true,
+  "generation": "541e3610dd3885c2ab5e243fe07e2fd4aa9a8c2e3ee3a8ab7cb2fee5e6ae8998",
+  "suite_sha256": "60ac0bcf1972f08031ec78eb241fbfb99b1b8c61d542f2bac77f5942d8db5649",
+  "production_q1_q2_verified": false,
+  "support_check": "Topic regex on cited originals; reasons additionally require semantic review. Not a general entailment verifier.",
+  "passed": 16
+}

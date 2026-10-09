@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-89ab241ad3ca35b0",
+  "object": "chat.completion",
+  "created": 1791514439,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved class-22 pure-logic component. The helper receives the raw inputs mapping (not inputs.get), distinguishes absent key (omitted), explicit null (unset), exact integer -80..-70 (accepted/original) and everything else (bad/null), and returns exactly {category, optional_channel} on every branch. Called at module scope to assign result. No execution, submission, Q1/Q2 or activation occurred; target typed inputs is a prerequisite.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-presence-helper\", \"description\": \"optional_channel absent -> category omitted/null; null -> unset/null; exact integer -80..-70 -> accepted/original; other -> bad/null. Exact result keys category and optional_channel. No exceptions/coercion/defaults/host/imports. Target typed inputs prerequisite; unapproved draft, not submitted or activated.\", \"content\": \"def classify_channel(mapping):\\n    if 'optional_channel' not in mapping:\\n        return {'category': 'omitted', 'optional_channel': None}\\n    value = mapping['optional_channel']\\n    if value is None:\\n        return {'category': 'unset', 'optional_channel': None}\\n    if type(value) is int and -80 <= value <= -70:\\n        return {'category': 'accepted', 'optional_channel': value}\\n    return {'category': 'bad', 'optional_channel': None}\\nresult = classify_channel(inputs)\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113539,
+    "total_tokens": 113913,
+    "completion_tokens": 374,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

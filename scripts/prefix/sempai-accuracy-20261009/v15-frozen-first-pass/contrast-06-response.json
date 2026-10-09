@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-abd6ab3682180974",
+  "object": "chat.completion",
+  "created": 1791513828,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved class-22 pure-logic component pc-contrast-06. Raw records is a list of 0..2 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list is valid; missing/null/wrong types/extra fields are invalid with no exceptions or coercion. Module-level result assigns {ok:boolean, records:original if valid else []}. No I/O, imports, host calls or upstream validation assumption. Conversation preserved unchanged. This is a target-input unapproved draft; no execution, submission, Q1/Q2 or activation occurred.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-06\", \"description\": \"Raw records is a list of 0..2 items. Every object has exactly code and enabled. code is a string of length 2..5 inclusive. enabled is an exact bool (False valid). Empty list is valid. Missing/null/wrong types/extra fields are invalid without exceptions or coercion. Always result={ok:boolean, records:original if valid else []}. No I/O, imports, host calls or upstream validation assumption. Target typed-input interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 0 <= len(records) <= 2\\nif ok:\\n    for record in records:\\n        if type(record) is not dict or set(record) != {'code', 'enabled'}:\\n            ok = False\\n            break\\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5 and type(record['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113435,
+    "total_tokens": 113884,
+    "completion_tokens": 449,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

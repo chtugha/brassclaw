@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bfec9389e5db78b7",
+  "object": "chat.completion",
+  "created": 1791513653,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"Monty rejects match statements at parse time with NotImplementedError (evidence-card 6ae8c4c80d41, 9e4d23dfc0e1, be98cdf265c1, 70fcd01853d7). A BrassClaw PythonCode component must use if/elif/else instead, and \u00a7body-scan hard-rejects eval/exec/open/subprocess/os imports (evidence-card d68920c3c89d, 9ee64db8b0ee).\",\n  \"citations\": [\n    \"6ae8c4c80d41\",\n    \"9e4d23dfc0e1\",\n    \"be98cdf265c1\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112494,
+    "total_tokens": 112687,
+    "completion_tokens": 193,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

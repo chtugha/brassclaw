@@ -1,5 +1,7 @@
 # Reborn Contract - First-Party Skills Extension
 
+**V3 supersession:** The Skill definition is now [a preloadable function interface](../../../skills.md#preloadable-function-interface-binding-v3-target): prose plus associated PythonCode, declared exports/dependencies, deterministic loading, pinned invocation and isolated mutable state. Loading grants no Tool access; matching ToolSkill bindings and current kernel checks remain required. The SKILL.md-bundle/context-injection design below is historical and must not be implemented as the v3 Skill library or loader.
+
 **Status:** Draft implementation contract
 **Date:** 2026-05-20
 **Depends on:** [`kernel-boundary.md`](kernel-boundary.md), [`filesystem.md`](filesystem.md), [`extensions.md`](extensions.md), [`capability-access.md`](capability-access.md), [`capabilities.md`](capabilities.md), [`turns-agent-loop.md`](turns-agent-loop.md)

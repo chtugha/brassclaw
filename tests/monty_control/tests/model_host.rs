@@ -81,6 +81,22 @@ mod runtime {
 mod pg_monty_admission;
 #[path = "support/runtime.rs"]
 mod support;
+// Explicit fixture resource configuration; catalogue approval and actual
+// worker/database execution remain with the existing owners.
+struct FixtureRecipeCapacity;
+#[async_trait]
+impl global_recipe_ports::RecipeCapacitySource for FixtureRecipeCapacity {
+    async fn current(
+        &self,
+    ) -> Result<global_recipe_ports::RecipeCapacity, brassclaw_monty_host::service::PortFailure>
+    {
+        Ok(global_recipe_ports::RecipeCapacity {
+            revision: 1,
+            max_recipes: 8,
+        })
+    }
+}
+
 const SOURCE: &str = include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py");
 
 fn assert_settlement_outcome(mut actual: Value, expected: Value) -> Value {
@@ -289,6 +305,7 @@ impl NativeTaskPortsFactory {
                 ownership,
                 catalogue,
                 8,
+                Arc::new(FixtureRecipeCapacity),
             )
             .unwrap(),
         }
@@ -1508,6 +1525,7 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
         owner.ownership_check(),
         Arc::new(FailedCapture),
         1,
+        Arc::new(FixtureRecipeCapacity),
     )
     .unwrap();
     let provider = Arc::new(RecordingProvider::default());
@@ -1636,6 +1654,7 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
         owner.ownership_check(),
         Arc::new(WaitingCapture(entered.clone())),
         1,
+        Arc::new(FixtureRecipeCapacity),
     )
     .unwrap();
     let provider = Arc::new(RecordingProvider::default());

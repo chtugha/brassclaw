@@ -92,7 +92,7 @@ pub(crate) async fn start(
         .bind_task_budget_settings(live.clone())
         .map_err(|error| invalid(error.to_string()))?;
     // Start with the configured finite value. Startup sizing is applied to the
-    // actual worker before ingress; manual upgrades retain their exact value.
+    // actual worker before ingress; manual startup retains the upgraded value.
     // This finite physical backstop is independent of task executing time.
     let soft = usize::try_from(
         settings

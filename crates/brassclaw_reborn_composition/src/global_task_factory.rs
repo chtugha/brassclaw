@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use crate::{
     global_monty_driver::GlobalTaskPortsFactory,
     global_monty_owner::GlobalOwnerCheck,
-    global_recipe_ports::{GlobalRecipePorts, MontyTaskCatalogue},
+    global_recipe_ports::{GlobalRecipePorts, MontyTaskCatalogue, RecipeCapacitySource},
     pg_monty_admission::PgMontyAdmission,
 };
 
@@ -68,6 +68,7 @@ pub(crate) struct OwnedGlobalTaskFactory {
     pool: Arc<PgPool>,
     ownership: GlobalOwnerCheck,
     catalogue: Arc<dyn MontyCatalogueProvider>,
+    recipe_capacity: Arc<dyn RecipeCapacitySource>,
     capacity: usize,
     tasks: Mutex<HashMap<MontyTaskAttempt, RetainedTask>>,
 }
@@ -78,6 +79,7 @@ impl OwnedGlobalTaskFactory {
         ownership: GlobalOwnerCheck,
         catalogue: Arc<dyn MontyCatalogueProvider>,
         capacity: usize,
+        recipe_capacity: Arc<dyn RecipeCapacitySource>,
     ) -> Result<Self, AgentLoopDriverError> {
         if capacity == 0 {
             return Err(failed("monty_task_capacity_invalid"));
@@ -86,6 +88,7 @@ impl OwnedGlobalTaskFactory {
             pool,
             ownership,
             catalogue,
+            recipe_capacity,
             capacity,
             tasks: Mutex::new(HashMap::new()),
         })
@@ -203,6 +206,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             catalogue,
             input.user_input.clone(),
             self.ownership.clone(),
+            self.recipe_capacity.clone(),
         ));
         self.tasks()?
             .get_mut(&host.attempt())

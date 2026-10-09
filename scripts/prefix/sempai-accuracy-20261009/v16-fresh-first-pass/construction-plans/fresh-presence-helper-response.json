@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-aac27f3482da8cb9",
+  "object": "chat.completion",
+  "created": 1791514423,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'optional_channel' not in inputs\", \"result\": \"{'category': 'omitted', 'optional_channel': None}\"}, {\"guard\": \"elif inputs['optional_channel'] is None\", \"result\": \"{'category': 'unset', 'optional_channel': None}\"}, {\"guard\": \"elif type(inputs['optional_channel']) is int and -80 <= inputs['optional_channel'] <= -70\", \"result\": \"{'category': 'accepted', 'optional_channel': inputs['optional_channel']}\"}, {\"guard\": \"else\", \"result\": \"{'category': 'bad', 'optional_channel': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs\", \"Q1\", \"human Q2\", \"exact association approval\"], \"notes\": \"Single class22 pc-fresh-presence-helper draft. Helper receives raw inputs, called at module scope to assign result. Distinguishes absent key (omitted), explicit\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113185,
+    "total_tokens": 113417,
+    "completion_tokens": 232,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

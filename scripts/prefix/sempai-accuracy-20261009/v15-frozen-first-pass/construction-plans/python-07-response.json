@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-918d736072a23d32",
+  "object": "chat.completion",
+  "created": 1791513592,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"window not in inputs\", \"result\": \"{'kind': 'missing', 'window': None}\"}, {\"guard\": \"window is None\", \"result\": \"{'kind': 'null', 'window': None}\"}, {\"guard\": \"type(window) is int and 3 <= window <= 12\", \"result\": \"{'kind': 'integer', 'window': window}\"}, {\"guard\": \"else\", \"result\": \"{'kind': 'invalid', 'window': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; no resolved catalogue revision, provider protocol capabilities, or draft-identity allocator are supplied\", \"class22 constructor and the target typed-inputs runner interface are not confirmed on the current host\", \"Q1, observed behavioral validation, human Q2, and exact association approval precede activation\"], \"notes\": \"The instruction is a pure-logic class22 draft with no Tool calls, no host.post_reply effect, and no posted message. Intents derive from computing/returning the \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113004,
+    "total_tokens": 113262,
+    "completion_tokens": 258,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

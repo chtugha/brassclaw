@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a4521e364e78b1eb",
+  "object": "chat.completion",
+  "created": 1791514875,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'records' not in inputs\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"value = inputs['records']; if value is None: result = {'ok': False, 'records': []}\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"if type(value) is not list or len(value) < 1 or len(value) > 4: result = {'ok': False, 'records': []}\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"for record in value: if type(record) is not dict or set(record) != {'code', 'enabled'}: result = {'ok': False, 'records': []}; if not (type(record['code']) is 2\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"if not (type(record['code']) is str and 2 <= len(record['code']) <= 5): result = {'ok': False, 'records': []}\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"if not (type(record['enabled']) is bool): result = {'ok': False, 'records': []}\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"result = {'ok': True, 'records': value}\", \"result\": \"{'ok': True, 'records': value}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [], \"notes\": \"records is a required list (min 1), so the missing-key branch returns invalid. The helper receives the whole mapping to distinguish absent from explicit null. A\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113233,
+    "total_tokens": 113625,
+    "completion_tokens": 392,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

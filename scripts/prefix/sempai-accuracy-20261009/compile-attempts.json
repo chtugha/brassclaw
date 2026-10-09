@@ -1,0 +1,39 @@
+{
+  "attempts": [
+    {
+      "rendered_tokens": 117876,
+      "budget": 114688,
+      "outcome": "capacity blocked; duplicate descriptive navigation"
+    },
+    {
+      "rendered_tokens": 114808,
+      "budget": 114688,
+      "outcome": "capacity blocked; repeated ID index"
+    },
+    {
+      "generation": "498a8a380b928f10e9f2eb937c6a7b1bf6741943fafcff4152aec00f37404eba",
+      "outcome": "fit; card-level citation IDs/ranges retained, duplicate index removed"
+    },
+    {
+      "generation": "66ff5fd33f2af2c70cbb7b723f07dbf69a0eba8415e65d611f97d7e59e3425c3",
+      "text_tokens": 112640,
+      "rendered_tokens": 112908,
+      "outcome": "fit; same source selection plus generic terminal citation map and correct system_seed distinction"
+    },
+    {
+      "generation": "76120595c3ee83d7ff26efe1452cc8b3bbd4560b2ee4c1e994410549aeb4c874",
+      "outcome": "compiled and loaded; superseded before scoring due to new ground-truth interface edits"
+    },
+    {
+      "rendered_tokens": 117574,
+      "budget": 114688,
+      "outcome": "current preloadable contract exceeded budget; originals preserved"
+    },
+    {
+      "generation": "541e3610dd3885c2ab5e243fe07e2fd4aa9a8c2e3ee3a8ab7cb2fee5e6ae8998",
+      "text_tokens": 113715,
+      "outcome": "fit with 221 whole units; only duplicate secondary summary units omitted"
+    }
+  ],
+  "source_text_truncated": false
+}

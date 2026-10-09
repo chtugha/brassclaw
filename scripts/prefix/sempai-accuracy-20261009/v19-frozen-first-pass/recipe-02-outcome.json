@@ -1,0 +1,79 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable healthy data-result workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 6ca96ef8-0b75-572f-987b-38c88d423828 with content result = {'state': 'Healthy'}. Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-02. Exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0, persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Preserved original conversation; root compatibility arrays empty under test persona.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-02",
+        "description": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 6ca96ef8-0b75-572f-987b-38c88d423828 with content result = {'state': 'Healthy'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Offline unapproved data-return subworkflow; no Tool calls and no posted message. Host allocated unapproved draft PythonCode 6ca96ef8-0b75-572f-987b-38c88d423828 with content result = {'state': 'Healthy'}. Zero inputs/dependencies; no version numbers or approval. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the healthy state data",
+          "return the healthy state object",
+          "produce the fixed healthy object",
+          "obtain the healthy result data",
+          "calculate the healthy state result",
+          "yield the healthy state object",
+          "get the fixed healthy state data",
+          "build the healthy state object",
+          "evaluate the healthy data subworkflow",
+          "derive the fixed healthy state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "6ca96ef8-0b75-572f-987b-38c88d423828"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "healthy-data",
+            "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the healthy state data",
+              "return the healthy state object",
+              "produce the fixed healthy object",
+              "obtain the healthy result data",
+              "calculate the healthy state result",
+              "yield the healthy state object",
+              "get the fixed healthy state data",
+              "build the healthy state object",
+              "evaluate the healthy data subworkflow",
+              "derive the fixed healthy state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

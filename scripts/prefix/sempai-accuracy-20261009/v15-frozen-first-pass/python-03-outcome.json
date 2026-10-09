@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-03. Raw inputs may omit lag or contain any JSON value; accept exact integers -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Uses a helper invoked at module scope with its returned object assigned to result. No imports/I/O/host calls. Conversation preserved; unapproved draft, target typed inputs needs runner support, no observed tests/submission/activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-03",
+        "description": "Raw inputs may omit lag or contain any JSON value. Accept exact integers -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Uses a helper invoked at module scope with its returned object assigned to result. No imports/I/O/host calls. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.",
+        "content": "def inspect_lag(value):\n    accepted = type(value) is int and -1 <= value <= 8\n    return {'accepted': accepted, 'lag': value if accepted else None}\nresult = inspect_lag(inputs.get('lag'))"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

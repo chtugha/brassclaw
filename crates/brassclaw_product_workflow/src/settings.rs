@@ -154,6 +154,10 @@ pub struct SettingsComponentGraph {
 
 // ── Monty VM settings ─────────────────────────────────────────────────────────
 
+/// Configured startup/manual heap budgets cannot be smaller than the default.
+/// This ceiling does not reserve or eagerly allocate memory.
+pub const DEFAULT_MONTY_HEAP_BYTES: u64 = 512 * 1024 * 1024;
+
 /// Memory measurement is optional after startup; the default has no monitor.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -207,6 +211,9 @@ impl MontyMemoryPolicy {
 /// (gated: only `Validated` orchestrators are accepted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmSettings {
+    /// Live capacity for distinct Recipe selections retained by one task.
+    #[serde(default = "default_max_recipes_per_task")]
+    pub max_recipes_per_task: u32,
     #[serde(default)]
     pub memory_policy: MontyMemoryPolicy,
     /// Live execution limits, distinct from shared heap and task compute time.
@@ -248,6 +255,7 @@ pub struct MontyVmSettings {
 /// Request body for `PUT /api/settings/monty-vm`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMontyVmSettingsRequest {
+    pub max_recipes_per_task: Option<u32>,
     pub memory_policy: Option<MontyMemoryPolicy>,
     pub execution_limits: Option<brassclaw_host_api::MontyExecutionLimits>,
     /// Compare-and-set revision from GET. Required by durable stores.
@@ -309,6 +317,8 @@ pub enum MontyVmState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmStatusResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_budget: Option<MontyRecipeBudgetStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_budget: Option<MontyMemoryBudgetStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_limits: Option<MontyExecutionLimitsStatus>,
@@ -322,6 +332,16 @@ pub struct MontyVmStatusResponse {
     pub restart_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_budget: Option<MontyTaskBudgetStatus>,
+}
+
+/// Rust retained-selection capacity from the acknowledged settings generation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MontyRecipeBudgetStatus {
+    pub desired_revision: u64,
+    pub effective_revision: u64,
+    pub max_recipes_per_task: u32,
+    pub uptake: MontyBudgetUptake,
+    pub failure_reason: Option<String>,
 }
 
 /// Heap revisions are worker publication sequences, separate from DB revisions.
@@ -450,6 +470,10 @@ pub trait MontyVmSettingsStore: Send + Sync {
     ) -> Result<MontyVmSettings, MontyVmSettingsError>;
 }
 
+fn default_max_recipes_per_task() -> u32 {
+    8
+}
+
 fn default_false() -> bool {
     false
 }
@@ -457,6 +481,7 @@ fn default_false() -> bool {
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
 pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
+        max_recipes_per_task: default_max_recipes_per_task(),
         memory_policy: Default::default(),
         execution_limits: Default::default(),
         revision: 0,
@@ -464,7 +489,7 @@ pub fn default_monty_vm_settings() -> MontyVmSettings {
         max_allocations: None,
         allocation_count_limit_supported: false,
         retired_max_allocations: None,
-        max_memory_bytes: Some(512 * 1024 * 1024),
+        max_memory_bytes: Some(DEFAULT_MONTY_HEAP_BYTES),
         failure_rollback_threshold: 3,
         prior_knowledge_token_budget: 100_000,
         q4_retention_days: 30,

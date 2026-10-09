@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-08. Raw quota distinguishes missing (key absent) from explicit null before reading the value; exact integer 4..12 inclusive maps to integer, everything else to invalid. No imports, I/O, host calls, coercion, defaults or exceptions. Conversation preserved unchanged; unapproved target-typed-inputs draft, no observed tests/submission/activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-08",
+        "description": "Classify raw quota: missing -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..12 -> {kind:\"integer\",quota:original}; other -> {kind:\"invalid\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.",
+        "content": "quota = inputs.get('quota')\nif quota is None and 'quota' not in inputs:\n    result = {'kind': 'missing', 'quota': None}\nelif quota is None:\n    result = {'kind': 'null', 'quota': None}\nelif type(quota) is int and 4 <= quota <= 12:\n    result = {'kind': 'integer', 'quota': quota}\nelse:\n    result = {'kind': 'invalid', 'quota': None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

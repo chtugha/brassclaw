@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9c4a0915de1d2cf7",
+  "object": "chat.completion",
+  "created": 1791515873,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Make a reusable Sent workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Host-allocated unapproved documentation fixture: recipe-fresh-sent-data (class 21) with body result = {'phase': 'Sent'}, zero inputs/dependencies. trigger null, steps [], dependency_registry null. One desc_idx=0 with a single component step (knowledge orchestrator, stepnumber 1, include 87cce336-5dad-5ab2-b406-0cf100426698, tool_bindings [], dependencies null). One variant step_link 0:1-0:E, variable_patterns [], and ten unique data-returning intents. The word Sent denotes returned phase DATA, not a posted message; no message is posted. prior_knowledge_content retains Q1, human Q2, unapproved dependencies and the current sink gap. No version/approval/runtime claims. Root compatibility arrays empty.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-fresh-sent-data\", \"description\": \"Offline unapproved full-v3 export fixture; returns fixed phase DATA object, no message posted\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Unapproved documentation fixture; Q1 and human Q2 required. Current live sink drops step_descriptions/variants/dependency_registry and cannot preserve full v3 fields. Export only, no submission or activation. Returns phase DATA only, never a posted reply.\", \"intent_examples\": [\"compute the fresh sent state data\", \"return the fresh sent state object\", \"produce the fixed sent object\", \"obtain the sent phase result data\", \"calculate the fresh sent state result\", \"yield the sent phase state object\", \"get the fixed sent phase data\", \"build the sent state object\", \"evaluate the fresh sent data subworkflow\", \"derive the fixed sent phase result\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved fixed-data subworkflow; returns phase DATA, no message posted\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"orchestrator\", \"goal\": \"Return the fixed sent phase data\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"87cce336-5dad-5ab2-b406-0cf100426698\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"fresh-sent-data\", \"description\": \"Offline unapproved fixed-data subworkflow; returns phase DATA, no message posted\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"compute the fresh sent state data\", \"return the fresh sent state object\", \"produce the fixed sent object\", \"obtain the sent phase result data\", \"calculate the fresh sent state result\", \"yield the sent phase state object\", \"get the fixed sent phase data\", \"build the sent state object\", \"evaluate the fresh sent data subworkflow\", \"derive the fixed sent phase result\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114736,
+    "total_tokens": 115447,
+    "completion_tokens": 711,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

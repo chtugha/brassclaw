@@ -17,7 +17,7 @@ case "$1" in
     printf '%s\n' "--features postgres"
     ;;
   brassclaw_reborn_composition)
-    printf '%s\n' "--features test-support,libsql"
+    printf '%s\n' "--features test-support,libsql,skills-db"
     ;;
   brassclaw_reborn)
     printf '%s\n' "--features root-llm-provider"

@@ -1,0 +1,168 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "fresh-presence-helper-response.json",
+      "name": "pc-fresh-presence-helper",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "8912a3db221a5c175a73faa1f51fb6a638a495c14634847850cdf26bec6c2436",
+      "pure_python_gate": true,
+      "behavior_cases": 9,
+      "behavior_passed": 8,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "category": "omitted",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": null,
+              "optional_channel": null
+            }
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": null
+          },
+          "expected": {
+            "category": "unset",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": "unset",
+              "optional_channel": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": -81
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": "bad",
+              "optional_channel": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": -80
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -80
+          },
+          "actual": {
+            "result": {
+              "category": "accepted",
+              "optional_channel": -80
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": -70
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -70
+          },
+          "actual": {
+            "result": {
+              "category": "accepted",
+              "optional_channel": -70
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": -69
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": "bad",
+              "optional_channel": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": false
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": "bad",
+              "optional_channel": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": -80.0
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": "bad",
+              "optional_channel": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "optional_channel": "x"
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": {
+              "category": "bad",
+              "optional_channel": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": false
+    }
+  ],
+  "component_activation_performed": false
+}

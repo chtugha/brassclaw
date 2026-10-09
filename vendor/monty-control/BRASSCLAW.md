@@ -17,6 +17,11 @@ passed through the ordinary runtime. Complete production lifecycle, adaptive
 settings and catalogue acceptance remain open; interpreter evidence alone does
 not establish completion of those gates.
 
+The atomic accounting updates use `try_update`, available before the declared
+Rust 1.96 minimum. This replaces the deprecated `fetch_update` alias while
+preserving the checked arithmetic, memory ordering and returned previous value.
+It changes neither the control extension version nor the dump/worker ABI.
+
 `control.4` adds `ExecutionObservation`: actual VM-local coroutine identity,
 cumulative executing time and cumulative preparation time. Resource checks and
 both sides of scheduler switches publish these clocks. Actual task exit closes

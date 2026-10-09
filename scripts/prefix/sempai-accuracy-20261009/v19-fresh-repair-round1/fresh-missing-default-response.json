@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-93a40f1df58a48fd",
+  "object": "chat.completion",
+  "created": 1791516698,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-fresh-missing-default. Absent key defaults to 'watch' (valid=True); explicit null is invalid (valid=False, mode=None); only exact strings 'watch'/'pause' are valid; null/bool/other strings invalid. Module-level result assignment on every path; no imports/host/exceptions. No execution, submission, Q1/Q2 or activation.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-missing-default\", \"description\": \"mode absent defaults to watch. Supplied exact strings watch or pause accepted without normalization. Null/bool/other strings invalid. Always result={valid:boolean,mode:default/original if valid else null}. No imports/host/exceptions. Unapproved target inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.\", \"content\": \"mode = inputs.get('mode')\\nif 'mode' not in inputs:\\n    result = {'valid': True, 'mode': 'watch'}\\nelif mode is None:\\n    result = {'valid': False, 'mode': None}\\nelif mode in ('watch', 'pause'):\\n    result = {'valid': True, 'mode': mode}\\nelse:\\n    result = {'valid': False, 'mode': None}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115585,
+    "total_tokens": 115924,
+    "completion_tokens": 339,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 1056
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

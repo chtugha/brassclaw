@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-975709b71af5f4dc",
+  "object": "chat.completion",
+  "created": 1791514616,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Make a reusable Sent workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export of one class21 recipe-fresh-sent-reply. trigger null, steps [], dependency_registry null. One desc_idx=0 with two component steps in supplied order (rust binding then orchestrator execution), each with exactly one UUID, tool_bindings [], dependencies null. One variant step_link 0:1-0:E, variable_patterns [], ten unique matching intents in both lists. Posts the fixed word 'Sent' once as a reply. Prior knowledge retains Q1, human Q2, unapproved dependencies and current sink gap. No version/approval/runtime claims. Root compatibility arrays empty.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-fresh-sent-reply\", \"description\": \"Offline unapproved full-v3 export; posts the fixed word 'Sent' once as a reply via host.post_reply. trigger null, steps [], dependency_registry null. Q1 and human Q2 required before activation. Current live sink drops step_descriptions/variants/dependency_registry; export only, no submission or activation.\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Offline unapproved documentation fixture; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posts the fixed word 'Sent' once as a reply; actual dispatch requires current global Tool policy and technical checks.\", \"intent_examples\": [\"say Sent\", \"reply Sent\", \"post Sent\", \"send the Sent reply\", \"respond with Sent\", \"tell me Sent\", \"please say Sent\", \"please reply Sent\", \"post the fixed Sent message\", \"send the fixed Sent message\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"rust\", \"goal\": \"Bind reply Tool\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"ed366513-fe34-5022-9c90-daa6ab946493\"], \"tool_bindings\": [], \"dependencies\": null}, {\"stepnumber\": 2, \"knowledge\": \"orchestrator\", \"goal\": \"Post fixed reply\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"20ffa6ad-e015-54c6-8f29-ffe72d40f365\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"fresh-sent-reply\", \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"say Sent\", \"reply Sent\", \"post Sent\", \"send the Sent reply\", \"respond with Sent\", \"tell me Sent\", \"please say Sent\", \"please reply Sent\", \"post the fixed Sent message\", \"send the fixed Sent message\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113743,
+    "total_tokens": 114476,
+    "completion_tokens": 733,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

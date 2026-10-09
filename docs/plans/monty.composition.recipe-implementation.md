@@ -1,6 +1,12 @@
 # monty.composition — per-Recipe implementation instructions
 
-Plans only. This appendix expands **all 170 entries** in the [Recipe upgrade list](monty.composition.md#18-recipe-components-requiring-v3-upgrade-or-completion): 151 legacy identities, two packaged successors, eight validator successors and nine planned roles. Successor sections deliberately correspond to the same canonical Recipe identity; they do not allocate duplicate UUIDs. Proposed roles are not evidence of seeded class21 records.
+**MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
+
+MCP clarification: accept the listed completed command only; open a new normal chat, send it as a user message, observe its correlated terminal response, forward that response to the client and close the chat. Normal ingress/matching/IBS/Recipe/reply/history are reused; no Python reception or direct Monty/Rust execution bridge is introduced.
+
+The [Tool/ToolSkill and cross-plan audit corrections](monty.composition.md#23-tooltoolskill-and-cross-plan-audit-corrections) apply throughout this appendix: independent evaluation/evidence and registration/selection operations remain separate; caught Python errors cannot erase authoritative host outcomes; exact native artifact retention also requires a supported compatible loading path. These are qualification requirements, not implemented support.
+
+Plans only. This appendix expands **169 Recipe entries plus one separately identified transport integration role** in the [Recipe upgrade list](monty.composition.md#18-recipe-components-requiring-v3-upgrade-or-completion): 151 legacy identities, two packaged successors, eight validator successors and eight planned Recipe roles, plus the separately retained RCP170 ordinary-chat integration instructions. RCP170 is not a new Recipe component. Successor sections deliberately correspond to the same canonical Recipe identity; they do not allocate duplicate UUIDs. Proposed roles are not evidence of seeded class21 records.
 
 ## How to use these sections
 
@@ -8,15 +14,15 @@ Plans only. This appendix expands **all 170 entries** in the [Recipe upgrade lis
 
 **Templates are not insert requests or activation evidence.** UUID markers stand for the exact canonical component roles to resolve, not random/example IDs. `tool_bindings:[]` is only the guide's structural illustration; it does not prepare a binding. Fill actual supported binding/dependency records after inspecting retained constructors and qualified adapters. Typed capture/result-edge metadata belongs to the supported retained input-layout contract, not invented extra fields in this JSON. Recipe references remain stable UUIDs without versions; IBS pins all exact versions/checksums/artifacts/associations at task start. Existing full constructor metadata and provenance must also be supplied.
 
-The ordered table distinguishes executable class22 roles from **BLOCKED actual usages** already required by the component plans. L018 and N16–N20/R06–R08 snippets are preparation examples; implement their actual registered one-operation host usages before treating their Recipe steps as effects. Required raw reads, facts/behavior inspection, child admission/waits, profile selection/evaluation and transient MCP admission similarly require their actual supported contracts. Their descriptive role labels are not asserted host API names. Do not replace them with success-shaped dictionaries, silent fallbacks or a new Rust workflow executor.
+The ordered table distinguishes executable class22 roles from **BLOCKED actual usages** already required by the component plans. L018 and N16–N20/R06–R08 snippets are preparation examples; implement their actual registered one-operation host usages before treating their Recipe steps as effects. Required raw reads, facts/behavior inspection, child admission/waits and profile selection/evaluation require their actual supported contracts. MCP uses ordinary chat transport and does not require its own execution/admission component. Their descriptive role labels are not asserted host API names. Do not replace them with success-shaped dictionaries, silent fallbacks or a new Rust workflow executor.
 
 **Input/data-flow authoring for every section:** refine captures into each component's declared recursive schema; map task names and approved constants explicitly; map earlier named results/fields using the actual supported retained layout and check compatibility. The table's local input names come from the actual code examples. The linked component section defines types, required/null/default rules, recursive result shape and actual host parameter names. A local name is not permission to source authority/config/evidence from model output. Use admitted identities, trusted observations and pinned configuration where specified. Repeated/foreach occurrences need retained occurrence IDs and checkpoints; a repeated row is not a loop implementation. Only a documented supported direct dependent chain can replace separate steps with complete binding coverage.
 
-**Routing/tier/evidence:** revise the existing variants, capture patterns and at least ten meaningful intent examples for every public Recipe, preserving operation and input boundaries; test each with positive/negative cases. The template below uses an explicit variant key/step_link but leaves intent/capture arrays empty rather than inventing production regexes from prose. Completing that request contract is required work, not an activated match. Private validator/root/MCP entries use their qualified typed internal entry contract and are excluded from public matching. Shell and subagent usages are always Tier1; explicit reasoning/compression/model design remains Tier1. Other deterministic profiles qualify Tier0 only after behavioral evidence and supported runtime checks. System seeds use verified noncircular installation qualification; installed authored revisions need Q1/behavior/humanQ2 and separate exact combination approval.
+**Routing/tier/evidence:** revise the existing variants, capture patterns and at least ten meaningful intent examples for every public Recipe, preserving operation and input boundaries; test each with positive/negative cases. The template below uses an explicit variant key/step_link but leaves intent/capture arrays empty rather than inventing production regexes from prose. Completing that request contract is required work, not an activated match. Private validator/root entries use qualified typed internal contracts and are excluded from public matching. Eligible Skill execution Recipes exposed by MCP are matched through normal chat messages; the server's chat transport is not another Recipe entry. Shell and subagent usages are always Tier1; explicit reasoning/compression/model design remains Tier1. Other deterministic profiles qualify Tier0 only after behavioral evidence and supported runtime checks. System seeds use verified noncircular installation qualification; installed authored revisions need Q1/behavior/humanQ2 and separate exact combination approval.
 
-**Failure/completion for every section:** stop before effects on invalid input/graph/association/binding or incomplete required source; begun failures remain failures, never No-Match/Tier2. Default max_attempts=1; add retries only with explicit eligible outcomes and verified read-only/durable deduplication evidence. Every effect retains dispatch intent/count and confirmed/unresolved receipt; output/reply/evidence failure never repeats it. Keep cancellation, live global Tool policy, technical constraints and resource accounts effective across child/waits/resume. Select one output/history owner. Public task output uses qualified N01/N03/N02 only where the root/Recipe contract assigns it; internal validators return verdict/evidence, prefix jobs return generation/job outcome, MCP returns its own formatted protocol result. No extra chat reply/history by default.
+**Failure/completion for every section:** stop before effects on invalid input/graph/association/binding or incomplete required source; begun failures remain failures, never No-Match/Tier2. Default max_attempts=1; add retries only with explicit eligible outcomes and verified read-only/durable deduplication evidence. Every effect retains dispatch intent/count and confirmed/unresolved receipt; output/reply/evidence failure never repeats it. Keep cancellation, live global Tool policy, technical constraints and resource accounts effective across child/waits/resume. Select one output/history owner. Public task output uses qualified N01/N03/N02 only where the root/Recipe contract assigns it; internal validators return verdict/evidence, prefix jobs return generation/job outcome, MCP forwards the owning chat's normal response/outcome and then closes that chat; it does not add a second reply/history effect.
 
-Examples show one real reusable body per section, not the entire assembled program. Other selected bodies are linked individually. Where a legacy Recipe is superseded by protected root functionality, implement migration/retention instead of creating a runnable duplicate; its root code excerpt is explanatory only. No section authorizes installing an incomplete example.
+Examples show a pinned preloaded Skill function invocation or a pure reusable body per section, not the entire assembled program. Other selected bodies are linked individually. Where a legacy Recipe is superseded by protected root functionality, implement migration/retention instead of creating a runnable duplicate; its root code excerpt is explanatory only. No section authorizes installing an incomplete example.
 
 ## RCP001. file-read
 
@@ -28,16 +34,18 @@ Examples show one real reusable body per section, not the entire assembled progr
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-read-file](monty.composition.implementation.md#l001-pc-exec-read-file); one qualified host.read_file usage | `path` |
 
-**Code example — pc-exec-read-file; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-read-file; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.read_file(path=inputs["path"])
+result = usage_l001(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -89,7 +97,7 @@ result = host.read_file(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -103,20 +111,18 @@ result = host.read_file(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [Typed interval usage](monty.composition.implementation.md#n05-typed-interval-usage); one qualified host.read_file usage | `start_line`, `end_line`, `path` |
 
-**Code example — Typed interval usage; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Typed interval usage; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-start = inputs["start_line"]
-end = inputs["end_line"]
-if type(start) is not int or type(end) is not int or start < 1 or end < start:
-    raise ValueError("invalid line interval")
-result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
+result = usage_n05(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -168,7 +174,7 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -181,6 +187,8 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 **Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Conditional construction:** select a qualified create-only versus replacement profile from the admitted request and trusted existence/precondition observation. Read existing content only on the replacement/context branch. Confirmed absence may select creation; denied/unknown/read failure never does. Preserve a supported atomic expected-state/create-only contract at write time to prevent an existence-check race. No such atomic profile is demonstrated here; qualify it before claiming race safety. The straight skeleton below cannot implement the optional read branch.
 
@@ -196,10 +204,10 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 | 4 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 | 5 | [pc-exec-write-file](monty.composition.implementation.md#l002-pc-exec-write-file); one qualified host.write_file usage | `path`, `content` |
 
-**Code example — pc-exec-read-file; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-read-file; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.read_file(path=inputs["path"])
+result = usage_l001(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -323,7 +331,7 @@ result = host.read_file(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -337,16 +345,18 @@ result = host.read_file(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-write-file](monty.composition.implementation.md#l002-pc-exec-write-file); one qualified host.write_file usage | `path`, `content` |
 
-**Code example — pc-exec-write-file; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-write-file; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.write_file(path=inputs["path"], content=inputs["content"])
+result = usage_l002(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -398,7 +408,7 @@ result = host.write_file(path=inputs["path"], content=inputs["content"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -412,16 +422,18 @@ result = host.write_file(path=inputs["path"], content=inputs["content"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-list-dir](monty.composition.implementation.md#l003-pc-exec-list-dir); one qualified host.list_dir usage | `path`, `recursive`, `max_depth` |
 
-**Code example — pc-exec-list-dir; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-list-dir; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+result = usage_l003(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -473,7 +485,7 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -487,16 +499,18 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-list-dir](monty.composition.implementation.md#l003-pc-exec-list-dir); one qualified host.list_dir usage | `path`, `recursive`, `max_depth` |
 
-**Code example — pc-exec-list-dir; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-list-dir; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+result = usage_l003(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -548,7 +562,7 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -562,16 +576,18 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-glob](monty.composition.implementation.md#l004-pc-exec-glob); one qualified host.glob usage | `pattern`, `path`, `max_results` |
 
-**Code example — pc-exec-glob; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-glob; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+result = usage_l004(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -623,7 +639,7 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -637,16 +653,18 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-glob](monty.composition.implementation.md#l004-pc-exec-glob); one qualified host.glob usage | `pattern`, `path`, `max_results` |
 
-**Code example — pc-exec-glob; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-glob; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+result = usage_l004(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -698,7 +716,7 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -712,16 +730,18 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-glob](monty.composition.implementation.md#l004-pc-exec-glob); one qualified host.glob usage | `pattern`, `path`, `max_results` |
 
-**Code example — pc-exec-glob; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-glob; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+result = usage_l004(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -773,7 +793,7 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -787,16 +807,18 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-glob](monty.composition.implementation.md#l004-pc-exec-glob); one qualified host.glob usage | `pattern`, `path`, `max_results` |
 
-**Code example — pc-exec-glob; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-glob; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+result = usage_l004(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -848,7 +870,7 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -862,16 +884,18 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-glob](monty.composition.implementation.md#l004-pc-exec-glob); one qualified host.glob usage | `pattern`, `path`, `max_results` |
 
-**Code example — pc-exec-glob; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-glob; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+result = usage_l004(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -923,7 +947,7 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -937,16 +961,18 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep](monty.composition.implementation.md#l005-pc-exec-grep); one qualified host.grep usage | `pattern`, `path`, `output_mode`, `glob`, `case_insensitive` |
 
-**Code example — pc-exec-grep; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+result = usage_l005(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -998,7 +1024,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1012,16 +1038,18 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep](monty.composition.implementation.md#l005-pc-exec-grep); one qualified host.grep usage | `pattern`, `path`, `output_mode`, `glob`, `case_insensitive` |
 
-**Code example — pc-exec-grep; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+result = usage_l005(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1073,7 +1101,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1087,16 +1115,18 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep](monty.composition.implementation.md#l005-pc-exec-grep); one qualified host.grep usage | `pattern`, `path`, `output_mode`, `glob`, `case_insensitive` |
 
-**Code example — pc-exec-grep; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+result = usage_l005(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1148,7 +1178,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1162,16 +1192,18 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep](monty.composition.implementation.md#l005-pc-exec-grep); one qualified host.grep usage | `pattern`, `path`, `output_mode`, `glob`, `case_insensitive` |
 
-**Code example — pc-exec-grep; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+result = usage_l005(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1223,7 +1255,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1236,6 +1268,8 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 **Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Ordered executable design and exact body contracts:**
 
@@ -1250,7 +1284,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 | 7 | [proposed-patch-precondition](monty.composition.implementation.md#c02-proposed-patch-precondition); pure, no Skill/binding | `source_text`, `old_string`, `new_string`, `replace_all` |
 | 8 | [pc-exec-apply-patch](monty.composition.implementation.md#l006-pc-exec-apply-patch); one qualified host.apply_patch usage | `path`, `old_string`, `new_string`, `replace_all` |
 
-**Code example — proposed-complete-document-text; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-complete-document-text; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 snapshot = inputs["snapshot"]
@@ -1430,7 +1464,7 @@ result = snapshot["content"]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1444,6 +1478,8 @@ result = snapshot["content"]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -1453,7 +1489,7 @@ result = snapshot["content"]
 | 3 | [proposed-patch-precondition](monty.composition.implementation.md#c02-proposed-patch-precondition); pure, no Skill/binding | `source_text`, `old_string`, `new_string`, `replace_all` |
 | 4 | [pc-exec-apply-patch](monty.composition.implementation.md#l006-pc-exec-apply-patch); one qualified host.apply_patch usage | `path`, `old_string`, `new_string`, `replace_all` |
 
-**Code example — proposed-complete-document-text; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-complete-document-text; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 snapshot = inputs["snapshot"]
@@ -1561,7 +1597,7 @@ result = snapshot["content"]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1575,16 +1611,18 @@ result = snapshot["content"]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep](monty.composition.implementation.md#l005-pc-exec-grep); one qualified host.grep usage | `pattern`, `path`, `output_mode`, `glob`, `case_insensitive` |
 
-**Code example — pc-exec-grep; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+result = usage_l005(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1636,7 +1674,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1650,16 +1688,18 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep](monty.composition.implementation.md#l005-pc-exec-grep); one qualified host.grep usage | `pattern`, `path`, `output_mode`, `glob`, `case_insensitive` |
 
-**Code example — pc-exec-grep; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+result = usage_l005(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1711,7 +1751,7 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1725,13 +1765,15 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-grep-invert](monty.composition.implementation.md#l007-pc-exec-grep-invert); pure, no Skill/binding | `content`, `substring`, `invert` |
 
-**Code example — pc-exec-grep-invert; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-grep-invert; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = []
@@ -1778,7 +1820,7 @@ for line in inputs["content"].split("\n"):
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1792,6 +1834,8 @@ for line in inputs["content"].split("\n"):
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -1799,10 +1843,10 @@ for line in inputs["content"].split("\n"):
 | 1 | [pc-exec-list-dir](monty.composition.implementation.md#l003-pc-exec-list-dir); one qualified host.list_dir usage | `path`, `recursive`, `max_depth` |
 | 2 | [pc-exec-list-filter-by-type](monty.composition.implementation.md#l008-pc-exec-list-filter-by-type); pure, no Skill/binding | `entries`, `entry_type` |
 
-**Code example — pc-exec-list-dir; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-list-dir; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+result = usage_l003(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1866,7 +1910,7 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1880,6 +1924,8 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -1887,10 +1933,10 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 | 1 | [pc-exec-list-dir](monty.composition.implementation.md#l003-pc-exec-list-dir); one qualified host.list_dir usage | `path`, `recursive`, `max_depth` |
 | 2 | [pc-exec-list-filter-by-type](monty.composition.implementation.md#l008-pc-exec-list-filter-by-type); pure, no Skill/binding | `entries`, `entry_type` |
 
-**Code example — pc-exec-list-dir; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-list-dir; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+result = usage_l003(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -1954,7 +2000,7 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -1968,20 +2014,18 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [Typed interval usage](monty.composition.implementation.md#n05-typed-interval-usage); one qualified host.read_file usage | `start_line`, `end_line`, `path` |
 
-**Code example — Typed interval usage; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Typed interval usage; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-start = inputs["start_line"]
-end = inputs["end_line"]
-if type(start) is not int or type(end) is not int or start < 1 or end < start:
-    raise ValueError("invalid line interval")
-result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
+result = usage_n05(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2033,7 +2077,7 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2047,6 +2091,8 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -2055,10 +2101,10 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 | 2 | [proposed-tail-window](monty.composition.implementation.md#proposed-tail-window); pure, no Skill/binding | `total_lines`, `count` |
 | 3 | [Typed interval usage](monty.composition.implementation.md#n05-typed-interval-usage); one qualified host.read_file usage | `start_line`, `end_line`, `path` |
 
-**Code example — pc-exec-read-file; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-read-file; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.read_file(path=inputs["path"])
+result = usage_l001(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2146,7 +2192,7 @@ result = host.read_file(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2160,6 +2206,8 @@ result = host.read_file(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -2167,7 +2215,7 @@ result = host.read_file(path=inputs["path"])
 | 1 | qualified file-existence probe usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 2 | [pc-exec-file-exists](monty.composition.implementation.md#l010-pc-exec-file-exists); pure, no Skill/binding | `outcome`, `path` |
 
-**Code example — pc-exec-file-exists; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-file-exists; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 outcome = inputs["outcome"]
@@ -2240,7 +2288,7 @@ else:
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2254,6 +2302,8 @@ else:
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -2261,10 +2311,10 @@ else:
 | 1 | [pc-exec-read-file](monty.composition.implementation.md#l001-pc-exec-read-file); one qualified host.read_file usage | `path` |
 | 2 | [proposed-filter-text-lines](monty.composition.implementation.md#proposed-filter-text-lines); pure, no Skill/binding | `content`, `substring`, `invert` |
 
-**Code example — pc-exec-read-file; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-read-file; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.read_file(path=inputs["path"])
+result = usage_l001(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2328,7 +2378,7 @@ result = host.read_file(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2342,6 +2392,8 @@ result = host.read_file(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -2351,10 +2403,10 @@ result = host.read_file(path=inputs["path"])
 
 **Profile correction:** if filtering actual structured entry records, replace the illustrated text-line filter role with proposed-filter-records and a finite record predicate contract; use text lines only after a qualified explicit text projection. No implicit object-to-string conversion.
 
-**Code example — pc-exec-list-dir; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-list-dir; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+result = usage_l003(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2418,7 +2470,7 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2432,16 +2484,18 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-get](monty.composition.implementation.md#l016-pc-exec-http-get); one qualified host.http usage | `url`, `headers`, `response_body_limit` |
 
-**Code example — pc-exec-http-get; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-get; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], response_body_limit=inputs["response_body_limit"])
+result = usage_l016(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2493,7 +2547,7 @@ result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], r
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2507,6 +2561,8 @@ result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], r
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -2515,10 +2571,10 @@ result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], r
 | 2 | [proposed-http-body-text](monty.composition.implementation.md#r01-proposed-http-body-text); pure, no Skill/binding | `response` |
 | 3 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 
-**Code example — pc-exec-http-get; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-get; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], response_body_limit=inputs["response_body_limit"])
+result = usage_l016(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2606,7 +2662,7 @@ result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], r
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2620,16 +2676,18 @@ result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], r
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-post](monty.composition.implementation.md#l017-pc-exec-http-post); one qualified host.http usage | `url`, `body`, `headers` |
 
-**Code example — pc-exec-http-post; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-post; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="POST", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+result = usage_l017(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2681,7 +2739,7 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2695,6 +2753,8 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Download correction:** The L018 dictionary prepares a request only. Resolve the retained builtin.http.save single-attribute alias and actual save/truncation/write receipt profile; include its immediately preceding ToolSkill binding and approved Skill association. Ordinary host.http GET is not a save implementation. Large mode needs its own finite download/storage limit profile. This usage is blocked until that real executor exists.
 
 **Ordered executable design and exact body contracts:**
@@ -2703,7 +2763,7 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 | --- | --- | --- |
 | 1 | [pc-exec-http-save](monty.composition.implementation.md#l018-pc-exec-http-save); **BLOCKED usage profile** until actual adapter/association qualification | `url`, `save_to` |
 
-**Code example — pc-exec-http-save; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-save; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"url": inputs["url"], "save_to": inputs["save_to"]}
@@ -2758,7 +2818,7 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2772,16 +2832,18 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-patch](monty.composition.implementation.md#l019-pc-exec-http-patch); one qualified host.http usage | `url`, `body`, `headers` |
 
-**Code example — pc-exec-http-patch; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-patch; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+result = usage_l019(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2833,7 +2895,7 @@ result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], heade
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2847,6 +2909,8 @@ result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], heade
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Download correction:** The L018 dictionary prepares a request only. Resolve the retained builtin.http.save single-attribute alias and actual save/truncation/write receipt profile; include its immediately preceding ToolSkill binding and approved Skill association. Ordinary host.http GET is not a save implementation. Large mode needs its own finite download/storage limit profile. This usage is blocked until that real executor exists.
 
 **Ordered executable design and exact body contracts:**
@@ -2855,7 +2919,7 @@ result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], heade
 | --- | --- | --- |
 | 1 | [pc-exec-http-save](monty.composition.implementation.md#l018-pc-exec-http-save); **BLOCKED usage profile** until actual adapter/association qualification | `url`, `save_to` |
 
-**Code example — pc-exec-http-save; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-save; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"url": inputs["url"], "save_to": inputs["save_to"]}
@@ -2910,7 +2974,7 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2924,16 +2988,18 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-head](monty.composition.implementation.md#l020-pc-exec-http-head); one qualified host.http usage | `url` |
 
-**Code example — pc-exec-http-head; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-head; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="HEAD", url=inputs["url"])
+result = usage_l020(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -2985,7 +3051,7 @@ result = host.http(method="HEAD", url=inputs["url"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -2999,16 +3065,18 @@ result = host.http(method="HEAD", url=inputs["url"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-get-authenticated](monty.composition.implementation.md#l021-pc-exec-http-get-authenticated); one qualified host.http usage | `url`, `authorization` |
 
-**Code example — pc-exec-http-get-authenticated; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-get-authenticated; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="GET", url=inputs["url"], headers={"Authorization": inputs["authorization"]})
+result = usage_l021(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3060,7 +3128,7 @@ result = host.http(method="GET", url=inputs["url"], headers={"Authorization": in
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3074,16 +3142,18 @@ result = host.http(method="GET", url=inputs["url"], headers={"Authorization": in
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-put](monty.composition.implementation.md#l022-pc-exec-http-put); one qualified host.http usage | `url`, `body`, `headers` |
 
-**Code example — pc-exec-http-put; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-put; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+result = usage_l022(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3135,7 +3205,7 @@ result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3149,16 +3219,18 @@ result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-delete](monty.composition.implementation.md#l023-pc-exec-http-delete); one qualified host.http usage | `url`, `headers` |
 
-**Code example — pc-exec-http-delete; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-delete; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"])
+result = usage_l023(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3210,7 +3282,7 @@ result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3224,16 +3296,18 @@ result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-http-post](monty.composition.implementation.md#l017-pc-exec-http-post); one qualified host.http usage | `url`, `body`, `headers` |
 
-**Code example — pc-exec-http-post; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-http-post; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="POST", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+result = usage_l017(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3285,7 +3359,7 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3299,6 +3373,8 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -3311,7 +3387,7 @@ result = host.http(method="POST", url=inputs["url"], body=inputs["body"], header
 | 6 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 | 7 | [pc-web-search-extract](monty.composition.implementation.md#l026-pc-web-search-extract); pure, no Skill/binding | `limit`, `response`, `rows_field`, `title_field`, `url_field`, `snippet_field` |
 
-**Code example — pc-url-encode; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-url-encode; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
@@ -3454,7 +3530,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3468,16 +3544,18 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-search](monty.composition.implementation.md#l028-pc-exec-memory-search); one qualified host.memory_search usage | `query`, `limit` |
 
-**Code example — pc-exec-memory-search; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-search; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
+result = usage_l028(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3529,7 +3607,7 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3543,16 +3621,18 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-search](monty.composition.implementation.md#l028-pc-exec-memory-search); one qualified host.memory_search usage | `query`, `limit` |
 
-**Code example — pc-exec-memory-search; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-search; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
+result = usage_l028(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3604,7 +3684,7 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3618,16 +3698,18 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-write](monty.composition.implementation.md#l029-pc-exec-memory-write); one qualified host.memory_write usage | `content`, `target`, `append` |
 
-**Code example — pc-exec-memory-write; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-write; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_write(content=inputs["content"], target=inputs["target"], append=inputs["append"])
+result = usage_l029(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3679,7 +3761,7 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3693,16 +3775,18 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-write](monty.composition.implementation.md#l029-pc-exec-memory-write); one qualified host.memory_write usage | `content`, `target`, `append` |
 
-**Code example — pc-exec-memory-write; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-write; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_write(content=inputs["content"], target=inputs["target"], append=inputs["append"])
+result = usage_l029(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3754,7 +3838,7 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3768,16 +3852,18 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-write](monty.composition.implementation.md#l029-pc-exec-memory-write); one qualified host.memory_write usage | `content`, `target`, `append` |
 
-**Code example — pc-exec-memory-write; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-write; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_write(content=inputs["content"], target=inputs["target"], append=inputs["append"])
+result = usage_l029(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3829,7 +3915,7 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3843,6 +3929,8 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -3851,10 +3939,10 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 | 2 | [proposed-patch-precondition](monty.composition.implementation.md#c02-proposed-patch-precondition); pure, no Skill/binding | `source_text`, `old_string`, `new_string`, `replace_all` |
 | 3 | [pc-exec-memory-patch](monty.composition.implementation.md#l030-pc-exec-memory-patch); one qualified host.memory_write usage | `target`, `old_string`, `new_string`, `replace_all` |
 
-**Code example — pc-exec-memory-read; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-read; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_read(path=inputs["path"])
+result = usage_l031(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -3942,7 +4030,7 @@ result = host.memory_read(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -3956,6 +4044,8 @@ result = host.memory_read(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -3966,10 +4056,10 @@ result = host.memory_read(path=inputs["path"])
 | 4 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 | 5 | [pc-exec-memory-append](monty.composition.implementation.md#l035-pc-exec-memory-append); one qualified host.memory_write usage | `target`, `content` |
 
-**Code example — pc-exec-memory-read; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-read; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_read(path=inputs["path"])
+result = usage_l031(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4093,7 +4183,7 @@ result = host.memory_read(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4107,16 +4197,18 @@ result = host.memory_read(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-read](monty.composition.implementation.md#l031-pc-exec-memory-read); one qualified host.memory_read usage | `path` |
 
-**Code example — pc-exec-memory-read; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-read; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_read(path=inputs["path"])
+result = usage_l031(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4168,7 +4260,7 @@ result = host.memory_read(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4182,16 +4274,18 @@ result = host.memory_read(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-read](monty.composition.implementation.md#l031-pc-exec-memory-read); one qualified host.memory_read usage | `path` |
 
-**Code example — pc-exec-memory-read; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-read; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_read(path=inputs["path"])
+result = usage_l031(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4243,7 +4337,7 @@ result = host.memory_read(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4257,16 +4351,18 @@ result = host.memory_read(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-read](monty.composition.implementation.md#l031-pc-exec-memory-read); one qualified host.memory_read usage | `path` |
 
-**Code example — pc-exec-memory-read; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-read; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_read(path=inputs["path"])
+result = usage_l031(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4318,7 +4414,7 @@ result = host.memory_read(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4332,16 +4428,18 @@ result = host.memory_read(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-memory-tree](monty.composition.implementation.md#l032-pc-exec-memory-tree); one qualified host.memory_tree usage | `path`, `depth` |
 
-**Code example — pc-exec-memory-tree; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-tree; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
+result = usage_l032(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4393,7 +4491,7 @@ result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4407,6 +4505,8 @@ result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Conditional result edge:** L028.result -> L025.object; constant segments select results/index0/path under the exact typed profile. L025.found=false returns a typed no-hit outcome and never dispatches read. On found=true, validate L025.value as a memory-relative path -> L031.path. Replace the legacy require-one-record flow; it incorrectly rejects a ranked multi-hit result. Encode this branch through supported retained flow, not nonexistent JSON if fields.
 
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
@@ -4419,10 +4519,10 @@ result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
 | 2 | [pc-json-extract-field](monty.composition.implementation.md#l025-pc-json-extract-field); pure, no Skill/binding | `data`, `segments` |
 | 3 | [pc-exec-memory-read](monty.composition.implementation.md#l031-pc-exec-memory-read); one qualified host.memory_read usage | `path` |
 
-**Code example — pc-exec-memory-search; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-memory-search; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
+result = usage_l028(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4510,7 +4610,7 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4524,16 +4624,18 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-status](monty.composition.implementation.md#l036-pc-exec-shell-git-status); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-status; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-status; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git status')
+result = usage_l036(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4585,7 +4687,7 @@ result = host.shell(command='git status')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4599,16 +4701,18 @@ result = host.shell(command='git status')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-log](monty.composition.implementation.md#l037-pc-exec-shell-git-log); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-log; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-log; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git log --oneline -20')
+result = usage_l037(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4660,7 +4764,7 @@ result = host.shell(command='git log --oneline -20')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4674,16 +4778,18 @@ result = host.shell(command='git log --oneline -20')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-diff-stat](monty.composition.implementation.md#l038-pc-exec-shell-git-diff-stat); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-diff-stat; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-diff-stat; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git diff --stat')
+result = usage_l038(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4735,7 +4841,7 @@ result = host.shell(command='git diff --stat')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4749,16 +4855,18 @@ result = host.shell(command='git diff --stat')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-branch](monty.composition.implementation.md#l039-pc-exec-shell-git-branch); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-branch; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-branch; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git branch -a')
+result = usage_l039(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4810,7 +4918,7 @@ result = host.shell(command='git branch -a')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4824,16 +4932,18 @@ result = host.shell(command='git branch -a')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-stash-list](monty.composition.implementation.md#l040-pc-exec-shell-git-stash-list); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-stash-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-stash-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git stash list')
+result = usage_l040(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4885,7 +4995,7 @@ result = host.shell(command='git stash list')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4899,16 +5009,18 @@ result = host.shell(command='git stash list')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-pwd](monty.composition.implementation.md#l054-pc-exec-shell-pwd); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-pwd; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-pwd; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='pwd')
+result = usage_l054(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -4960,7 +5072,7 @@ result = host.shell(command='pwd')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -4974,16 +5086,18 @@ result = host.shell(command='pwd')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-df](monty.composition.implementation.md#l055-pc-exec-shell-df); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-df; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-df; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='df -h')
+result = usage_l055(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5035,7 +5149,7 @@ result = host.shell(command='df -h')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5049,16 +5163,18 @@ result = host.shell(command='df -h')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-ps](monty.composition.implementation.md#l056-pc-exec-shell-ps); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-ps; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-ps; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='ps aux')
+result = usage_l056(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5110,7 +5226,7 @@ result = host.shell(command='ps aux')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5124,16 +5240,18 @@ result = host.shell(command='ps aux')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-env](monty.composition.implementation.md#l057-pc-exec-shell-env); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-env; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-env; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='env')
+result = usage_l057(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5185,7 +5303,7 @@ result = host.shell(command='env')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5199,16 +5317,18 @@ result = host.shell(command='env')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-uname](monty.composition.implementation.md#l058-pc-exec-shell-uname); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-uname; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-uname; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='uname -a')
+result = usage_l058(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5260,7 +5380,7 @@ result = host.shell(command='uname -a')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5274,20 +5394,18 @@ result = host.shell(command='uname -a')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-which](monty.composition.implementation.md#l059-pc-exec-shell-which); one qualified host.shell usage | `name` |
 
-**Code example — pc-exec-shell-which; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-which; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-import re
-name = inputs["name"]
-if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}", name) is None:
-    raise ValueError("invalid binary name")
-result = host.shell(command="which " + name)
+result = usage_l059(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5339,7 +5457,7 @@ result = host.shell(command="which " + name)
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5353,16 +5471,18 @@ result = host.shell(command="which " + name)
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [proposed-shell-dispatch](monty.composition.implementation.md#proposed-shell-dispatch); one qualified host.shell usage | `command` |
 
-**Code example — proposed-shell-dispatch; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-shell-dispatch; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command=inputs["command"])
+result = usage_proposed_shell_dispatch(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5414,7 +5534,7 @@ result = host.shell(command=inputs["command"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5428,16 +5548,18 @@ result = host.shell(command=inputs["command"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-hostname](monty.composition.implementation.md#l060-pc-exec-shell-hostname); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-hostname; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-hostname; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='hostname')
+result = usage_l060(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5489,7 +5611,7 @@ result = host.shell(command='hostname')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5503,16 +5625,18 @@ result = host.shell(command='hostname')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-whoami](monty.composition.implementation.md#l061-pc-exec-shell-whoami); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-whoami; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-whoami; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='whoami')
+result = usage_l061(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5564,7 +5688,7 @@ result = host.shell(command='whoami')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5578,16 +5702,18 @@ result = host.shell(command='whoami')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-uptime](monty.composition.implementation.md#l062-pc-exec-shell-uptime); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-uptime; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-uptime; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='uptime')
+result = usage_l062(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5639,7 +5765,7 @@ result = host.shell(command='uptime')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5653,16 +5779,18 @@ result = host.shell(command='uptime')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-free](monty.composition.implementation.md#l063-pc-exec-shell-free); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-free; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-free; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='free -h')
+result = usage_l063(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5714,7 +5842,7 @@ result = host.shell(command='free -h')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5728,16 +5856,18 @@ result = host.shell(command='free -h')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-remote](monty.composition.implementation.md#l042-pc-exec-shell-git-remote); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-remote; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-remote; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git remote -v')
+result = usage_l042(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5789,7 +5919,7 @@ result = host.shell(command='git remote -v')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5803,16 +5933,18 @@ result = host.shell(command='git remote -v')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-show-stat](monty.composition.implementation.md#l043-pc-exec-shell-git-show-stat); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-show-stat; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-show-stat; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git show --stat HEAD')
+result = usage_l043(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5864,7 +5996,7 @@ result = host.shell(command='git show --stat HEAD')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5878,16 +6010,18 @@ result = host.shell(command='git show --stat HEAD')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-tag-list](monty.composition.implementation.md#l044-pc-exec-shell-git-tag-list); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-tag-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-tag-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git tag --list')
+result = usage_l044(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -5939,7 +6073,7 @@ result = host.shell(command='git tag --list')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -5953,13 +6087,15 @@ result = host.shell(command='git tag --list')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-wc-l](monty.composition.implementation.md#l064-pc-exec-shell-wc-l); pure, no Skill/binding | `quoted_arguments` |
 
-**Code example — pc-exec-shell-wc-l; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-wc-l; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "wc -l -- " + inputs["quoted_arguments"][0]
@@ -6002,7 +6138,7 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6016,16 +6152,18 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-diff-name-only](monty.composition.implementation.md#l045-pc-exec-shell-git-diff-name-only); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-diff-name-only; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-diff-name-only; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git diff --name-only HEAD')
+result = usage_l045(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -6077,7 +6215,7 @@ result = host.shell(command='git diff --name-only HEAD')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6091,16 +6229,18 @@ result = host.shell(command='git diff --name-only HEAD')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-log-stat](monty.composition.implementation.md#l046-pc-exec-shell-git-log-stat); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-log-stat; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-log-stat; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git log --stat --oneline -5')
+result = usage_l046(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -6152,7 +6292,7 @@ result = host.shell(command='git log --stat --oneline -5')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6166,16 +6306,18 @@ result = host.shell(command='git log --stat --oneline -5')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-stash-show](monty.composition.implementation.md#l047-pc-exec-shell-git-stash-show); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-stash-show; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-stash-show; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git stash show')
+result = usage_l047(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -6227,7 +6369,7 @@ result = host.shell(command='git stash show')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6241,16 +6383,18 @@ result = host.shell(command='git stash show')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-config-list](monty.composition.implementation.md#l048-pc-exec-shell-git-config-list); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-config-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-config-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git config --list')
+result = usage_l048(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -6302,7 +6446,7 @@ result = host.shell(command='git config --list')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6316,16 +6460,18 @@ result = host.shell(command='git config --list')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-fetch](monty.composition.implementation.md#l053-pc-exec-shell-git-fetch); one qualified host.shell usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-shell-git-fetch; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-fetch; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git fetch --all')
+result = usage_l053(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -6377,7 +6523,7 @@ result = host.shell(command='git fetch --all')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6391,6 +6537,8 @@ result = host.shell(command='git fetch --all')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -6400,7 +6548,7 @@ result = host.shell(command='git fetch --all')
 | 3 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 | 4 | [proposed-shell-dispatch](monty.composition.implementation.md#proposed-shell-dispatch); one qualified host.shell usage | `command` |
 
-**Code example — proposed-model-request-data; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-model-request-data; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"request": inputs["request"], "source_text": inputs["source_text"]}
@@ -6503,7 +6651,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6517,6 +6665,8 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -6526,7 +6676,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 | 3 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 | 4 | [proposed-shell-dispatch](monty.composition.implementation.md#proposed-shell-dispatch); one qualified host.shell usage | `command` |
 
-**Code example — proposed-model-request-data; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-model-request-data; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"request": inputs["request"], "source_text": inputs["source_text"]}
@@ -6629,7 +6779,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6643,13 +6793,15 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-add](monty.composition.implementation.md#l049-pc-exec-shell-git-add); pure, no Skill/binding | `quoted_arguments` |
 
-**Code example — pc-exec-shell-git-add; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-add; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "git add -- " + " ".join(inputs["quoted_arguments"])
@@ -6692,7 +6844,7 @@ result = "git add -- " + " ".join(inputs["quoted_arguments"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6706,13 +6858,15 @@ result = "git add -- " + " ".join(inputs["quoted_arguments"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-commit](monty.composition.implementation.md#l050-pc-exec-shell-git-commit); pure, no Skill/binding | `quoted_arguments` |
 
-**Code example — pc-exec-shell-git-commit; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-commit; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "git commit -m " + inputs["quoted_arguments"][0]
@@ -6755,7 +6909,7 @@ result = "git commit -m " + inputs["quoted_arguments"][0]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6769,13 +6923,15 @@ result = "git commit -m " + inputs["quoted_arguments"][0]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-push](monty.composition.implementation.md#l051-pc-exec-shell-git-push); pure, no Skill/binding | `quoted_arguments` |
 
-**Code example — pc-exec-shell-git-push; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-push; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "git push " + " ".join(inputs["quoted_arguments"])
@@ -6818,7 +6974,7 @@ result = "git push " + " ".join(inputs["quoted_arguments"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6832,13 +6988,15 @@ result = "git push " + " ".join(inputs["quoted_arguments"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-shell-git-pull](monty.composition.implementation.md#l052-pc-exec-shell-git-pull); pure, no Skill/binding | `quoted_arguments` |
 
-**Code example — pc-exec-shell-git-pull; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-pull; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "git pull " + " ".join(inputs["quoted_arguments"])
@@ -6881,7 +7039,7 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -6895,6 +7053,8 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -6903,7 +7063,7 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 | 2 | qualified global child admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 3 | qualified retained child/job wait usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — proposed-child-task-request; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-child-task-request; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"goal": inputs["goal"], "context": inputs["context"]}
@@ -6994,7 +7154,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7008,6 +7168,8 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7016,7 +7178,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 | 2 | qualified global child admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 3 | qualified retained child/job wait usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — proposed-child-task-request; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-child-task-request; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"goal": inputs["goal"], "context": inputs["context"]}
@@ -7107,7 +7269,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7121,6 +7283,8 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7129,7 +7293,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 | 2 | qualified global child admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 3 | qualified retained child/job wait usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — proposed-child-task-request; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-child-task-request; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"goal": inputs["goal"], "context": inputs["context"]}
@@ -7220,7 +7384,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7234,6 +7398,8 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7242,7 +7408,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 | 2 | qualified global child admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 3 | qualified retained child/job wait usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — proposed-child-task-request; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-child-task-request; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"goal": inputs["goal"], "context": inputs["context"]}
@@ -7333,7 +7499,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7347,6 +7513,8 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7355,7 +7523,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 | 2 | qualified global child admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 3 | qualified retained child/job wait usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — proposed-child-task-request; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-child-task-request; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"goal": inputs["goal"], "context": inputs["context"]}
@@ -7446,7 +7614,7 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7460,16 +7628,18 @@ result = {"goal": inputs["goal"], "context": inputs["context"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-trigger-list](monty.composition.implementation.md#l065-pc-exec-trigger-list); one qualified host.trigger_list usage | `limit` |
 
-**Code example — pc-exec-trigger-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-trigger-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.trigger_list(limit=inputs["limit"])
+result = usage_l065(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -7521,7 +7691,7 @@ result = host.trigger_list(limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7535,6 +7705,8 @@ result = host.trigger_list(limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7542,10 +7714,10 @@ result = host.trigger_list(limit=inputs["limit"])
 | 1 | [pc-exec-trigger-list](monty.composition.implementation.md#l065-pc-exec-trigger-list); one qualified host.trigger_list usage | `limit` |
 | 2 | [proposed-filter-records](monty.composition.implementation.md#proposed-filter-records); pure, no Skill/binding | `mode`, `rows`, `field`, `value` |
 
-**Code example — pc-exec-trigger-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-trigger-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.trigger_list(limit=inputs["limit"])
+result = usage_l065(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -7609,7 +7781,7 @@ result = host.trigger_list(limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7623,6 +7795,8 @@ result = host.trigger_list(limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7630,10 +7804,10 @@ result = host.trigger_list(limit=inputs["limit"])
 | 1 | [pc-exec-trigger-list](monty.composition.implementation.md#l065-pc-exec-trigger-list); one qualified host.trigger_list usage | `limit` |
 | 2 | [proposed-filter-records](monty.composition.implementation.md#proposed-filter-records); pure, no Skill/binding | `mode`, `rows`, `field`, `value` |
 
-**Code example — pc-exec-trigger-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-trigger-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.trigger_list(limit=inputs["limit"])
+result = usage_l065(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -7697,7 +7871,7 @@ result = host.trigger_list(limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7711,19 +7885,18 @@ result = host.trigger_list(limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [proposed-trigger-create](monty.composition.implementation.md#r04-proposed-trigger-create); one qualified host.trigger_create usage | `completion_policy`, `name`, `prompt`, `cron` |
 
-**Code example — proposed-trigger-create; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-trigger-create; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-policy = inputs["completion_policy"]
-if policy not in ["recurring", "complete_after_first_fire"]:
-    raise ValueError("unsupported_completion_policy")
-result = host.trigger_create(name=inputs["name"], prompt=inputs["prompt"], cron=inputs["cron"], completion_policy=policy)
+result = usage_r04(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -7775,7 +7948,7 @@ result = host.trigger_create(name=inputs["name"], prompt=inputs["prompt"], cron=
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7789,16 +7962,18 @@ result = host.trigger_create(name=inputs["name"], prompt=inputs["prompt"], cron=
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [proposed-trigger-remove](monty.composition.implementation.md#proposed-trigger-remove); one qualified host.trigger_remove usage | `trigger_id` |
 
-**Code example — proposed-trigger-remove; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-trigger-remove; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.trigger_remove(trigger_id=inputs["trigger_id"])
+result = usage_proposed_trigger_remove(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -7850,7 +8025,7 @@ result = host.trigger_remove(trigger_id=inputs["trigger_id"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7864,6 +8039,8 @@ result = host.trigger_remove(trigger_id=inputs["trigger_id"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -7873,10 +8050,10 @@ result = host.trigger_remove(trigger_id=inputs["trigger_id"])
 | 3 | [proposed-require-one-record](monty.composition.implementation.md#proposed-require-one-record); pure, no Skill/binding | `rows`, `complete` |
 | 4 | [proposed-trigger-remove](monty.composition.implementation.md#proposed-trigger-remove); one qualified host.trigger_remove usage | `trigger_id` |
 
-**Code example — pc-exec-trigger-list; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-trigger-list; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.trigger_list(limit=inputs["limit"])
+result = usage_l065(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -7976,7 +8153,7 @@ result = host.trigger_list(limit=inputs["limit"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -7990,16 +8167,18 @@ result = host.trigger_list(limit=inputs["limit"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-time-now](monty.composition.implementation.md#l067-pc-exec-time-now); one qualified host.time usage | `timezone` |
 
-**Code example — pc-exec-time-now; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-time-now; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.time(operation="now", timezone=inputs["timezone"])
+result = usage_l067(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8051,7 +8230,7 @@ result = host.time(operation="now", timezone=inputs["timezone"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8065,16 +8244,18 @@ result = host.time(operation="now", timezone=inputs["timezone"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-time-now](monty.composition.implementation.md#l067-pc-exec-time-now); one qualified host.time usage | `timezone` |
 
-**Code example — pc-exec-time-now; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-time-now; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.time(operation="now", timezone=inputs["timezone"])
+result = usage_l067(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8126,7 +8307,7 @@ result = host.time(operation="now", timezone=inputs["timezone"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8140,16 +8321,18 @@ result = host.time(operation="now", timezone=inputs["timezone"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-time-parse](monty.composition.implementation.md#l068-pc-exec-time-parse); one qualified host.time usage | `timestamp`, `timezone` |
 
-**Code example — pc-exec-time-parse; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-time-parse; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs["timezone"])
+result = usage_l068(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8201,7 +8384,7 @@ result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8215,16 +8398,18 @@ result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-time-convert](monty.composition.implementation.md#l069-pc-exec-time-convert); one qualified host.time usage | `timestamp`, `from_timezone`, `to_timezone` |
 
-**Code example — pc-exec-time-convert; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-time-convert; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.time(operation="convert", input=inputs["timestamp"], from_timezone=inputs["from_timezone"], to_timezone=inputs["to_timezone"])
+result = usage_l069(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8276,7 +8461,7 @@ result = host.time(operation="convert", input=inputs["timestamp"], from_timezone
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8290,16 +8475,18 @@ result = host.time(operation="convert", input=inputs["timestamp"], from_timezone
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-time-diff](monty.composition.implementation.md#l070-pc-exec-time-diff); one qualified host.time usage | `timestamp`, `timestamp2` |
 
-**Code example — pc-exec-time-diff; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-time-diff; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=inputs["timestamp2"])
+result = usage_l070(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8351,7 +8538,7 @@ result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=input
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8365,16 +8552,18 @@ result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=input
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-time-format](monty.composition.implementation.md#l071-pc-exec-time-format); one qualified host.time usage | `timestamp`, `format_string`, `timezone` |
 
-**Code example — pc-exec-time-format; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-time-format; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.time(operation="format", input=inputs["timestamp"], format_string=inputs["format_string"], timezone=inputs["timezone"])
+result = usage_l071(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8426,7 +8615,7 @@ result = host.time(operation="format", input=inputs["timestamp"], format_string=
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8440,16 +8629,18 @@ result = host.time(operation="format", input=inputs["timestamp"], format_string=
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-json-query](monty.composition.implementation.md#l072-pc-exec-json-query); one qualified host.json usage | `data`, `path` |
 
-**Code example — pc-exec-json-query; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-json-query; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
+result = usage_l072(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8501,7 +8692,7 @@ result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8515,16 +8706,18 @@ result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-json-stringify](monty.composition.implementation.md#l073-pc-exec-json-stringify); one qualified host.json usage | `json_text` |
 
-**Code example — pc-exec-json-stringify; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-json-stringify; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.json(operation="stringify", data=inputs["json_text"])
+result = usage_l073(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8576,7 +8769,7 @@ result = host.json(operation="stringify", data=inputs["json_text"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8590,16 +8783,18 @@ result = host.json(operation="stringify", data=inputs["json_text"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 
-**Code example — Typed JSON parse usage; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Typed JSON parse usage; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.json(operation="parse", data=inputs["json_text"])
+result = usage_n06(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8651,7 +8846,7 @@ result = host.json(operation="parse", data=inputs["json_text"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8665,16 +8860,18 @@ result = host.json(operation="parse", data=inputs["json_text"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-json-validate](monty.composition.implementation.md#l074-pc-exec-json-validate); one qualified host.json usage | `json_text` |
 
-**Code example — pc-exec-json-validate; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-json-validate; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.json(operation="validate", data=inputs["json_text"])
+result = usage_l074(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8726,7 +8923,7 @@ result = host.json(operation="validate", data=inputs["json_text"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8740,6 +8937,8 @@ result = host.json(operation="validate", data=inputs["json_text"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -8747,10 +8946,10 @@ result = host.json(operation="validate", data=inputs["json_text"])
 | 1 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 | 2 | [pc-exec-json-query](monty.composition.implementation.md#l072-pc-exec-json-query); one qualified host.json usage | `data`, `path` |
 
-**Code example — Typed JSON parse usage; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Typed JSON parse usage; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.json(operation="parse", data=inputs["json_text"])
+result = usage_n06(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8826,7 +9025,7 @@ result = host.json(operation="parse", data=inputs["json_text"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8840,16 +9039,18 @@ result = host.json(operation="parse", data=inputs["json_text"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-exec-echo](monty.composition.implementation.md#l075-pc-exec-echo); one qualified host.echo usage | `message` |
 
-**Code example — pc-exec-echo; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-echo; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.echo(message=inputs["message"])
+result = usage_l075(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -8901,7 +9102,7 @@ result = host.echo(message=inputs["message"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -8914,6 +9115,8 @@ result = host.echo(message=inputs["message"])
 **Behavior/input profile:** Explicit selected workspace paths only. status/diff/log outputs feed reviewed context; model result must be a validated commit message and selected path set. Add each selected path separately when the actual usage accepts one path. Keep staging and commit receipts distinct.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Ordered executable design and exact body contracts:**
 
@@ -8928,10 +9131,10 @@ result = host.echo(message=inputs["message"])
 | 7 | [pc-exec-shell-git-add](monty.composition.implementation.md#l049-pc-exec-shell-git-add); pure, no Skill/binding | `quoted_arguments` |
 | 8 | [pc-exec-shell-git-commit](monty.composition.implementation.md#l050-pc-exec-shell-git-commit); pure, no Skill/binding | `quoted_arguments` |
 
-**Code example — pc-exec-shell-git-status; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-shell-git-status; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git status')
+result = usage_l036(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -9103,7 +9306,7 @@ result = host.shell(command='git status')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9117,13 +9320,15 @@ result = host.shell(command='git status')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-github-list-issues](monty.composition.implementation.md#l076-pc-github-list-issues); pure, no Skill/binding | `relative_path` |
 
-**Code example — pc-github-list-issues; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-github-list-issues; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "https://api.github.com" + inputs["relative_path"]
@@ -9166,7 +9371,7 @@ result = "https://api.github.com" + inputs["relative_path"]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9180,13 +9385,15 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-github-list-prs](monty.composition.implementation.md#l077-pc-github-list-prs); pure, no Skill/binding | `relative_path` |
 
-**Code example — pc-github-list-prs; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-github-list-prs; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = "https://api.github.com" + inputs["relative_path"]
@@ -9229,7 +9436,7 @@ result = "https://api.github.com" + inputs["relative_path"]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9243,16 +9450,18 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-github-get-authenticated-user](monty.composition.implementation.md#l078-pc-github-get-authenticated-user); one qualified host.http usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-github-get-authenticated-user; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-github-get-authenticated-user; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.http(method="GET", url="https://api.github.com/user")
+result = usage_l078(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -9304,7 +9513,7 @@ result = host.http(method="GET", url="https://api.github.com/user")
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9318,6 +9527,8 @@ result = host.http(method="GET", url="https://api.github.com/user")
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -9327,7 +9538,7 @@ result = host.http(method="GET", url="https://api.github.com/user")
 | 3 | [proposed-http-body-text](monty.composition.implementation.md#r01-proposed-http-body-text); pure, no Skill/binding | `response` |
 | 4 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 
-**Code example — pc-url-encode; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-url-encode; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
@@ -9422,7 +9633,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9435,6 +9646,8 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 **Behavior/input profile:** Fixed registered API origin, validated owner/repo and title/body/base/head/draft. New PR is draft unless the admitted request explicitly selects ready. Parse/validate returned PR identity/URL; no implicit push/add-all.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Ordered executable design and exact body contracts:**
 
@@ -9451,7 +9664,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 | 9 | [proposed-http-body-text](monty.composition.implementation.md#r01-proposed-http-body-text); pure, no Skill/binding | `response` |
 | 10 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 
-**Code example — proposed-model-request-data; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-model-request-data; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"request": inputs["request"], "source_text": inputs["source_text"]}
@@ -9650,7 +9863,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9664,6 +9877,8 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -9675,7 +9890,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 | 5 | [proposed-http-body-text](monty.composition.implementation.md#r01-proposed-http-body-text); pure, no Skill/binding | `response` |
 | 6 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 
-**Code example — pc-url-encode; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-url-encode; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
@@ -9806,7 +10021,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9820,6 +10035,8 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -9832,10 +10049,10 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 
 **Source variant:** unstaged/staged/last-commit selection is explicit; substitute the canonical L080/L081/L082 usage for the selected variant, keeping that shell usage Tier1. Pin full source context and preserve scan limits. Do not infer semantic correctness from grep or apply fixes automatically from legacy prose.
 
-**Code example — pc-git-diff-unstaged; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-git-diff-unstaged; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git diff')
+result = usage_l080(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -9959,7 +10176,7 @@ result = host.shell(command='git diff')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -9972,6 +10189,8 @@ result = host.shell(command='git diff')
 **Behavior/input profile:** GET /repos/{owner}/{repo}/pulls/{number} -> parsed head SHA; GET its full diff; GET /files with complete pagination; foreach relevant file GET /contents/{path}?ref={head_sha} with actual raw media profile. Every repeated URL uses typed encoding/path/C01. Retain complete source and pin reviewed commit.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
@@ -9998,7 +10217,7 @@ result = host.shell(command='git diff')
 
 **Repeated-call layout:** each metadata/diff/files/content/freshness GET occurrence uses its own exact media/query/result profile and rebuilt C01 URL. Full file-list pagination and per-file reads are explicit retained iteration. Model assessment consumes the complete reviewed snapshot. Only post-comments includes POST effects; per-finding target/body/URL mapping, receipt and occurrence ID are separate. C04 stops on unsupported or invalid forms. General comments require a separately qualified known-unsupported classifier; never downgrade an arbitrary parser failure.
 
-**Code example — pc-url-encode; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-url-encode; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
@@ -10309,7 +10528,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -10322,6 +10541,8 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 **Behavior/input profile:** The metadata and diff GETs use the reviewed PR identity/head. R01 full diff -> C04 source_ref/base_sha/head_sha/diff_text. Parsed model findings receive finite finding/target schema; foreach C03/C05; fresh metadata supplies current_base_sha/current_head_sha. Rebuild the comments URL explicitly and POST typed C05 result to /pulls/{number}/comments. General comments use /issues/{number}/comments and {body:string}.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
@@ -10353,7 +10574,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 
 **Repeated-call layout:** each metadata/diff/files/content/freshness GET occurrence uses its own exact media/query/result profile and rebuilt C01 URL. Full file-list pagination and per-file reads are explicit retained iteration. Model assessment consumes the complete reviewed snapshot. Only post-comments includes POST effects; per-finding target/body/URL mapping, receipt and occurrence ID are separate. C04 stops on unsupported or invalid forms. General comments require a separately qualified known-unsupported classifier; never downgrade an arbitrary parser failure.
 
-**Code example — pc-url-encode; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-url-encode; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
@@ -10748,7 +10969,7 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -10762,6 +10983,8 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -10774,10 +10997,10 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 | 6 | existing requalified pc-host-kohai-complete; **BLOCKED usage profile** until actual adapter/association qualification | `prompt` |
 | 7 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 
-**Code example — pc-git-diff-unstaged; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-git-diff-unstaged; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git diff')
+result = usage_l080(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -10949,7 +11172,7 @@ result = host.shell(command='git diff')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -10963,6 +11186,8 @@ result = host.shell(command='git diff')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -10974,10 +11199,10 @@ result = host.shell(command='git diff')
 | 5 | existing requalified pc-host-kohai-complete; **BLOCKED usage profile** until actual adapter/association qualification | `prompt` |
 | 6 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 
-**Code example — pc-exec-read-file; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-read-file; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.read_file(path=inputs["path"])
+result = usage_l001(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -11125,7 +11350,7 @@ result = host.read_file(path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11139,6 +11364,8 @@ result = host.read_file(path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -11147,10 +11374,10 @@ result = host.read_file(path=inputs["path"])
 | 2 | [pc-grep-injection-patterns](monty.composition.implementation.md#l085-pc-grep-injection-patterns); one qualified host.grep usage | `path` |
 | 3 | [pc-exec-glob](monty.composition.implementation.md#l004-pc-exec-glob); one qualified host.glob usage | `pattern`, `path`, `max_results` |
 
-**Code example — pc-grep-hardcoded-secrets; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-grep-hardcoded-secrets; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:=]\s*['\"][^'\"]{8,}", path=inputs["path"])
+result = usage_l084(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -11250,7 +11477,7 @@ result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11263,6 +11490,8 @@ result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:
 **Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Ordered executable design and exact body contracts:**
 
@@ -11279,10 +11508,10 @@ result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:
 
 **Source variant:** unstaged/staged/last-commit selection is explicit; substitute the canonical L080/L081/L082 usage for the selected variant, keeping that shell usage Tier1. Pin full source context and preserve scan limits. Do not infer semantic correctness from grep or apply fixes automatically from legacy prose.
 
-**Code example — pc-git-diff-unstaged; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-git-diff-unstaged; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git diff')
+result = usage_l080(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -11478,7 +11707,7 @@ result = host.shell(command='git diff')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11492,6 +11721,8 @@ result = host.shell(command='git diff')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -11504,10 +11735,10 @@ result = host.shell(command='git diff')
 
 **Source variant:** unstaged/staged/last-commit selection is explicit; substitute the canonical L080/L081/L082 usage for the selected variant, keeping that shell usage Tier1. Pin full source context and preserve scan limits. Do not infer semantic correctness from grep or apply fixes automatically from legacy prose.
 
-**Code example — pc-git-diff-unstaged; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-git-diff-unstaged; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.shell(command='git diff')
+result = usage_l080(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -11631,7 +11862,7 @@ result = host.shell(command='git diff')
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11645,6 +11876,8 @@ result = host.shell(command='git diff')
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -11655,7 +11888,7 @@ result = host.shell(command='git diff')
 | 4 | [proposed-plan-target](monty.composition.implementation.md#proposed-plan-target); pure, no Skill/binding | `slug` |
 | 5 | [pc-exec-memory-write](monty.composition.implementation.md#l029-pc-exec-memory-write); one qualified host.memory_write usage | `content`, `target`, `append` |
 
-**Code example — proposed-model-request-data; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-model-request-data; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"request": inputs["request"], "source_text": inputs["source_text"]}
@@ -11770,7 +12003,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11784,6 +12017,8 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -11791,7 +12026,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 | 1 | [proposed-plan-target](monty.composition.implementation.md#proposed-plan-target); pure, no Skill/binding | `slug` |
 | 2 | [pc-exec-memory-read](monty.composition.implementation.md#l031-pc-exec-memory-read); one qualified host.memory_read usage | `path` |
 
-**Code example — proposed-plan-target; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-plan-target; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -11862,7 +12097,7 @@ result = "plans/" + slug + ".md"
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11876,16 +12111,18 @@ result = "plans/" + slug + ".md"
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-plan-search](monty.composition.implementation.md#l088-pc-plan-search); one qualified host.memory_search usage | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-plan-search; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-plan-search; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.memory_search(query="plan_id:")
+result = usage_l088(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -11937,7 +12174,7 @@ result = host.memory_search(query="plan_id:")
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -11951,6 +12188,8 @@ result = host.memory_search(query="plan_id:")
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -11961,7 +12200,7 @@ result = host.memory_search(query="plan_id:")
 | 4 | [proposed-patch-precondition](monty.composition.implementation.md#c02-proposed-patch-precondition); pure, no Skill/binding | `source_text`, `old_string`, `new_string`, `replace_all` |
 | 5 | [pc-exec-memory-patch](monty.composition.implementation.md#l030-pc-exec-memory-patch); one qualified host.memory_write usage | `target`, `old_string`, `new_string`, `replace_all` |
 
-**Code example — proposed-plan-target; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-plan-target; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12080,7 +12319,7 @@ result = "plans/" + slug + ".md"
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12094,6 +12333,8 @@ result = "plans/" + slug + ".md"
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -12105,7 +12346,7 @@ result = "plans/" + slug + ".md"
 | 5 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 | 6 | [pc-exec-memory-write](monty.composition.implementation.md#l029-pc-exec-memory-write); one qualified host.memory_write usage | `content`, `target`, `append` |
 
-**Code example — proposed-plan-target; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-plan-target; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12248,7 +12489,7 @@ result = "plans/" + slug + ".md"
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12262,16 +12503,18 @@ result = "plans/" + slug + ".md"
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [pc-zencoder-list-projects](monty.composition.implementation.md#l094-pc-zencoder-list-projects); one qualified host.zencoder_api usage | `path` |
 
-**Code example — pc-zencoder-list-projects; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-list-projects; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+result = usage_l100(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -12323,7 +12566,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12337,6 +12580,8 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -12345,7 +12590,7 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 | 2 | [proposed-api-relative-path](monty.composition.implementation.md#proposed-api-relative-path); pure, no Skill/binding | `encoded_segments`, `encoded_query` |
 | 3 | [pc-zencoder-list-tasks](monty.composition.implementation.md#l095-pc-zencoder-list-tasks); one qualified host.zencoder_api usage | `path` |
 
-**Code example — pc-zencoder-validate-uuid; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-validate-uuid; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12428,7 +12673,7 @@ result = value.lower()
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12442,6 +12687,8 @@ result = value.lower()
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -12450,7 +12697,7 @@ result = value.lower()
 | 2 | [proposed-api-relative-path](monty.composition.implementation.md#proposed-api-relative-path); pure, no Skill/binding | `encoded_segments`, `encoded_query` |
 | 3 | [pc-zencoder-list-tasks](monty.composition.implementation.md#l095-pc-zencoder-list-tasks); one qualified host.zencoder_api usage | `path` |
 
-**Code example — pc-zencoder-validate-uuid; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-validate-uuid; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12533,7 +12780,7 @@ result = value.lower()
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12547,6 +12794,8 @@ result = value.lower()
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -12555,7 +12804,7 @@ result = value.lower()
 | 2 | [proposed-api-relative-path](monty.composition.implementation.md#proposed-api-relative-path); pure, no Skill/binding | `encoded_segments`, `encoded_query` |
 | 3 | [pc-zencoder-get-task](monty.composition.implementation.md#l096-pc-zencoder-get-task); one qualified host.zencoder_api usage | `path` |
 
-**Code example — pc-zencoder-validate-uuid; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-validate-uuid; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12638,7 +12887,7 @@ result = value.lower()
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12652,6 +12901,8 @@ result = value.lower()
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -12660,7 +12911,7 @@ result = value.lower()
 | 2 | [proposed-api-relative-path](monty.composition.implementation.md#proposed-api-relative-path); pure, no Skill/binding | `encoded_segments`, `encoded_query` |
 | 3 | [pc-zencoder-get-plan](monty.composition.implementation.md#l097-pc-zencoder-get-plan); one qualified host.zencoder_api usage | `path` |
 
-**Code example — pc-zencoder-validate-uuid; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-validate-uuid; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12743,7 +12994,7 @@ result = value.lower()
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12756,6 +13007,8 @@ result = value.lower()
 **Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Ordered executable design and exact body contracts:**
 
@@ -12771,7 +13024,7 @@ result = value.lower()
 
 **Independent read profiles:** build task and plan paths separately and bind each GET separately. A missing plan is a distinct expected observation, not missing task or infrastructure success. Summary consumes validated task status and plan step counts; no loop that starts work implicitly.
 
-**Code example — pc-zencoder-validate-uuid; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-validate-uuid; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -12914,7 +13167,7 @@ result = value.lower()
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -12928,16 +13181,18 @@ result = value.lower()
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [Packaged reply: reply:code / reply:skill](monty.composition.implementation.md#n01-packaged-reply-replycode--replyskill); one qualified host.post_reply usage | `answer` |
 
-**Code example — Packaged reply: reply:code / reply:skill; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Packaged reply: reply:code / reply:skill; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.post_reply(answer=inputs["answer"])
+result = usage_n01(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -12989,7 +13244,7 @@ result = host.post_reply(answer=inputs["answer"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -13003,6 +13258,8 @@ result = host.post_reply(answer=inputs["answer"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -13015,7 +13272,7 @@ result = host.post_reply(answer=inputs["answer"])
 | 6 | [proposed-api-relative-path](monty.composition.implementation.md#proposed-api-relative-path); pure, no Skill/binding | `encoded_segments`, `encoded_query` |
 | 7 | [pc-zencoder-create-task](monty.composition.implementation.md#l098-pc-zencoder-create-task); one qualified host.zencoder_api usage | `method`, `path`, `body` |
 
-**Code example — proposed-model-request-data; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-model-request-data; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"request": inputs["request"], "source_text": inputs["source_text"]}
@@ -13166,7 +13423,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -13179,6 +13436,8 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 **Behavior/input profile:** Read existing task before appending to description. PATCH body is a nonempty validated subset of title/description/status; preserve omitted fields and actual allowed states. Do not overwrite existing description from an unvalidated partial draft.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Ordered executable design and exact body contracts:**
 
@@ -13193,7 +13452,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 | 7 | [Typed JSON parse usage](monty.composition.implementation.md#n06-typed-json-parse-usage); one qualified host.json usage | `json_text` |
 | 8 | [pc-zencoder-patch-task](monty.composition.implementation.md#l099-pc-zencoder-patch-task); one qualified host.zencoder_api usage | `method`, `path`, `body` |
 
-**Code example — pc-zencoder-validate-uuid; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-zencoder-validate-uuid; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 import re
@@ -13372,7 +13631,7 @@ result = value.lower()
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -13386,6 +13645,8 @@ result = value.lower()
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -13398,7 +13659,7 @@ result = value.lower()
 | 6 | [proposed-api-relative-path](monty.composition.implementation.md#proposed-api-relative-path); pure, no Skill/binding | `encoded_segments`, `encoded_query` |
 | 7 | [pc-zencoder-create-automation](monty.composition.implementation.md#l101-pc-zencoder-create-automation); one qualified host.zencoder_api usage | `method`, `path`, `body` |
 
-**Code example — proposed-model-request-data; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-model-request-data; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"request": inputs["request"], "source_text": inputs["source_text"]}
@@ -13549,7 +13810,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -13562,6 +13823,8 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 **Behavior/input profile:** by-extract: full retained raw source -> R10 -> exact section extraction -> header rendering -> actual content hash -> pending source/derived store profiles. by-llm-compress inserts explicit reviewed compression model usage before header/hash/store. Each source/derived write has its own confirmed receipt and parent link; section absent differs from empty.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Exact document edges:** raw acquisition -> R10 source validation; raw source -> source R05 hash -> source R07 content/hash, retaining confirmed ID. Extraction or compression consumes that retained source; L091.result.header plus L033.section_content on found=true (or validated R03 compression text) -> C06 -> derived R05 -> derived R07 with the confirmed source ID as parent. Original and derived writes have independent receipts. Source existence/uncertainty and compression/extraction errors are distinct branches; never rerun a confirmed source write because derivation failed. The second variant needs its own actual step list/layout and explicit model prompt/response mapping.
 
@@ -13583,7 +13846,7 @@ result = {"request": inputs["request"], "source_text": inputs["source_text"]}
 
 **Second variant:** create description1 with raw/R10 acquisition -> explicit R02/model/R03 compression -> L091 header -> C06 complete rendering -> R05 derived hash -> derived R07 write. Acquire/hash/store original source separately and bind its confirmed ID as the derived parent. Compression never overwrites the source. Select `1:1-1:E`; qualify exact by-llm-compress routing/Tier1. The extract variant below is description0 and selects `0:1-0:E`. Neither variant includes the outer doc-sync stale/hash lookup automatically.
 
-**Code example — proposed-complete-document-text; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — proposed-complete-document-text; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 snapshot = inputs["snapshot"]
@@ -13787,7 +14050,7 @@ result = snapshot["content"]
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -13841,16 +14104,18 @@ async def _execute_recipe(task_token, recipe_id, step_link, inputs):
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [Packaged reply: reply:code / reply:skill](monty.composition.implementation.md#n01-packaged-reply-replycode--replyskill); one qualified host.post_reply usage | `answer` |
 
-**Code example — Packaged reply: reply:code / reply:skill; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Packaged reply: reply:code / reply:skill; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.post_reply(answer=inputs["answer"])
+result = usage_n01(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -13902,7 +14167,7 @@ result = host.post_reply(answer=inputs["answer"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -13916,6 +14181,8 @@ result = host.post_reply(answer=inputs["answer"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -13923,7 +14190,7 @@ result = host.post_reply(answer=inputs["answer"])
 | 1 | [Packaged history formatter: history:formatter](monty.composition.implementation.md#n03-packaged-history-formatter-historyformatter); pure, no Skill/binding | `reply_ref`, `answer`, `user_input` |
 | 2 | [Packaged history writer: history:code / history:skill](monty.composition.implementation.md#n02-packaged-history-writer-historycode--historyskill); one qualified host.memory_write usage | `content` |
 
-**Code example — Packaged history formatter: history:formatter; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Packaged history formatter: history:formatter; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + '\nReply: ' + inputs['reply_ref']
@@ -13990,7 +14257,7 @@ result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + 
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -14046,6 +14313,8 @@ async def _execute_recipe(task_token, recipe_id, step_link, inputs):
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
 **Ordered executable design and exact body contracts:**
@@ -14063,7 +14332,7 @@ async def _execute_recipe(task_token, recipe_id, step_link, inputs):
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -14256,7 +14525,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -14271,6 +14540,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-1 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -14289,7 +14560,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -14482,7 +14753,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -14497,6 +14768,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-2 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -14515,7 +14788,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -14708,7 +14981,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -14723,6 +14996,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-3 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -14741,7 +15016,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -14934,7 +15209,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -14949,6 +15224,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-13 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -14967,7 +15244,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -15160,7 +15437,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -15175,6 +15452,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-21 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -15194,7 +15473,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 10 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 11 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -15399,7 +15678,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -15414,6 +15693,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-22 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -15432,7 +15713,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -15625,7 +15906,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -15641,6 +15922,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
 **Ordered executable design and exact body contracts:**
@@ -15655,7 +15938,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 6 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 7 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -15812,7 +16095,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -15826,6 +16109,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -15835,7 +16120,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 3 | [Generation validation usage](monty.composition.implementation.md#n19-generation-validation-usage); **BLOCKED usage profile** until actual adapter/association qualification | `manifest_ref`, `facts_ref` |
 | 4 | [Prefix generation publication](monty.composition.implementation.md#n20-prefix-generation-publication); **BLOCKED usage profile** until actual adapter/association qualification | `generation_ref`, `validation_ref` |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -15962,7 +16247,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -15976,16 +16261,18 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
 | --- | --- | --- |
 | 1 | [Packaged reply: reply:code / reply:skill](monty.composition.implementation.md#n01-packaged-reply-replycode--replyskill); one qualified host.post_reply usage | `answer` |
 
-**Code example — Packaged reply: reply:code / reply:skill; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Packaged reply: reply:code / reply:skill; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.post_reply(answer=inputs["answer"])
+result = usage_n01(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -16037,7 +16324,7 @@ result = host.post_reply(answer=inputs["answer"])
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -16051,6 +16338,8 @@ result = host.post_reply(answer=inputs["answer"])
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Ordered executable design and exact body contracts:**
 
 | Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
@@ -16058,7 +16347,7 @@ result = host.post_reply(answer=inputs["answer"])
 | 1 | [Packaged history formatter: history:formatter](monty.composition.implementation.md#n03-packaged-history-formatter-historyformatter); pure, no Skill/binding | `reply_ref`, `answer`, `user_input` |
 | 2 | [Packaged history writer: history:code / history:skill](monty.composition.implementation.md#n02-packaged-history-writer-historycode--historyskill); one qualified host.memory_write usage | `content` |
 
-**Code example — Packaged history formatter: history:formatter; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Packaged history formatter: history:formatter; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + '\nReply: ' + inputs['reply_ref']
@@ -16125,7 +16414,7 @@ result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + 
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -16140,6 +16429,8 @@ result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + 
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-0 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -16158,7 +16449,7 @@ result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + 
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -16351,7 +16642,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -16366,6 +16657,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-1 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -16384,7 +16677,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -16577,7 +16870,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -16592,6 +16885,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-2 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -16610,7 +16905,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -16803,7 +17098,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -16818,6 +17113,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-3 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -16836,7 +17133,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -17029,7 +17326,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -17044,6 +17341,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-13 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -17062,7 +17361,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -17255,7 +17554,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -17270,6 +17569,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-21 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -17289,7 +17590,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 10 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 11 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -17494,7 +17795,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -17509,6 +17810,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 **Class-specific exact scope:** implement validator_v3 Step7's row for validator-class-22 in full, including all applicable schema/association/call/artifact/failure/tier/semantic and whole-workflow cases. Facts bind the immutable candidate/graph subject; behavior evidence is separate. N15 receives the exact required check-ID set and all complete outcomes for that subject. N15 returns a complete subject-bound verdict; the trusted review owner verifies/persists actual Q1 evidence. N16 is candidate proposal admission and is not this verdict writer. Resolve the separate existing persistence profile before activation. Infrastructure/missing evidence is incomplete, never a pass.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
@@ -17527,7 +17830,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 9 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 10 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -17720,7 +18023,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -17736,6 +18039,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Review control:** inspect the already admitted immutable subject and full selected dependency graph. Run every class-required check and behavior case; conditional semantic/model work must have explicit qualified branches and pinned inputs. N15 consumes the exact required check-ID set and complete subject-bound outcomes; missing evidence is incomplete. The trusted review owner persists Q1 separately, and human Q2/activation remain separate authored operations. A straight partial check list never proves whole validator coverage.
 
 **Ordered executable design and exact body contracts:**
@@ -17750,7 +18055,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 6 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 7 | qualified trusted Q1 verdict persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Identity and metadata checker; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Identity and metadata checker; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 diagnostics = []
@@ -17907,7 +18212,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -17923,6 +18228,8 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
 **Ordered executable design and exact body contracts:**
@@ -17934,7 +18241,7 @@ result = {"subject_ref": inputs["subject_ref"], "check_id": 'identity_and_metada
 | 3 | [Generation validation usage](monty.composition.implementation.md#n19-generation-validation-usage); **BLOCKED usage profile** until actual adapter/association qualification | `manifest_ref`, `facts_ref` |
 | 4 | [Prefix generation publication](monty.composition.implementation.md#n20-prefix-generation-publication); **BLOCKED usage profile** until actual adapter/association qualification | `generation_ref`, `validation_ref` |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -18061,7 +18368,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -18077,6 +18384,8 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
 **Ordered executable design and exact body contracts:**
@@ -18090,7 +18399,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 | 5 | [Generation validation usage](monty.composition.implementation.md#n19-generation-validation-usage); **BLOCKED usage profile** until actual adapter/association qualification | `manifest_ref`, `facts_ref` |
 | 6 | [Prefix generation publication](monty.composition.implementation.md#n20-prefix-generation-publication); **BLOCKED usage profile** until actual adapter/association qualification | `generation_ref`, `validation_ref` |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -18265,7 +18574,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -18280,6 +18589,8 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 **Prerequisite:** resolve the actual qualified internal/public entry and complete durable job/child/adapter profiles in the linked prefix/validator/MCP plans. Existing preparation helpers do not execute admission, selection, evaluation or publication. Record each missing profile explicitly before activation.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
@@ -18296,7 +18607,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 | 7 | [Generation validation usage](monty.composition.implementation.md#n19-generation-validation-usage); **BLOCKED usage profile** until actual adapter/association qualification | `manifest_ref`, `facts_ref` |
 | 8 | [Prefix generation publication](monty.composition.implementation.md#n20-prefix-generation-publication); **BLOCKED usage profile** until actual adapter/association qualification | `generation_ref`, `validation_ref` |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -18495,7 +18806,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -18510,6 +18821,8 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 **Prerequisite:** resolve the actual qualified internal/public entry and complete durable job/child/adapter profiles in the linked prefix/validator/MCP plans. Existing preparation helpers do not execute admission, selection, evaluation or publication. Record each missing profile explicitly before activation.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
@@ -18527,7 +18840,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 | 8 | [Generation validation usage](monty.composition.implementation.md#n19-generation-validation-usage); **BLOCKED usage profile** until actual adapter/association qualification | `manifest_ref`, `facts_ref` |
 | 9 | [Prefix generation publication](monty.composition.implementation.md#n20-prefix-generation-publication); **BLOCKED usage profile** until actual adapter/association qualification | `generation_ref`, `validation_ref` |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -18750,7 +19063,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -18766,6 +19079,8 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
 **Ordered executable design and exact body contracts:**
@@ -18778,7 +19093,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 | 4 | [proposed-model-answer-text](monty.composition.implementation.md#r03-proposed-model-answer-text); pure, no Skill/binding | `response` |
 | 5 | [Immutable review submission](monty.composition.implementation.md#n16-immutable-review-submission); **BLOCKED usage profile** until actual adapter/association qualification | `subject_ref`, `dependency_manifest_ref` |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -18905,7 +19220,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -18921,6 +19236,8 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
 **Evaluation evidence boundary:** qualify the actual provider-evaluation outcome checker and receipt owner. N15 can be reused only under a compatible exact finite check-ID/subject profile; a component-class check set does not validate a provider response. Persist evaluation evidence through its real owner, not N16 candidate admission or an automatic component Q1/Q2 operation. No candidate/component activation is implied by a successful provider call.
@@ -18935,7 +19252,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 | 4 | [Scoped verdict aggregation](monty.composition.implementation.md#n15-scoped-verdict-aggregation); pure, no Skill/binding | `required_check_ids`, `checks`, `subject_ref` |
 | 5 | qualified provider-evaluation receipt persistence usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Catalogue sweep and export; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Catalogue sweep and export; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"snapshot_ref": inputs["snapshot_ref"]}
@@ -19074,7 +19391,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -19090,6 +19407,8 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
 
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
+
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
 **Ordered executable design and exact body contracts:**
@@ -19100,7 +19419,7 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 | 2 | qualified generation-selection usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 3 | qualified provider evaluation usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — Generation validation usage; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — Generation validation usage; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
 result = {"manifest_ref": inputs["manifest_ref"], "facts_ref": inputs["facts_ref"]}
@@ -19203,7 +19522,7 @@ result = {"manifest_ref": inputs["manifest_ref"], "facts_ref": inputs["facts_ref
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
@@ -19218,6 +19537,8 @@ result = {"manifest_ref": inputs["manifest_ref"], "facts_ref": inputs["facts_ref
 **Prerequisite:** resolve the actual qualified internal/public entry and complete durable job/child/adapter profiles in the linked prefix/validator/MCP plans. Existing preparation helpers do not execute admission, selection, evaluation or publication. Record each missing profile explicitly before activation.
 
 **Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
+
+**Skill preload/invocation requirement:** for every Tool usage listed here, load its approved exported function and complete helper/constant graph during retained assembly, without dispatch. The invocation resolves through the task-pinned interface and typed local layout, immediately after its matching ToolSkill binding. Mutable working data stays task/attempt/invocation-local; a newer activated export never changes this task. Pure logic needs no Skill. Legacy copied bodies describe the implementation logic only; where an example calls a proposed `usage_*` symbol, resolve its declared canonical interface in the component appendix before execution. Missing function-aware loader/inspection support blocks activation.
 
 **Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
 
@@ -19236,10 +19557,10 @@ result = {"manifest_ref": inputs["manifest_ref"], "facts_ref": inputs["facts_ref
 | 7 | doc-convert selected retained child variant; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 | 8 | [proposed-prefix-invalidation-request](monty.composition.implementation.md#r08-proposed-prefix-invalidation-request); **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
 
-**Code example — pc-exec-glob; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Code example — pc-exec-glob; reuse the canonical component, preload its declared implementation first; do not embed definitions into Recipe JSON:**
 
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+result = usage_l004(inputs)
 ```
 
 **Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
@@ -19435,137 +19756,24 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 }
 ```
 
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
+**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix jobs retain their typed internal outcome without automatic chat posting. Skill execution Recipes invoked through MCP use their normal chat public formatter/reply owner; MCP forwards that posted response and never converts an error into success.
 
 **Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
 
-## RCP170. MCP internal Skill invocation/formatting workflow (planned role)
+## RCP170. MCP ordinary-chat transport (planned integration role)
 
-**Purpose:** Execute admitted model Python using selected Skill usages in an isolated global child and return its formatted result.
+**Purpose:** Keep the MCP server alive, derive its listing from approved mcp-call-skill-recipes, and let Kohai own request-local provider advertisement/connection; list the Skill execution Recipe's command, accept its completed form, open a fresh normal chat, submit one user message, forward the correlated terminal response and close the chat.
 
-**Implementation and overlap disposition:** Define a typed internal source-admission/child/completion contract under section16 and reuse canonical Skill/code/bindings. **Shared functionality:** N04/global child and R09 infrastructure; this is not another composer, global VM, public chat Recipe or automatic reply/history writer.
+**Implementation and overlap disposition:** This is MCP chat-client wiring through existing supported product interfaces, not a new executable Recipe, Python source-admission Tool or direct global child bridge. Reuse chat creation, message admission, response observation and closure; the existing global orchestrator owns intent matching/IBS/Recipe execution. See [each Skill's canonical execution Recipe](monty.composition.skill-recipes.md).
 
-**Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
+**Concrete instructions:** Correlate the MCP request with its new chat/message/run. Check only its listed command/input contract before sending. Observe completion rather than progress/latest unrelated text. The selected Recipe's normal public formatting/reply/history ownership is unchanged. Forward that chat response and supported terminal outcome, then close using the ordinary lifecycle API. Recover delivery/closure from the same retained chat/result; uncertain send is not permission to send twice. Pending/waiting/unknown work is not silently discarded. Closing never deletes artifacts/evidence needed by recovery.
 
-**Prerequisite:** resolve the actual qualified internal/public entry and complete durable job/child/adapter profiles in the linked prefix/validator/MCP plans. Existing preparation helpers do not execute admission, selection, evaluation or publication. Record each missing profile explicitly before activation.
-
-**Readiness:** DRAFT; this section is a design, not an insertable or activated workflow. Complete the linked finite schemas, exact associations, registered bindings, retained input layout, routing/internal entry and behavioral evidence before activation. Empty captures/bindings in the skeleton are unresolved work.
-
-**Control-flow gate:** the JSON below illustrates ordered component roles only. It does not implement conditional branches, foreach/pagination, child waits or occurrence checkpoints. Use the supported retained control-tree/continuation contract and pin all variants/dependencies at admission; if the actual compiler/runner cannot represent the declared flow, keep this workflow inactive until that support is implemented. Never flatten conditional/repeated effects into an unconditional one-pass sequence.
-
-**Ordered executable design and exact body contracts:**
-
-| Execution occurrence | PythonCode role and binding disposition | Local inputs to bind from task/constant/earlier validated result |
-| --- | --- | --- |
-| 1 | qualified MCP transient-source admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
-| 2 | qualified global child admission usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
-| 3 | qualified retained child/job wait usage; **BLOCKED usage profile** until actual adapter/association qualification | Actual required local contract must be resolved for this blocked profile; no invented keyword names. |
-
-**Example scope:** the following reused preparer/checker is a supporting part only; it cannot replace the blocked effect/admission roles above. Add its canonical dependency only if this exact profile is actually consumed.
-
-**Code example — proposed-child-task-request; reuse the canonical component, do not embed this body into Recipe JSON:**
+**Internal Recipe invocation example, executed by ordinary chat routing:**
 
 ```python
-result = {"goal": inputs["goal"], "context": inputs["context"]}
+result = usage_n05(inputs)
 ```
 
-**Non-runnable persisted IBS skeleton — resolve canonical UUIDs and complete binding/input/capture and control contracts before storing:**
+MCP never sends this Python and never calls this export itself. The chosen chat Recipe supplies the pinned function, matching binding and typed inputs. The code is illustrative of existing component assembly, not an MCP component.
 
-```json
-{
-  "step_descriptions": [
-    {
-      "desc_idx": 0,
-      "label": "MCP internal Skill invocation/formatting workflow",
-      "yaml_source": "Documentation only; execution follows the structured steps",
-      "steps": [
-        {
-          "stepnumber": 1,
-          "knowledge": "rust",
-          "goal": "Prepare the exact reviewed binding for qualified MCP transient-source admission usage",
-          "content": "Resolve the ToolSkill and actual retained Tool/callable/adapter; binding performs no operation",
-          "type": "component",
-          "include": [
-            "<RESOLVED_TOOLSKILL_UUID_FOR_QUALIFIED_MCP_TRANSIENT_SOURCE_ADMISSION_USAGE>"
-          ],
-          "tool_bindings": [],
-          "dependencies": null
-        },
-        {
-          "stepnumber": 2,
-          "knowledge": "orchestrator",
-          "goal": "qualified MCP transient-source admission usage",
-          "content": "Execute the exact selected PythonCode with separately bound typed local inputs",
-          "type": "component",
-          "include": [
-            "<RESOLVED_PYTHONCODE_UUID_FOR_QUALIFIED_MCP_TRANSIENT_SOURCE_ADMISSION_USAGE>"
-          ],
-          "tool_bindings": [],
-          "dependencies": null
-        },
-        {
-          "stepnumber": 3,
-          "knowledge": "rust",
-          "goal": "Prepare the exact reviewed binding for qualified global child admission usage",
-          "content": "Resolve the ToolSkill and actual retained Tool/callable/adapter; binding performs no operation",
-          "type": "component",
-          "include": [
-            "<RESOLVED_TOOLSKILL_UUID_FOR_QUALIFIED_GLOBAL_CHILD_ADMISSION_USAGE>"
-          ],
-          "tool_bindings": [],
-          "dependencies": null
-        },
-        {
-          "stepnumber": 4,
-          "knowledge": "orchestrator",
-          "goal": "qualified global child admission usage",
-          "content": "Execute the exact selected PythonCode with separately bound typed local inputs",
-          "type": "component",
-          "include": [
-            "<RESOLVED_PYTHONCODE_UUID_FOR_QUALIFIED_GLOBAL_CHILD_ADMISSION_USAGE>"
-          ],
-          "tool_bindings": [],
-          "dependencies": null
-        },
-        {
-          "stepnumber": 5,
-          "knowledge": "rust",
-          "goal": "Prepare the exact reviewed binding for qualified retained child/job wait usage",
-          "content": "Resolve the ToolSkill and actual retained Tool/callable/adapter; binding performs no operation",
-          "type": "component",
-          "include": [
-            "<RESOLVED_TOOLSKILL_UUID_FOR_QUALIFIED_RETAINED_CHILD_JOB_WAIT_USAGE>"
-          ],
-          "tool_bindings": [],
-          "dependencies": null
-        },
-        {
-          "stepnumber": 6,
-          "knowledge": "orchestrator",
-          "goal": "qualified retained child/job wait usage",
-          "content": "Execute the exact selected PythonCode with separately bound typed local inputs",
-          "type": "component",
-          "include": [
-            "<RESOLVED_PYTHONCODE_UUID_FOR_QUALIFIED_RETAINED_CHILD_JOB_WAIT_USAGE>"
-          ],
-          "tool_bindings": [],
-          "dependencies": null
-        }
-      ]
-    }
-  ],
-  "variants": [
-    {
-      "variant_key": "mcp-internal-skill-invocation-formatting-workflow",
-      "description": "Execute admitted model Python using selected Skill usages in an isolated global child and return its formatted result.",
-      "step_link": "0:1-0:E",
-      "intent_examples": [],
-      "variable_patterns": []
-    }
-  ]
-}
-```
-
-**Output data edge:** already validated answer text goes directly to the one selected reply owner. For an explicitly approved structured public projection, bind it to C07 (or compatible existing L073/list-of-string formatter) and bind the resulting string to N01.answer. Implement the selected formatter as a real component step in the completed variant/layout; it is absent from this generic skeleton. Internal validator/prefix/MCP results retain their protocol-specific typed outcome; no automatic chat posting or error-to-success formatting.
-
-**Completion and acceptance:** verify each selected usage's actual typed result before its consumer; stop on failed/incomplete producer and preserve confirmed effects. Exercise the admitted request/profile, hostile typed input, invalid selector/schema, missing binding/association, blocked live Tool, cancellation/wait/resumption and any uncertain mutation. Assert the exact final result/reply/evidence owner and that no completed effect repeats after later failure. Apply the global routing/tier/qualification gate above and test every retained variant, not just this example body.
+**Readiness:** DRAFT; qualify tools/list commands and the real chat create/send/observe/close interfaces and correlation/uncertainty behavior. No new MCP-specific executor/Recipe JSON/ToolSkill is required. No ordinary chat routing, kernel enforcement or global VM architecture change is prescribed.

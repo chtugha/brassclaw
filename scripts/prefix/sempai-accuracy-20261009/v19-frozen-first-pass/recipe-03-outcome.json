@@ -1,0 +1,91 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable healthy reply workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Created one unapproved class21 recipe-transfer-03. It binds the existing host.post_reply(answer:string) ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548 and executes the allocated PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3 (result = host.post_reply(answer='Healthy')) as a single user-reply effect. trigger=null, steps=[], dependency_registry=null. desc_idx=0 uses the persisted knowledge/stepnumber/type=component/include schema; step 1 includes the ToolSkill UUID, step 2 includes the PythonCode UUID, each step includes exactly one UUID, tool_bindings=[] and dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], and ten distinct reply intents in both the payload and variant arrays. Zero inputs/dependencies, no version numbers or approval. This subworkflow posts exactly the fixed word 'Healthy' as a user reply via the bound existing Tool. Unapproved dependencies; Q1 and human Q2 required before activation. The current live sink cannot preserve full v3 fields (step_descriptions/variants/dependency_registry); this is an export only, no submission or activation.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-03",
+        "description": "Offline unapproved fixed-reply subworkflow; binds existing host.post_reply and executes the allocated PythonCode. No version numbers or approval. Q1 and human Q2 required before activation.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posts exactly the fixed word as a user reply via the bound existing Tool.",
+        "intent_examples": [
+          "say healthy",
+          "reply healthy",
+          "post healthy",
+          "send the healthy reply",
+          "respond with healthy",
+          "tell me healthy",
+          "please say healthy",
+          "please reply healthy",
+          "post the fixed healthy message",
+          "send the fixed healthy message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "95a56828-1af9-58d3-8b46-107c7a1fb548"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "52840069-3cd9-5ba7-bfe2-e160739911b3"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "healthy-reply",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "say healthy",
+              "reply healthy",
+              "post healthy",
+              "send the healthy reply",
+              "respond with healthy",
+              "tell me healthy",
+              "please say healthy",
+              "please reply healthy",
+              "post the fixed healthy message",
+              "send the fixed healthy message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

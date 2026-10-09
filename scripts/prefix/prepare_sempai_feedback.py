@@ -5,6 +5,7 @@ This is explicitly a REPAIR input, never an unseen/first-pass experiment. Origin
 responses/checks remain intact. It does not synthesize code or approve components.
 """
 import argparse
+import ast
 import json
 from pathlib import Path
 
@@ -30,6 +31,27 @@ def prepare(directory, output):
                 'error': row.get('error'),
                 'failed_design_checks': [k for k, v in row.get('design_checks', {}).items() if not v],
                 'failed_behavior_witnesses': [r for r in row.get('behavior_results', []) if not r['passed']][:4]})
+            # Explain an observed execution failure without synthesizing a fix.
+            # This is invocation-body repair evidence, not a preload validator.
+            if row.get('class_code') == 22 and row.get('behavior_results') and not row.get('offline_acceptance_passed'):
+                raw = json.loads((directory / row['response']).read_text())
+                outcome = json.loads(raw['choices'][0]['message']['content'])
+                proposal = next(p for p in outcome['proposed_components'] if p['payload']['name'] == row['name'])
+                try:
+                    tree = ast.parse(proposal['payload']['content'])
+                except SyntaxError:
+                    tree = None
+                if tree is not None:
+                    helpers = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+                    for statement in tree.body:
+                        if not isinstance(statement, ast.Assign) or not any(isinstance(t, ast.Name) and t.id == 'result' for t in statement.targets):
+                            continue
+                        call = statement.value
+                        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
+                            continue
+                        helper = helpers.get(call.func.id)
+                        if helper is not None and not any(isinstance(n, ast.Return) for n in ast.walk(helper)):
+                            corrections.append('Observed invocation-body defect: helper ' + helper.name + ' has no return statement, so the caller receives null. Assigning its local result variable does not return that value. Return the complete typed object from the helper and capture it at the invocation boundary; recheck every branch against the original contract. This diagnostic is not a new preload-artifact requirement.')
             if row.get('design_checks',{}).get('retains_review_and_sink_gap') is False:
                 corrections.append('Repair payload.prior_knowledge_content itself: retain unapproved dependencies, Q1 and human Q2, and the current live sink limitation for full v3 fields. A warning only in composition_summary does not travel with the Recipe and does not satisfy its contract.')
             if 'Missing result assignment' in row.get('error',''):

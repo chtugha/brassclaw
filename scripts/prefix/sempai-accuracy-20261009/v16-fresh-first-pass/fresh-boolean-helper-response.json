@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bb946a6b88150911",
+  "object": "chat.completion",
+  "created": 1791514472,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class-22 component. The helper receives the whole inputs mapping, distinguishes exact bool (including False) from missing/null/0/1/string, and returns {checked,armed} on every path; the module calls it and assigns its returned object to result. No execution, submission, Q1/Q2 or activation occurred.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-boolean-helper\", \"description\": \"Raw armed must be an exact bool including False; missing/null/0/1/string invalid. Always result={checked:boolean,armed:original bool if checked else null}. No coercion/imports/host/exceptions. Unapproved target typed-input draft only; selected-runner support for inputs mapping, Q1 and human Q2 remain prerequisites.\", \"content\": \"def inspect_armed(mapping):\\n    if 'armed' not in mapping:\\n        return {'checked': False, 'armed': None}\\n    value = mapping['armed']\\n    if type(value) is bool:\\n        return {'checked': True, 'armed': value}\\n    return {'checked': False, 'armed': None}\\nresult = inspect_armed(inputs)\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113406,
+    "total_tokens": 113719,
+    "completion_tokens": 313,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

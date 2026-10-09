@@ -1,5 +1,39 @@
 # Validator v3 implementation plan
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 Status: proposed implementation plan; no component activation or runtime acceptance.
 Source audit: 2026-10-07. Reinspect the working tree before each implementation slice.
 
@@ -297,10 +331,10 @@ they are not new Tool names or new constructor fields.
 | Route | Required ordered checks and verification |
 | --- | --- |
 | `validator-class-0` / Tool | Identity and primitive grain; explicit operation/effect contract; registered schema versus Rust/host adapter; recursive inputs/results and transport limits; capability/callable/Tool UUID/alias mapping; retained artifact/checksum/ABI availability; actual errors/waits/cancellation; read-only/deduplication claims and constraints. Verification loads draft artifacts only in the constrained environment, measures declared behavior, and checks live policy across aliases/old versions. Compilation alone never passes the required review. |
-| `validator-class-1` / Skill | Prose sections and one-usage meaning; exact `skill-association/1`; class-correct UUID relationships; all inputs, direct/computed arguments and actual callable compatibility; recursive output/error contract; exact failure metadata; code/internal graph. Automated semantic audits and behavior cases compare purpose/defaults/computation/effects to the prose. Q2 reviews what automation cannot establish. A permanent consuming Recipe is not required. |
+| `validator-class-1` / Skill | Prose sections and one-usage meaning; public exports/signatures, effect-free preload, dependency-first symbol resolution, immutable constants and isolated mutable state; pinned old/new export coexistence; exact `skill-association/1`; class-correct UUID relationships; all inputs, direct/computed arguments and actual callable compatibility; recursive output/error contract; exact failure metadata; code/internal graph. Automated semantic audits and behavior cases compare purpose/defaults/computation/effects to the prose. Q2 reviews what automation cannot establish. A canonical Skill execution Recipe or equivalent existing variant is required; it need not be part of a larger task Recipe. |
 | `validator-class-2` / Skill | The same complete usage checks as class 1. Correct the seed's obsolete domain-Skill label. Find multi-Tool domain overviews and migrate them with explicit reference updates into ExtensionCatalogue/Recipe structure; do not reinterpret class 2 as a hierarchy or mass-relabel existing rows. |
 | `validator-class-3` / Skill | The same complete usage checks as class 1, plus verified explicit model-usage contracts where relevant. Class 3 alone neither executes an LLM nor makes a usage deterministic. Check actual model invocation, result/errors and consuming tier, without executing prose. |
-| `validator-class-13` / ToolSkill | One non-executing/non-authorizing binding; Tool UUID/capability/callable/adapter/artifact agreement; registered parameter schema versus binding/usage contracts; fixed selectors and computed arguments; missing/default/null rules; recursive result/error expectations and numeric bounds; metadata include references/cycles/conflicts. Reject workflow/permission/retry execution in metadata. Test actual paired binding/call availability. |
+| `validator-class-13` / ToolSkill | One non-executing/non-authorizing binding; Tool UUID/capability/callable/adapter/artifact agreement; registered parameter schema versus binding/usage contracts; fixed selectors and computed arguments; missing/default/null rules; recursive result/error expectations and numeric bounds; metadata include references/cycles/conflicts. Reject workflow/permission/retry execution in metadata. Test actual paired binding/export invocation availability; preloading a function must not dispatch or grant permission. |
 | `validator-class-21` / Recipe | Parse actual persisted steps, variants and selected links; ordinals/classes/one UUID cardinality; matching binding pairs; typed capture/local-input mappings; complete dependency/code graph; result edges including optional/null/list guards; internal composition/call grain; tier restrictions; explicit retry/reconciliation/cancellation/final reply. Test every public variant with positive and negative routing/layout cases and whole-workflow effects/history/completion. Internal validator routes have an explicit typed entry point and remain excluded from public intent matching; document that distinction. |
 | `validator-class-22` / PythonCode | Source parse and supported semantics; declared inputs/result and `result` behavior; no data-to-source substitution or forbidden imports/intrinsics; direct host-call facts against prepared associations; zero calls for pure logic; separate independent calls; supported covered dependent chains; recursive includes/order/symbol/input conflicts. Check assembled source and actual boundary/failure results. A pure-logic component needs no fabricated Skill/ToolSkill; Tool usages require their actual association. |
 | `validator-class-23` / ExtensionCatalogue | Domain overview plus actual task-group/Recipe inventory; correct target classes and reference resolution; child IDs, dependency closure and intent/index consistency; no hidden executable workflow or replacement for usage contracts. Validate schema supported by current store/consumers and real retrieval/navigation, not invented catalogue fields. |

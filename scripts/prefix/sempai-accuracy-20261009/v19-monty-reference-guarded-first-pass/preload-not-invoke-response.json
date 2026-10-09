@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b1d082e8cef6d4a0",
+  "object": "chat.completion",
+  "created": 1791516031,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"answer\": true, \"reason\": \"skills.md \u00a71 states 'Loading its definitions makes the selected functions available for later invocation; it does not execute the usage or enable a Tool,' and \u00a76 distinguishes 'Preloading the definition and invoking it are separate operations.' Card aae8e878c95b confirms 'Loading a definition is not invocation.'\", \"citations\": [\"aae8e878c95b\", \"51cd230d7111\"]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113799,
+    "total_tokens": 113907,
+    "completion_tokens": 108,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

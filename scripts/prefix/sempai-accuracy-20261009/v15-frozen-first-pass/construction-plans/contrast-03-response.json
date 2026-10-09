@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b35096256ee2d5b4",
+  "object": "chat.completion",
+  "created": 1791513774,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'slots' not in inputs:\", \"result\": \"{'ok': False, 'slots': None}\"}, {\"guard\": \"else: slots = inputs['slots']\", \"result\": \"if slots is None: result = {'ok': False, 'slots': None} elif type(slots) is not list or not (1 <= len(slots) <= 2): result = {'ok': False, 'slots': None} else: for s in slots: if not (type(s) is int and 3 <= s <= 7): result = {'ok': False, 'slots': None}; \"}, {\"guard\": \"result = {'ok': True, 'slots': slots} if valid else {'ok': False, 'slots': []}\", \"result\": \"result = {'ok': valid, 'slots': slots if valid else []}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected_runner_support\", \"q1\", \"human_q2\"], \"notes\": \"Preserved conversation; target-input unapproved draft only, no tests or approval claims.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112974,
+    "total_tokens": 113228,
+    "completion_tokens": 254,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

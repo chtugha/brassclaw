@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ba9c7f21819c1e35",
+  "object": "chat.completion",
+  "created": 1791513629,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"Parsing a snapshot's bytes is only a format check; it does not establish provenance or integrity. The reference states that a snapshot must come from a trusted, compatible producer with verified integrity, and that the caller must establish provenance and integrity before loading (sempai-authoring-reference.md : L20-28). Monty itself does not authenticate snapshots or fully validate their contents, and invalid snapshots have no correctness or availability guarantees (sempai-authoring-reference.md : L20-28). The caller must establish provenance and integrity before loading; Monty does not authenticate snapshots or fully validate their contents. Invalid snapshots have no correctness or availability guarantees.\",\n  \"citations\": [\n    \"sempai-authoring-reference.md : L20-28\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112499,
+    "total_tokens": 112680,
+    "completion_tokens": 181,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

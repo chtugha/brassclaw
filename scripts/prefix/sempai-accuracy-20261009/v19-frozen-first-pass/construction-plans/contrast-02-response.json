@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bfc44f56b99372c0",
+  "object": "chat.completion",
+  "created": 1791516173,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'slots' not in inputs\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"else: slots = inputs['slots']\", \"result\": \"if slots is None: result = {'ok': False, 'slots': None} elif type(slots) is not list: result = {'ok': False, 'slots': None} else: valid = 0 <= len(slots) <= 4; if valid: for s in slots: if not (type(s) is int and 2 <= s <= 6): valid = False; break; result:\"}, {\"guard\": \"else: result = {'ok': valid, 'slots': slots if valid else []} (module-level)\", \"result\": \"result = {'ok': valid, 'slots': slots if valid else []}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; no provider facts available\"], \"notes\": \"Draft is a pure-logic class22 with no Tool calls, inputs, dependencies, or host.post_reply effect. Intents describe computing/returning the ok/slots result data\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114272,
+    "total_tokens": 114543,
+    "completion_tokens": 271,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

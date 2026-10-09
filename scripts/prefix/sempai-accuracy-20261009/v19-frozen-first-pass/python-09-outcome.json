@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-09. It distinguishes missing from explicit null via a presence guard, accepts exact integer 5..14, and returns {kind,lag} in every branch. No execution, submission, Q1/Q2 or activation occurred; target typed inputs needs selected-runner support.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-09",
+        "description": "Classify raw lag: missing -> {kind:\"missing\",lag:null}; explicit null -> {kind:\"null\",lag:null}; exact integer 5..14 -> {kind:\"integer\",lag:original}; other -> {kind:\"invalid\",lag:null}. No bool/float/coercion/defaults/exceptions. Helper receives the mapping and returns the complete object; module scope invokes it and assigns result. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required.",
+        "content": "def classify_lag(mapping):\n    if 'lag' not in mapping:\n        return {'kind': 'missing', 'lag': None}\n    value = mapping['lag']\n    if value is None:\n        return {'kind': 'null', 'lag': None}\n    if type(value) is int and 5 <= value <= 14:\n        return {'kind': 'integer', 'lag': value}\n    return {'kind': 'invalid', 'lag': None}\nresult = classify_lag(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

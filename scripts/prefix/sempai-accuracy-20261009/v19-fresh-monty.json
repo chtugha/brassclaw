@@ -1,0 +1,601 @@
+{
+  "engine": "upstream Monty",
+  "version": "1.0.0",
+  "input_receipt_sha256": "84cb43f7546537314a85ad8d432941d1cdee2d621898607f0b07a6b50243be70",
+  "custom_brassclaw_host_verified": false,
+  "q1_q2_verified": false,
+  "activated": false,
+  "candidates": [
+    {
+      "name": "pc-fresh-boolean-helper",
+      "response": "fresh-boolean-helper-response.json",
+      "content_sha256": "bf281b7dbee0af4a98ce78a965d47c8d5b984bd67e22d6285c75998865db0997",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "checked": false,
+            "armed": null
+          },
+          "actual": {
+            "checked": false,
+            "armed": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "armed": false
+          },
+          "expected": {
+            "checked": true,
+            "armed": false
+          },
+          "actual": {
+            "checked": true,
+            "armed": false
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "armed": true
+          },
+          "expected": {
+            "checked": true,
+            "armed": true
+          },
+          "actual": {
+            "checked": true,
+            "armed": true
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "armed": 0
+          },
+          "expected": {
+            "checked": false,
+            "armed": null
+          },
+          "actual": {
+            "checked": false,
+            "armed": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "armed": 1
+          },
+          "expected": {
+            "checked": false,
+            "armed": null
+          },
+          "actual": {
+            "checked": false,
+            "armed": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "armed": null
+          },
+          "expected": {
+            "checked": false,
+            "armed": null
+          },
+          "actual": {
+            "checked": false,
+            "armed": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "armed": "false"
+          },
+          "expected": {
+            "checked": false,
+            "armed": null
+          },
+          "actual": {
+            "checked": false,
+            "armed": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "pc-fresh-missing-default",
+      "response": "fresh-missing-default-response.json",
+      "content_sha256": "81c468ca91212ffe35da3fe0e3842a4905ff72d1efbf1890da83eb4e4ca2a7b0",
+      "passed": false,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "valid": false,
+            "mode": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "mode": "watch"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "pause"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "pause"
+          },
+          "actual": {
+            "valid": true,
+            "mode": "pause"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "Watch"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": "Watch"
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "mode": " pause"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": " pause"
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "mode": null
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": false
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": false
+          },
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "pc-fresh-nested-bools",
+      "response": "fresh-nested-bools-response.json",
+      "content_sha256": "a206ccc6e46ab0ee63a9101dd5bdbbc08c03046f98f1ccdd3b361496697ffb81",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": []
+          },
+          "expected": {
+            "ok": true,
+            "frames": []
+          },
+          "actual": {
+            "ok": true,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              },
+              {
+                "toggles": [
+                  false,
+                  true
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": []
+              }
+            ]
+          },
+          "expected": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": []
+              }
+            ]
+          },
+          "actual": {
+            "ok": true,
+            "frames": [
+              {
+                "toggles": []
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  false,
+                  false,
+                  false
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [
+                  0
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": null
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": [
+              {
+                "toggles": [],
+                "extra": 1
+              }
+            ]
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "frames": null
+          },
+          "expected": {
+            "ok": false,
+            "frames": []
+          },
+          "actual": {
+            "ok": false,
+            "frames": []
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "pc-fresh-presence-helper",
+      "response": "fresh-presence-helper-response.json",
+      "content_sha256": "5d21d730e5cbc91b4478ad2a5ad08851468b1256a66dc9f6303a64e7bd4e3b46",
+      "passed": false,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "category": "omitted",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": null
+          },
+          "expected": {
+            "category": "unset",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -81
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -80
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -80
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -70
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -70
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -69
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": false
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -80.0
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": "x"
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "candidate_count": 4,
+  "candidate_passed": 2,
+  "probe_count": 34,
+  "probe_passed": 21
+}

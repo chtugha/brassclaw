@@ -1280,7 +1280,7 @@ metadata, constructor fields, UUIDs, tests and approval are unknown, not inventi
 
 Return reusable component drafts for the host's supported proposal sink.
 A Skill is one Tool usage with prose plus explicitly associated executable PythonCode;
-a Recipe orders usages and typed data flow. Root authoring guides override older
+a Recipe orders usages and typed data flow. Skill code exposes declared preloadable functions; qualified loading is effect-free and distinct from invocation. Root authoring guides override older
 validation/persona examples. Sempai proposes; Q1, behavioral validation and human Q2
 are distinct requirements before coherent authored activation. Exact associations,
 immutable versions and live global Tool policy remain independent contracts.
@@ -1490,7 +1490,8 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     # rewriting authoritative units. Ordering is stable and generation-pinned.
     terminal_headings = ('## mapping-presence-helper', '## parameterized-presence',
                          '## parameterized-recursive', '## result-initialization', '## Terminal dispatch map')
-    selected.sort(key=lambda c: (c['path'] == 'scripts/prefix/sempai-worked-examples.md',
+    selected.sort(key=lambda c: (2 if c['path'] == 'scripts/prefix/sempai-monty-compatibility.md' else
+        1 if c['path'] == 'scripts/prefix/sempai-worked-examples.md' else 0,
         c['path'], c['excerpt'].startswith(terminal_headings), c['line_start'], c['id']))
     original=tok.chat_template
     if isinstance(original,dict): original=original.get('default')
@@ -1498,16 +1499,23 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     def artifacts(chosen):
         coverage=Counter(c['repo'] for c in chosen)
         index='\n'.join(f"- {repo}: {PLATFORM_TAGS.get(repo, 'source-specific')} | {coverage[repo]} complete cards" for repo in sorted(coverage))
-        locators='\n'.join(f"- {c['id'][:12]} | {c['repo']} | {card_title(c)}" for c in chosen)
+        locators='\n'.join(f"- {c['id'][:12]} | {c['path']} : L{c['line_start']}-{c['line_end']}" for c in chosen)
         documents={c['path']:c for c in chosen}
         provenance='\n'.join(f"- {path} | SHA256 {c['document_sha256']} | {c['source']['url']} | {c['source'].get('applicability','source-specific')}"
             for path,c in sorted(documents.items())) if policy_text is not None else ''
+        if policy_text is not None:
+            locators='Citation identifiers and source line ranges are printed on each evidence card; the complete resolver inventory is retained in evidence_cards.jsonl.'
         full=header+'# PLATFORM COVERAGE\n'+transport_text(index)+'\n\n# SOURCE SNAPSHOTS\n'+transport_text(provenance)+'\n\n# CARD INDEX — SOURCE TITLES\n'+transport_text(locators)+'\n\n'+'\n\n'.join(rendered_card(c) for c in chosen
             if not (c['path'] == 'scripts/prefix/sempai-worked-examples.md'
                     and c['excerpt'].startswith('## Terminal dispatch map — Select semantics before an example\n')))
         full+='\n\n# DIAGNOSTIC ANCHORS — EXACT SOURCE REPEATED NEAR TASK\n\n'+'\n\n'.join(rendered_card(c) for c in anchors)
-        full+='\n\n'+checkpoint+'\n# FACTUAL CHECK BEFORE ANSWERING\n'
-        full+='Review target provider metadata and the actual Kohai packet. Preserve volatile-tail roles, tool relationships and task evidence. Propose reusable Recipes with supported fields and real catalogue/draft identities. The host output schema is separate. Q1, observed behavior, human Q2 and exact association approval precede activation; never self-approve or replay completed effects. Missing runtime support remains an explicit prerequisite.\n'
+        full+='\n\n'+checkpoint
+        compatibility_cards=[c for c in chosen if c['path']=='scripts/prefix/sempai-monty-compatibility.md']
+        full+='\n# MONTY COMPATIBILITY CITATION MAP\n'
+        full+='\n'.join(c['id'][:12]+' | '+c['excerpt'].splitlines()[0].lstrip('# ') for c in compatibility_cards)
+        full+='\nCitation fields use exact printed evidence-card IDs, never guessed hashes, paths or line numbers. Select the card that directly supports the claim. A valid ID alone does not prove support. Preserve uncertainty when evidence is missing.\n# FACTUAL CHECK BEFORE ANSWERING\n'
+        full+='For standalone invocation-body PythonCode, review indentation and executable scope: result assigned only inside an uncalled function is incomplete. A helper returns its complete result, then module-level code calls it and assigns result. Check missing-key, explicit-null, invalid-type and valid-value branches separately; a missing-only default requires an explicit missing-key branch. Use current task names, types and bounds, never tutorial values as defaults. A model-derived construction plan is unverified: reconcile every branch with the trusted current contract before writing code, and correct conflicting plan assumptions. Preload-only artifacts instead define pinned exports without invoking Tools; their caller captures returned data as result. Select the validator from the actual artifact/runner contract. These are review instructions, not evidence that tests or activation passed.\n'
+        full+='Review target provider metadata and the actual Kohai packet. Preserve volatile-tail roles, tool relationships and task evidence. Propose reusable Recipes with supported fields and real catalogue/draft identities. The host output schema is separate. Authored changes require Q1, observed behavior, human Q2 and exact association approval before activation. Reviewed bundled system_seed uses installation-owned integrity/structural/behavioral qualification without installed-instance human Q2; never self-approve or replay completed effects. Missing runtime support remains an explicit prerequisite.\n'
         # The deployed renderer may convert scalar text into OpenAI text parts.
         # Merge into the existing system message in either representation.
         # A non-whitespace boundary prevents the model template's strip() from
@@ -1548,7 +1556,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
             total=max(map(len,sequences))
             if total<=budget: break
         if selected[-1]['id'] in mandatory_ids:
-            raise ValueError('Prefix budget cannot fit mandatory complete evidence cards and anchors')
+            raise ValueError(f'Prefix budget cannot fit mandatory complete evidence cards and anchors: rendered={total}, budget={budget}, shared reference estimate={used}')
         omitted.append(selected.pop()['id'])
     if not selected: raise ValueError('No complete card fits the rendered model template')
     common=0
@@ -1988,7 +1996,9 @@ def model_profile(*, verify_server=True):
         found=[p for root in roots for p in root.glob('models--'+MODEL.replace('/','--')+'/snapshots/*/config.json')]
         if len(found)!=1: raise RuntimeError('Set ORNITH_MODEL_CONFIG to the deployed immutable model config')
         config_path=str(found[0])
-    path=Path(config_path).resolve(); raw=path.read_text(); config=json.loads(raw)
+    # Keep the snapshot parent: Hugging Face config.json may resolve into blobs/.
+    # Individual artifact hashes still bind the exact bytes.
+    path=Path(config_path).expanduser().absolute(); raw=path.read_text(); config=json.loads(raw)
     tokenizer_files={name:file_sha256(path.parent/name) for name in
                      ['tokenizer.json','tokenizer_config.json','chat_template.jinja',
                       'special_tokens_map.json','vocab.json','merges.txt'] if (path.parent/name).is_file()}

@@ -1,0 +1,33 @@
+{
+  "note": "Some local Markdown bundles were edited concurrently after publication. Preserve those observed copies; do not rewrite their manifests or restore them over other work. Model/test machine originals and separately verified /private/tmp bundles provide frozen test inputs. These modified local copies cannot certify their old generations.",
+  "bundles": [
+    {
+      "path": "scripts/prefix/sempai-accuracy-20261009/compiled-v15",
+      "valid": true,
+      "error": null,
+      "observed_context_sha256": "c42ce83c0a4aa7465dba02a9da6c6b8ac50d6e20b4d27378e7253ebfb0392c18",
+      "expected_context_sha256": "c42ce83c0a4aa7465dba02a9da6c6b8ac50d6e20b4d27378e7253ebfb0392c18"
+    },
+    {
+      "path": "scripts/prefix/sempai-accuracy-20261009/compiled-v16",
+      "valid": true,
+      "error": null,
+      "observed_context_sha256": "2af053d849aabcbf16d429e87770929243be6ebdcf78b9c0a23de8126f36b8c6",
+      "expected_context_sha256": "2af053d849aabcbf16d429e87770929243be6ebdcf78b9c0a23de8126f36b8c6"
+    },
+    {
+      "path": "scripts/prefix/sempai-accuracy-20261009/compiled-v18",
+      "valid": true,
+      "error": null,
+      "observed_context_sha256": "4dc5ea097b57f94d4e15b6491ef01e52cc67646b96cc01a7d1c7699b6d962f5f",
+      "expected_context_sha256": "4dc5ea097b57f94d4e15b6491ef01e52cc67646b96cc01a7d1c7699b6d962f5f"
+    },
+    {
+      "path": "scripts/prefix/sempai-accuracy-20261009/compiled-v19",
+      "valid": false,
+      "error": "Bundle fingerprint mismatch: context_100k.md",
+      "observed_context_sha256": "c0605ece2b99ec371ee0e9da537dd1a3fbafdbde1b2452d51c8a3ec683715de3",
+      "expected_context_sha256": "01478240442d416280c2321029704bb8047ce8dedff6353fdfd6d3df10ccd3a4"
+    }
+  ]
+}

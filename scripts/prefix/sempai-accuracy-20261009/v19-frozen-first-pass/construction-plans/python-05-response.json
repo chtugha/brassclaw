@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9833ec7f1fdb823e",
+  "object": "chat.completion",
+  "created": 1791515883,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"rank not in inputs\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"rank is None\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"type(rank) is not int\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"isinstance(rank, bool)\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"not 1 <= rank <= 10\", \"result\": \"{'accepted': False, 'rank': None}\"}, {\"guard\": \"1 <= rank <= 10\", \"result\": \"{'accepted': True, 'rank': rank}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"no observed tests/submission/activation\", \"unapproved draft\"], \"notes\": \"Contract is a raw validator: missing and null both yield accepted=false/null (no classifier distinction). Rank must be exact int 1..10, rejecting bool/float. No\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114274,
+    "total_tokens": 114529,
+    "completion_tokens": 255,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

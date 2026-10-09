@@ -1,0 +1,425 @@
+{
+  "cases": [
+    {
+      "id": "eval-policy",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "BrassClaw authored PythonCode forbids eval/exec and direct open as an explicit authoring contract, which is stricter than upstream Monty's restricted eval; obtain I/O through registered Tools instead. See 91e48baa1f2c.",
+        "citations": [
+          "91e48baa1f2c"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 7.549,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Restoring a snapshot only re-establishes interpreter state; it does not establish that an external effect did or did not occur, and replaying an unresolved operation is a separate execution decision that requires durable effect records and safe reconciliation, not restored memory.",
+        "citations": [
+          "0b3b4f3127ab",
+          "20f7280e3852"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.304,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-trust",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "No. skills.md \u00a712 (card 7fd9c60187ee) and toolskills.md \u00a78 (card a1c8acdb10be) require the caller to establish provenance and integrity before loading, and Monty does not authenticate or fully validate snapshots.",
+        "citations": [
+          "7fd9c60187ee",
+          "a1c8acdb10be"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.709,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "generator-function",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects yield/yield from at parse time (no generator functions); generator expressions parse but materialize to a list. Card 6ae8c4c80d41 and 9e4d23dfc0e1 document this.",
+        "citations": [
+          "6ae8c4c80d41",
+          "9e4d23dfc0e1"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.587,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "match-language",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects match statements at parse time (NotImplementedError), so a component cannot use them.",
+        "citations": [
+          "6ae8c4c80d41",
+          "be98cdf265c1"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 2.691,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "inheritance",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects class inheritance/metaclasses at parse time (card 6ae8c4c80d41, 9e4d23dfc0e1); a component cannot inherit a Python base class.",
+        "citations": [
+          "6ae8c4c80d41",
+          "9e4d23dfc0e1"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.459,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "typed-proof",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Type-check success is static only and does not prove recursive runtime validation or behavior; it can even pass for parser-rejected constructs and stub-only modules that fail at runtime.",
+        "citations": [
+          "1db6a93471ac",
+          "cedb78540d84"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.151,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "private-frame",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference states BrassClaw's private transport caps frames at 64 MiB and depth at 64, and explicitly warns not to claim the upstream 256 MiB wire allowance is available to a BrassClaw task (cards 440b0b7c9682, 0b3b4f3127ab).",
+        "citations": [
+          "440b0b7c9682",
+          "0b3b4f3127ab"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 4.073,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "task-clock",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Upstream feed/turn execution clocks restart per feed/turn and are not automatically one cumulative BrassClaw task budget; the BrassClaw task account persists consumption across steps/waits/retries as a separate account. (Citation: 440b0b7c9682)",
+        "citations": [
+          "440b0b7c9682"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.44,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "global-lifecycle",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A completed turn must not terminate the global Monty orchestrator; only instance shutdown or supervised fatal-runtime recovery may end its lifetime. AGENTS.md L408-446 and toolskills.md L473-504 state completing or cancelling a turn must not terminate Monty, and tools.md L406-413 forbids a Tool call or host.run_program delegation from ending the instance VM.",
+        "citations": [
+          "5b6bb5721f21",
+          "a1c8acdb10be",
+          "e59b1ae87392"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 4.278,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "seed-q2",
+      "passed": false,
+      "error": "Expecting ',' delimiter: line 1763 column 4 (char 2835)",
+      "finish_reason": "length"
+    },
+    {
+      "id": "binding-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 toolskills.md \u00a78 and tools.md \u00a79 state that current instance-wide Tool policy is checked independently before every actual dispatch, including retries and continuations, and that a bound or approved component cannot turn a globally blocked Tool into an allowed call.",
+        "citations": [
+          "a7d7c70fceac",
+          "0385d6d1be78"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.288,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "upstream-eval",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 scripts/prefix/sempai-monty-compatibility.md card 91e48baa1f2c states upstream Monty has restricted eval/exec, while BrassClaw forbids them by its own authoring contract.",
+        "citations": [
+          "91e48baa1f2c"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.044,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "eager-generator",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "The Monty limitations docs state generator expressions currently materialize to a list rather than a lazy iterator, with this noted as a temporary divergence. Card 15376363079d (comprehensions.md) and card 6ae8c4c80d41 (limitations/index.md) both confirm this behavior.",
+        "citations": [
+          "15376363079d",
+          "6ae8c4c80d41"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.893,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "host-inputs",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes: a BrassClaw PythonCode component runs inside the selected Monty execution context and must use the step-local inputs mapping plus host.<tool>(...) bindings, not construct an upstream Monty pool/session. skills.md \u00a73 (L102-140) and toolskills.md \u00a74 (L182-216) state loading is not a new VM and Tool calls cross host.<tool>(...); sempai-monty-compatibility.md (7f4fc60e4d31, cedb78540d84) forbids building another Monty VM/pool/agent runner inside the component.",
+        "citations": [
+          "7f4fc60e4d31",
+          "cedb78540d84",
+          "534be94fd078"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 5.268,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-ledger",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes: interpreter bytes are not a durable effect ledger, and neither restored memory nor a timeout establishes that no external effect occurred, so BrassClaw must retain continuation/effect records beyond snapshot bytes.",
+        "citations": [
+          "440b0b7c9682",
+          "20f7280e3852"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.308,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "preload-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Loading preloads only qualified definitions and immutable constants with no Tool/model/I/O calls or effectful initializers; a Tool call during load would be an effectful initializer, which is forbidden. Invoke the pinned export with typed data instead, and let the Tool call happen during invocation, not loading.",
+        "citations": [
+          "2489be7f6c72",
+          "7f4fc60e4d31"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.706,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "preload-not-invoke",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "skills.md \u00a73 (L102-140) and toolskills.md \u00a74 (L182-216) state that preloading qualified definitions makes functions available but is not an invocation or a new Recipe effect step, while invocation calls the pinned export with typed data and captures its return as the step result.",
+        "citations": [
+          "1086b833f7f0",
+          "74559eeace59"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.499,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "temperature": 0,
+  "repair": false,
+  "citations_constrained_to_manifest": true,
+  "generation": "6bacc3a0259e54f581f547823943abc4a699459cff7ef31dcfba5b8d4d592804",
+  "suite_sha256": "89a38f97dcdf20ee644ae4fdb6267cb599f9b1758187f3b3e452f7ead724f1a6",
+  "production_q1_q2_verified": false,
+  "support_check": "Topic regex on cited originals; reasons additionally require semantic review. Not a general entailment verifier.",
+  "passed": 14
+}

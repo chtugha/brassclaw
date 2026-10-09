@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bb959a1ccc00353a",
+  "object": "chat.completion",
+  "created": 1791515842,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component. Absent key and explicit null both yield valid=False (no default applied to null). Only the exact strings 'watch'/'pause' are valid; null/bool/other strings invalid. Module-level result assignment; no imports/host/exceptions. No execution, submission, Q1/Q2 or activation.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-missing-default\", \"description\": \"mode absent defaults to watch. Supplied exact strings watch or pause accepted without normalization. Null/bool/other strings invalid. Always result={valid:boolean,mode:default/original if valid else null}. No imports/host/exceptions. Unapproved target inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.\", \"content\": \"mode = inputs.get('mode')\\nif mode is None:\\n    result = {'valid': False, 'mode': None}\\nelse:\\n    result = {'valid': mode in ('watch', 'pause'), 'mode': mode}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114568,
+    "total_tokens": 114848,
+    "completion_tokens": 280,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

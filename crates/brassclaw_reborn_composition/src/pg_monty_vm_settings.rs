@@ -46,7 +46,7 @@ mod inner {
                     "SELECT max_duration_secs, retired_max_allocations, max_memory_bytes,
                  failure_rollback_threshold, active_orchestrator_id, prior_knowledge_token_budget,
                  q4_retention_days, forensic_packet_retention_days, token_budgets_enabled,
-                 revision, execution_limits, memory_policy FROM reborn_monty_vm_settings
+                 revision, execution_limits, memory_policy, max_recipes_per_task FROM reborn_monty_vm_settings
                  WHERE tenant_id=$1 AND user_id='default' AND agent_id=$2 AND project_id='default'
                  FOR UPDATE",
                     &[&self.tenant_id, &self.agent_id],
@@ -111,8 +111,15 @@ mod inner {
         memory_policy
             .validate()
             .map_err(|reason| MontyVmSettingsError::Internal(reason.into()))?;
+        let memory_bytes: i64 = row.get(2);
+        if memory_bytes < brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES as i64 {
+            return Err(MontyVmSettingsError::Internal(
+                "stored heap budget is below the 512 MiB default".into(),
+            ));
+        }
         // Schema constraints guarantee these signed values are nonnegative.
         Ok(MontyVmSettings {
+            max_recipes_per_task: row.get::<_, i32>(12) as u32,
             memory_policy,
             execution_limits,
             revision: row.get::<_, i64>(9) as u64,
@@ -120,7 +127,7 @@ mod inner {
             max_allocations: None,
             allocation_count_limit_supported: false,
             retired_max_allocations: row.get::<_, Option<i64>>(1).map(|value| value as u64),
-            max_memory_bytes: Some(row.get::<_, i64>(2) as u64),
+            max_memory_bytes: Some(memory_bytes as u64),
             failure_rollback_threshold: row.get::<_, i16>(3) as u32,
             active_orchestrator_id: row.get::<_, Option<uuid::Uuid>>(4).map(|id| id.to_string()),
             prior_knowledge_token_budget: row.get::<_, i32>(5) as u32,
@@ -143,7 +150,7 @@ mod inner {
                     "SELECT max_duration_secs, retired_max_allocations, max_memory_bytes,
                             failure_rollback_threshold, active_orchestrator_id,
                             prior_knowledge_token_budget, q4_retention_days,
-                            forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits, memory_policy
+                            forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits, memory_policy, max_recipes_per_task
                      FROM reborn_monty_vm_settings
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
@@ -210,6 +217,15 @@ mod inner {
                     })
                 })
                 .transpose()?;
+            let recipes = checked_i32(
+                update.max_recipes_per_task.map(u64::from),
+                "max_recipes_per_task",
+            )?;
+            if recipes.is_some_and(|value| value <= 0) {
+                return Err(MontyVmSettingsError::Invalid(
+                    "max_recipes_per_task must be a positive signed 32-bit integer".into(),
+                ));
+            }
             let duration = checked_i32(update.max_duration_secs, "max_duration_secs")?;
             if duration.is_some_and(|value| value <= 0) {
                 return Err(MontyVmSettingsError::Invalid(
@@ -223,6 +239,13 @@ mod inner {
                 ));
             }
             let memory = checked_positive_i64(update.max_memory_bytes, "max_memory_bytes")?;
+            if memory.is_some_and(|bytes| {
+                bytes < brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES as i64
+            }) {
+                return Err(MontyVmSettingsError::Invalid(
+                    "max_memory_bytes must be at least the 512 MiB default".into(),
+                ));
+            }
             let threshold = update
                 .failure_rollback_threshold
                 .map(|value| {
@@ -294,13 +317,14 @@ mod inner {
                  token_budgets_enabled = COALESCE($12, token_budgets_enabled),
                  execution_limits = COALESCE($14, execution_limits),
                  memory_policy = COALESCE($15, memory_policy),
+                 max_recipes_per_task = COALESCE($16, max_recipes_per_task),
                  revision = revision + 1
                  WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
                    AND revision=$13
                  RETURNING max_duration_secs, retired_max_allocations, max_memory_bytes,
                    failure_rollback_threshold, active_orchestrator_id,
                    prior_knowledge_token_budget, q4_retention_days,
-                   forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits, memory_policy",
+                   forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits, memory_policy, max_recipes_per_task",
                     &[
                         &self.tenant_id,
                         &user_id,
@@ -317,6 +341,7 @@ mod inner {
                         &expected_revision,
                         &execution_limits,
                         &memory_policy,
+                        &recipes,
                     ],
                 )
                 .await
@@ -428,6 +453,7 @@ mod tests {
             CREATE TABLE memory_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO memory_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_memory_default_floor;
             ALTER TABLE reborn_monty_vm_settings DROP COLUMN memory_policy;
             ALTER TABLE reborn_monty_vm_settings ALTER COLUMN max_memory_bytes SET DEFAULT 134217728;
             INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,max_memory_bytes,revision)
@@ -458,6 +484,28 @@ mod tests {
         assert_eq!(policy.mode, MontyMemoryMode::Startup);
         assert_eq!(policy.sample_interval_secs, 60);
         policy.validate().unwrap();
+        // The new operator floor intentionally supersedes V111's preservation
+        // of smaller limits, while retaining larger limits and their revisions.
+        client.execute("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,max_memory_bytes,revision) VALUES('large','owner','agent','project',1073741824,12)", &[]).await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V114__monty_memory_default_floor.sql"
+            ))
+            .await
+            .unwrap();
+        let old = client.query_one("SELECT max_memory_bytes,revision,memory_policy FROM reborn_monty_vm_settings WHERE tenant_id='old'", &[]).await.unwrap();
+        assert_eq!(
+            old.get::<_, i64>(0),
+            brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES as i64
+        );
+        assert_eq!(old.get::<_, i64>(1), 10);
+        let policy: brassclaw_product_workflow::MontyMemoryPolicy =
+            serde_json::from_value(old.get(2)).unwrap();
+        assert_eq!(policy.mode, MontyMemoryMode::Manual);
+        let large = client.query_one("SELECT max_memory_bytes,revision FROM reborn_monty_vm_settings WHERE tenant_id='large'", &[]).await.unwrap();
+        assert_eq!(large.get::<_, i64>(0), 1024 * 1024 * 1024);
+        assert_eq!(large.get::<_, i64>(1), 12);
+        assert_eq!(client.execute("UPDATE reborn_monty_vm_settings SET max_memory_bytes=536870911 WHERE tenant_id='old'", &[]).await.unwrap_err().code(), Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION));
         client.batch_execute("RESET search_path").await.unwrap();
     }
 
@@ -514,11 +562,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_recipe_capacity_upgrade_preserves_settings_and_revision() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA recipe_capacity_upgrade;
+            CREATE TABLE recipe_capacity_upgrade.reborn_monty_vm_settings
+            (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO recipe_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP COLUMN max_recipes_per_task;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,max_duration_secs,revision)
+            VALUES('old','owner','agent','project',900,8);").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V113__monty_recipe_selection_capacity.sql"
+            ))
+            .await
+            .unwrap();
+        let old = client.query_one("SELECT max_recipes_per_task,max_duration_secs,revision FROM reborn_monty_vm_settings WHERE tenant_id='old'", &[]).await.unwrap();
+        assert_eq!(old.get::<_, i32>(0), 8);
+        assert_eq!(old.get::<_, i32>(1), 900);
+        assert_eq!(old.get::<_, i64>(2), 8);
+        for capacity in [1, 16, i32::MAX] {
+            let actual = client.query_one("UPDATE reborn_monty_vm_settings SET max_recipes_per_task=$1 WHERE tenant_id='old' RETURNING max_recipes_per_task", &[&capacity]).await.unwrap();
+            assert_eq!(actual.get::<_, i32>(0), capacity);
+        }
+        for capacity in [0, -1] {
+            let error = client.execute("UPDATE reborn_monty_vm_settings SET max_recipes_per_task=$1 WHERE tenant_id='old'", &[&capacity]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
     async fn native_monty_settings_patch_is_revision_checked_and_atomic() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let store = PgMontyVmSettingsStore::new(Arc::clone(&rig.pool), "settings-cas", "agent");
         let duration: UpdateMontyVmSettingsRequest = serde_json::from_value(serde_json::json!({
-            "expected_revision": 0, "max_duration_secs": 900
+            "expected_revision": 0, "max_duration_secs": 900,"max_recipes_per_task":16
         }))
         .unwrap();
         let tokens: UpdateMontyVmSettingsRequest = serde_json::from_value(serde_json::json!({
@@ -541,6 +624,7 @@ mod tests {
         let second = store.upsert("operator", "project", &retry).await.unwrap();
         assert_eq!(second.revision, 2);
         assert_eq!(second.max_duration_secs, 900);
+        assert_eq!(second.max_recipes_per_task, 16);
         assert!(second.token_budgets_enabled);
         assert_eq!(second.prior_knowledge_token_budget, 100_000);
         assert!(matches!(
@@ -550,6 +634,7 @@ mod tests {
         let after = store.get("operator", "project").await.unwrap();
         assert_eq!(after.revision, second.revision);
         assert_eq!(after.max_duration_secs, second.max_duration_secs);
+        assert_eq!(after.max_recipes_per_task, second.max_recipes_per_task);
         assert_eq!(
             store
                 .get("another-operator", "project")
@@ -567,6 +652,9 @@ mod tests {
             serde_json::json!({"expected_revision": 0, "max_allocations": u64::MAX}),
             serde_json::json!({"expected_revision": 0, "max_allocations": 1}),
             serde_json::json!({"expected_revision": 0, "max_memory_bytes": 0}),
+            serde_json::json!({"expected_revision": 0, "max_memory_bytes": brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES - 1}),
+            serde_json::json!({"expected_revision": 0, "max_recipes_per_task": 0}),
+            serde_json::json!({"expected_revision": 0, "max_recipes_per_task": i32::MAX as u64 + 1}),
             serde_json::json!({"expected_revision": 0, "failure_rollback_threshold": 65536}),
             serde_json::json!({"expected_revision": 0, "q4_retention_days": 0}),
             serde_json::json!({"expected_revision": u64::MAX}),
@@ -586,6 +674,7 @@ mod tests {
         // the revision unchanged: that would defeat the API's CAS protection.
         for query in [
             "UPDATE reborn_monty_vm_settings SET max_duration_secs=1200 WHERE tenant_id=$1 AND user_id=$2",
+            "UPDATE reborn_monty_vm_settings SET max_recipes_per_task=17 WHERE tenant_id=$1 AND user_id=$2",
             "UPDATE reborn_monty_vm_settings SET revision=revision-1 WHERE tenant_id=$1 AND user_id=$2",
             "UPDATE reborn_monty_vm_settings SET revision=revision+2 WHERE tenant_id=$1 AND user_id=$2",
         ] {
@@ -601,6 +690,7 @@ mod tests {
         let preserved = store.get("operator", "project").await.unwrap();
         assert_eq!(preserved.revision, 2);
         assert_eq!(preserved.max_duration_secs, 900);
+        assert_eq!(preserved.max_recipes_per_task, 16);
         // The graduation cursor is independent of operator configuration,
         // even when configuration revisions can no longer be incremented.
         client

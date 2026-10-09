@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b487059b3d2fa6df",
+  "object": "chat.completion",
+  "created": 1791516407,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"state is a string in ('healthy', 'ok')\", \"result\": \"{'state': 'Healthy'}\"}, {\"guard\": \"state is a string in ('unhealthy', 'error', 'down')\", \"result\": \"{'state': 'Unhealthy'}\"}, {\"guard\": \"state is a string in ('degraded', 'warning')\", \"result\": \"{'state': 'Degraded'}\"}, {\"guard\": \"state is a string in ('unknown', 'idle', 'pending')\", \"result\": \"{'state': 'Unknown'}\"}, {\"guard\": \"state is a string in ('maintenance', 'stopped')\", \"result\": \"{'state': 'Maintenance'}\"}, {\"guard\": \"state is a string in ('starting', 'stopping', 'restarting')\", \"result\": \"{'state': 'Transitioning'}\"}, {\"guard\": \"state is a string in ('healthy', 'ok')\", \"result\": \"{'state': 'Healthy'}\"}, {\"guard\": \"state is a string in ('unhealthy', 'error', 'down')\", \"result\": \"{'state': 'Unhealthy'}\"}, {\"guard\": \"state is a string in ('degraded', 'warning')\", \"result\": \"{'state': 'Degraded'}\"}, {\"guard\": \"state is a string in ('unknown', 'idle', 'pending')\", \"result\": \"{'state': 'Unknown'}\"}, {\"guard\": \"state is a string in ('maintenance', 'stopped')\", \"result\": \"{'state': 'Maintenance'}\"}, {\"guard\": \"state is a string in ('starting', 'stopping', 'restarting')\", \"result\": \"{'state': 'Transitioning'}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 validation\", \"human Q2 approval\"], \"notes\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode 6ca96ef8-0b75-572f-987b-38c88d423828 with content result = {'state': 'Healthy'}. Zero Q1\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114540,
+    "total_tokens": 115018,
+    "completion_tokens": 478,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

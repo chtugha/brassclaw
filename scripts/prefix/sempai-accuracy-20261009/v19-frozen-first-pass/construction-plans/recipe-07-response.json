@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-89d186d2ca87089e",
+  "object": "chat.completion",
+  "created": 1791516537,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"post_reply\", \"result\": \"result = host.post_reply(answer='Stable')\"}], \"helper_required\": false, \"workflow\": [{\"knowledge\": \"rust\", \"uuid\": \"8002e1ff-f3d9-57f7-8a1c-62b33b0da73a\"}, {\"knowledge\": \"orchestrator\", \"uuid\": \"249e49eb-fc44-5605-aa6d-6b7299216502\"}], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"exact association approval\", \"supported full-v3 sink fields\"], \"notes\": \"Offline full-v3 export only. One class21 recipe-transfer-07 with trigger=null, steps=[], dependency_registry=null. desc_idx=0 uses persisted knowledge/stepname=\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114638,
+    "total_tokens": 114859,
+    "completion_tokens": 221,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

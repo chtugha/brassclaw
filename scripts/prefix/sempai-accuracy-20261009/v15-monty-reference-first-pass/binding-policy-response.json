@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9e01aeaa69add15a",
+  "object": "chat.completion",
+  "created": 1791513736,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": true,\n  \"reason\": \"Yes. The v3 binding contract makes current global Tool policy an independent, per-dispatch gate that is checked before every actual Tool dispatch, regardless of component approval or version pinning. Evidence: tools.md L155-177 (AGENTS.md card 57d838234532) states the kernel MUST enforce the effective instance-wide allow/block setting and technical parameters before every actual dispatch in Tier 0, Tier 1 and Tier 2, and that 'Binding-time availability or a previous permission check cannot replace this check.' AGENTS.md L505-513 (card 1bff8d2abcad) and simplified_v3.md L846-857 (card 69f7057c504f) confirm the same instance-wide policy applies before every dispatch including retries and continuations, and that a globally blocked Tool produces no new effect even through a retained approved component reference. recipe.md L577-595 (card 216c2fb5d330) and skills.md L979-1065 (card 8053ce408208) reinforce that approval and version pinning grant no old permission and do not freeze global settings. Therefore an approved pinned component can still be denied at dispatch by current global policy.\",\n  \"citations\": [\n    \"57d838234532\",\n    \"1bff8d2abcad\",\n    \"69f7057c504f\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112500,
+    "total_tokens": 112857,
+    "completion_tokens": 357,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,4 @@
+{
+  "reason": "Prototype experiment intentionally ended for next generic ordering/scope/branch-review design. Retain partial quality results; not a 60-case score. Model service prefix deployment may abort an in-flight inference; no Tool effects or components were activated.",
+  "next_generation": "76120595c3ee83d7ff26efe1452cc8b3bbd4560b2ee4c1e994410549aeb4c874"
+}

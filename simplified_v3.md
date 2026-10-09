@@ -1,5 +1,39 @@
 # Simplified v3: Plan zur Vereinfachung von Sicherheitsmodell, Runtime und WebUI
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 ## Binding Recipe architecture (v3)
 
 Read all four ground-truth guides before authoring or changing components:
@@ -12,7 +46,7 @@ examples do not override them. This plan specifies targets, not completed
 runtime or database functionality.
 
 - Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
+  many Skills expose one Tool usage through declared preloaded Python functions;
   many small PythonCode components provide reusable executable building blocks.
   Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
   explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
@@ -59,9 +93,16 @@ implementation and production-path acceptance; do not claim these are shipped.
 ## Verbindliche Skill-Architektur
 
 Ein **Skill** ist genau ein wiederverwendbares Nutzungsmuster eines Tools für
-den Orchestrator: **Prosa-Anleitung plus ausdrücklich zugeordneter ausführbarer
-PythonCode**. Prosa erklärt Zweck, Parameter, Voraussetzungen und Ergebnis-/
-Fehlerbehandlung; PythonCode implementiert die Benutzung. „Leaf Skill“ meint
+den Orchestrator: **Prosa-Anleitung plus ausdrücklich zugeordnete vorladbare
+Python-Funktionsschnittstelle**. Sie deklariert Exportnamen/Signaturen, private
+Hilfsfunktionen/Konstanten, Abhängigkeiten und typisierte Verträge. Abhängigkeiten
+werden deterministisch zuerst geladen; Laden führt keinen Toolaufruf aus.
+Aufrufe verwenden die am Vorgangsstart fixierten Revisionen und Exportbindungen.
+Gemeinsamer Code/unveränderliche Konstanten sind zulässig; veränderliche Arrays,
+Defaults und Ergebnisse bleiben pro Vorgang/Versuch/Aufruf isoliert. Ein
+passender ToolSkill und aktuelle Kernelprüfungen bleiben vor jedem Dispatch
+erforderlich. Jeder echte Skill besitzt ein Ausführungs-Recipe mit eindeutiger
+Befehlsschablone; MCP übermittelt diesen Befehl, keinen Pythoncode. „Leaf Skill“ meint
 dieselbe Einheit. Größere fachliche Zusammenhänge gehören zur **Extension** und
 ihrem ExtensionCatalogue; das **Recipe** bestimmt Reihenfolge und Datenübergabe.
 Tool und ToolSkill gehören zur Rust-Seite. Binden führt nichts aus; PythonCode
@@ -470,7 +511,7 @@ Online-Prüfung vom 2026-10-06: [Monty 1.0.0 vom 2026-09-25](https://github.com/
 **Einfaches Speicherbudget (Standard „Beim Start bestimmen“):**
 
 - Drei ausdrücklich getrennte Modi: `startup` bestimmt beim Start einmalig einen konservativen endlichen Grenzwert; `manual` verwendet den Betreiberwert; `automatic` aktiviert optionale langsame Anpassung. Im Standard- und manuellen Modus kein periodischer Speicherdruck-Monitor und keine nachträgliche Senkung aufgrund kleiner Druckwerte. Bestehende konfigurierte Grenzen beim Upgrade als `manual` erhalten, statt sie umzudeuten.
-- Defaults für neue Instanzen: Start-/Ersatzobergrenze 512 MiB, Reserve 512 MiB, optionales Messintervall 60 Sekunden und Wachstumsschritt/-spielraum jeweils 64 MiB. Das sind einstellbare Budgetwerte, keine vorab belegten Speicherreservierungen. Der einmalige Startwert ist höchstens die konfigurierte Obergrenze; verlässliche geringere Kapazität abzüglich Reserve reduziert ihn. Bestandswerte bleiben unverändert; beim Upgrade den Modus ausdrücklich als `manual` setzen und die Settingsrevision fortschreiben.
+- Defaults für neue Instanzen: Start-/Ersatzobergrenze und Mindestbudget 512 MiB, Reserve 512 MiB, optionales Messintervall 60 Sekunden und Wachstumsschritt/-spielraum jeweils 64 MiB. Das sind Budgetgrenzen, keine vorab belegten Speicherreservierungen. `startup` darf anhand der einmalig gemessenen Kapazität nur oberhalb des Standardbudgets dimensionieren und niemals unter 512 MiB fallen. Geringere Messwerte behalten mindestens dieses Budget mit sichtbarem Status; ein kleiner Messwert allein verhindert den Systemstart nicht. `manual` hält den Betreiberwert live und akzeptiert keine Werte unter 512 MiB. Bestehende kleinere konfigurierte Werte werden beim Upgrade auf 512 MiB angehoben und ihre Settingsrevision fortgeschrieben; größere Werte und Modi bleiben erhalten. Die ausdrücklich aktivierte Automatik behält ihre unabhängigen sicheren Druck-/Kapazitätsreaktionen.
 - Beim Start verfügbare Kapazität einschließlich nachweisbarer Host-/Containergrenzen einmalig erfassen. Reserve für Betriebssystem, andere Anwendungen, Rust-Host und PostgreSQL abziehen. Den Startwert auf den konfigurierten endlichen Ersatz-/Startwert begrenzen: verfügbarer RAM ist keine Aufforderung, ihn vollständig Monty zuzuweisen. Ohne verlässliche Messung den dokumentierten endlichen Ersatzwert verwenden und die Messlücke sichtbar machen. Kein unbegründeter RAM-Prozentsatz, keine Vorabreservierung, keine Seitenbegehung oder erzwungene Seitenrückgewinnung.
 - Nach einem Schritt nur entbehrliche temporäre Daten freigeben; typisierte Ergebnisse für spätere Recipe-Schritte behalten. Nach abgeschlossenem/abgebrochenem Task dessen transiente Ausführungskontexte und Child-Heaps nach bestätigter Übergabe freigeben. Lebende Fortsetzungen, persistente History und ungeklärte Wirkungsevidenz nicht löschen. Aufbewahrte Evidenz über einen dauerhaften Recovery-Eigentümer verwalten; VM-Speicher ist kein Checkpoint.
 - Begrenzte Aufnahme/Parallelität und wirksame gemeinsame Heapgrenze bleiben unabhängig von Messungen bestehen. Volle Queues warten ohne Polling mit derselben Attempt-Identität; Control und aktive Ergebnisse bleiben verarbeitbar. Ein kleiner/einzelner erhöhter Druckwert darf nicht die gesamte Aufnahme pausieren. Im optionalen Automatikmodus nur bei kritischem Druck oder nachgewiesen unzureichender Kapazität pausieren; bei fehlender/veralteter Messung kein Wachstum, aber mit vorhandener endlicher wirksamer Grenze weiterarbeiten, solange deren belegter Heap noch sicheren konfigurierten Spielraum hat.

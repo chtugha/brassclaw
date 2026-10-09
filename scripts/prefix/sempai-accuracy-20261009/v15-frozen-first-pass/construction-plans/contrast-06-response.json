@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bcd24a01a2218c5e",
+  "object": "chat.completion",
+  "created": 1791513820,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"records is a list with 0..2 items\", \"result\": \"ok: true, records: <original list>\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; proposed_components entry requires class_code and a complete payload; Q1 and human Q2 precede activation; a\", \"target_provider_metadata.model is a reference model profile, not a resolved provider definition; provider facts remain unknown\", \"target_provider_metadata.max_model_len is 131072; effective request/output room is unknown without a resolved adapter\", \"target_provider_metadata.protocol_capabilities is null; message role/tool/structured-output capabilities are unknown\", \"target_provider_metadata.catalogue_revision is null; no resolved catalogue identity to reference\", \"target_provider_metadata.model is a reference model profile, not a resolved provider definition; provider facts remain unknown\", \"target_provider_metadata.max_model_len is 131072; effective request/output room is unknown without a resolved adapter\", \"target_provider_metadata.protocol_capabilities is null; message role/tool/structured-output capabilities are unknown\"], \"notes\": \"The instruction requests a class22 pc-contrast-06 draft with a well-defined pure-logic contract (records: 0..2 items, each with code string length 2..5 and an\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113010,
+    "total_tokens": 113317,
+    "completion_tokens": 307,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

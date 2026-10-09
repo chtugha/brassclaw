@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b7eba5c9ba8d72d5",
+  "object": "chat.completion",
+  "created": 1791515718,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"key absent\", \"result\": \"category omitted, optional_channel null\"}, {\"guard\": \"value is None\", \"result\": \"category unset, optional_channel null\"}, {\"guard\": \"type int and -80 <= value <= -70\", \"result\": \"category accepted, optional_channel null\"}, {\"guard\": \"else\", \"result\": \"category bad, optional_channel null\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs\"], \"notes\": \"No provider facts, dependencies, runtime support, or component identities were invented. The draft is unapproved and not submitted or activated.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114260,
+    "total_tokens": 114418,
+    "completion_tokens": 158,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

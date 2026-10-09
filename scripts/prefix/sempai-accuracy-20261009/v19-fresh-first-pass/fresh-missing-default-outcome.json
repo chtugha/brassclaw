@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. Absent key and explicit null both yield valid=False (no default applied to null). Only the exact strings 'watch'/'pause' are valid; null/bool/other strings invalid. Module-level result assignment; no imports/host/exceptions. No execution, submission, Q1/Q2 or activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-missing-default",
+        "description": "mode absent defaults to watch. Supplied exact strings watch or pause accepted without normalization. Null/bool/other strings invalid. Always result={valid:boolean,mode:default/original if valid else null}. No imports/host/exceptions. Unapproved target inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "mode = inputs.get('mode')\nif mode is None:\n    result = {'valid': False, 'mode': None}\nelse:\n    result = {'valid': mode in ('watch', 'pause'), 'mode': mode}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

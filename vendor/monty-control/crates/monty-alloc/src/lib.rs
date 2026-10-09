@@ -299,7 +299,7 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 #[inline]
 fn charge(size: usize, vm_owned: bool) {
     let previous = LIVE_MEMORY
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
         .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocator accounting overflow")));
     let Some(live) = previous.checked_add(size) else {
         out_of_memory(format_args!("monty worker: allocator accounting overflow"));
@@ -311,7 +311,7 @@ fn charge(size: usize, vm_owned: bool) {
     }
     if vm_owned {
         VM_LIVE_MEMORY
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
             .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: VM allocator accounting overflow")));
     }
 }
@@ -321,14 +321,14 @@ fn charge(size: usize, vm_owned: bool) {
 #[inline]
 fn refund(size: usize, vm_owned: bool) {
     if LIVE_MEMORY
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
         .is_err()
     {
         out_of_memory(format_args!("monty worker: allocator accounting underflow"));
     }
     if vm_owned
         && VM_LIVE_MEMORY
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
             .is_err()
     {
         out_of_memory(format_args!("monty worker: VM allocator accounting underflow"));

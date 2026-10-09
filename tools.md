@@ -1,5 +1,39 @@
 # Tool definition and authoring instructions — final v3
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 This guide defines a BrassClaw Reborn v3 **Tool**, its relationship to the
 component library, and the requirements for creating, binding and invoking it.
 MUST means required. The final architecture is the target contract, not a claim
@@ -58,7 +92,7 @@ or a dedicated Rust workflow Tool for every task.
 | --- | --- | --- |
 | Tool, class 0 | Registered Rust primitive plus durable definition | Performs the declared operation after an authorized dispatch |
 | ToolSkill, class 13 | Rust-side IBS binding descriptor: Tool identity, parameters and technical binding requirements | Prepares availability; executes nothing and grants no permission |
-| Skill, classes 1–3 | One Tool-usage pattern: prose plus explicitly associated executable PythonCode | Its code implements the usage; prose can guide explicit Tier-1 reasoning |
+| Skill, classes 1–3 | One Tool usage: prose plus explicitly associated preloadable Python functions | Its code implements the usage; prose can guide explicit Tier-1 reasoning |
 | PythonCode, class 22 | Small reusable executable component, Tool-calling or pure logic | Monty executes it; Tool calls cross `host.<name>(...)` |
 | Recipe, class 21 | Ordered instructions, component inventory, bindings, result flow and completion | IBS assembles instructions; Monty sequences their execution |
 | ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | Supplies domain context, not dispatch authority |
@@ -403,23 +437,31 @@ it applies the current default line cap; inspect the selected version's limits.
 
 The reusable interval Skill in skills.md deliberately restricts
 `1 <= start_line <= end_line <= 2147483647` and computes the inclusive length.
-Its associated PythonCode is:
+Its associated preloadable function definition is:
 
 ```python
-# Target typed-input interface; binding first rejects missing/wrong-type values.
-start_line = inputs["start_line"]
-end_line = inputs["end_line"]
-if not (1 <= start_line <= end_line <= 2147483647):
-    raise ValueError("Invalid or unrepresentable line interval")
-limit = end_line - start_line + 1
-if not (1 <= limit <= 2147483647):
-    raise ValueError("Invalid or unrepresentable interval length")
-result = host.read_file(path=inputs["path"], offset=start_line, limit=limit)
+def read_file_interval(path, start_line, end_line):
+    # The invocation boundary validates types and bounds before this call.
+    if not (1 <= start_line <= end_line <= 2147483647):
+        raise ValueError("Invalid or unrepresentable line interval")
+    limit = end_line - start_line + 1
+    if not (1 <= limit <= 2147483647):
+        raise ValueError("Invalid or unrepresentable interval length")
+    return host.read_file(path=path, offset=start_line, limit=limit)
+```
+
+Load this associated definition without effects. After its matching ToolSkill
+binding, the invocation step is:
+
+```python
+result = read_file_interval(
+    path=inputs["path"], start_line=inputs["start_line"], end_line=inputs["end_line"]
+)
 ```
 
 The Tool remains the file-reading primitive. The Skill/code implement one
 bounded interval usage. A Recipe supplies the path/numbers, binds the ToolSkill,
-executes the code and uses its result in separate later steps. Another usage
+invokes the pinned exported function and uses its result in separate later steps. Another usage
 may read a file head using the same Tool; neither needs a new Rust primitive.
 Confirm the host adapter really accepts these keywords and that the selected
 Monty runtime supports the guards before activation.

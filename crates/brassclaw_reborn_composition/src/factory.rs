@@ -2381,10 +2381,10 @@ mod tests {
     async fn local_runtime_with_failing_trigger_conversations() -> Arc<RebornLocalRuntimeServices> {
         let local_dev_root = tempfile::tempdir().expect("tempdir");
         let owner_user_id = "pairing-owner";
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            owner_user_id,
-            local_dev_root.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev(owner_user_id, local_dev_root.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
 
@@ -2481,10 +2481,10 @@ mod tests {
     #[tokio::test]
     async fn local_dev_services_include_repl_runtime_substrate() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-substrate-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("local-dev-substrate-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
 
@@ -2506,10 +2506,10 @@ mod tests {
     #[tokio::test]
     async fn local_dev_memory_first_party_tools_use_mounted_memory_root() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-memory-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("local-dev-memory-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let runtime = services.host_runtime.expect("host runtime composed");
@@ -2582,10 +2582,10 @@ mod tests {
     #[tokio::test]
     async fn local_dev_gsuite_installs_activates_and_dispatches_through_host_runtime() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-gsuite-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("local-dev-gsuite-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let local_runtime = services.local_runtime.as_ref().expect("local runtime");
@@ -2696,10 +2696,10 @@ mod tests {
     #[tokio::test]
     async fn local_dev_notion_mcp_installs_activates_and_reaches_auth_gate() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-notion-mcp-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("local-dev-notion-mcp-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let local_runtime = services.local_runtime.as_ref().expect("local runtime");
@@ -2757,10 +2757,10 @@ mod tests {
     #[tokio::test]
     async fn local_dev_web_access_installs_activates_and_dispatches_through_host_runtime() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-web-access-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("local-dev-web-access-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let local_runtime = services.local_runtime.as_ref().expect("local runtime");
@@ -2808,10 +2808,10 @@ mod tests {
     #[tokio::test]
     async fn local_dev_nearai_mcp_installs_and_activates_model_visible_capability() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-nearai-mcp-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("local-dev-nearai-mcp-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let local_runtime = services.local_runtime.as_ref().expect("local runtime");
@@ -2886,10 +2886,13 @@ mod tests {
     async fn local_dev_workspace_mounts_do_not_authorize_skill_writes() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-workspace-skill-boundary-owner",
-            storage_root.clone(),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev(
+                "local-dev-workspace-skill-boundary-owner",
+                storage_root.clone(),
+            )
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let runtime = services.host_runtime.expect("host runtime composed");

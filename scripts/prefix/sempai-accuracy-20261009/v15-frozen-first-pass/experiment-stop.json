@@ -1,0 +1,5 @@
+{
+  "reason": "systemd stopped vLLM with SIGTERM at 02:45:04 UTC, aborted one in-flight request, and restarted at 02:45:08 UTC. No engine crash demonstrated. Regression has serving errors and is not an accuracy score. Attempt to stop local evaluator arrived after evaluator had completed.",
+  "raw_responses_retained": true,
+  "no_components_activated": true
+}

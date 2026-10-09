@@ -1,0 +1,271 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "fresh-missing-default-response.json",
+      "name": "pc-fresh-missing-default",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "5b2be048d6ac7bfe03fe87b78539360135ab5a81dca7a204cca9019d5a2719a4",
+      "pure_python_gate": true,
+      "behavior_cases": 7,
+      "behavior_passed": 7,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "mode": "watch"
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "watch"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "mode": "watch"
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "pause"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "pause"
+          },
+          "actual": {
+            "result": {
+              "valid": true,
+              "mode": "pause"
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "Watch"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": " pause"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": null
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": false
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "result": {
+              "valid": false,
+              "mode": null
+            }
+          },
+          "passed": true
+        }
+      ],
+      "offline_acceptance_passed": true
+    },
+    {
+      "response": "fresh-presence-helper-response.json",
+      "name": "pc-fresh-presence-helper",
+      "class_code": 22,
+      "strict_json": true,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "duplicate_name_in_response": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "5d21d730e5cbc91b4478ad2a5ad08851468b1256a66dc9f6303a64e7bd4e3b46",
+      "pure_python_gate": true,
+      "behavior_cases": 9,
+      "behavior_passed": 0,
+      "behavior_results": [
+        {
+          "inputs": {},
+          "expected": {
+            "category": "omitted",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": null
+          },
+          "expected": {
+            "category": "unset",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -81
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -80
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -80
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -70
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -70
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -69
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": false
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -80.0
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": "x"
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": {
+            "result": null
+          },
+          "passed": false
+        }
+      ],
+      "offline_acceptance_passed": false
+    }
+  ],
+  "component_activation_performed": false
+}

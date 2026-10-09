@@ -1,6 +1,20 @@
 # monty.composition — component implementation instructions
 
+**MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
+
+MCP clarification: accept the listed completed command only; open a new normal chat, send it as a user message, observe its correlated terminal response, forward that response to the client and close the chat. Normal ingress/matching/IBS/Recipe/reply/history are reused; no Python reception or direct Monty/Rust execution bridge is introduced.
+
+The [Tool/ToolSkill and cross-plan audit corrections](monty.composition.md#23-tooltoolskill-and-cross-plan-audit-corrections) apply throughout this appendix: independent evaluation/evidence and registration/selection operations remain separate; caught Python errors cannot erase authoritative host outcomes; exact native artifact retention also requires a supported compatible loading path. These are qualification requirements, not implemented support.
+
 This appendix is part of [monty.composition](monty.composition.md). It implements the specification requested in sections 10–12: small reusable executable units assembled by Recipes. It does not modify or activate seeded rows.
+
+## Preloadable Skill function implementation contract
+
+All Skill instructions in this appendix use the [updated binding definition](../../skills.md#preloadable-function-interface-binding-v3-target). A Skill contains prose plus an approved exported function interface, not a top-level script to regenerate per invocation. Preload functions/helpers and immutable constants in deterministic dependency-first order; then invoke the pinned selected export with typed parameters. The class-22 reference remains the canonical component reference, not a new copy of its body per Recipe. Pure helper code remains PythonCode and does not become a Skill.
+
+Public names and implementation symbols below are proposed interface declarations to reconcile with canonical UUIDs. Store the export table/signatures/dependencies in checksummed Skill revision content through a supported retained representation; do not append invented fields to skill-association/1, legacy constructors or Recipe JSON. The task manifest pins exact symbol-to-code/Skill association and Tool implementation resolution. Current direct step-body inspection needs function-aware loading and full call-graph validation before these function examples are accepted by the real runner. No current runtime acceptance is claimed.
+
+Loading has no effects and grants no Tool availability. Each invocation still needs its matching ToolSkill binding and live kernel checks. All transitively called helpers inherit the selected task binding context, never an ambient authority object. Immutable code/constants may be shared; mutable arrays/defaults/closures/results remain invocation/task/attempt-owned. Defaults are materialized anew only for missing inputs. Independent calls remain separate execution steps; declared retry/effect/recovery rules apply to actual dispatches inside functions, not merely to the number of source call sites.
 
 ## Common exact authoring contract
 
@@ -8,7 +22,7 @@ For each concrete successor, resolve a canonical stable UUID and create an immut
 
 For each one-Tool usage, store prose and an explicitly associated class-22 entry point, plus ToolSkill/Tool references and exact arguments/result/failure contract under skills.md's skill-association/1. Use default stop/max_attempts=1/not_assumed/no retryable outcomes until verified read-only or durable deduplication evidence supports an exact alternative. Noncircular packaged system_seed qualification requires structural/Q1/integrity and behavioral evidence; installed authoring requires human Q2 as well. Do not treat a component document, successful parse or boolean verdict as approval or activation.
 
-The snippets are concrete design examples, not proof of pinned Monty acceptance or full implementations where a blocker/subset is stated. Compile unchanged source with BrassClaw's pinned Monty and retained-source inspector; verify typed results/effects through the actual host adapter. General Monty language support does not imply BrassClaw permits every construct: use assigned result, direct syntactic host calls, no dynamic host access or runtime source slots. Ordinary child bodies have zero host calls for pure logic or one matching call for a normal usage. The class-10 root has a separate lifecycle contract. Every Tool example still requires verified registration/identity/parameter compatibility and live policy dispatch checks.
+The snippets are concrete design examples, not proof of pinned Monty acceptance or full implementations where a blocker/subset is stated. Compile unchanged source with BrassClaw's pinned Monty and retained-source inspector; verify typed results/effects through the actual host adapter. General Monty language support does not imply BrassClaw permits every construct: use function-local return values and an assigned invocation result, declared direct host calls inside the selected function graph, no dynamic host access or runtime source slots. A pure invocation has zero host dispatches; a normal Skill invocation performs its one declared matching Tool usage. Validate transitively reachable calls, not just the invocation statement. The class-10 root has a separate lifecycle contract. Every Tool example still requires verified registration/identity/parameter compatibility and live policy dispatch checks.
 
 Source references and older changes are in the main tables. Each Skill subsection below deliberately points to its canonical executable; do not duplicate code because several Skills share an operation. A Recipe sequences binding/execution and pure components with the input-layout forms in main §10.2. Shell Recipes are Tier 1. Whole-file inverse operations, complete security verdicts, absent/malformed probes and missing adapters must not be replaced with partial successful approximations.
 
@@ -34,7 +48,7 @@ Prepared-input examples in L018 and N16–N20, the existence classifier in L010,
 
 ### Concrete-profile acceptance requirements
 
-Shared code is accepted once per exact usage combination, not as a schema-free dispatcher. Where the supported usage schema cannot express a fixed selector/value, the approved body must fix it or perform an explicit pre-effect guard, with code_arguments matching actual computation; passing a Recipe constant alone must not falsely describe an unconstrained standalone Skill as intrinsically fixed. Internal guard/helper composition must be supported and pinned, or author a small explicit entry point; do not invent an enum constraint in the value schema. All independent host calls remain separate steps. The binding preflight currently accepts one syntactic direct call for a Tool-bound child or zero for pure logic; v3's direct dependent-chain exception needs its own qualified binding layout before use. Counting call sites is not proof of at-most-once dispatch when a call appears in a loop or recursive function; source/behavior review must establish the declared effect count and attempt semantics.
+Shared code is accepted once per exact usage combination, not as a schema-free dispatcher. Where the supported usage schema cannot express a fixed selector/value, the approved body must fix it or perform an explicit pre-effect guard, with code_arguments matching actual computation; passing a Recipe constant alone must not falsely describe an unconstrained standalone Skill as intrinsically fixed. Internal guard/helper composition must be supported and pinned, or author a small explicit entry point; do not invent an enum constraint in the value schema. All independent host calls remain separate steps. The legacy binding preflight accepts one syntactic direct call for a Tool-bound child or zero for pure logic; this does not implement preloaded export invocation. Function-aware inspection and retained invocation resolution are prerequisites; v3's direct dependent-chain exception needs its own qualified binding layout before use. Counting call sites is not proof of at-most-once dispatch when a call appears in a loop or recursive function; source/behavior review must establish the declared effect count and attempt semantics.
 
 Directory list output is best-effort as well as capped: vanished/failed-stat entries can be skipped. A filter cannot prove filesystem absence or complete type coverage. Raw versus numbered read text, terminal newlines, empty input and nested Markdown headings must be explicit result semantics. The memory-section example is a deliberate revised ATX-only profile (deeper subsections retained), not the old stop-at-any-heading behavior or a full Markdown parser; record that semantic change, reconcile each consumer and keep old revisions. Plan snapshot/progress summaries require one coherent API snapshot or clearly documented best-effort reads, not atomicity inferred from two GETs.
 
@@ -56,17 +70,33 @@ Authenticated HTTP uses the supported secret/auth adapter and rejects CR/LF head
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.read_file(path=inputs["path"])
+def usage_l001(inputs):
+    result = host.read_file(path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l001(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-read-file
 
-**Usage prose draft to specialize:** “Use the host boundary to read a file via builtin.read_file. Supply the typed inputs described for `pc-exec-read-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR001](monty.composition.skill-recipes.md#skr001-skill-read-file-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-read-file`'s block above.
+**Preloadable function-interface implementation for skill-read-file:** Implementation symbol `usage_l001(inputs)` from canonical component role L001; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_read_file(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-read-file`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L002. pc-exec-write-file
 
@@ -80,29 +110,57 @@ result = host.read_file(path=inputs["path"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.write_file(path=inputs["path"], content=inputs["content"])
+def usage_l002(inputs):
+    result = host.write_file(path=inputs["path"], content=inputs["content"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l002(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-write-file-new
 
-**Usage prose draft to specialize:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR002](monty.composition.skill-recipes.md#skr002-skill-write-file-new-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above.
+**Preloadable function-interface implementation for skill-write-file-new:** Implementation symbol `usage_l002(inputs)` from canonical component role L002; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_write_file_new(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-write-file-template
 
-**Usage prose draft to specialize:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR003](monty.composition.skill-recipes.md#skr003-skill-write-file-template-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above.
+**Preloadable function-interface implementation for skill-write-file-template:** Implementation symbol `usage_l002(inputs)` from canonical component role L002; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_write_file_template(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-write-file-replace
 
-**Usage prose draft to specialize:** “Use the host boundary to write a file via builtin.write_file. Supply the typed inputs described for `pc-exec-write-file`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR004](monty.composition.skill-recipes.md#skr004-skill-write-file-replace-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above.
+**Preloadable function-interface implementation for skill-write-file-replace:** Implementation symbol `usage_l002(inputs)` from canonical component role L002; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_write_file_replace(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-write-file`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L003. pc-exec-list-dir
 
@@ -116,23 +174,45 @@ result = host.write_file(path=inputs["path"], content=inputs["content"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+def usage_l003(inputs):
+    result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_depth=inputs["max_depth"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l003(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-list-dir
 
-**Usage prose draft to specialize:** “Use the host boundary to list a directory via builtin.list_dir. Supply the typed inputs described for `pc-exec-list-dir`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR005](monty.composition.skill-recipes.md#skr005-skill-list-dir-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-list-dir`'s block above.
+**Preloadable function-interface implementation for skill-list-dir:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-list-dir`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-list-dir-recursive
 
-**Usage prose draft to specialize:** “Use the host boundary to list a directory via builtin.list_dir. Supply the typed inputs described for `pc-exec-list-dir`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR006](monty.composition.skill-recipes.md#skr006-skill-list-dir-recursive-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-list-dir`'s block above.
+**Preloadable function-interface implementation for skill-list-dir-recursive:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir_recursive(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-list-dir`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L004. pc-exec-glob
 
@@ -146,29 +226,57 @@ result = host.list_dir(path=inputs["path"], recursive=inputs["recursive"], max_d
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+def usage_l004(inputs):
+    result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=inputs["max_results"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l004(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-glob-by-extension
 
-**Usage prose draft to specialize:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR007](monty.composition.skill-recipes.md#skr007-skill-glob-by-extension-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above.
+**Preloadable function-interface implementation for skill-glob-by-extension:** Implementation symbol `usage_l004(inputs)` from canonical component role L004; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_glob_by_extension(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-glob-by-name
 
-**Usage prose draft to specialize:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR008](monty.composition.skill-recipes.md#skr008-skill-glob-by-name-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above.
+**Preloadable function-interface implementation for skill-glob-by-name:** Implementation symbol `usage_l004(inputs)` from canonical component role L004; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_glob_by_name(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-glob-in-subdir
 
-**Usage prose draft to specialize:** “Use the host boundary to find files via builtin.glob. Supply the typed inputs described for `pc-exec-glob`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR009](monty.composition.skill-recipes.md#skr009-skill-glob-in-subdir-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above.
+**Preloadable function-interface implementation for skill-glob-in-subdir:** Implementation symbol `usage_l004(inputs)` from canonical component role L004; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_glob_in_subdir(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-glob`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L005. pc-exec-grep
 
@@ -182,41 +290,81 @@ result = host.glob(pattern=inputs["pattern"], path=inputs["path"], max_results=i
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+def usage_l005(inputs):
+    result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=inputs["output_mode"], glob=inputs["glob"], case_insensitive=inputs["case_insensitive"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l005(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-grep-files
 
-**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR010](monty.composition.skill-recipes.md#skr010-skill-grep-files-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
+**Preloadable function-interface implementation for skill-grep-files:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_files(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-grep-content
 
-**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR011](monty.composition.skill-recipes.md#skr011-skill-grep-content-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
+**Preloadable function-interface implementation for skill-grep-content:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_content(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-grep-count
 
-**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR012](monty.composition.skill-recipes.md#skr012-skill-grep-count-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
+**Preloadable function-interface implementation for skill-grep-count:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_count(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-grep-case-insensitive
 
-**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR013](monty.composition.skill-recipes.md#skr013-skill-grep-case-insensitive-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
+**Preloadable function-interface implementation for skill-grep-case-insensitive:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_case_insensitive(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-grep-type-filtered
 
-**Usage prose draft to specialize:** “Use the host boundary to search content via builtin.grep. Supply the typed inputs described for `pc-exec-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR014](monty.composition.skill-recipes.md#skr014-skill-grep-type-filtered-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above.
+**Preloadable function-interface implementation for skill-grep-type-filtered:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_type_filtered(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-grep`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L006. pc-exec-apply-patch
 
@@ -232,23 +380,45 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], output_mode=i
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.apply_patch(path=inputs["path"], old_string=inputs["old_string"], new_string=inputs["new_string"], replace_all=inputs["replace_all"])
+def usage_l006(inputs):
+    result = host.apply_patch(path=inputs["path"], old_string=inputs["old_string"], new_string=inputs["new_string"], replace_all=inputs["replace_all"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l006(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-apply-patch-single
 
-**Usage prose draft to specialize:** “Use the host boundary to apply a targeted patch via builtin.apply_patch. Supply the typed inputs described for `pc-exec-apply-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR015](monty.composition.skill-recipes.md#skr015-skill-apply-patch-single-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-apply-patch`'s block above.
+**Preloadable function-interface implementation for skill-apply-patch-single:** Implementation symbol `usage_l006(inputs)` from canonical component role L006; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_apply_patch_single(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-apply-patch`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-apply-patch-all
 
-**Usage prose draft to specialize:** “Use the host boundary to apply a targeted patch via builtin.apply_patch. Supply the typed inputs described for `pc-exec-apply-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR016](monty.composition.skill-recipes.md#skr016-skill-apply-patch-all-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-apply-patch`'s block above.
+**Preloadable function-interface implementation for skill-apply-patch-all:** Implementation symbol `usage_l006(inputs)` from canonical component role L006; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_apply_patch_all(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-apply-patch`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L007. pc-exec-grep-invert
 
@@ -274,9 +444,15 @@ for line in inputs["content"].split("\n"):
 
 #### skill-grep-invert
 
-**Usage prose draft to specialize:** “Use the host boundary for an inverted grep via builtin.grep. Supply the typed inputs described for `pc-exec-grep-invert`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR017](monty.composition.skill-recipes.md#skr017-skill-grep-invert-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-grep-invert:** Implementation symbol `usage_l005(inputs)` from canonical component role L005; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_grep_invert(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L008. pc-exec-list-filter-by-type
 
@@ -305,15 +481,27 @@ result = {"entries": filtered, "entry_type": inputs["entry_type"], "count": len(
 
 #### skill-list-dir-files-only
 
-**Usage prose draft to specialize:** “filters a list_dir result to only entries of a given type. Supply the typed inputs described for `pc-exec-list-filter-by-type`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR018](monty.composition.skill-recipes.md#skr018-skill-list-dir-files-only-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-list-dir-files-only:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir_files_only(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-list-dir-dirs-only
 
-**Usage prose draft to specialize:** “filters a list_dir result to only entries of a given type. Supply the typed inputs described for `pc-exec-list-filter-by-type`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR019](monty.composition.skill-recipes.md#skr019-skill-list-dir-dirs-only-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-list-dir-dirs-only:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_dir_dirs_only(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L009. pc-exec-read-file-tail
 
@@ -339,9 +527,15 @@ result = {"offset": max(1, total - count + 1), "limit": min(count, total)}
 
 #### skill-read-file-tail
 
-**Usage prose draft to specialize:** “reads the last 50 lines of a file (lines -50 onward). Supply the typed inputs described for `pc-exec-read-file-tail`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR020](monty.composition.skill-recipes.md#skr020-skill-read-file-tail-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-read-file-tail:** Implementation symbol `usage_n05(inputs)` from canonical component role N05; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_read_file_tail(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L010. pc-exec-file-exists
 
@@ -371,9 +565,15 @@ else:
 
 #### skill-file-exists
 
-**Usage prose draft to specialize:** “checks whether a file exists by attempting to read line 1. Supply the typed inputs described for `pc-exec-file-exists`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR021](monty.composition.skill-recipes.md#skr021-skill-file-exists-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-file-exists:** Proposed public export `use_skill_file_exists(inputs)` remains BLOCKED until its actual one-Tool code/binding contract is qualified. The current local helper/preparation example is not an executable Skill implementation. Do not expose it as a successful Tool usage or invent a host callable.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L011. pc-exec-read-then-grep
 
@@ -399,9 +599,15 @@ for line in inputs["content"].split("\n"):
 
 #### skill-read-and-grep
 
-**Usage prose draft to specialize:** “reads a file then greps the content for a pattern. Supply the typed inputs described for `pc-exec-read-then-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR022](monty.composition.skill-recipes.md#skr022-skill-read-and-grep-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-read-and-grep:** Implementation symbol `usage_l001(inputs)` from canonical component role L001; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_read_and_grep(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L012. pc-exec-list-then-grep
 
@@ -437,9 +643,15 @@ for row in inputs["rows"]:
 
 #### skill-list-and-filter
 
-**Usage prose draft to specialize:** “lists directory entries then filters by name substring. Supply the typed inputs described for `pc-exec-list-then-grep`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR023](monty.composition.skill-recipes.md#skr023-skill-list-and-filter-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-list-and-filter:** Implementation symbol `usage_l003(inputs)` from canonical component role L003; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_list_and_filter(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L013. pc-path-join
 
@@ -522,17 +734,33 @@ else:
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], response_body_limit=inputs["response_body_limit"])
+def usage_l016(inputs):
+    result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], response_body_limit=inputs["response_body_limit"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l016(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-get
 
-**Usage prose draft to specialize:** “Use the host boundary for an HTTP GET request via builtin.http. Supply the typed inputs described for `pc-exec-http-get`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR024](monty.composition.skill-recipes.md#skr024-skill-http-get-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-get`'s block above.
+**Preloadable function-interface implementation for skill-http-get:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_get(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-get`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L017. pc-exec-http-post
 
@@ -546,17 +774,33 @@ result = host.http(method="GET", url=inputs["url"], headers=inputs["headers"], r
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="POST", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+def usage_l017(inputs):
+    result = host.http(method="POST", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l017(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-post
 
-**Usage prose draft to specialize:** “Use the host boundary for an HTTP POST request via builtin.http. Supply the typed inputs described for `pc-exec-http-post`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR025](monty.composition.skill-recipes.md#skr025-skill-http-post-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-post`'s block above.
+**Preloadable function-interface implementation for skill-http-post:** Implementation symbol `usage_l017(inputs)` from canonical component role L017; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_post(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-post`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L018. pc-exec-http-save
 
@@ -580,9 +824,15 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 
 #### skill-http-save-download
 
-**Usage prose draft to specialize:** “Use the host boundary for builtin.http.save. Supply the typed inputs described for `pc-exec-http-save`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR026](monty.composition.skill-recipes.md#skr026-skill-http-save-download-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-http-save-download:** Proposed public export `use_skill_http_save_download(inputs)` remains BLOCKED until its actual one-Tool code/binding contract is qualified. The current local helper/preparation example is not an executable Skill implementation. Do not expose it as a successful Tool usage or invent a host callable.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L019. pc-exec-http-patch
 
@@ -596,17 +846,33 @@ result = {"url": inputs["url"], "save_to": inputs["save_to"]}
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+def usage_l019(inputs):
+    result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l019(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-patch
 
-**Usage prose draft to specialize:** “Use the host boundary for an HTTP PATCH request via builtin.http. Supply the typed inputs described for `pc-exec-http-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR027](monty.composition.skill-recipes.md#skr027-skill-http-patch-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-patch`'s block above.
+**Preloadable function-interface implementation for skill-http-patch:** Implementation symbol `usage_l019(inputs)` from canonical component role L019; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_patch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-patch`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L020. pc-exec-http-head
 
@@ -620,17 +886,33 @@ result = host.http(method="PATCH", url=inputs["url"], body=inputs["body"], heade
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="HEAD", url=inputs["url"])
+def usage_l020(inputs):
+    result = host.http(method="HEAD", url=inputs["url"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l020(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-head
 
-**Usage prose draft to specialize:** “Use the host boundary for an HTTP HEAD request via builtin.http. Supply the typed inputs described for `pc-exec-http-head`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR028](monty.composition.skill-recipes.md#skr028-skill-http-head-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-head`'s block above.
+**Preloadable function-interface implementation for skill-http-head:** Implementation symbol `usage_l020(inputs)` from canonical component role L020; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_head(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-head`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L021. pc-exec-http-get-authenticated
 
@@ -644,17 +926,33 @@ result = host.http(method="HEAD", url=inputs["url"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="GET", url=inputs["url"], headers={"Authorization": inputs["authorization"]})
+def usage_l021(inputs):
+    result = host.http(method="GET", url=inputs["url"], headers={"Authorization": inputs["authorization"]})
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l021(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-authenticated
 
-**Usage prose draft to specialize:** “Use the host boundary for an authenticated HTTP GET via builtin.http. Supply the typed inputs described for `pc-exec-http-get-authenticated`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR029](monty.composition.skill-recipes.md#skr029-skill-http-authenticated-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-get-authenticated`'s block above.
+**Preloadable function-interface implementation for skill-http-authenticated:** Implementation symbol `usage_l021(inputs)` from canonical component role L021; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_authenticated(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-get-authenticated`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L022. pc-exec-http-put
 
@@ -668,17 +966,33 @@ result = host.http(method="GET", url=inputs["url"], headers={"Authorization": in
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+def usage_l022(inputs):
+    result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers=inputs["headers"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l022(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-put
 
-**Usage prose draft to specialize:** “Use the host boundary for an HTTP PUT request via builtin.http. Supply the typed inputs described for `pc-exec-http-put`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR030](monty.composition.skill-recipes.md#skr030-skill-http-put-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-put`'s block above.
+**Preloadable function-interface implementation for skill-http-put:** Implementation symbol `usage_l022(inputs)` from canonical component role L022; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_put(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-put`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L023. pc-exec-http-delete
 
@@ -692,17 +1006,33 @@ result = host.http(method="PUT", url=inputs["url"], body=inputs["body"], headers
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"])
+def usage_l023(inputs):
+    result = host.http(method="DELETE", url=inputs["url"], headers=inputs["headers"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l023(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-http-delete
 
-**Usage prose draft to specialize:** “Use the host boundary for an HTTP DELETE request via builtin.http. Supply the typed inputs described for `pc-exec-http-delete`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR031](monty.composition.skill-recipes.md#skr031-skill-http-delete-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-delete`'s block above.
+**Preloadable function-interface implementation for skill-http-delete:** Implementation symbol `usage_l023(inputs)` from canonical component role L023; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_http_delete(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-http-delete`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L024. pc-http-status-check
 
@@ -832,23 +1162,45 @@ result = {"encoded": encoded, "raw": inputs["text"]}
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
+def usage_l028(inputs):
+    result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l028(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-memory-search
 
-**Usage prose draft to specialize:** “Use the host boundary to search persistent memory via builtin.memory_search. Supply the typed inputs described for `pc-exec-memory-search`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR032](monty.composition.skill-recipes.md#skr032-skill-memory-search-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-search`'s block above.
+**Preloadable function-interface implementation for skill-memory-search:** Implementation symbol `usage_l028(inputs)` from canonical component role L028; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_search(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-search`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-memory-search-broad
 
-**Usage prose draft to specialize:** “Use the host boundary to search persistent memory via builtin.memory_search. Supply the typed inputs described for `pc-exec-memory-search`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR033](monty.composition.skill-recipes.md#skr033-skill-memory-search-broad-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-search`'s block above.
+**Preloadable function-interface implementation for skill-memory-search-broad:** Implementation symbol `usage_l028(inputs)` from canonical component role L028; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_search_broad(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-search`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L029. pc-exec-memory-write
 
@@ -862,23 +1214,45 @@ result = host.memory_search(query=inputs["query"], limit=inputs["limit"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_write(content=inputs["content"], target=inputs["target"], append=inputs["append"])
+def usage_l029(inputs):
+    result = host.memory_write(content=inputs["content"], target=inputs["target"], append=inputs["append"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l029(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-memory-write-log
 
-**Usage prose draft to specialize:** “Use the host boundary to write to persistent memory via builtin.memory_write. Supply the typed inputs described for `pc-exec-memory-write`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR034](monty.composition.skill-recipes.md#skr034-skill-memory-write-log-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-write`'s block above.
+**Preloadable function-interface implementation for skill-memory-write-log:** Implementation symbol `usage_l029(inputs)` from canonical component role L029; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_log(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-write`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-memory-write-main
 
-**Usage prose draft to specialize:** “Use the host boundary to write to persistent memory via builtin.memory_write. Supply the typed inputs described for `pc-exec-memory-write`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR035](monty.composition.skill-recipes.md#skr035-skill-memory-write-main-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-write`'s block above.
+**Preloadable function-interface implementation for skill-memory-write-main:** Implementation symbol `usage_l029(inputs)` from canonical component role L029; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_main(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-write`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L030. pc-exec-memory-patch
 
@@ -892,17 +1266,33 @@ result = host.memory_write(content=inputs["content"], target=inputs["target"], a
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_write(target=inputs["target"], old_string=inputs["old_string"], new_string=inputs["new_string"], replace_all=inputs["replace_all"])
+def usage_l030(inputs):
+    result = host.memory_write(target=inputs["target"], old_string=inputs["old_string"], new_string=inputs["new_string"], replace_all=inputs["replace_all"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l030(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-memory-write-patch
 
-**Usage prose draft to specialize:** “Use the host boundary for a targeted patch to a memory document via builtin.memory_write patch mode. Supply the typed inputs described for `pc-exec-memory-patch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR036](monty.composition.skill-recipes.md#skr036-skill-memory-write-patch-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-patch`'s block above.
+**Preloadable function-interface implementation for skill-memory-write-patch:** Implementation symbol `usage_l030(inputs)` from canonical component role L030; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_patch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-patch`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L031. pc-exec-memory-read
 
@@ -916,17 +1306,33 @@ result = host.memory_write(target=inputs["target"], old_string=inputs["old_strin
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_read(path=inputs["path"])
+def usage_l031(inputs):
+    result = host.memory_read(path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l031(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-memory-read
 
-**Usage prose draft to specialize:** “Use the host boundary to read a memory document by path via builtin.memory_read. Supply the typed inputs described for `pc-exec-memory-read`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR037](monty.composition.skill-recipes.md#skr037-skill-memory-read-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-read`'s block above.
+**Preloadable function-interface implementation for skill-memory-read:** Implementation symbol `usage_l031(inputs)` from canonical component role L031; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_read(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-read`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L032. pc-exec-memory-tree
 
@@ -940,17 +1346,33 @@ result = host.memory_read(path=inputs["path"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
+def usage_l032(inputs):
+    result = host.memory_tree(path=inputs["path"], depth=inputs["depth"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l032(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-memory-tree
 
-**Usage prose draft to specialize:** “Use the host boundary to list the memory directory tree via builtin.memory_tree. Supply the typed inputs described for `pc-exec-memory-tree`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR038](monty.composition.skill-recipes.md#skr038-skill-memory-tree-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-tree`'s block above.
+**Preloadable function-interface implementation for skill-memory-tree:** Implementation symbol `usage_l032(inputs)` from canonical component role L032; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_tree(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-tree`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L033. pc-memory-extract-section
 
@@ -1020,17 +1442,33 @@ result = {"formatted_entry": "### " + inputs["timestamp_str"] + "\n\n" + inputs[
 
 **Recipe wiring:** `pc-exec-memory-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_write(target=inputs["target"], content=inputs["content"], append=True)
+def usage_l035(inputs):
+    result = host.memory_write(target=inputs["target"], content=inputs["content"], append=True)
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l035(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-memory-write-append
 
-**Usage prose draft to specialize:** “appends text to an existing memory document. Reads the current content via memory_read, then writes combined content via memory_write. Supply the typed inputs described for `pc-exec-memory-append`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR039](monty.composition.skill-recipes.md#skr039-skill-memory-write-append-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-append`'s block above.
+**Preloadable function-interface implementation for skill-memory-write-append:** Implementation symbol `usage_l035(inputs)` from canonical component role L035; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_memory_write_append(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-memory-append`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L036. pc-exec-shell-git-status
 
@@ -1044,17 +1482,33 @@ result = host.memory_write(target=inputs["target"], content=inputs["content"], a
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git status')
+def usage_l036(inputs):
+    result = host.shell(command='git status')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l036(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-status
 
-**Usage prose draft to specialize:** “runs 'git status' in the workspace root via builtin.shell. Command is a fixed literal. No user input enters the command string. Supply the typed inputs described for `pc-exec-shell-git-status`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR040](monty.composition.skill-recipes.md#skr040-skill-shell-git-status-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-status`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-status:** Implementation symbol `usage_l036(inputs)` from canonical component role L036; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_status(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-status`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L037. pc-exec-shell-git-log
 
@@ -1068,17 +1522,33 @@ result = host.shell(command='git status')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git log --oneline -20')
+def usage_l037(inputs):
+    result = host.shell(command='git log --oneline -20')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l037(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-log
 
-**Usage prose draft to specialize:** “runs 'git log --oneline -20' to get the last 20 commits. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-log`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR041](monty.composition.skill-recipes.md#skr041-skill-shell-git-log-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-log`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-log:** Implementation symbol `usage_l037(inputs)` from canonical component role L037; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_log(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-log`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L038. pc-exec-shell-git-diff-stat
 
@@ -1092,17 +1562,33 @@ result = host.shell(command='git log --oneline -20')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git diff --stat')
+def usage_l038(inputs):
+    result = host.shell(command='git diff --stat')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l038(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-diff-stat
 
-**Usage prose draft to specialize:** “runs 'git diff --stat' to show changed file summary. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-diff-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR042](monty.composition.skill-recipes.md#skr042-skill-shell-git-diff-stat-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-diff-stat`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-diff-stat:** Implementation symbol `usage_l038(inputs)` from canonical component role L038; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_diff_stat(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-diff-stat`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L039. pc-exec-shell-git-branch
 
@@ -1116,17 +1602,33 @@ result = host.shell(command='git diff --stat')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git branch -a')
+def usage_l039(inputs):
+    result = host.shell(command='git branch -a')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l039(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-branch
 
-**Usage prose draft to specialize:** “runs 'git branch -a' to list all local and remote branches. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-branch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR043](monty.composition.skill-recipes.md#skr043-skill-shell-git-branch-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-branch`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-branch:** Implementation symbol `usage_l039(inputs)` from canonical component role L039; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_branch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-branch`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L040. pc-exec-shell-git-stash-list
 
@@ -1140,17 +1642,33 @@ result = host.shell(command='git branch -a')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git stash list')
+def usage_l040(inputs):
+    result = host.shell(command='git stash list')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l040(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-stash-list
 
-**Usage prose draft to specialize:** “runs 'git stash list' to show the stash stack. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-stash-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR044](monty.composition.skill-recipes.md#skr044-skill-shell-git-stash-list-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-stash-list`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-stash-list:** Implementation symbol `usage_l040(inputs)` from canonical component role L040; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_stash_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-stash-list`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L041. pc-exec-shell-git-log-n
 
@@ -1164,14 +1682,27 @@ result = host.shell(command='git stash list')
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-count = inputs["count"]
-if type(count) is not int or not 1 <= count <= 100:
-    raise ValueError("invalid log count")
-result = host.shell(command="git log --oneline -" + str(count))
+def usage_l041(inputs):
+    count = inputs["count"]
+    if type(count) is not int or not 1 <= count <= 100:
+        raise ValueError("invalid log count")
+    result = host.shell(command="git log --oneline -" + str(count))
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l041(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L042. pc-exec-shell-git-remote
 
@@ -1185,17 +1716,33 @@ result = host.shell(command="git log --oneline -" + str(count))
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git remote -v')
+def usage_l042(inputs):
+    result = host.shell(command='git remote -v')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l042(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-remote
 
-**Usage prose draft to specialize:** “runs 'git remote -v' to list all configured remote repositories and their URLs. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-remote`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR045](monty.composition.skill-recipes.md#skr045-skill-shell-git-remote-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-remote`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-remote:** Implementation symbol `usage_l042(inputs)` from canonical component role L042; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_remote(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-remote`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L043. pc-exec-shell-git-show-stat
 
@@ -1209,17 +1756,33 @@ result = host.shell(command='git remote -v')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git show --stat HEAD')
+def usage_l043(inputs):
+    result = host.shell(command='git show --stat HEAD')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l043(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-show-stat
 
-**Usage prose draft to specialize:** “runs 'git show --stat HEAD' to show the last commit's changed files and line counts. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-show-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR046](monty.composition.skill-recipes.md#skr046-skill-shell-git-show-stat-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-show-stat`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-show-stat:** Implementation symbol `usage_l043(inputs)` from canonical component role L043; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_show_stat(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-show-stat`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L044. pc-exec-shell-git-tag-list
 
@@ -1233,17 +1796,33 @@ result = host.shell(command='git show --stat HEAD')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git tag --list')
+def usage_l044(inputs):
+    result = host.shell(command='git tag --list')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l044(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-tag-list
 
-**Usage prose draft to specialize:** “runs 'git tag --list' to enumerate all tags in the repository. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-tag-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR047](monty.composition.skill-recipes.md#skr047-skill-shell-git-tag-list-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-tag-list`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-tag-list:** Implementation symbol `usage_l044(inputs)` from canonical component role L044; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_tag_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-tag-list`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L045. pc-exec-shell-git-diff-name-only
 
@@ -1257,17 +1836,33 @@ result = host.shell(command='git tag --list')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git diff --name-only HEAD')
+def usage_l045(inputs):
+    result = host.shell(command='git diff --name-only HEAD')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l045(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-diff-name-only
 
-**Usage prose draft to specialize:** “runs 'git diff --name-only HEAD' to list only the names of files changed since the last commit. No content shown. Fixed literal command — no slot interpolation. Supply the typed inputs described for `pc-exec-shell-git-diff-name-only`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR048](monty.composition.skill-recipes.md#skr048-skill-shell-git-diff-name-only-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-diff-name-only`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-diff-name-only:** Implementation symbol `usage_l045(inputs)` from canonical component role L045; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_diff_name_only(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-diff-name-only`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L046. pc-exec-shell-git-log-stat
 
@@ -1281,17 +1876,33 @@ result = host.shell(command='git diff --name-only HEAD')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git log --stat --oneline -5')
+def usage_l046(inputs):
+    result = host.shell(command='git log --stat --oneline -5')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l046(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-log-stat
 
-**Usage prose draft to specialize:** “runs 'git log --stat --oneline -5' to show the last 5 commits with file-change counts per commit. Fixed literal. Supply the typed inputs described for `pc-exec-shell-git-log-stat`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR049](monty.composition.skill-recipes.md#skr049-skill-shell-git-log-stat-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-log-stat`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-log-stat:** Implementation symbol `usage_l046(inputs)` from canonical component role L046; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_log_stat(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-log-stat`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L047. pc-exec-shell-git-stash-show
 
@@ -1305,17 +1916,33 @@ result = host.shell(command='git log --stat --oneline -5')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git stash show')
+def usage_l047(inputs):
+    result = host.shell(command='git stash show')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l047(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-stash-show
 
-**Usage prose draft to specialize:** “runs 'git stash show' to show the diff summary of the most recent stash entry. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-stash-show`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR050](monty.composition.skill-recipes.md#skr050-skill-shell-git-stash-show-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-stash-show`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-stash-show:** Implementation symbol `usage_l047(inputs)` from canonical component role L047; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_stash_show(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-stash-show`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L048. pc-exec-shell-git-config-list
 
@@ -1329,17 +1956,33 @@ result = host.shell(command='git stash show')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git config --list')
+def usage_l048(inputs):
+    result = host.shell(command='git config --list')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l048(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-config-list
 
-**Usage prose draft to specialize:** “runs 'git config --list' to show all active git configuration values. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-git-config-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR051](monty.composition.skill-recipes.md#skr051-skill-shell-git-config-list-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-config-list`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-config-list:** Implementation symbol `usage_l048(inputs)` from canonical component role L048; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_config_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-config-list`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L049. pc-exec-shell-git-add
 
@@ -1363,9 +2006,15 @@ result = "git add -- " + " ".join(inputs["quoted_arguments"])
 
 #### skill-shell-git-add
 
-**Usage prose draft to specialize:** “Use the host boundary to run 'git add <path>'. Supply the typed inputs described for `pc-exec-shell-git-add`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR052](monty.composition.skill-recipes.md#skr052-skill-shell-git-add-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-shell-git-add:** Public export `use_skill_shell_git_add(inputs)` must use the qualified shared shell-execution function plus this usage's reviewed command preparer/fixed-command profile. The local preparation block is a pure helper, not a Tool executor. Resolve the actual canonical code UUIDs/symbols before publishing the interface; preserve Tier1.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L050. pc-exec-shell-git-commit
 
@@ -1389,9 +2038,15 @@ result = "git commit -m " + inputs["quoted_arguments"][0]
 
 #### skill-shell-git-commit
 
-**Usage prose draft to specialize:** “Use the host boundary to run 'git commit -m <msg>'. Supply the typed inputs described for `pc-exec-shell-git-commit`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR053](monty.composition.skill-recipes.md#skr053-skill-shell-git-commit-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-shell-git-commit:** Public export `use_skill_shell_git_commit(inputs)` must use the qualified shared shell-execution function plus this usage's reviewed command preparer/fixed-command profile. The local preparation block is a pure helper, not a Tool executor. Resolve the actual canonical code UUIDs/symbols before publishing the interface; preserve Tier1.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L051. pc-exec-shell-git-push
 
@@ -1415,9 +2070,15 @@ result = "git push " + " ".join(inputs["quoted_arguments"])
 
 #### skill-shell-git-push
 
-**Usage prose draft to specialize:** “Use the host boundary to run 'git push <remote> <branch>'. Supply the typed inputs described for `pc-exec-shell-git-push`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR054](monty.composition.skill-recipes.md#skr054-skill-shell-git-push-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-shell-git-push:** Public export `use_skill_shell_git_push(inputs)` must use the qualified shared shell-execution function plus this usage's reviewed command preparer/fixed-command profile. The local preparation block is a pure helper, not a Tool executor. Resolve the actual canonical code UUIDs/symbols before publishing the interface; preserve Tier1.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L052. pc-exec-shell-git-pull
 
@@ -1441,9 +2102,15 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 
 #### skill-shell-git-pull
 
-**Usage prose draft to specialize:** “Use the host boundary to run 'git pull <remote> <branch>'. Supply the typed inputs described for `pc-exec-shell-git-pull`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR055](monty.composition.skill-recipes.md#skr055-skill-shell-git-pull-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-shell-git-pull:** Public export `use_skill_shell_git_pull(inputs)` must use the qualified shared shell-execution function plus this usage's reviewed command preparer/fixed-command profile. The local preparation block is a pure helper, not a Tool executor. Resolve the actual canonical code UUIDs/symbols before publishing the interface; preserve Tier1.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L053. pc-exec-shell-git-fetch
 
@@ -1457,17 +2124,33 @@ result = "git pull " + " ".join(inputs["quoted_arguments"])
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git fetch --all')
+def usage_l053(inputs):
+    result = host.shell(command='git fetch --all')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l053(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-git-fetch
 
-**Usage prose draft to specialize:** “Use the host boundary to run 'git fetch --all'. Supply the typed inputs described for `pc-exec-shell-git-fetch`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR056](monty.composition.skill-recipes.md#skr056-skill-shell-git-fetch-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-fetch`'s block above.
+**Preloadable function-interface implementation for skill-shell-git-fetch:** Implementation symbol `usage_l053(inputs)` from canonical component role L053; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_git_fetch(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-git-fetch`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L054. pc-exec-shell-pwd
 
@@ -1481,17 +2164,33 @@ result = host.shell(command='git fetch --all')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='pwd')
+def usage_l054(inputs):
+    result = host.shell(command='pwd')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l054(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-pwd
 
-**Usage prose draft to specialize:** “runs 'pwd' to show the current working directory. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-pwd`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR057](monty.composition.skill-recipes.md#skr057-skill-shell-pwd-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-pwd`'s block above.
+**Preloadable function-interface implementation for skill-shell-pwd:** Implementation symbol `usage_l054(inputs)` from canonical component role L054; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_pwd(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-pwd`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L055. pc-exec-shell-df
 
@@ -1505,17 +2204,33 @@ result = host.shell(command='pwd')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='df -h')
+def usage_l055(inputs):
+    result = host.shell(command='df -h')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l055(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-df
 
-**Usage prose draft to specialize:** “runs 'df -h' to show disk usage in human-readable format. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-df`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR058](monty.composition.skill-recipes.md#skr058-skill-shell-df-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-df`'s block above.
+**Preloadable function-interface implementation for skill-shell-df:** Implementation symbol `usage_l055(inputs)` from canonical component role L055; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_df(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-df`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L056. pc-exec-shell-ps
 
@@ -1529,17 +2244,33 @@ result = host.shell(command='df -h')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='ps aux')
+def usage_l056(inputs):
+    result = host.shell(command='ps aux')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l056(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-ps
 
-**Usage prose draft to specialize:** “runs 'ps aux' to list running processes. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-ps`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR059](monty.composition.skill-recipes.md#skr059-skill-shell-ps-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-ps`'s block above.
+**Preloadable function-interface implementation for skill-shell-ps:** Implementation symbol `usage_l056(inputs)` from canonical component role L056; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_ps(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-ps`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L057. pc-exec-shell-env
 
@@ -1553,17 +2284,33 @@ result = host.shell(command='ps aux')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='env')
+def usage_l057(inputs):
+    result = host.shell(command='env')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l057(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-env
 
-**Usage prose draft to specialize:** “runs 'env' to list all environment variables in the current session. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-env`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR060](monty.composition.skill-recipes.md#skr060-skill-shell-env-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-env`'s block above.
+**Preloadable function-interface implementation for skill-shell-env:** Implementation symbol `usage_l057(inputs)` from canonical component role L057; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_env(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-env`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L058. pc-exec-shell-uname
 
@@ -1577,17 +2324,33 @@ result = host.shell(command='env')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='uname -a')
+def usage_l058(inputs):
+    result = host.shell(command='uname -a')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l058(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-uname
 
-**Usage prose draft to specialize:** “runs 'uname -a' to show OS/kernel information. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-uname`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR061](monty.composition.skill-recipes.md#skr061-skill-shell-uname-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-uname`'s block above.
+**Preloadable function-interface implementation for skill-shell-uname:** Implementation symbol `usage_l058(inputs)` from canonical component role L058; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_uname(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-uname`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L059. pc-exec-shell-which
 
@@ -1601,21 +2364,37 @@ result = host.shell(command='uname -a')
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-import re
-name = inputs["name"]
-if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}", name) is None:
-    raise ValueError("invalid binary name")
-result = host.shell(command="which " + name)
+def usage_l059(inputs):
+    import re
+    name = inputs["name"]
+    if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}", name) is None:
+        raise ValueError("invalid binary name")
+    result = host.shell(command="which " + name)
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l059(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-which
 
-**Usage prose draft to specialize:** “runs 'which <toolname>' to locate a binary. Supply the typed inputs described for `pc-exec-shell-which`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR062](monty.composition.skill-recipes.md#skr062-skill-shell-which-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-which`'s block above.
+**Preloadable function-interface implementation for skill-shell-which:** Implementation symbol `usage_l059(inputs)` from canonical component role L059; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_which(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-which`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L060. pc-exec-shell-hostname
 
@@ -1629,17 +2408,33 @@ result = host.shell(command="which " + name)
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='hostname')
+def usage_l060(inputs):
+    result = host.shell(command='hostname')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l060(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-hostname
 
-**Usage prose draft to specialize:** “runs 'hostname' to print the machine hostname. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-hostname`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR063](monty.composition.skill-recipes.md#skr063-skill-shell-hostname-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-hostname`'s block above.
+**Preloadable function-interface implementation for skill-shell-hostname:** Implementation symbol `usage_l060(inputs)` from canonical component role L060; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_hostname(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-hostname`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L061. pc-exec-shell-whoami
 
@@ -1653,17 +2448,33 @@ result = host.shell(command='hostname')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='whoami')
+def usage_l061(inputs):
+    result = host.shell(command='whoami')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l061(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-whoami
 
-**Usage prose draft to specialize:** “runs 'whoami' to print the current user account name. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-whoami`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR064](monty.composition.skill-recipes.md#skr064-skill-shell-whoami-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-whoami`'s block above.
+**Preloadable function-interface implementation for skill-shell-whoami:** Implementation symbol `usage_l061(inputs)` from canonical component role L061; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_whoami(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-whoami`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L062. pc-exec-shell-uptime
 
@@ -1677,17 +2488,33 @@ result = host.shell(command='whoami')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='uptime')
+def usage_l062(inputs):
+    result = host.shell(command='uptime')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l062(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-uptime
 
-**Usage prose draft to specialize:** “runs 'uptime' to show system uptime, load average, and logged-in user count. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-uptime`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR065](monty.composition.skill-recipes.md#skr065-skill-shell-uptime-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-uptime`'s block above.
+**Preloadable function-interface implementation for skill-shell-uptime:** Implementation symbol `usage_l062(inputs)` from canonical component role L062; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_uptime(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-uptime`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L063. pc-exec-shell-free
 
@@ -1701,17 +2528,33 @@ result = host.shell(command='uptime')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='free -h')
+def usage_l063(inputs):
+    result = host.shell(command='free -h')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l063(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-shell-free
 
-**Usage prose draft to specialize:** “runs 'free -h' to show memory usage in human-readable format. Fixed literal command. Supply the typed inputs described for `pc-exec-shell-free`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR066](monty.composition.skill-recipes.md#skr066-skill-shell-free-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-free`'s block above.
+**Preloadable function-interface implementation for skill-shell-free:** Implementation symbol `usage_l063(inputs)` from canonical component role L063; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_shell_free(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-shell-free`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L064. pc-exec-shell-wc-l
 
@@ -1735,9 +2578,15 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 
 #### skill-shell-wc-l
 
-**Usage prose draft to specialize:** “runs 'wc -l <filepath>' to count lines in a file. Supply the typed inputs described for `pc-exec-shell-wc-l`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR067](monty.composition.skill-recipes.md#skr067-skill-shell-wc-l-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-shell-wc-l:** Public export `use_skill_shell_wc_l(inputs)` must use the qualified shared shell-execution function plus this usage's reviewed command preparer/fixed-command profile. The local preparation block is a pure helper, not a Tool executor. Resolve the actual canonical code UUIDs/symbols before publishing the interface; preserve Tier1.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L065. pc-exec-trigger-list
 
@@ -1753,29 +2602,57 @@ result = "wc -l -- " + inputs["quoted_arguments"][0]
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.trigger_list(limit=inputs["limit"])
+def usage_l065(inputs):
+    result = host.trigger_list(limit=inputs["limit"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l065(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-trigger-list
 
-**Usage prose draft to specialize:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR068](monty.composition.skill-recipes.md#skr068-skill-trigger-list-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above.
+**Preloadable function-interface implementation for skill-trigger-list:** Implementation symbol `usage_l065(inputs)` from canonical component role L065; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_trigger_list(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-trigger-list-active
 
-**Usage prose draft to specialize:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR069](monty.composition.skill-recipes.md#skr069-skill-trigger-list-active-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above.
+**Preloadable function-interface implementation for skill-trigger-list-active:** Implementation symbol `usage_l065(inputs)` from canonical component role L065; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_trigger_list_active(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 #### skill-trigger-list-scheduled
 
-**Usage prose draft to specialize:** “calls host.trigger_list to list configured triggers. Supply the typed inputs described for `pc-exec-trigger-list`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR070](monty.composition.skill-recipes.md#skr070-skill-trigger-list-scheduled-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above.
+**Preloadable function-interface implementation for skill-trigger-list-scheduled:** Implementation symbol `usage_l065(inputs)` from canonical component role L065; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_trigger_list_scheduled(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-trigger-list`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L066. pc-exec-trigger-resolve-and-remove
 
@@ -1815,17 +2692,33 @@ result = inputs["rows"][0]
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.time(operation="now", timezone=inputs["timezone"])
+def usage_l067(inputs):
+    result = host.time(operation="now", timezone=inputs["timezone"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l067(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-time-now
 
-**Usage prose draft to specialize:** “Use the host boundary to get the current timestamp via builtin.time operation='now'. Supply the typed inputs described for `pc-exec-time-now`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR071](monty.composition.skill-recipes.md#skr071-skill-time-now-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-now`'s block above.
+**Preloadable function-interface implementation for skill-time-now:** Implementation symbol `usage_l067(inputs)` from canonical component role L067; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_now(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-now`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L068. pc-exec-time-parse
 
@@ -1839,17 +2732,33 @@ result = host.time(operation="now", timezone=inputs["timezone"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs["timezone"])
+def usage_l068(inputs):
+    result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs["timezone"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l068(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-time-parse
 
-**Usage prose draft to specialize:** “Use the host boundary to parse a timestamp string via builtin.time operation='parse'. Supply the typed inputs described for `pc-exec-time-parse`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR072](monty.composition.skill-recipes.md#skr072-skill-time-parse-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-parse`'s block above.
+**Preloadable function-interface implementation for skill-time-parse:** Implementation symbol `usage_l068(inputs)` from canonical component role L068; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_parse(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-parse`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L069. pc-exec-time-convert
 
@@ -1863,17 +2772,33 @@ result = host.time(operation="parse", input=inputs["timestamp"], timezone=inputs
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.time(operation="convert", input=inputs["timestamp"], from_timezone=inputs["from_timezone"], to_timezone=inputs["to_timezone"])
+def usage_l069(inputs):
+    result = host.time(operation="convert", input=inputs["timestamp"], from_timezone=inputs["from_timezone"], to_timezone=inputs["to_timezone"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l069(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-time-convert
 
-**Usage prose draft to specialize:** “Use the host boundary to convert a timestamp between timezones via builtin.time operation='convert'. Supply the typed inputs described for `pc-exec-time-convert`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR073](monty.composition.skill-recipes.md#skr073-skill-time-convert-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-convert`'s block above.
+**Preloadable function-interface implementation for skill-time-convert:** Implementation symbol `usage_l069(inputs)` from canonical component role L069; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_convert(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-convert`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L070. pc-exec-time-diff
 
@@ -1887,17 +2812,33 @@ result = host.time(operation="convert", input=inputs["timestamp"], from_timezone
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=inputs["timestamp2"])
+def usage_l070(inputs):
+    result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=inputs["timestamp2"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l070(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-time-diff
 
-**Usage prose draft to specialize:** “Use the host boundary to compute the signed difference between two timestamps via builtin.time operation='diff'. Supply the typed inputs described for `pc-exec-time-diff`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR074](monty.composition.skill-recipes.md#skr074-skill-time-diff-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-diff`'s block above.
+**Preloadable function-interface implementation for skill-time-diff:** Implementation symbol `usage_l070(inputs)` from canonical component role L070; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_diff(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-diff`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L071. pc-exec-time-format
 
@@ -1911,17 +2852,33 @@ result = host.time(operation="diff", input=inputs["timestamp"], timestamp2=input
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.time(operation="format", input=inputs["timestamp"], format_string=inputs["format_string"], timezone=inputs["timezone"])
+def usage_l071(inputs):
+    result = host.time(operation="format", input=inputs["timestamp"], format_string=inputs["format_string"], timezone=inputs["timezone"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l071(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-time-format
 
-**Usage prose draft to specialize:** “Use the host boundary to format a timestamp as a human-readable string via builtin.time operation='format'. Supply the typed inputs described for `pc-exec-time-format`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR075](monty.composition.skill-recipes.md#skr075-skill-time-format-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-format`'s block above.
+**Preloadable function-interface implementation for skill-time-format:** Implementation symbol `usage_l071(inputs)` from canonical component role L071; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_time_format(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-time-format`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L072. pc-exec-json-query
 
@@ -1937,17 +2894,33 @@ result = host.time(operation="format", input=inputs["timestamp"], format_string=
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
+def usage_l072(inputs):
+    result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l072(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-json-query
 
-**Usage prose draft to specialize:** “Use the host boundary for json query operation. Supply the typed inputs described for `pc-exec-json-query`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR076](monty.composition.skill-recipes.md#skr076-skill-json-query-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-query`'s block above.
+**Preloadable function-interface implementation for skill-json-query:** Implementation symbol `usage_l072(inputs)` from canonical component role L072; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_json_query(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-query`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L073. pc-exec-json-stringify
 
@@ -1963,17 +2936,33 @@ result = host.json(operation="query", data=inputs["data"], path=inputs["path"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.json(operation="stringify", data=inputs["json_text"])
+def usage_l073(inputs):
+    result = host.json(operation="stringify", data=inputs["json_text"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l073(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-json-stringify
 
-**Usage prose draft to specialize:** “Use the host boundary for json stringify or parse. Supply the typed inputs described for `pc-exec-json-stringify`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR077](monty.composition.skill-recipes.md#skr077-skill-json-stringify-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-stringify`'s block above.
+**Preloadable function-interface implementation for skill-json-stringify:** Implementation symbol `usage_l073(inputs)` from canonical component role L073; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_json_stringify(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-stringify`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L074. pc-exec-json-validate
 
@@ -1987,17 +2976,33 @@ result = host.json(operation="stringify", data=inputs["json_text"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.json(operation="validate", data=inputs["json_text"])
+def usage_l074(inputs):
+    result = host.json(operation="validate", data=inputs["json_text"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l074(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-json-validate
 
-**Usage prose draft to specialize:** “Use the host boundary to validate a JSON string. Supply the typed inputs described for `pc-exec-json-validate`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR078](monty.composition.skill-recipes.md#skr078-skill-json-validate-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-validate`'s block above.
+**Preloadable function-interface implementation for skill-json-validate:** Implementation symbol `usage_l074(inputs)` from canonical component role L074; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_json_validate(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-exec-json-validate`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L075. pc-exec-echo
 
@@ -2011,11 +3016,24 @@ result = host.json(operation="validate", data=inputs["json_text"])
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.echo(message=inputs["message"])
+def usage_l075(inputs):
+    result = host.echo(message=inputs["message"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l075(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L076. pc-github-list-issues
 
@@ -2037,9 +3055,15 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 #### skill-github-list-issues
 
-**Usage prose draft to specialize:** “GET /repos/{owner}/{repo}/issues?state=open. Supply the typed inputs described for `pc-github-list-issues`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR079](monty.composition.skill-recipes.md#skr079-skill-github-list-issues-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-github-list-issues:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_list_issues(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L077. pc-github-list-prs
 
@@ -2061,9 +3085,15 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 #### skill-github-list-prs
 
-**Usage prose draft to specialize:** “GET /repos/{owner}/{repo}/pulls?state=open. Supply the typed inputs described for `pc-github-list-prs`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR080](monty.composition.skill-recipes.md#skr080-skill-github-list-prs-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-github-list-prs:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_list_prs(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L078. pc-github-get-authenticated-user
 
@@ -2079,17 +3109,33 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.http(method="GET", url="https://api.github.com/user")
+def usage_l078(inputs):
+    result = host.http(method="GET", url="https://api.github.com/user")
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l078(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-github-get-authenticated-user
 
-**Usage prose draft to specialize:** “GET /user — returns login, id, name, email. Supply the typed inputs described for `pc-github-get-authenticated-user`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR081](monty.composition.skill-recipes.md#skr081-skill-github-get-authenticated-user-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-github-get-authenticated-user`'s block above.
+**Preloadable function-interface implementation for skill-github-get-authenticated-user:** Implementation symbol `usage_l078(inputs)` from canonical component role L078; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_get_authenticated_user(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-github-get-authenticated-user`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L079. pc-github-search-issues
 
@@ -2113,9 +3159,15 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 #### skill-github-search-issues
 
-**Usage prose draft to specialize:** “GET /search/issues?q={slot0}. slot0 = URL-encoded query. Supply the typed inputs described for `pc-github-search-issues`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR082](monty.composition.skill-recipes.md#skr082-skill-github-search-issues-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**Preloadable function-interface implementation for skill-github-search-issues:** Implementation symbol `usage_l016(inputs)` from canonical component role L016; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_github_search_issues(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L080. pc-git-diff-unstaged
 
@@ -2129,11 +3181,24 @@ result = "https://api.github.com" + inputs["relative_path"]
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git diff')
+def usage_l080(inputs):
+    result = host.shell(command='git diff')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l080(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L081. pc-git-diff-staged
 
@@ -2147,11 +3212,24 @@ result = host.shell(command='git diff')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git diff --cached')
+def usage_l081(inputs):
+    result = host.shell(command='git diff --cached')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l081(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L082. pc-git-diff-head
 
@@ -2165,11 +3243,24 @@ result = host.shell(command='git diff --cached')
 
 **Recipe wiring:** `proposed-shell-dispatch`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.shell(command='git diff HEAD~1')
+def usage_l082(inputs):
+    result = host.shell(command='git diff HEAD~1')
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l082(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L083. pc-grep-fn-tests
 
@@ -2185,11 +3276,24 @@ result = host.shell(command='git diff HEAD~1')
 
 **Recipe wiring:** `pc-exec-grep`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.grep(pattern=inputs["pattern"], path=inputs["path"], glob="*test*")
+def usage_l083(inputs):
+    result = host.grep(pattern=inputs["pattern"], path=inputs["path"], glob="*test*")
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l083(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L084. pc-grep-hardcoded-secrets
 
@@ -2205,11 +3309,24 @@ result = host.grep(pattern=inputs["pattern"], path=inputs["path"], glob="*test*"
 
 **Recipe wiring:** `pc-exec-grep`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:=]\s*['\"][^'\"]{8,}", path=inputs["path"])
+def usage_l084(inputs):
+    result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:=]\s*['\"][^'\"]{8,}", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l084(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L085. pc-grep-injection-patterns
 
@@ -2225,11 +3342,24 @@ result = host.grep(pattern=r"(?i)(password|api_key|secret|token|credential)\s*[:
 
 **Recipe wiring:** `pc-exec-grep`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.grep(pattern=r"(?i)(eval\(|exec\(|subprocess|shell_exec|format!.*sql|query.*format)", path=inputs["path"])
+def usage_l085(inputs):
+    result = host.grep(pattern=r"(?i)(eval\(|exec\(|subprocess|shell_exec|format!.*sql|query.*format)", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l085(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L086. pc-plan-create
 
@@ -2287,11 +3417,24 @@ result = "plans/" + slug + ".md"
 
 **Recipe wiring:** pure logic gets one executable step; Tool usage gets its matching binding then executable. Any prerequisite/output formatting/reply belongs in other steps.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_search(query="plan_id:")
+def usage_l088(inputs):
+    result = host.memory_search(query="plan_id:")
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l088(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### L089. pc-plan-status-update
 
@@ -2378,9 +3521,7 @@ result = {"changed": prior != new}
 
 #### hash-compare
 
-**Documentation prose to retain with PythonCode:** “Use this pure transformation with the exact typed inputs/result described above. It executes no Tool, establishes no provenance/approval and needs no binding. The consuming Recipe provides trusted inputs and decides completion.”
-
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**New-v3 disposition:** `hash-compare` is a historical pure-logic wrapper, not a one-Tool Skill. Keep the reusable pure PythonCode and its Recipe references; do not allocate a public Skill function or artificial ToolSkill. If another real Skill needs this helper, declare its PythonCode UUID/symbol dependency and preload it before the dependent export. Constants may be shared only when immutable; helper working arrays/results remain invocation-local.
 
 ### L091. pc-format-component-header
 
@@ -2417,9 +3558,7 @@ result = {"header": "## " + str(inputs["class_code"]) + ":" + str(inputs["prompt
 
 #### component-header-render
 
-**Documentation prose to retain with PythonCode:** “Use this pure transformation with the exact typed inputs/result described above. It executes no Tool, establishes no provenance/approval and needs no binding. The consuming Recipe provides trusted inputs and decides completion.”
-
-**Association disposition:** the local pure/preparation snippet is not this Skill's executor. Associate this Skill only with the relevant single-Tool retrieval/write/removal usage in the Recipe above; pure portions stay separately referenced PythonCode. A pure-only historical wrapper becomes PythonCode documentation, not a zero-Tool Skill. For multi-Tool historical prose, retain task behavior in the Recipe and author separate usage Skills.
+**New-v3 disposition:** `component-header-render` is a historical pure-logic wrapper, not a one-Tool Skill. Keep the reusable pure PythonCode and its Recipe references; do not allocate a public Skill function or artificial ToolSkill. If another real Skill needs this helper, declare its PythonCode UUID/symbol dependency and preload it before the dependent export. Constants may be shared only when immutable; helper working arrays/results remain invocation-local.
 
 ### L092. pc-zencoder-validate-uuid
 
@@ -2480,17 +3619,33 @@ result = {"task_status": inputs["task"]["status"], "branch": inputs["task"]["bra
 
 **Recipe wiring:** `proposed-api-relative-path` → `proposed-zencoder-get`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+def usage_l094(inputs):
+    result = host.zencoder_api(method="GET", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l100(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-list-projects
 
-**Usage prose draft to specialize:** “GET /projects via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-projects`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR083](monty.composition.skill-recipes.md#skr083-skill-zencoder-list-projects-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-projects`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-list-projects:** Implementation symbol `usage_l094(inputs)` from canonical component role L094; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_list_projects(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-projects`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L095. pc-zencoder-list-tasks
 
@@ -2506,17 +3661,33 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-get`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+def usage_l095(inputs):
+    result = host.zencoder_api(method="GET", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l100(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-list-tasks
 
-**Usage prose draft to specialize:** “GET /projects/{pid}/tasks[?status&limit] via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-tasks`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR084](monty.composition.skill-recipes.md#skr084-skill-zencoder-list-tasks-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-tasks`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-list-tasks:** Implementation symbol `usage_l095(inputs)` from canonical component role L095; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_list_tasks(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-tasks`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L096. pc-zencoder-get-task
 
@@ -2532,17 +3703,33 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-get`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+def usage_l096(inputs):
+    result = host.zencoder_api(method="GET", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l100(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-get-task
 
-**Usage prose draft to specialize:** “GET /projects/{pid}/tasks/{tid} via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-get-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR085](monty.composition.skill-recipes.md#skr085-skill-zencoder-get-task-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-get-task`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-get-task:** Implementation symbol `usage_l096(inputs)` from canonical component role L096; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_get_task(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-get-task`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L097. pc-zencoder-get-plan
 
@@ -2558,17 +3745,33 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-get`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+def usage_l097(inputs):
+    result = host.zencoder_api(method="GET", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l100(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-get-plan
 
-**Usage prose draft to specialize:** “GET /projects/{pid}/tasks/{tid}/plan via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-get-plan`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR086](monty.composition.skill-recipes.md#skr086-skill-zencoder-get-plan-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-get-plan`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-get-plan:** Implementation symbol `usage_l097(inputs)` from canonical component role L097; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_get_plan(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-get-plan`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L098. pc-zencoder-create-task
 
@@ -2584,20 +3787,36 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-method = inputs["method"]
-if method not in ("POST", "PATCH"):
-    raise ValueError("unsupported write method")
-result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+def usage_l098(inputs):
+    method = inputs["method"]
+    if method not in ("POST", "PATCH"):
+        raise ValueError("unsupported write method")
+    result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l101(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-create-task
 
-**Usage prose draft to specialize:** “POST /projects/{pid}/tasks via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-create-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR087](monty.composition.skill-recipes.md#skr087-skill-zencoder-create-task-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-create-task`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-create-task:** Implementation symbol `usage_l098(inputs)` from canonical component role L098; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_create_task(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-create-task`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L099. pc-zencoder-patch-task
 
@@ -2613,20 +3832,36 @@ result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body
 
 **Recipe wiring:** `pc-zencoder-validate-uuid` → `proposed-api-relative-path` → `proposed-zencoder-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-method = inputs["method"]
-if method not in ("POST", "PATCH"):
-    raise ValueError("unsupported write method")
-result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+def usage_l099(inputs):
+    method = inputs["method"]
+    if method not in ("POST", "PATCH"):
+        raise ValueError("unsupported write method")
+    result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l101(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-patch-task
 
-**Usage prose draft to specialize:** “PATCH /projects/{pid}/tasks/{tid} via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-patch-task`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR088](monty.composition.skill-recipes.md#skr088-skill-zencoder-patch-task-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-patch-task`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-patch-task:** Implementation symbol `usage_l099(inputs)` from canonical component role L099; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_patch_task(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-patch-task`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L100. pc-zencoder-list-automations
 
@@ -2642,17 +3877,33 @@ result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body
 
 **Recipe wiring:** `proposed-api-relative-path` → `proposed-zencoder-get`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+def usage_l100(inputs):
+    result = host.zencoder_api(method="GET", path=inputs["path"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l100(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-list-automations
 
-**Usage prose draft to specialize:** “GET /automations[?enabled] via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-list-automations`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR089](monty.composition.skill-recipes.md#skr089-skill-zencoder-list-automations-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-automations`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-list-automations:** Implementation symbol `usage_l100(inputs)` from canonical component role L100; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_list_automations(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-list-automations`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ### L101. pc-zencoder-create-automation
 
@@ -2668,20 +3919,36 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Recipe wiring:** `proposed-api-relative-path` → `proposed-zencoder-write`. Insert each required ToolSkill immediately before its executable. Pass successful preceding fields through typed layouts. The snippet below illustrates the relevant local/shared body; do not seed the original monolith alongside its replacement Recipe.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-method = inputs["method"]
-if method not in ("POST", "PATCH"):
-    raise ValueError("unsupported write method")
-result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+def usage_l101(inputs):
+    method = inputs["method"]
+    if method not in ("POST", "PATCH"):
+        raise ValueError("unsupported write method")
+    result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_l101(inputs)
 ```
 
 **Acceptance focus:** verify the concrete edge cases in the change above, hostile quote/newline/marker data, exact result validation and pre-effect failure. For an effectful usage, retain confirmed/unresolved completion so a later failure cannot replay it.
 
 #### skill-zencoder-create-automation
 
-**Usage prose draft to specialize:** “POST /automations via host.zencoder_api. Supply the typed inputs described for `pc-zencoder-create-automation`; apply defaults only to missing consumer inputs. Preconditions are a qualified retained Tool/binding and its supported parameter/result profile. Execute exactly this one Tool usage through the associated canonical PythonCode; preparation, additional Tools and final reply are Recipe steps. Return the actual validated result. Stop on classified errors or unknown completion; no retry without exact verified evidence.”
+**Canonical execution Recipe:** [SKR090](monty.composition.skill-recipes.md#skr090-skill-zencoder-create-automation-execution-recipe). Expose its exact command and variable formatting, not Python source; reuse an equivalent existing Recipe after the linked overlap review.
 
-**Association disposition:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-create-automation`'s block above.
+**Preloadable function-interface implementation for skill-zencoder-create-automation:** Implementation symbol `usage_l101(inputs)` from canonical component role L101; reuse its exact code UUID and compatible revision. Bind the public alias `use_skill_zencoder_create_automation(inputs)` to that retained function only when this Skill's specific parameter/fixed-selector/result contract has been qualified. Aliasing creates no duplicated body.
+
+**Usage prose to implement:** Document this export's one-Tool purpose, exact finite `inputs` and return/error/wait contract, required prepared inputs and fixed/computed Tool arguments using the parent component's audited contract. Preload definitions and dependencies; invoke the export once on demand after its matching ToolSkill binding. Additional discovery, filtering, model reasoning, transformation, write or reply operations stay in the Recipe. The earlier multi-operation name does not authorize hiding those operations in this Skill.
+
+**Load/pin/state instructions:** Declare public alias, implementation symbol, code UUID and every private helper/module/constant dependency in this immutable Skill revision. Resolve a complete approved graph and dependency-first load order before effects; reject conflicts/cycles/missing support. Pin exported-name resolution and the exact association/Tool artifacts for the task, including waits/children/resume. Reuse immutable code/constants only; allocate arrays, dictionaries, buffers and defaults per invocation/task. Do not capture task data or host authority in a shared closure. Preloading enables no Tool: binding and current kernel checks still apply.
+
+**Association and acceptance:** resolve the canonical executable/profile above and record this usage's exact parameters, result, failure metadata and ToolSkill/Tool association. Several compatible usages can share code with separately reviewed associations; no second body is needed. The code example is `pc-zencoder-create-automation`'s block above. The prose, exports, parameters, fixed selectors and behavior must agree in the exact reviewed combination. Demonstrate zero-effect preload, valid/invalid calls, repeated-call freshness, concurrent-task isolation, live policy denial after preload and old-version export retention. Ordinary invocation/MCP Recipe matching creates no component and repeats no Q1/Q2. Preserve all parent blocked/profile/precondition limits.
 
 ## Newer entries
 
@@ -2693,13 +3960,29 @@ result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.post_reply(answer=inputs["answer"])
+def usage_n01(inputs):
+    result = host.post_reply(answer=inputs["answer"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_n01(inputs)
 ```
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
 **Associated Skill prose draft to specialize:** “Packaged reply: reply:code / reply:skill. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
+
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `usage_n01` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
 
 ### N02. Packaged history writer: history:code / history:skill
 
@@ -2709,13 +3992,29 @@ result = host.post_reply(answer=inputs["answer"])
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.memory_write(content=inputs["content"], target="daily_log")
+def usage_n02(inputs):
+    result = host.memory_write(content=inputs["content"], target="daily_log")
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_n02(inputs)
 ```
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
 **Associated Skill prose draft to specialize:** “Packaged history writer: history:code / history:skill. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
+
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `usage_n02` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
 
 ### N03. Packaged history formatter: history:formatter
 
@@ -2757,17 +4056,33 @@ async def _execute_recipe(task_token, recipe_id, step_link, inputs):
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-start = inputs["start_line"]
-end = inputs["end_line"]
-if type(start) is not int or type(end) is not int or start < 1 or end < start:
-    raise ValueError("invalid line interval")
-result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
+def usage_n05(inputs):
+    start = inputs["start_line"]
+    end = inputs["end_line"]
+    if type(start) is not int or type(end) is not int or start < 1 or end < start:
+        raise ValueError("invalid line interval")
+    result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_n05(inputs)
 ```
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
 **Associated Skill prose draft to specialize:** “Typed interval usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
+
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `usage_n05` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
 
 ### N06. Typed JSON parse usage
 
@@ -2779,13 +4094,29 @@ result = host.read_file(path=inputs["path"], offset=start, limit=end-start+1)
 
 **Split/reuse:** Keep atomic; no separately reusable internal part established.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.json(operation="parse", data=inputs["json_text"])
+def usage_n06(inputs):
+    result = host.json(operation="parse", data=inputs["json_text"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_n06(inputs)
 ```
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
 **Associated Skill prose draft to specialize:** “Typed JSON parse usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
+
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `usage_n06` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
 
 ### N07. Shared narrow structural compatibility check
 
@@ -3025,6 +4356,9 @@ result = {"subject_ref": inputs["subject_ref"], "dependency_manifest_ref": input
 
 **Associated Skill prose draft to specialize:** “Immutable review submission. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `BLOCKED: resolve actual one-Tool implementation symbol` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
+
 ### N17. Catalogue sweep and export
 
 **Prose description and implementation:** BLOCKED host executor: Qualify existing sweep_validated_components or its retained successor with complete coverage and no arbitrary row/token caps. Separate export from compilation. The code below is concrete input preparation only, not a successful submission/export/compiler/validation/publication implementation. Replace it with the verified single direct host call after registration and recursive result contracts are implemented.
@@ -3040,6 +4374,9 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
 **Associated Skill prose draft to specialize:** “Catalogue sweep and export. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `BLOCKED: resolve actual one-Tool implementation symbol` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
 
 ### N18. Registered compiler worker invocation
 
@@ -3057,6 +4394,9 @@ result = {"export_ref": inputs["export_ref"], "compiler_ref": inputs["compiler_r
 
 **Associated Skill prose draft to specialize:** “Registered compiler worker invocation. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
 
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `BLOCKED: resolve actual one-Tool implementation symbol` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
+
 ### N19. Generation validation usage
 
 **Prose description and implementation:** BLOCKED host executor: Separate primitive parser/tokenizer facts from pure coverage policy. Pin original/derived artifact hashes, complete coverage and model technical capacity; do not equate hash comparison with qualification. The code below is concrete input preparation only, not a successful submission/export/compiler/validation/publication implementation. Replace it with the verified single direct host call after registration and recursive result contracts are implemented.
@@ -3071,7 +4411,10 @@ result = {"manifest_ref": inputs["manifest_ref"], "facts_ref": inputs["facts_ref
 
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
-**Associated Skill prose draft to specialize:** “Generation validation usage. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+**Skill disposition:** This pure validator remains reusable PythonCode. It defines no one-Tool Skill, ToolSkill or MCP Skill command.
+
+
+**Helper preload:** declare a pure helper export only when needed by a real Skill or Recipe; pin its code dependencies and keep state invocation-local. No new Skill is created.
 
 ### N20. Prefix generation publication
 
@@ -3088,6 +4431,9 @@ result = {"generation_ref": inputs["generation_ref"], "validation_ref": inputs["
 **Recipe/qualification instructions:** For a concrete Tool usage, pair its exact ToolSkill with the executable and associate a one-Tool Skill. Pure checking/formatting has no artificial binding or Skill. For blocked host roles, first implement/qualify the supported adapter; preparation alone cannot satisfy the Recipe step. Pin all result/evidence/artifact identities in the selected combination.
 
 **Associated Skill prose draft to specialize:** “Prefix generation publication. Use only the typed parameters and supported primitive operation described here. Require the exact qualified binding and owned input/evidence references. Return the actual declared primitive result; classify errors/waits and preserve effect uncertainty. Do not perform other Tool operations or infer approval. The Recipe handles preparation, checks and completion.” Resolve the actual Skill identity before storing; the guide/planned roles have no allocated identity in this specification.
+
+
+**Associated Skill interface implementation:** declare public name/signature and the implementation `BLOCKED: resolve actual one-Tool implementation symbol` with the exact canonical code UUID, one-Tool profile, recursive contracts and private dependency graph. Preload only definitions in dependency-first order; invoke the pinned export with typed data after matching ToolSkill binding. No mutable globals/defaults/closure state are shared. Complete exact existing association evidence; new interface/code revisions require the appropriate authoring or trusted-bootstrap review before activation. The request itself requires no component review. Preserve the blocked status if the example only prepares fields rather than calling its actual Tool.
 
 ## Proposed reusable parts
 
@@ -3193,8 +4539,18 @@ result = rows[0]
 
 **Named reuse consumers:** `pc-exec-trigger-resolve-and-remove`, `future direct named-trigger removal Recipe`.
 
+**Function migration:** declare this canonical export and its private dependency graph in the associated one-Tool Skill interface; preload it without effects, resolve its task-pinned binding at invocation and keep mutable state local. Existing blocked adapter/profile qualifications remain required.
+
 ```python
-result = host.trigger_remove(trigger_id=inputs["trigger_id"])
+def usage_proposed_trigger_remove(inputs):
+    result = host.trigger_remove(trigger_id=inputs["trigger_id"])
+    return result
+```
+
+**Pinned invocation after matching binding:**
+
+```python
+result = usage_proposed_trigger_remove(inputs)
 ```
 
 **Implementation and Recipe instructions:** Qualify the real existing Tool callable and its exact registration/adapter/result contract; associate one-Tool prose and bind immediately before execution. Retain actual acknowledgements and live policy/effect fencing. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
@@ -3243,8 +4599,18 @@ for argument in inputs["arguments"]:
 
 **Named reuse consumers:** `all listed shell usages`, `pc-git-diff-unstaged/staged/head`.
 
+**Function migration:** declare this canonical export and its private dependency graph in the associated one-Tool Skill interface; preload it without effects, resolve its task-pinned binding at invocation and keep mutable state local. Existing blocked adapter/profile qualifications remain required.
+
 ```python
-result = host.shell(command=inputs["command"])
+def usage_proposed_shell_dispatch(inputs):
+    result = host.shell(command=inputs["command"])
+    return result
+```
+
+**Pinned invocation after matching binding:**
+
+```python
+result = usage_proposed_shell_dispatch(inputs)
 ```
 
 **Implementation and Recipe instructions:** Qualify the real existing Tool callable and its exact registration/adapter/result contract; associate one-Tool prose and bind immediately before execution. Retain actual acknowledgements and live policy/effect fencing. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
@@ -3286,8 +4652,18 @@ if query:
 
 **Named reuse consumers:** `pc-zencoder-list-projects`, `pc-zencoder-list-tasks`, `pc-zencoder-get-task`, `pc-zencoder-get-plan`, `pc-zencoder-list-automations`.
 
+**Function migration:** declare this canonical export and its private dependency graph in the associated one-Tool Skill interface; preload it without effects, resolve its task-pinned binding at invocation and keep mutable state local. Existing blocked adapter/profile qualifications remain required.
+
 ```python
-result = host.zencoder_api(method="GET", path=inputs["path"])
+def usage_proposed_zencoder_get(inputs):
+    result = host.zencoder_api(method="GET", path=inputs["path"])
+    return result
+```
+
+**Pinned invocation after matching binding:**
+
+```python
+result = usage_proposed_zencoder_get(inputs)
 ```
 
 **Implementation and Recipe instructions:** Qualify the real existing Tool callable and its exact registration/adapter/result contract; associate one-Tool prose and bind immediately before execution. Retain actual acknowledgements and live policy/effect fencing. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
@@ -3300,11 +4676,21 @@ result = host.zencoder_api(method="GET", path=inputs["path"])
 
 **Named reuse consumers:** `pc-zencoder-create-task`, `pc-zencoder-patch-task`, `pc-zencoder-create-automation`.
 
+**Function migration:** declare this canonical export and its private dependency graph in the associated one-Tool Skill interface; preload it without effects, resolve its task-pinned binding at invocation and keep mutable state local. Existing blocked adapter/profile qualifications remain required.
+
 ```python
-method = inputs["method"]
-if method not in ("POST", "PATCH"):
-    raise ValueError("unsupported write method")
-result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+def usage_proposed_zencoder_write(inputs):
+    method = inputs["method"]
+    if method not in ("POST", "PATCH"):
+        raise ValueError("unsupported write method")
+    result = host.zencoder_api(method=method, path=inputs["path"], body=inputs["body"])
+    return result
+```
+
+**Pinned invocation after matching binding:**
+
+```python
+result = usage_proposed_zencoder_write(inputs)
 ```
 
 **Implementation and Recipe instructions:** Qualify the real existing Tool callable and its exact registration/adapter/result contract; associate one-Tool prose and bind immediately before execution. Retain actual acknowledgements and live policy/effect fencing. Apply the common acceptance contract and named-consumer edge cases; do not activate from this example alone.
@@ -3446,14 +4832,27 @@ result = response["answer"]
 
 **Typed inputs/result:** name/prompt/cron/completion_policy:required strings with checks. The code permits only recurring or complete_after_first_fire. Validate exact cron/timezone behavior in the actual scheduler profile; do not infer it from prose. Result is the actual {trigger:...} object from trigger_management::trigger_output: declare trigger_id,name,prompt,source,state,completion_policy,created_at and nullable agent_id/project_id/next_run_at/last_run_at/last_status plus the actual recursive schedule and is_active:boolean. Resolve serialized enum/schedule shapes from their concrete types and observations before qualification; no unconstrained object or success default.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-policy = inputs["completion_policy"]
-if policy not in ["recurring", "complete_after_first_fire"]:
-    raise ValueError("unsupported_completion_policy")
-result = host.trigger_create(name=inputs["name"], prompt=inputs["prompt"], cron=inputs["cron"], completion_policy=policy)
+def usage_r04(inputs):
+    policy = inputs["completion_policy"]
+    if policy not in ["recurring", "complete_after_first_fire"]:
+        raise ValueError("unsupported_completion_policy")
+    result = host.trigger_create(name=inputs["name"], prompt=inputs["prompt"], cron=inputs["cron"], completion_policy=policy)
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_r04(inputs)
 ```
 
 **Skill prose draft:** “Create exactly one scheduled trigger with the supplied validated cron, name, prompt and explicit completion policy. The primitive checks schedule validity and returns its persisted trigger receipt. Listing, model preparation and subsequent task execution are independent Recipe steps. A create-hook/rollback error can leave an unresolved effect; stop and reconcile by the retained attempt rather than creating another trigger.” Associate exact code/ToolSkill/Tool/parameters/result/failure and evidence; current Tool policy is independent. Consumers: trigger-create and reusable scheduled workflow admission. Default stop/max_attempts1; no verified deduplication was established. No invocation approval lease. Test selector rejection before dispatch, cron failure, confirmed ID, hook failure and rollback uncertainty. Keep one primitive call atomic.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### R05. proposed-component-content-hash
 
@@ -3463,11 +4862,24 @@ result = host.trigger_create(name=inputs["name"], prompt=inputs["prompt"], cron=
 
 **Typed inputs/result:** text:required string; result exact object {hash:required string}, no extras. Verify lowercase64hex in the actual producer/consumer profile with supported checks or code; preserve UTF8/newline semantics. A complete read/raw document export is a prerequisite for doc-sync, not supplied by this hash helper.
 
+**Preloadable implementation:** define the following function without calling it. Its public alias/signature and owning Skill interface must be declared in the approved Skill content. `inputs` is an explicit per-invocation typed mapping, not a global task variable. Load the pinned helper/module dependencies first; all host calls remain inside the function. The identifier below is a proposed interface symbol, not a UUID or a currently registered API.
+
 ```python
-result = host.component_db(op="compute_hash", text=inputs["text"])
+def usage_r05(inputs):
+    result = host.component_db(op="compute_hash", text=inputs["text"])
+    return result
+```
+
+**Invocation after the matching ToolSkill binding:**
+
+```python
+result = usage_r05(inputs)
 ```
 
 **Skill prose draft:** “Compute SHA256 over the UTF8 bytes of the supplied text using component_db's compute_hash primitive and return its lowercase hash. This does not read, write or validate a component. The Recipe obtains the exact complete source and compares stored state separately.” Pin actual registered component_db Tool/callable/adapter and its exact fixed op evidence; the Rust handler exists but this new retained usage still needs binding/association/behavior qualification. Consumers: doc-sync replacement, source/derived document preparation and document deduplication. Do not use text hashing as a substitute for the different exact retained-package/artifact checksum procedure. Test empty/Unicode/newline known vectors and complete versus truncated source. Keep atomic.
+
+
+**Export qualification:** pin this implementation symbol/source and its exact Skill/code/ToolSkill/Tool approval closure. Verify preload causes zero dispatch; each invocation has fresh local state and returns the declared result. Preserve any existing blocked adapter/semantic restriction above. The current direct top-level-call inspector does not by itself accept a function call into a preloaded graph; qualify function-aware source inspection, retained symbol resolution and host dispatch before activation.
 
 ### R06. proposed-document-hash-request
 
@@ -3557,8 +4969,18 @@ result = snapshot["content"]
 
 **Example successor source (blocked until qualification):**
 
+**Function migration:** declare this canonical export and its private dependency graph in the associated one-Tool Skill interface; preload it without effects, resolve its task-pinned binding at invocation and keep mutable state local. Existing blocked adapter/profile qualifications remain required.
+
 ```python
-result = host.kohai_complete(prompt=inputs["prompt"])
+def usage_existing_model_usage_requalification_pc_host_kohai_complete(inputs):
+    result = host.kohai_complete(prompt=inputs["prompt"])
+    return result
+```
+
+**Pinned invocation after matching binding:**
+
+```python
+result = usage_existing_model_usage_requalification_pc_host_kohai_complete(inputs)
 ```
 
 **Typed contract and implementation gate:** Current bridge consumes prompt.user_query:string, chat_history:list of role/content:string objects and prefix_placeholder:string, with permissive empty/default parsing and per-scope minimal-prefix fallback. Those behaviors are not the final-v3 child model contract. Before this body can be retained as a one-Tool usage, implement/qualify strict admitted-task prompt mapping, complete approved pinned prefix/source identity, model/provider/capability mapping, no silent history omission/fallback, global policy/technical checks, task compute account, failure/wait/recovery and exact association/approval. Inputs/output must match the actual supported revised bridge; use R03 only if the revised envelope is its documented ok/answer/usage shape. R02 is internal packet preparation, not a prompt object this current bridge accepts. A separate qualified mapping step or direct input layout must convert the reviewed request/source data to actual user_query/history/prefix references without source interpolation or elevating untrusted content. Do not manufacture a guessed new host.model callable or expose root stream_model authority. The same stopped/incomplete behavior applies to provider-assisted validator/prefix workflows. Test missing/failed model, context/identity mismatch, unsupported prefix/capacity, typed hostile input and incomplete result before any subsequent effect. Semantic review/structured parsing remains explicit later Recipe code; arbitrary model Python is never executed.
@@ -3566,8 +4988,7 @@ result = host.kohai_complete(prompt=inputs["prompt"])
 
 ## MCP consumers of these components
 
-The accepted [Skill-facing MCP target](monty.composition.md#16-mcp-exposes-skills-and-submits-python-to-the-global-orchestrator) consumes the same reusable Python/Tool usage library through the existing global orchestrator's isolated child execution. It does not require a second executor or duplicate class22 primitives. Keep raw Tool result validation before semantic output formatting; reuse proposed-line-reply-formatter only for its actual list-of-lines contract and other exact formatters where appropriate. Rust encodes the formatted result in the MCP response, rather than selecting the workflow/rewriting the result. N01/N02 ordinary chat publication/history are not automatically MCP completion steps. R09's general child-request/admission prerequisite can share actual supported global child machinery, but its dictionary example is not an MCP server, admitted program or child executor. External submitted Python needs the separate implemented transient-source admission contract in section16, not an invented Skill UUID -> Recipe compose call or automatic publication of the received source. No additional Python component is needed solely to serialize an MCP protocol envelope.
-
+MCP is a normal-chat client under [section16](monty.composition.md#16-mcp-invokes-skill-execution-recipes-through-intent-matching). It lists each eligible Skill execution Recipe's exact sentence/variable rules, accepts the completed command, opens a new chat and sends it as a user message. Existing ingress/matching/IBS/function/Tool/reply/history execution owns the work. MCP observes the correlated terminal chat response, forwards it and closes the chat through existing APIs. No MCP source admission, direct child scheduler/Tool connection, duplicate executor or extra formatter is needed. The Recipe may reuse C07 or an existing public formatter before its single normal chat reply owner. Ordinary chat history remains ordinary chat history, not a separately appended MCP record. Preserve durable effect/count and request/chat/message/result identity when observing or closing the chat; do not resend after uncertain submission or lost delivery.
 
 ## Counterfactual Recipe dependencies C01–C05
 
@@ -3861,10 +5282,14 @@ import json
 result = json.dumps(inputs["data"], ensure_ascii=False, allow_nan=False)
 ```
 
-**Exact wiring:** validated successful usage result or explicitly selected public projection -> C07.data -> string result -> the one selected reply owner. Existing text results bypass this helper; list-of-string displays can reuse the existing line formatter. Errors/unknown effects remain typed failures, never success strings. MCP's qualified output profile may reuse it for a text content block while retaining structured/error metadata and no automatic chat posting. Do not expose hidden credentials/internal evidence by serializing an entire envelope. Test strings containing quotes/JSON-looking text, finite nested objects, Unicode, nonfinite/cyclic rejection at the typed boundary and preservation of protocol failure status.
+**Exact wiring:** validated successful usage result or explicitly selected public projection -> C07.data -> string result -> the one selected reply owner. Existing text results bypass this helper; list-of-string displays can reuse the existing line formatter. Errors/unknown effects remain typed failures, never success strings. A Skill execution Recipe may reuse it for its declared normal chat response; MCP forwards that posted response and its supported outcome without another formatting or posting step. Do not expose hidden credentials/internal evidence by serializing an entire envelope. Test strings containing quotes/JSON-looking text, finite nested objects, Unicode, nonfinite/cyclic rejection at the typed boundary and preservation of protocol failure status.
 
 
 Recipe-level implementation instructions are in the [RCP001–RCP170 appendix](monty.composition.recipe-implementation.md); reuse the canonical bodies/contracts here rather than copying them into new components.
 
 
 The [audit dispositions](monty.composition.md#20-correctness-security-and-v3monty-alignment-audit) apply to these examples and all per-Recipe designs. Syntax/pure-function probes do not establish acceptance by the selected retained Monty/IBS path.
+
+## Skill execution Recipes and MCP commands
+
+Every real Skill usage above must have a canonical execution Recipe or equivalent existing variant. The [per-Skill Recipe appendix](monty.composition.skill-recipes.md) gives each reviewed legacy companion and each explicitly associated new usage its command, variable placement, function reuse/blocked disposition and assembly instructions. MCP lists only eligible activated Skill/Recipe pairs and accepts the matching command, never Python. Reuse equivalent Recipes and exclude retired pure wrappers/protected internal usages from ordinary MCP discovery. Authoring the companion Recipe needs its normal evidence; invoking it does not create or review a component.

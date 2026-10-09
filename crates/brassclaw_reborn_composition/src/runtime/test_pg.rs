@@ -45,6 +45,38 @@ pub(crate) async fn stop_worker_for_state_fixture(runtime: &super::RebornRuntime
 }
 
 impl PgRig {
+    /// Runtime tests use explicit finite settings without depending on the
+    /// machine having the production default reserve free. Startup-mode tests
+    /// force below-floor sizing through the real probe and an oversized reserve.
+    pub(crate) async fn configure_runtime_memory(
+        &self,
+        mode: brassclaw_product_workflow::MontyMemoryMode,
+    ) {
+        use brassclaw_product_workflow::{MontyMemoryMode, MontyVmSettingsStore};
+
+        let store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            Arc::clone(&self.pool),
+            "default",
+            "default",
+        );
+        let current = store.get("default", "default").await.expect("settings");
+        let mut policy = current.memory_policy;
+        policy.mode = mode;
+        if mode == MontyMemoryMode::Startup {
+            policy.reserve_bytes = i64::MAX as u64;
+        }
+        let request = serde_json::from_value(serde_json::json!({
+            "expected_revision": current.revision,
+            "memory_policy": policy,
+            "max_memory_bytes": brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES,
+        }))
+        .expect("finite fixture settings");
+        store
+            .upsert("default", "default", &request)
+            .await
+            .expect("persist finite fixture settings");
+    }
+
     /// Serialize operations sharing this test's private database.
     pub(crate) async fn lock_db(&self) -> MutexGuard<'_, ()> {
         self.db_lock.lock().await

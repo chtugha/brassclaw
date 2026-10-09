@@ -92,17 +92,27 @@ impl<G: HostManagedModelGateway + ?Sized> InterceptingModelGateway<G> {
         }
         // PostgreSQL stores iteration as int4. Exhaustion is an explicit error,
         // never wrap/reuse an iteration or truncate its identity.
-        let iteration = self
-            .next_iteration
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                (current < i32::MAX as u32).then(|| current + 1)
-            })
-            .map_err(|_| {
-                HostManagedModelError::new(
-                    HostManagedModelErrorKind::InvalidRequest,
-                    "interceptor iteration exhausted",
-                )
-            })?;
+        let mut iteration = self.next_iteration.load(Ordering::Acquire);
+        loop {
+            let next = iteration
+                .checked_add(1)
+                .filter(|next| *next <= i32::MAX as u32)
+                .ok_or_else(|| {
+                    HostManagedModelError::new(
+                        HostManagedModelErrorKind::InvalidRequest,
+                        "interceptor iteration exhausted",
+                    )
+                })?;
+            match self.next_iteration.compare_exchange_weak(
+                iteration,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => iteration = actual,
+            }
+        }
         let packet = capture(&request, iteration)?;
         #[cfg(feature = "root-llm-provider")]
         let (mut request, mut packet) = (request, packet);

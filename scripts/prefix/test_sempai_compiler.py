@@ -98,6 +98,14 @@ class SempaiCompilerTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'fingerprints drifted'):
                         compiler.required_reference_cards(cards)
                 inventory = (compiler.RAW / 'source_manifest.json').read_bytes()
+                upstream = compiler.SOURCE_ROOT / compiler.MONTY_PACKAGE / 'docs/limitations/index.md'
+                upstream_original = upstream.read_bytes()
+                upstream.write_bytes(upstream_original + b'\nTampered upstream text.\n')
+                with self.assertRaisesRegex(ValueError, 'Monty.*hash|Monty.*integrity|Monty.*changed|Monty.*fingerprint'):
+                    compiler.collect()
+                self.assertEqual((compiler.RAW / 'source_manifest.json').read_bytes(), inventory)
+                self.assertEqual(compiler.accepted_cards(), cards)
+                upstream.write_bytes(upstream_original)
                 teaching = compiler.SOURCE_ROOT / 'scripts/prefix/sempai-worked-examples.md'
                 teaching_original = teaching.read_bytes()
                 teaching.write_bytes(teaching_original + b'\nUnverified change.\n')

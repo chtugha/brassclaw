@@ -233,10 +233,13 @@ mod tests {
     #[tokio::test]
     async fn local_dev_agent_surface_exposes_extension_lifecycle_tools() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "extension-tools-surface-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev(
+                "extension-tools-surface-owner",
+                dir.path().join("local-dev"),
+            )
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let runtime = services.host_runtime.expect("host runtime composed");
@@ -286,10 +289,10 @@ mod tests {
     async fn local_dev_extension_activate_routes_hosted_mcp_discovery_through_runtime_egress() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "extension-tools-hosted-mcp-owner",
-            storage_root.clone(),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev("extension-tools-hosted-mcp-owner", storage_root.clone())
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let extension_management = services
@@ -331,10 +334,13 @@ mod tests {
     #[tokio::test]
     async fn local_dev_extension_lifecycle_tool_lists_all_and_rejects_malformed_inputs() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "extension-tools-invalid-owner",
-            dir.path().join("local-dev"),
-        ))
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev(
+                "extension-tools-invalid-owner",
+                dir.path().join("local-dev"),
+            )
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let runtime = services.host_runtime.expect("host runtime composed");

@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component for the supplied target typed-inputs contract. The helper is presence-aware: it receives the whole mapping, checks key membership before inspecting the value, and returns the complete result object on every branch. Module scope invokes it and assigns its returned object to result. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-09",
+        "description": "Classify raw lag: missing -> {kind:\"missing\",lag:null}; explicit null -> {kind:\"null\",lag:null}; exact integer 5..14 -> {kind:\"integer\",lag:original}; other -> {kind:\"invalid\",lag:null}. No bool/float/coercion/defaults/exceptions. Helper receives the mapping (presence-aware), invoked at module scope, result assigned to its returned object. Unapproved target typed-inputs draft; selected-runner support, Q1 and human Q2 required; no observed tests/submission/activation.",
+        "content": "def classify_lag(mapping):\n    if 'lag' not in mapping:\n        return {'kind': 'missing', 'lag': None}\n    value = mapping['lag']\n    if value is None:\n        return {'kind': 'null', 'lag': None}\n    if type(value) is int and 5 <= value <= 14:\n        return {'kind': 'integer', 'lag': value}\n    return {'kind': 'invalid', 'lag': None}\nresult = classify_lag(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

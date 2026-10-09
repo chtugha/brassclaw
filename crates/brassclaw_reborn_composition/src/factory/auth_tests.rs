@@ -165,6 +165,7 @@ async fn local_dev_oauth_turn_gate_callback_resumes_default_turn_coordinator() {
     let dir = tempfile::tempdir().expect("tempdir");
     let services = build_reborn_services(
         RebornBuildInput::local_dev("local-dev-auth-owner", dir.path().join("local-dev"))
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
             .with_product_auth_ports(in_memory_product_auth_ports()),
     )
     .await
@@ -290,6 +291,7 @@ async fn local_dev_google_oauth_backend_builds_with_host_provider_config() {
     let dir = tempfile::tempdir().expect("tempdir");
     let services = build_reborn_services(
         RebornBuildInput::local_dev("local-dev-google-oauth-owner", dir.path().join("local-dev"))
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
             .with_google_oauth_backend(OAuthClientConfig {
                 client_id: OAuthClientId::new("google-client-123").expect("client id"),
                 client_secret: None,
@@ -308,6 +310,7 @@ async fn local_dev_notion_oauth_backend_builds_with_host_provider_config() {
     let dir = tempfile::tempdir().expect("tempdir");
     let services = build_reborn_services(
         RebornBuildInput::local_dev("local-dev-notion-oauth-owner", dir.path().join("local-dev"))
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
             .with_google_oauth_backend(OAuthClientConfig {
                 client_id: OAuthClientId::new("google-client-123").expect("client id"),
                 client_secret: None,
@@ -336,6 +339,7 @@ async fn local_dev_notion_dcr_oauth_backend_builds_and_wires_registry() {
             "local-dev-notion-dcr-oauth-owner",
             dir.path().join("local-dev"),
         )
+        .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
         .with_notion_dcr_oauth_backend("http://127.0.0.1:3000", "Brassclaw")
         .expect("notion dcr config"),
     )
@@ -411,6 +415,7 @@ async fn local_dev_google_oauth_backend_accepts_optional_client_secret_config() 
             "local-dev-google-oauth-secret-owner",
             dir.path().join("local-dev"),
         )
+        .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
         .with_google_oauth_backend(OAuthClientConfig {
             client_id: OAuthClientId::new("google-client-123").expect("client id"),
             client_secret: Some(SecretString::from("raw-client-secret".to_string())),
@@ -429,6 +434,7 @@ async fn oauth_callback_with_stale_gate_maps_to_terminal_invalid_request() {
     let dir = tempfile::tempdir().expect("tempdir");
     let services = build_reborn_services(
         RebornBuildInput::local_dev("local-dev-auth-stale-owner", dir.path().join("local-dev"))
+            .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
             .with_product_auth_ports(in_memory_product_auth_ports()),
     )
     .await
@@ -477,6 +483,7 @@ async fn oauth_callback_with_lifecycle_activation_returns_ok_without_resume() {
             "local-dev-auth-lifecycle-owner",
             dir.path().join("local-dev"),
         )
+        .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
         .with_product_auth_ports(in_memory_product_auth_ports()),
     )
     .await

@@ -1,5 +1,39 @@
 # ToolSkill definition and authoring instructions — final v3
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 This guide explains what a ToolSkill is, when to reuse one and how to author a
 new one. MUST means required. A binding with unresolved identity, parameter,
 implementation or approval requirements is incomplete.
@@ -31,10 +65,10 @@ Tool policy and technical constraints before that call is dispatched.
 
 **The Orchestrator needs the Skill to know how to use the Tool.** Its prose
 explains the purpose, exact arguments, prerequisites and result/error handling;
-its explicitly associated PythonCode implements that same usage. A ToolSkill
+its explicitly associated PythonCode defines the exported functions implementing that usage. A ToolSkill
 does not replace either part. IBS/composition must identify the approved Skill,
 its executable component and their compatible ToolSkill/Tool association when
-preparing the usage. In Tier 0, Monty executes that associated PythonCode without
+preparing the usage. In Tier 0, Monty invokes the pinned preloaded export without
 an LLM interpreting the prose. Explicit Tier-1 LLM work can use the Skill prose
 as instructions/context. Deterministic execution does not make the Skill
 prose-only, optional to the usage association or executable Python itself.
@@ -58,7 +92,7 @@ behavior belongs in Recipe steps and their executable components.
 | --- | --- | --- | --- |
 | Tool | 0 | Rust host/kernel boundary; performs a declared primitive operation | Choose the Recipe workflow |
 | ToolSkill | 13 | IBS/Rust-side preparation; describes one Tool binding | Execute Python/Rust or authorize dispatch |
-| Skill | 1–3 | One usage: prose plus explicitly associated PythonCode; prose can inform explicit Tier-1 LLM work | Replace a ToolSkill or hide a multi-Tool task |
+| Skill | 1–3 | One usage: prose plus an explicitly associated preloadable function interface; prose can inform explicit Tier-1 LLM work | Replace a ToolSkill or hide a multi-Tool task |
 | PythonCode | 22 | Monty; executable usage or pure-logic building block | Register a handler merely by naming it |
 | Recipe | 21 | IBS/composition and Orchestrator; selects, orders and connects components | Implement a new Rust primitive merely by describing it |
 | ExtensionCatalogue | 23 | Domain overview and Recipe inventory | Replace individual binding or usage contracts |
@@ -510,18 +544,26 @@ implementation; [skills.md](skills.md) specifies the full interval contracts.
 ### C. Keep the execution in PythonCode
 
 ```python
-# Target interface; recursive binding rejects missing/wrong-type inputs first.
-start_line = inputs["start_line"]
-end_line = inputs["end_line"]
-if not (1 <= start_line <= end_line <= 2147483647):
-    raise ValueError("Invalid or unrepresentable line interval")
-limit = end_line - start_line + 1
-if not (1 <= limit <= 2147483647):
-    raise ValueError("Invalid or unrepresentable interval length")
-result = host.read_file(path=inputs["path"], offset=start_line, limit=limit)
+def read_file_interval(path, start_line, end_line):
+    # The invocation boundary validates types and bounds before this call.
+    if not (1 <= start_line <= end_line <= 2147483647):
+        raise ValueError("Invalid or unrepresentable line interval")
+    limit = end_line - start_line + 1
+    if not (1 <= limit <= 2147483647):
+        raise ValueError("Invalid or unrepresentable interval length")
+    return host.read_file(path=path, offset=start_line, limit=limit)
 ```
 
-This body belongs in the associated class-22 component, **not** the ToolSkill.
+Load this associated definition without effects. After its matching ToolSkill
+binding, the invocation step is:
+
+```python
+result = read_file_interval(
+    path=inputs["path"], start_line=inputs["start_line"], end_line=inputs["end_line"]
+)
+```
+
+This function definition belongs in the associated class-22 component, **not** the ToolSkill.
 The `inputs` mapping and guards require actual runner/Monty support. The Skill's
 association maps `path` directly and declares approved computed `offset`/`limit`
 contracts. Metadata documents computation; approved PythonCode performs it.

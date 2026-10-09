@@ -1,0 +1,10 @@
+{
+  "original_receipt_sha256": "e0458523a895401c201746507cdbeed68dad6c9afac07ffad3ca06d93362c755",
+  "original_passed": 16,
+  "reason": "Manual audit found one evaluator spelling false negative: pinned official text says materialises to a list. Other five failures cite passages without the claimed support. Original receipt and responses retained. This is a citation topic check, not general semantic entailment.",
+  "correct_boolean_answers": 22,
+  "cases": 22,
+  "corrected_supported_passed": 17,
+  "corrected_case": "eager-generator",
+  "literal_support_verified": true
+}

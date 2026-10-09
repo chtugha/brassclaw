@@ -1,0 +1,223 @@
+{
+  "engine": "upstream Monty",
+  "version": "1.0.0",
+  "input_receipt_sha256": "cc192914f54ee5243b9972c06e57dd8e4a709f13f4a740d6d7e6f5a0b9dac951",
+  "custom_brassclaw_host_verified": false,
+  "q1_q2_verified": false,
+  "activated": false,
+  "candidates": [
+    {
+      "name": "pc-fresh-missing-default",
+      "response": "fresh-missing-default-response.json",
+      "content_sha256": "5b2be048d6ac7bfe03fe87b78539360135ab5a81dca7a204cca9019d5a2719a4",
+      "passed": true,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "watch"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "actual": {
+            "valid": true,
+            "mode": "watch"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "pause"
+          },
+          "expected": {
+            "valid": true,
+            "mode": "pause"
+          },
+          "actual": {
+            "valid": true,
+            "mode": "pause"
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": "Watch"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": " pause"
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": null
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": null
+          },
+          "passed": true
+        },
+        {
+          "inputs": {
+            "mode": false
+          },
+          "expected": {
+            "valid": false,
+            "mode": null
+          },
+          "actual": {
+            "valid": false,
+            "mode": null
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "pc-fresh-presence-helper",
+      "response": "fresh-presence-helper-response.json",
+      "content_sha256": "5d21d730e5cbc91b4478ad2a5ad08851468b1256a66dc9f6303a64e7bd4e3b46",
+      "passed": false,
+      "probes": [
+        {
+          "inputs": {},
+          "expected": {
+            "category": "omitted",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": null
+          },
+          "expected": {
+            "category": "unset",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -81
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -80
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -80
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -70
+          },
+          "expected": {
+            "category": "accepted",
+            "optional_channel": -70
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -69
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": false
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": -80.0
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        },
+        {
+          "inputs": {
+            "optional_channel": "x"
+          },
+          "expected": {
+            "category": "bad",
+            "optional_channel": null
+          },
+          "actual": null,
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "candidate_count": 2,
+  "candidate_passed": 1,
+  "probe_count": 16,
+  "probe_passed": 7
+}

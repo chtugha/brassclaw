@@ -52,6 +52,18 @@ pub(crate) trait MontyTaskCatalogue: Send + Sync {
     async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure>;
 }
 
+/// An acknowledged instance resource policy, independent of task selection and
+/// component approval. Reading it grants no Tool authority.
+#[derive(Clone, Copy)]
+pub(crate) struct RecipeCapacity {
+    pub(crate) revision: u64,
+    pub(crate) max_recipes: usize,
+}
+#[async_trait]
+pub(crate) trait RecipeCapacitySource: Send + Sync {
+    async fn current(&self) -> Result<RecipeCapacity, PortFailure>;
+}
+
 struct Selection {
     selected: SelectedMontyRecipe,
     program_ref: String,
@@ -63,6 +75,7 @@ struct State {
     intent_started: bool,
     recipes: BTreeMap<Uuid, Arc<Selection>>,
     selection_order: Vec<Uuid>,
+    checked_capacity: Option<RecipeCapacity>,
 }
 
 /// Private supervisor-owned state retains failed executions and their original
@@ -73,6 +86,7 @@ pub(crate) struct GlobalRecipePorts {
     catalogue: Arc<dyn MontyTaskCatalogue>,
     user_input: String,
     ownership: crate::global_monty_owner::GlobalOwnerCheck,
+    capacity: Arc<dyn RecipeCapacitySource>,
     state: Mutex<State>,
     task_context: Mutex<Option<RetainedTaskContext>>,
     fenced: std::sync::atomic::AtomicBool,
@@ -84,6 +98,7 @@ impl GlobalRecipePorts {
         catalogue: Arc<dyn MontyTaskCatalogue>,
         user_input: String,
         ownership: crate::global_monty_owner::GlobalOwnerCheck,
+        capacity: Arc<dyn RecipeCapacitySource>,
     ) -> Self {
         Self {
             host,
@@ -91,6 +106,7 @@ impl GlobalRecipePorts {
             catalogue,
             user_input,
             ownership,
+            capacity,
             state: Mutex::new(State::default()),
             task_context: Mutex::new(None),
             fenced: std::sync::atomic::AtomicBool::new(false),
@@ -111,7 +127,7 @@ impl GlobalRecipePorts {
         &self,
         receipt: &TaskReceipt,
     ) -> Result<Value, PortFailure> {
-        let (task, recipes) = {
+        let (task, recipes, capacity) = {
             let state = self.state.lock().await;
             (
                 state.task,
@@ -120,6 +136,7 @@ impl GlobalRecipePorts {
                     .iter()
                     .map(|id| state.recipes[id].clone())
                     .collect::<Vec<_>>(),
+                state.checked_capacity,
             )
         };
         if task.is_some_and(|task| {
@@ -188,10 +205,24 @@ impl GlobalRecipePorts {
         Ok(
             json!({"format":"monty-task-execution/1", "root":root, "root_completed":completed,
             "all_selected_recipes_complete":complete, "recipes":progress,
+            "checked_recipe_capacity":capacity.map(|capacity| json!({
+                "revision":capacity.revision,"max_recipes":capacity.max_recipes})),
             "accounting":account, "withheld_root_answers":receipt.withheld.len(),
             "withheld_host_answers":self.host.has_withheld_results(),
             "semantic_approval":false,"catalogue_activation":false}),
         )
+    }
+
+    async fn retain_selection(
+        &self,
+        selected: SelectedMontyRecipe,
+    ) -> Result<(Uuid, String), PortFailure> {
+        let mut state = self.state.lock().await;
+        // The settings source waits for complete acknowledgement. No catalogue
+        // read, child feed or effect occurs while choosing the current bound.
+        let capacity = self.capacity.current().await?;
+        self.check_fence()?;
+        retain(&mut state, selected, capacity)
     }
 
     async fn check_recipe_completion(&self) -> Result<(), PortFailure> {
@@ -262,8 +293,7 @@ impl GlobalRecipePorts {
                     MontyIntentSelection::NoMatch => Ok(json!({"status":"no_match"})),
                     MontyIntentSelection::Disambiguation => Ok(json!({"status":"disambiguation"})),
                     MontyIntentSelection::Match(selected) => {
-                        let (recipe_id, step_link) =
-                            retain(&mut *self.state.lock().await, selected)?;
+                        let (recipe_id, step_link) = self.retain_selection(selected).await?;
                         Ok(
                             json!({"status":"match", "component_id":recipe_id, "step_link":step_link}),
                         )
@@ -281,12 +311,9 @@ impl GlobalRecipePorts {
                 if class.as_i64() != Some(21) {
                     return Err(failure("recipe_composition_failed"));
                 }
-                if self.state.lock().await.recipes.len() >= 8 {
-                    return Err(failure("recipe_capacity_exceeded"));
-                }
                 let selected = self.catalogue.resolve_named_recipe(name).await?;
                 self.check_fence()?;
-                let (id, step_link) = retain(&mut *self.state.lock().await, selected)?;
+                let (id, step_link) = self.retain_selection(selected).await?;
                 Ok(json!({"id":id,"step_link":step_link}))
             }
             "compose_orchestrator" => {
@@ -439,7 +466,11 @@ impl GlobalRecipePorts {
         }
     }
 }
-fn retain(state: &mut State, selected: SelectedMontyRecipe) -> Result<(Uuid, String), PortFailure> {
+fn retain(
+    state: &mut State,
+    selected: SelectedMontyRecipe,
+    capacity: RecipeCapacity,
+) -> Result<(Uuid, String), PortFailure> {
     let program = selected.inspected.program();
     if matches!(
         program,
@@ -462,8 +493,15 @@ fn retain(state: &mut State, selected: SelectedMontyRecipe) -> Result<(Uuid, Str
             .bind_task_inputs(inputs)
             .map_err(|_| failure("recipe_composition_failed"))?;
     }
-    if state.recipes.contains_key(&id) || state.recipes.len() >= 8 {
+    if state.recipes.contains_key(&id) {
         return Err(failure("recipe_composition_failed"));
+    }
+    state.checked_capacity = Some(capacity);
+    if capacity.max_recipes == 0 || capacity.max_recipes > i32::MAX as usize {
+        return Err(failure("recipe_capacity_invalid"));
+    }
+    if state.recipes.len() >= capacity.max_recipes {
+        return Err(failure("recipe_capacity_exceeded"));
     }
     state.recipes.insert(
         id,

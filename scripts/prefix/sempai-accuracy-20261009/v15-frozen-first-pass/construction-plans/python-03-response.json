@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a35a972b9b86f7d8",
+  "object": "chat.completion",
+  "created": 1791513535,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'lag' not in inputs\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"elif type(lag) is int and -1 <= lag <= 8\", \"result\": \"{'accepted': True, 'lag': lag}\"}, {\"guard\": \"else\", \"result\": \"{'accepted': False, 'lag': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"Q1 and human Q2 required\"], \"notes\": \"Draft only; no execution, submission, activation, or approval performed.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113008,
+    "total_tokens": 113166,
+    "completion_tokens": 158,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

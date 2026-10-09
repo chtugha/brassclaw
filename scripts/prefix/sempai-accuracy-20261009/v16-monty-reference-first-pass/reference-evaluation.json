@@ -1,0 +1,159 @@
+{
+  "cases": [
+    {
+      "id": "eval-policy",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The authoring contract forbids eval/exec, direct open, os/subprocess imports and unapproved I/O in BrassClaw authored PythonCode. This is a BrassClaw authoring restriction, not an upstream Monty capability statement. Upstream Monty may support a restricted eval, but that does not grant host permission. The compatibility overlay explicitly says: 'Upstream Monty has restricted eval/exec and host-mediated filesystem mechanisms. BrassClaw authored PythonCode forbids eval/exec, direct open, os/subprocess imports and unapproved I/O. Do not describe these as generally absent from Monty; describe them as forbidden by this authoring contract.' (card 9ee64db8b0ee). The standalone citation is a source-question benchmark, not the production reviewer/proposal API, and it does not grant permissions. Missing runtime support remains an explicit prerequisite, not a draft constructor. (card d8ca56021893)",
+        "citations": [
+          "9ee64db8b0ee",
+          "d8ca56021893"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 7.483,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A restored snapshot is not a durable effect ledger. It carries globals, functions, classes, time budget and, for a mid-feed snapshot, the paused call stack \u2014 but it does not authenticate effects or establish that an external operation completed or did not. The reference is explicit: 'Neither restored memory nor a timeout establishes that no effect happened' (be447cba9594), and 'A timeout alone never proves that no effect occurred' (5492db3e2b23). Restoring a snapshot is not approval, authentication or a durable effect ledger (ad2668b16ffb).",
+        "citations": [
+          "be447cba9594",
+          "5492db3e2b23",
+          "ad2668b16ffb"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 5.143,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-trust",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A snapshot that merely parses is not trustworthy. The reference states that only unmodified snapshots from a trusted, compatible producer may be restored, and that the caller must establish provenance and integrity before loading \u2014 Monty does not authenticate snapshots or fully validate their contents. Invalid snapshots have no correctness or availability guarantees, and a snapshot is only ever taken between turns, so max_turn_duration_secs has nothing to carry. A timeout alone never proves that no effect occurred, and neither restored memory nor a timeout establishes that no external effect happened. Therefore parsing alone is insufficient; provenance and integrity must be verified before restoring bytes received through an untrusted channel.",
+        "citations": [
+          "a32bdde3c49c",
+          "be447cba9594",
+          "d8ca56021893"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 5.118,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "generator-function",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects generator functions at parse time. The pinned Monty v1.0.0 documentation lists yield/yield from as a statement rejected at parse time with NotImplementedError, since there are no generator functions. Generator expressions parse but currently materialize to a list rather than a lazy iterator. This is a language limitation, not a BrassClaw policy restriction. A Monty component cannot implement a generator function using yield.",
+        "citations": [
+          "6ae8c4c80d41",
+          "c7d8f2153f6e",
+          "15376363079d"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 4.323,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "match-language",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects match statements at parse time with NotImplementedError. The limitations/index.md card (c9142e56f1b) lists match statements under 'Rejected at parse time', and limitations/language.md (adb0c0dfda7) confirms match statements are not supported. Since a Monty component runs inside the Monty execution context, match/case statements cannot be used.",
+        "citations": [
+          "c9142e56f1b",
+          "adb0c0dfda7"
+        ]
+      },
+      "citations_resolved": false,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.84,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "inheritance",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects class inheritance and metaclasses at parse time. A base class in a class definition raises NotImplementedError before any code runs. Only simple classes with no base classes are supported.",
+        "citations": [
+          "6ae8c4c80d41",
+          "c7d8f2153f6e",
+          "9ee64db8b0ee"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.569,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "temperature": 0,
+  "repair": false,
+  "generation": "66ff5fd33f2af2c70cbb7b723f07dbf69a0eba8415e65d611f97d7e59e3425c3",
+  "suite_sha256": "57015f82aef7a89d69b2fc1775f3456f3475e0379903fd0ce1623596828ede76",
+  "production_q1_q2_verified": false,
+  "support_check": "Topic regex on cited originals; reasons additionally require semantic review. Not a general entailment verifier.",
+  "passed": 5
+}

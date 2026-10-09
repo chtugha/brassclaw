@@ -19,8 +19,9 @@ use brassclaw_monty_host::{
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::{
     MontyBudgetUptake, MontyExecutionLimitsStatus, MontyMemoryBudgetStatus, MontyMemoryMode,
-    MontyMemoryPolicy, MontyTaskBudgetStatus, MontyVmSettings, MontyVmSettingsError,
-    MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse, UpdateMontyVmSettingsRequest,
+    MontyMemoryPolicy, MontyRecipeBudgetStatus, MontyTaskBudgetStatus, MontyVmSettings,
+    MontyVmSettingsError, MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse,
+    UpdateMontyVmSettingsRequest,
 };
 use brassclaw_resources::{AdaptiveMontyHeapBudget, MontyHeapBudgetConfig};
 use tokio::{
@@ -159,9 +160,11 @@ pub(crate) async fn startup_heap_selection(
     let fallback = settings
         .max_memory_bytes
         .and_then(|bytes| usize::try_from(bytes).ok())
-        .filter(|bytes| *bytes > 0)
+        .filter(|bytes| *bytes >= brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES as usize)
         .ok_or_else(|| {
-            MontyVmSettingsError::Invalid("finite startup heap value required".into())
+            MontyVmSettingsError::Invalid(
+                "startup heap must be at least the 512 MiB default".into(),
+            )
         })?;
     let pid = service
         .worker_process_id()
@@ -182,7 +185,12 @@ pub(crate) async fn startup_heap_selection(
         .checked_add(sample.additional_capacity_bytes)
         .ok_or_else(|| MontyVmSettingsError::Unavailable("startup capacity overflow".into()))?
         .saturating_sub(settings.memory_policy.reserve_bytes);
-    let selected = (fallback as u64).min(capacity);
+    let sized = (fallback as u64).min(capacity);
+    let selected = if settings.memory_policy.mode == MontyMemoryMode::Automatic {
+        sized
+    } else {
+        sized.max(brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES)
+    };
     if selected == 0 || selected < observed.vm_live_bytes as u64 {
         return Err(MontyVmSettingsError::Invalid(
             "insufficient memory for startup reserve".into(),
@@ -195,6 +203,8 @@ pub(crate) async fn startup_heap_selection(
             && sample.pressure == brassclaw_resources::MontyMemoryPressure::Critical
         {
             "startup_critical"
+        } else if sized < selected {
+            "startup_floor"
         } else {
             "startup_sized"
         },
@@ -249,6 +259,18 @@ impl LiveMontySettingsStore {
     /// snapshot, not a newer desired token mode or prior-knowledge ceiling.
     pub(crate) fn effective_view(self: &Arc<Self>) -> Arc<dyn MontyVmSettingsStore> {
         Arc::new(EffectiveSettings(self.clone()))
+    }
+
+    pub(crate) fn recipe_capacity_source(
+        self: &Arc<Self>,
+    ) -> Arc<dyn crate::global_recipe_ports::RecipeCapacitySource> {
+        // A retained task must not own the service that retains its ports.
+        // These observations/accounts have no service/transport ownership.
+        Arc::new(EffectiveRecipeCapacity {
+            observed: self.observed.subscribe(),
+            live: self.service.live_task_settings(),
+            ownership: self.ownership.clone(),
+        })
     }
 
     async fn read_desired(&self) -> Result<MontyVmSettings, MontyVmSettingsError> {
@@ -323,7 +345,19 @@ impl LiveMontySettingsStore {
         memory: &mut MemoryControl,
     ) -> Result<(), &'static str> {
         let changed = memory.configured != desired.max_memory_bytes;
-        if changed {
+        let observed_heap = self.service.heap_observation();
+        let restore_manual = desired.memory_policy.mode == MontyMemoryMode::Manual
+            && (memory.policy.mode != MontyMemoryMode::Manual
+                || observed_heap
+                    .status
+                    .effective
+                    .map(|heap| heap.max_vm_bytes as u64)
+                    != desired.max_memory_bytes);
+        let restore_floor = desired.memory_policy.mode == MontyMemoryMode::Startup
+            && observed_heap.status.effective.is_some_and(|heap| {
+                (heap.max_vm_bytes as u64) < brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES
+            });
+        if changed || restore_manual || restore_floor {
             let bytes = desired.max_memory_bytes.ok_or("heap_limit_missing")?;
             let heap = self.service.heap_observation();
             let expected = heap.status.desired_revision();
@@ -519,6 +553,24 @@ impl LiveMontySettingsStore {
             MontyBudgetUptake::Pending
         };
         MontyVmStatusResponse {
+            recipe_budget: Some(MontyRecipeBudgetStatus {
+                desired_revision: desired.revision,
+                effective_revision: observation.effective.revision,
+                max_recipes_per_task: observation.effective.max_recipes_per_task,
+                uptake: if closed {
+                    MontyBudgetUptake::Failed
+                } else if observation.effective.revision == desired.revision
+                    && observation.effective.max_recipes_per_task == desired.max_recipes_per_task
+                    && task_settings(&observation.effective) == TaskSettings::from(effective)
+                {
+                    MontyBudgetUptake::Applied
+                } else if failure.is_some() {
+                    MontyBudgetUptake::Failed
+                } else {
+                    MontyBudgetUptake::Pending
+                },
+                failure_reason: failure.map(str::to_owned),
+            }),
             memory_budget: Some(MontyMemoryBudgetStatus {
                 mode: observation.effective.memory_policy.mode,
                 desired_settings_revision: desired.revision,
@@ -852,11 +904,76 @@ fn patched_snapshot(
         .filter(|revision| *revision <= i64::MAX as u64)
         .ok_or_else(|| MontyVmSettingsError::Invalid("settings revision exhausted".into()))?;
     object.insert("revision".into(), revision.into());
-    serde_json::from_value(fields)
-        .map_err(|_| MontyVmSettingsError::Invalid("invalid settings patch".into()))
+    let candidate: MontyVmSettings = serde_json::from_value(fields)
+        .map_err(|_| MontyVmSettingsError::Invalid("invalid settings patch".into()))?;
+    if !candidate.max_memory_bytes.is_some_and(|bytes| {
+        bytes >= brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES && bytes <= i64::MAX as u64
+    }) {
+        return Err(MontyVmSettingsError::Invalid(
+            "max_memory_bytes must be at least the 512 MiB default".into(),
+        ));
+    }
+    if candidate.max_recipes_per_task == 0 || candidate.max_recipes_per_task > i32::MAX as u32 {
+        return Err(MontyVmSettingsError::Invalid(
+            "invalid task Recipe capacity".into(),
+        ));
+    }
+    Ok(candidate)
+}
+
+struct EffectiveRecipeCapacity {
+    observed: watch::Receiver<Observation>,
+    live: brassclaw_resources::LiveMontyTaskSettings,
+    ownership: GlobalOwnerCheck,
+}
+#[async_trait]
+impl crate::global_recipe_ports::RecipeCapacitySource for EffectiveRecipeCapacity {
+    async fn current(
+        &self,
+    ) -> Result<
+        crate::global_recipe_ports::RecipeCapacity,
+        brassclaw_monty_host::service::PortFailure,
+    > {
+        let settings = effective_snapshot(self.observed.clone(), &self.live, &self.ownership)
+            .await
+            .map_err(|_| {
+                brassclaw_monty_host::service::PortFailure::new("recipe_capacity_unavailable")
+                    .expect("static reason")
+            })?;
+        Ok(crate::global_recipe_ports::RecipeCapacity {
+            revision: settings.revision,
+            max_recipes: settings.max_recipes_per_task as usize,
+        })
+    }
 }
 
 struct EffectiveSettings(Arc<LiveMontySettingsStore>);
+async fn effective_snapshot(
+    mut observed: watch::Receiver<Observation>,
+    live: &brassclaw_resources::LiveMontyTaskSettings,
+    ownership: &GlobalOwnerCheck,
+) -> Result<MontyVmSettings, MontyVmSettingsError> {
+    tokio::time::timeout(UPTAKE_BOUND, async {
+        loop {
+            if ownership.is_closed() {
+                return Err(MontyVmSettingsError::Unavailable(
+                    "runtime unavailable".into(),
+                ));
+            }
+            let snapshot = observed.borrow_and_update().effective.clone();
+            if task_settings(&snapshot) == TaskSettings::from(live.current()) {
+                return Ok(snapshot);
+            }
+            observed.changed().await.map_err(|_| {
+                MontyVmSettingsError::Unavailable("effective settings unavailable".into())
+            })?;
+        }
+    })
+    .await
+    .map_err(|_| {
+        MontyVmSettingsError::Unavailable("effective settings acknowledgement pending".into())
+    })?
+}
 #[async_trait]
 impl MontyVmSettingsStore for EffectiveSettings {
     async fn get(
@@ -864,29 +981,12 @@ impl MontyVmSettingsStore for EffectiveSettings {
         _user: &str,
         _project: &str,
     ) -> Result<MontyVmSettings, MontyVmSettingsError> {
-        let mut observed = self.0.observed.subscribe();
-        tokio::time::timeout(UPTAKE_BOUND, async {
-            loop {
-                if self.0.ownership.is_closed() {
-                    return Err(MontyVmSettingsError::Unavailable(
-                        "runtime unavailable".into(),
-                    ));
-                }
-                let snapshot = observed.borrow_and_update().effective.clone();
-                if task_settings(&snapshot)
-                    == TaskSettings::from(self.0.service.live_task_settings().current())
-                {
-                    return Ok(snapshot);
-                }
-                observed.changed().await.map_err(|_| {
-                    MontyVmSettingsError::Unavailable("effective settings unavailable".into())
-                })?;
-            }
-        })
+        effective_snapshot(
+            self.0.observed.subscribe(),
+            &self.0.service.live_task_settings(),
+            &self.0.ownership,
+        )
         .await
-        .map_err(|_| {
-            MontyVmSettingsError::Unavailable("effective settings acknowledgement pending".into())
-        })?
     }
     async fn upsert(
         &self,

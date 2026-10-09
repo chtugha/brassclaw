@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b4738952448926d2",
+  "object": "chat.completion",
+  "created": 1791516115,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"rank not in inputs\", \"result\": \"{'kind': 'missing', 'rank': None}\"}, {\"guard\": \"inputs['rank'] is None\", \"result\": \"{'kind': 'null', 'rank': None}\"}, {\"guard\": \"type(inputs['rank']) is int and 7 <= inputs['rank'] <= 16\", \"result\": \"{'kind': 'integer', 'rank': inputs['rank']}\"}, {\"guard\": \"else\", \"result\": \"{'kind': 'invalid', 'rank': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"unapproved draft\", \"no observed tests/submission/activation\"], \"notes\": \"Four distinct outcomes (missing/null/integer/invalid) require presence-aware classification: test membership before reading the value, so a helper receives the \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114302,
+    "total_tokens": 114515,
+    "completion_tokens": 213,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

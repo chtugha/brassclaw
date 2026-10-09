@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved class22 pure-logic component pc-contrast-03. Raw slots is a list of length 1..2 with every item an exact integer 3..7; empty or out-of-range or wrong-type values are invalid. The body reads slots via inputs.get('slots'), validates list type and length, then each item's exact int type and range, and assigns result={ok:boolean, slots:original if valid else []} at module scope. No I/O, imports, host calls or upstream validation assumptions. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-contrast-03",
+        "description": "Raw slots must be a list with length 1..2 inclusive, all items exact integers 3..7 inclusive. Empty is invalid. Always result={ok:boolean,slots:original if valid else []}. No bool/float/coercion/exceptions. No I/O/imports/host calls, no upstream validation assumption. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "slots = inputs.get('slots')\nvalid = type(slots) is list and 1 <= len(slots) <= 2\nif valid:\n    for s in slots:\n        if not (type(s) is int and 3 <= s <= 7):\n            valid = False\n            break\nresult = {'ok': valid, 'slots': slots if valid else []}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

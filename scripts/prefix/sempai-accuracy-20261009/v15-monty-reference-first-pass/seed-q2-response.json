@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-924529c360901c49",
+  "object": "chat.completion",
+  "created": 1791513722,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"Bundled system_seed installation components use the distinct integrity-checked bootstrap path, not authored human Q2. Per skills.md L832-838, 'Bundled system_seed components use installation-owned structural/behavioral/integrity qualification without additional installed-instance human Q2.' toolskills.md L448-450 confirms this: 'system_seed is restricted to the existing trusted first-party bootstrap/integrity path; authored changes cannot claim that mode to evade Q2' and 'its q2_ref is null, while trusted successful Q1/integrity and required behavioral evidence still apply.' The distinction is provenance (trusted first-party bootstrap), not a per-instance human click. A human Q2 click is required only for authored changes (validation_mode: 'authored'), never for the controlled system_seed bootstrap path.\",\n  \"citations\": [\n    \"skills.md : L832-838\",\n    \"toolskills.md : L448-450\"\n  ]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112500,
+    "total_tokens": 112726,
+    "completion_tokens": 226,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

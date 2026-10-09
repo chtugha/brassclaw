@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b23c6887bb0770e0",
+  "object": "chat.completion",
+  "created": 1791514488,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'frames' not in inputs\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"else\", \"result\": \"ok = type(inputs['frames']) is list and 0 <= len(inputs['frames']) <= 2; if ok: for frame in inputs['frames']: if type(frame) is not dict or set(frame) != {'toggles'}: ok = False; break; if ok: toggles = inputs['frame']['toggles']; if type(toggles) is not,\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target_provider_metadata.catalogue_revision is null; no resolved catalogue revision, no supported class22 constructor, and no exact target-input contract were, \"], \"notes\": \"The instruction supplies a target-input contract (frames 0..2, each object exactly toggles, itself list 0..2 of exact bools including False, result {ok,frames})\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113187,
+    "total_tokens": 113418,
+    "completion_tokens": 231,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

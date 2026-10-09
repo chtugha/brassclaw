@@ -1,0 +1,5 @@
+{
+  "vllm": "0.31.0",
+  "lmcache": "0.5.5",
+  "adapter_sha256": "ffab2722b5c64fd308709a87f7782d3415a5183fb58fdd56afef67e56f9ce22e"
+}

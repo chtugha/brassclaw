@@ -28,8 +28,9 @@ evidence and outcome classifications. These remain target specifications.
    transport and Monty execution support still require implementation evidence.
 
 This guide defines a BrassClaw Reborn v3 **Skill** and the exact procedure for
-creating one. MUST means required. A Skill is incomplete if its prose,
-executable association, inputs, Tool binding or result contract is unresolved.
+creating one. MUST means required. A Skill is incomplete if its prose, function exports/signatures, dependency
+load order, pinned invocation, executable association, inputs, Tool binding,
+result contract or canonical execution Recipe is unresolved.
 
 Read [AGENTS.md](AGENTS.md), [recipe.md](recipe.md) and
 [the development policy](docs/development-policy.md). The binding architecture
@@ -39,13 +40,17 @@ versioning, typed-input transport or validation APIs.
 
 ## 1. What a Skill is
 
-**A Skill is one reusable description of how the orchestrator uses a particular
-Tool for a particular purpose, together with explicitly associated executable
-PythonCode implementing that usage.**
+**A Skill is one reusable Tool-usage pattern exposed as a preloadable Python
+function interface: prose plus explicitly associated executable PythonCode,
+declared exported names/signatures, typed contracts and dependencies. Loading
+its definitions makes the selected functions available for later invocation;
+it does not execute the usage or enable a Tool.**
 
 Its prose explains when the usage fits, the exact input and output contracts,
 prerequisites, how the Tool is used, and how results and failures are handled.
-Its associated PythonCode gives the orchestrator the executable implementation.
+Its associated PythonCode defines the functions implementing the usage. The
+interface declares which names callers may invoke and which helpers/constants
+remain internal.
 Both parts belong to the same usage unit, even when stored in separate rows.
 
 For example, one file-reading Tool can support distinct Skills for reading a
@@ -69,7 +74,7 @@ components to fulfill task goals**.
 | --- | --- | --- |
 | Tool, class 0 | Rust primitive providing an operation | Only when invoked by Python through the host boundary |
 | ToolSkill, class 13 | Rust-side IBS descriptor identifying a Tool usage binding, parameters and technical requirements | No; binding executes nothing and grants no permission |
-| Skill, classes 1–3 | One usage unit: explanatory prose plus associated executable PythonCode | Its associated PythonCode implements the usage; prose is never executed |
+| Skill, classes 1–3 | One usage unit: prose plus an explicitly associated preloadable function interface | Its pinned exported function implements the usage; prose is never executed |
 | PythonCode, class 22 | Small reusable executable building block, Tool-calling or pure logic | A Tool-calling body invokes `host.<tool>(...)` |
 | Recipe, class 21 | Task instructions: ordered component references, bindings and result flow | The orchestrator executes its assembled Python steps |
 | ExtensionCatalogue, class 23 | Domain overview and Recipe inventory | No |
@@ -106,13 +111,15 @@ inputs. The Recipe explicitly supplies prerequisites and later actions.
    ToolSkills, Tool implementations and nested PythonCode components.
 4. The composition system prepares executable Python, Tool bindings and any
    explicit reasoning context needed by the Recipe.
-5. The orchestrator executes the selected PythonCode. The kernel checks current
+5. Composition preloads the selected function definitions and pure dependencies;
+   the orchestrator invokes the selected export with typed step-local inputs.
+   The kernel checks current
    global Tool policy and technical rules before every actual dispatch.
 6. Monty preserves typed inputs/results in the exact task execution context,
    including child execution and waits. Other tasks and attempts stay isolated.
 
 **Tier 0:** reference the associated class-22 PythonCode for execution. An LLM
-does not read Skill prose to invent a call. A Python example inside the prose
+does not read Skill prose to invent a call. It invokes a preloaded, pinned export. A Python example inside the prose
 does not become an executable entry point.
 
 **Tier 1:** the Recipe may explicitly provide Skill prose to its reasoning or
@@ -121,7 +128,8 @@ supported execution path. Do not infer an LLM call merely from a prose step or
 an annotation. The actual runner must implement it.
 
 Every Recipe component step references **exactly one component UUID**. A
-ToolSkill binding step is followed by its matching PythonCode execution step.
+ToolSkill binding step is followed by its matching PythonCode invocation step.
+Preloading occurs in assembly preparation and adds no effectful Recipe step.
 Skill prose used as explicit Tier-1 context has its own component step. It
 must not be combined with PythonCode in a multi-component `include` list.
 
@@ -129,6 +137,159 @@ PythonCode may internally compose smaller PythonCode components. That internal
 graph is separate from the Recipe step's one reference. IBS validates and pins
 the entire graph, including its order, input contracts and symbol dependencies.
 Internal composition must not hide independent Tool dispatches.
+
+## Preloadable function interface (binding v3 target)
+
+This is the updated Skill definition, not a claim that current stores, source
+inspectors or global Monty namespace machinery already implement it. Existing
+step-body executors remain migration evidence. An include here means qualified
+component assembly, not Python filesystem imports or arbitrary `exec`.
+
+### Exports and invocation contract
+
+Every Skill MUST declare its public function names, exact signatures, parameter
+and return contracts, associated PythonCode UUIDs and the one Tool usage each
+entry implements. Names are valid nonreserved Python identifiers, not identity.
+Use explicit keyword parameters or a single declared `inputs` mapping; do not
+accept arbitrary `*args`/`**kwargs` as an untyped dispatch interface. Multiple
+exports are permitted only for compatible entry forms of the same one-Tool
+usage; independent Tool usages belong to separate Skills and Recipe steps.
+Helpers and constants are declared separately and are not public MCP commands.
+Pure PythonCode can export reusable helpers without becoming a zero-Tool Skill.
+
+The immutable Skill interface declaration belongs to the Skill revision and
+its content checksum. It specifies public name -> associated code UUID and
+implementation symbol, signature, input/result/failure contracts, dependencies,
+ToolSkill/Tool association and any fixed/computed arguments. These are required
+logical records, **not new fields accepted by current INSERT APIs**. Implement
+supported retained storage/reader/validator contracts before activation. Keep
+`skill-association/1` and `skill-association-approval/1` exact formats unchanged;
+include the complete interface declaration in the checksummed Skill content and
+review evidence. No unrecognized fields are appended to those JSON formats.
+
+Recipes continue to reference one stable component UUID per component step.
+For a Skill usage, the class-22 reference plus the selected Skill interface
+resolves the invocation export and typed local input layout. A component with
+multiple exports needs an explicit supported retained invocation selection;
+never infer an export from prose, array order or a mutable name. If that
+selection cannot be represented by the current runner, it is implementation
+work: do not add invented export fields to persisted Recipe JSON.
+
+### Selection, dependencies and loading order
+
+1. Select one coherent activated, approved catalogue snapshot at task start.
+   Pin exact Skill/interface/code/dependency/association revisions/checksums,
+   exported-symbol resolution, approved combinations and Tool implementations.
+   No version numbers are authored into Recipes.
+2. Resolve the complete declared PythonCode dependency graph by stable UUID.
+   Validate classes, signatures, symbol references, qualified imports and
+   recursive contracts. Reject undeclared dependencies, missing/incompatible
+   exports, dependency cycles and name conflicts before any task effect.
+3. Load in deterministic dependency-first topological order. Break ties by
+   stable UUID within the already selected graph, not mutable display names.
+   Define pure helper functions/constants before their dependent entry points.
+   Deduplicate only identical retained code artifacts with compatible symbol
+   environments; sharing source bytes does not share task-bound globals.
+4. Preload only qualified definitions and immutable constants. No Tool calls,
+   model calls, I/O, task scheduling or effectful initializers/default expressions
+   run during loading. Validate default expressions and allowed module loading;
+   do not trust a file merely because its top-level statement is `def`.
+5. Install a collision-free task-local export table mapping each public name to
+   exact owning Skill, code revision/checksum, implementation symbol and binding
+   context. Name resolution is infrastructure, not `getattr`/`eval` generated
+   from runtime data. The loader must not overwrite an old task's export when
+   another task selects a newer revision.
+6. An invocation calls that retained export with validated typed data and captures
+   its returned value as the step result. A function uses local variables and
+   `return`; the invocation boundary assigns `result = selected_export(...)`.
+   Preloading the definition and invoking it are separate operations. Independent
+   calls retain their separate Recipe execution occurrences and bindings.
+
+The global service may retain/cache several approved immutable code generations.
+Availability of cached library code does not expose every export to every task.
+Each task uses its declared pinned closure and isolated symbol/data context.
+Loading an activated successor prepares future tasks; running/suspended tasks,
+child invocations, retries and resumes keep their original export resolution.
+No latest lookup or rebinding through the same function/host name is permitted
+mid-task. Retain old artifacts while task/checkpoint references need them.
+
+### Tool availability and authority
+
+**Preloaded code does not automatically enable a Tool.** The matching ToolSkill
+must prepare the exact compatible retained host binding for the invocation.
+In a Recipe, its Rust binding step immediately precedes the matching class-22
+invocation step; loading function definitions is not that binding. Every actual
+`host.<tool>(...)` dispatch checks current global Tool policy, cancellation,
+attempt freshness and technical auth/sandbox/network/secret/resource limits.
+Neither an exported name, loaded function nor approval grants permission.
+Host-function aliases/proxies must resolve to the task's retained implementation,
+while its live policy remains current; a new feed must not silently redirect old
+functions to a newer handler. All actual calls inside helpers count toward the
+usage's declared dispatch/effect contract. Keep independent usages separate;
+only the existing qualified direct dependent-chain exception remains available.
+
+### Shared code, constants and isolated mutable state
+
+Reusable code and genuinely immutable constants may be shared. Scalars and
+recursively immutable tuples are suitable constants; a mutable list/dict/set
+is not made immutable by an uppercase name. Arrays, buffers and working objects
+are allocated inside each invocation/task or supplied as task-owned typed data.
+Copy/validate mutable defaults for every invocation. Forbid shared mutable
+function defaults, captured task objects, caches, global result arrays and
+closures over another task's inputs or host binding. Helpers inherit the owning
+task/attempt binding context, never an ambient global authority object.
+
+Within a task, pass results explicitly along its typed Recipe edges. Between
+concurrent tasks, child tasks and attempts, preserve the documented isolation
+and explicit continuation contract; invocation-local temporaries are fresh.
+Durable effects/counts belong to the recovery owner, not a shared Python list.
+A same-task reusable buffer is allowed only when its lifetime/ownership is
+explicitly retained and cannot cross an attempt or child boundary implicitly.
+Sharing compiled code is an optimization; if safe shared execution environments
+are unsupported, load isolated function environments in the one global service.
+Do not introduce a per-task VM or shared mutable namespace as a shortcut.
+
+### MCP and acceptance
+
+Each real Skill has a canonical execution Recipe or equivalent existing Recipe
+variant. It supplies an unambiguous matching command and typed input/result
+contract, then binds the matching ToolSkill and invokes the preloaded export.
+MCP tools/list is derived from available activated, approved mcp-call-skill-recipes,
+resolving their exact associated Skill interfaces; raw Skill presence is not a
+listing entry. The MCP server is always running while BrassClaw is running.
+Kohai establishes/advertises its provider connection only after final prefix
+addition and immediately before sending the model request; on receipt of the
+complete answer it disconnects that request's connection while the server stays
+alive. Keep streaming/tool exchanges and concurrent requests correctly owned.
+Rebuild the list at startup/restart and refresh it on qualified Skill/Recipe
+activation/catalogue changes. Unapproved additions are not advertised; existing
+advertised contracts and already selected chat tasks retain their identities.
+
+MCP tools/list supplies the exact command sentence, variable positions/types,
+formatting rules and examples. The server accepts only the completed listed
+command, creates a new normal chat and sends it as one user message. The existing
+global orchestrator receives it through ordinary chat ingress, matches the
+execution Recipe first, executes it and posts the normal result into that chat.
+MCP reads the correlated terminal chat response, forwards it to the client and
+closes the chat using the existing supported lifecycle interface. It has no
+direct Monty/IBS/Rust Tool execution connection and accepts no Python source.
+Reuse equivalent Recipes; private/protected Skills are not automatically exposed.
+An ordinary invocation creates no component and repeats no Q1, behavioral review
+or human Q2. Authoring/changing the execution Recipe remains separately reviewed.
+Existing input/result/kernel checks and retained workflow/effect state remain
+owned by the normal execution path. Chat closure must not delete evidence,
+discard pending runs or cause a command to be resent after a lost reply.
+No MCP-specific execution architecture or normal-chat routing change is required.
+
+Before activation, demonstrate effect-free preload, deterministic graph loading,
+export collisions/cycles/missing dependencies, fixed-argument enforcement, exact
+old/new version coexistence, live policy changes after preload, fresh mutable
+arguments/defaults across repeated and concurrent calls, child/wait/resume
+isolation and durable no-replay recovery. Compile and execute through the exact
+selected Monty and qualified retained host path. Upstream supports Python
+functions but not arbitrary package imports; it does not supply this BrassClaw
+export loader or isolation contract automatically. See [Monty language support](https://pydantic.dev/docs/monty/limitations/language/)
+and [host-value/proxy behavior](https://pydantic.dev/docs/monty/limitations/host-values/).
 
 ## 4. Decide whether a new Skill is needed
 
@@ -158,6 +319,7 @@ Complete this specification. Blank or guessed fields mean the Skill is not ready
 
 ```text
 Stable Skill UUID (existing or allocated through the supported creation path):
+Canonical execution Recipe UUID/variant and exact matching command/input layout:
 Name:
 Class/consumer classification and reason:
 One-sentence purpose:
@@ -166,6 +328,9 @@ Related cases requiring a different Skill or Recipe:
 Existing Tool UUID, registered callable name and implementation contract:
 Required ToolSkill UUID and binding contract:
 Associated PythonCode UUID and local input/result contract:
+Public export names/signatures and implementation symbols:
+Declared helper/constant dependencies and deterministic preload order:
+Pinned export resolution and mutable-state ownership:
 Required inputs, types, validation and source in the consuming Recipe:
 Optional inputs, defaults and normalization rules:
 Prerequisites, authentication and technical limits:
@@ -208,9 +373,15 @@ Prerequisites
 List required prepared inputs, external authentication and technical constraints.
 The consuming Recipe is responsible for supplying them.
 
+Exports and preload
+Declare the public name/signature and associated implementation symbol.
+List helper/constant dependencies, dependency-first order and exact pinning.
+Loading defines functions only; mutable state is invocation/task-owned.
+
 Execution
-Explain this usage's argument mapping and the associated executable entry point.
-State that PythonCode invokes the Tool through host.<tool>(...).
+Explain this usage's argument mapping and the exported function to invoke.
+Its associated implementation calls host.<tool>(...) only during invocation.
+The matching ToolSkill binding and live kernel checks remain required.
 
 Result
 Describe the actual returned type/fields and what constitutes success.
@@ -222,6 +393,11 @@ Define stop/retry behavior and idempotency constraints; do not claim success on 
 
 Limits and tier
 Document effect type, supported limits and conditions requiring Tier 1.
+
+Execution Recipe and command
+Identify the canonical execution Recipe/variant by stable identity.
+Specify the exact command sentence, variable positions/types, formatting and
+positive/negative examples; MCP lists this contract and receives no Python.
 
 Examples and acceptance
 Give representative input/result examples and failure cases.
@@ -622,6 +798,9 @@ are required even though the mathematical bound follows from valid inputs.
 
 ### 9.1 Skill prose
 
+The prose must include the exported signature and the preload/isolation contract
+defined above; the illustrative UUIDs remain placeholders, not active records.
+
 ```text
 Purpose
 Read one inclusive line interval from a known permitted text file.
@@ -649,7 +828,9 @@ The kernel must allow the Tool and technical filesystem access.
 The target must be a permitted nonsensitive readable text file within Tool limits.
 
 Execution
-Invoke the associated PythonCode once. It computes limit = end_line-start_line+1
+Preload the associated read_file_interval definition and dependencies without
+calling the Tool. Invoke read_file_interval with typed inputs once; it computes
+limit = end_line-start_line+1
 and validates limit in 1..2147483647 before calling
 host.read_file(path=path, offset=start_line, limit=limit).
 No dynamic evaluation and no source substitution are used.
@@ -683,18 +864,26 @@ only remaining lines. No reply is posted by this Skill.
 ### 9.2 Associated PythonCode
 
 ```python
-# Target typed-input interface; binding validates all required inputs first.
-start_line = inputs["start_line"]
-end_line = inputs["end_line"]
-if not (1 <= start_line <= end_line <= 2147483647):
-    raise ValueError("Invalid or unrepresentable line interval")
-limit = end_line - start_line + 1
-if not (1 <= limit <= 2147483647):
-    raise ValueError("Invalid or unrepresentable interval length")
-result = host.read_file(
+# Preloaded associated implementation; definition performs no Tool call.
+def read_file_interval(path, start_line, end_line):
+    # The invocation boundary validates string/integer types, excluding bool.
+    if not (1 <= start_line <= end_line <= 2147483647):
+        raise ValueError("Invalid or unrepresentable line interval")
+    limit = end_line - start_line + 1
+    if not (1 <= limit <= 2147483647):
+        raise ValueError("Invalid or unrepresentable interval length")
+    return host.read_file(path=path, offset=start_line, limit=limit)
+```
+
+The interface exports `read_file_interval(path, start_line, end_line)` from the
+associated code UUID; dependencies: none; no mutable constants or defaults.
+Its invocation step, after the matching ToolSkill binding, is:
+
+```python
+result = read_file_interval(
     path=inputs["path"],
-    offset=start_line,
-    limit=limit,
+    start_line=inputs["start_line"],
+    end_line=inputs["end_line"],
 )
 ```
 
@@ -1077,3 +1266,14 @@ schema, Q1/Q2, integrity and execution evidence.
 - [Current file-read arguments and result payload](crates/brassclaw_first_party_extensions/src/coding/file.rs)
 - [Current numeric input handling](crates/brassclaw_first_party_extensions/src/coding/inputs.rs)
 - [Current file-read technical limits](crates/brassclaw_first_party_extensions/src/coding/config.rs)
+
+### Preloadable-interface authoring completion
+
+- [ ] Public exports/signatures and private helpers/constants are explicit.
+- [ ] The selected interface and complete dependency/symbol graph are checksummed,
+      approved and pinned; loading is deterministic and effect-free.
+- [ ] Invocation resolves the selected export; old tasks do not rebind to latest.
+- [ ] ToolSkill binding remains separate; live kernel checks cover helper calls.
+- [ ] Mutable arrays/defaults/closures/results are task/attempt/invocation-owned.
+- [ ] Recipes and MCP use canonical invocation forms, not body reconstruction.
+- [ ] Actual loader/store/inspector support and Monty acceptance are demonstrated.

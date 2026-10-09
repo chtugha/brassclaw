@@ -1,5 +1,39 @@
 # Prefix v3 upgrade: compiler, source catalogue and WebUI
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../../skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 Status: implementation plan, not shipped functionality. Source and evidence review:
 2026-10-07. This revision incorporates Sempai quality experiments and the reproduced
 LMCache transfer failure; it does not deploy code or change inference services.
@@ -415,7 +449,63 @@ advertised as prefix-only gains or flawless first-pass ability. Healthy native-o
 semantic failures remain distinct from cache serving failures. V14 is standalone
 Sempai: its capacity does not prove a full installed base-plus-Sempai composite fits.
 
+### 2026-10-09 Monty/compiler evidence and promotion limits
+
+The complete pinned official Monty source package and compatibility overlay now
+compile with all four current authoring guides. After concurrent source changes,
+the latest isolated v22 generation has 113,903 text tokens, 113,909 shared leading
+tokens and 107 complete 1,056-token blocks (112,992 cacheable tokens); its maximum
+build-time rendered probe is 114,171 tokens, with 16,384 tokens reserved. These
+measurements belong to Ornith's inspected tokenizer/template and standalone Sempai,
+not a full installed base-plus-Sempai composite or a universal model design.
+The current v22 priming check verified exact automatic server injection and
+112,992 native cache-hit tokens. Plain external restoration was exercised after
+GPU displacement: zero native hits, 112,992 extra LMCache hits and the correct
+sentinel answer. This evidence covers the inspected LMCache MP in-memory path,
+not persistence across service restarts or unrelated cache layouts. The structured
+external-restoration check also passed with the same cache counts and correct READY
+JSON. Keep quality checks and production qualification separate.
+
+The preceding fixed v19 design/content trial scored 58/60 first pass versus 55/60
+with the prior two-call protocol, with five improvements and two Recipe regressions.
+All 24 pure-logic candidates passed 318/318 probes in actual upstream Monty 1.0.0.
+Transfer scored 10/12 first pass and 11/12 after two bounded repairs. Monty reference
+answers had 22/22 correct booleans but only 17/22 source-topic-supported citations
+after manual audit, including one corrected evaluator spelling false negative.
+Retain the original receipts; valid citation IDs alone did not prevent selection
+of an unrelated passage. See [the retained experiment report](../../scripts/prefix/sempai-accuracy-20261009/README.md).
+
+These observations establish source/format and limited development behavior,
+not flawless performance, a no-regression promotion or production Q1/Q2. Current
+source refreshes need their own qualification; do not relabel v19 scores as v22
+scores. Prefer complete general teaching and actual artifact-level checks over
+adding benchmark-specific answers. Require helper returns, missing-only defaults,
+and review/sink prerequisites in the emitted artifact itself. Repair evidence stays
+separate and cannot conceal first-pass regressions. Actual custom Monty loader,
+Tool binding, full approved component associations, proposal persistence and the
+installed consumer path remain independent production acceptance gates.
+
 ### 5.1 Knowledge quality and model-facing structure
+
+Include a pinned official Monty documentation package and a separate BrassClaw
+compatibility overlay. The current standalone package is upstream v1.0.0 at
+`85c5d1f6bef038405cfc40a4eed94806e303567e`, with 61 original artifacts and retained
+MIT licensing. Preserve all originals; rendered API-template directives alone do
+not establish callable signatures. Bind upstream version, selected custom Monty
+revision, host ABI and effective constraints independently. Cover language/module
+limitations, eager iterable behavior, host-value conversions, private transport
+limits, cumulative task accounting, trusted snapshots and durable effect recovery.
+Upstream support for eval/exec or filesystem callbacks is not BrassClaw permission.
+
+Distinguish effect-free Skill definition preloading from pinned export invocation
+and standalone step-body artifacts. Validators must select the actual artifact
+kind: preload definitions must not dispatch Tools, while an invocation captures
+the function's complete returned result. Do not require module-level invocation
+inside a preload-only artifact or accept an uncalled helper as a completed step.
+Pin export names/signatures, dependencies and isolated mutable state through the
+real loader/runner contract. MCP sends a completed listed command through an
+ordinary chat; it is not a direct Monty/IBS/Tool execution endpoint. Historical
+tutorials retain their dated applicability and do not override current guides.
 
 Version each profile's source and teaching policy. Require a coverage matrix mapping
 each promised capability to authoritative source units, applicability and checks;
@@ -463,6 +553,17 @@ must not turn model-generated explanations into official sources. Frozen evaluat
 fixtures/oracles and failed-draft feedback never enter the reusable reference.
 Feedback belongs only to that candidate's volatile review task. Keep first-pass,
 bounded-repair and fresh/held-out results separate.
+
+Concurrent component or documentation edits never justify changing expected hashes
+inside compiler code, weakening integrity checks, reverting another author's work
+or rewriting a published bundle. Capture a new coherent source snapshot, review
+changed whole-unit selections, rerun affected teaching checks and compile a new
+generation. Keep the previous sources, receipts, failed attempts and experiments.
+Content digests belong to versioned source/policy/evidence manifests; the compiler
+checks those records. Compare the build's pinned catalogue/document generation
+with current desired inputs before activation and show changed sources as stale.
+An in-flight experiment remains tied to its original snapshot; do not redeploy a
+different prefix midway and combine its results into the same accuracy score.
 
 Select content by required coverage and measured transfer, not “fill remaining
 tokens.” Preserve the large prefix and full source store; admit optional whole
@@ -1668,3 +1769,22 @@ or report their explicit readiness prerequisite rather than serving mismatched c
 
 Run this matrix through the production facade, composed ingress, Recipe worker and
 browser path. Script-only success or a screenshot of buttons does not close the plan.
+
+## Kohai final prefix stage and MCP provider lifecycle
+
+After composing history/query and adding the selected complete prefix as the final
+prompt composition step, Kohai obtains the coherent listing derived from approved
+mcp-call-skill-recipes, establishes the provider's supported MCP connection and
+advertises it immediately before sending the prompt. Do not reconnect by starting
+a server or compile a prefix merely to establish that connection. The one MCP
+server remains running during idle/disconnected periods. On the complete model
+answer, clean up only this request's connection/advertisement; use the same cleanup
+for failure/cancellation with owned in-flight calls reconciled. Streaming progress
+is not completion. Refresh server discovery on startup/restart and qualified
+Skill/Recipe activation; keep each advertised request contract and normal chat
+execution snapshot coherent. MCP calls remain new ordinary chats, not direct
+Monty/Rust invocations. See [the exact lifecycle contract](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
+
+This is lifecycle adapter planning only. Verify actual provider MCP configuration
+and normal chat APIs before implementation; no endpoint/SDK field or runtime
+acceptance is inferred from these instructions.

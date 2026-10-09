@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-80797bec730cbf91",
+  "object": "chat.completion",
+  "created": 1791516084,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"key absent\", \"result\": \"{'kind': 'missing', 'ttl': None}\"}, {\"guard\": \"value is None\", \"result\": \"{'kind': 'null', 'ttl': None}\"}, {\"guard\": \"type(value) is int and 6 <= value <= 15\", \"result\": \"{'kind': 'integer', 'ttl': value}\"}, {\"guard\": \"else\", \"result\": \"{'kind': 'invalid', 'ttl': None}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"no observed tests/submission/activation\", \"unapproved draft\"], \"notes\": \"Contract distinguishes missing from explicit null, so a helper receiving the mapping cannot recover presence; a direct body with an absence guard before reading\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114302,
+    "total_tokens": 114501,
+    "completion_tokens": 199,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

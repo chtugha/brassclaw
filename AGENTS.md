@@ -1,12 +1,46 @@
 # Agent Rules
 
+## Binding preloadable Skill interface (v3)
+
+A Skill is one Tool-usage pattern with prose and explicitly associated PythonCode
+exposing a preloadable function interface. Declare public names/signatures,
+private helpers/constants and dependencies. Resolve one approved catalogue
+snapshot; pin exact interface/code/association/artifact revisions and export
+resolution. Load definitions in deterministic dependency-first order, rejecting
+cycles/conflicts and effectful initializers. Invoke the pinned export on demand
+with typed data; loading is not an invocation or a new Recipe effect step.
+
+Preloaded code does not automatically enable a Tool. Its matching ToolSkill
+binding and current kernel checks still apply before every actual dispatch.
+Reusable code and immutable constants may be shared; mutable arrays, defaults,
+closures, inputs and results remain isolated per task/attempt/invocation. Running
+and resumed tasks keep their selected exports when new revisions activate.
+Each real Skill has a canonical execution Recipe with a matching command.
+MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
+Skill rows. Keep the server always running; Kohai connects/advertises to the
+provider after final prefix addition just before sending a prompt, then
+disconnects that request on the complete answer. Refresh discovery at
+startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
+keep their advertised contract and normal chat task snapshot.
+MCP tools/list gives its exact sentence, variable positions/types, escaping and
+valid examples; the model sends the completed command for intent matching.
+MCP accepts the completed listed command, opens a new ordinary chat, sends it
+as a user message, forwards the correlated chat result and closes the chat.
+It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
+the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](skills.md#preloadable-function-interface-binding-v3-target).
+This is a binding target, not proof of implemented loader/store/runner support.
+Current-source observations and historical step-body examples below must be
+migrated to this interface before being accepted as updated v3 implementations.
+
+
 ## Binding Recipe architecture (v3)
 
 Read all four ground-truth component guides before creating or changing components:
 
 - [recipe.md](recipe.md): ordered workflows, variants, actual persisted IBS
   schema, typed input bindings, component assembly and task version selection.
-- [skills.md](skills.md): one Tool usage with prose plus executable PythonCode,
+- [skills.md](skills.md): one Tool usage with prose plus a preloadable function interface,
   recursive contracts, exact-version association approval and retry rules.
 - [tools.md](tools.md): Rust primitives, implementation identity/retention,
   live global policy, registration, technical constraints and crash recovery.
@@ -20,7 +54,8 @@ primitive/binding support. The rules below are binding v3 targets, not proof of
 completed runtime/store enforcement.
 
 - Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
+  many Skills expose one Tool usage through preloaded, explicitly associated
+  Python functions with declared exports and dependencies;
   many small PythonCode components provide reusable executable building blocks.
   Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
   explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
@@ -43,7 +78,8 @@ completed runtime/store enforcement.
   Python source. Monty owns each task's intermediate results; unrelated tasks
   and attempts stay isolated, including across child execution and waits.
 - Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  Orchestrator-channel PythonCode invokes a pinned Skill export whose function
+  calls host.<tool>(...). Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
 Current code still has plain text substitution, fresh state in nested step
@@ -71,10 +107,11 @@ request for external approval.
 ### Required authoring and startup checks
 
 1. **Define the usage and workflow separately.** A Skill is one Tool usage:
-   prose plus explicitly associated PythonCode. A Recipe orders usages and
+   prose plus explicitly associated preloaded Python functions. A Recipe orders usages and
    pure-logic components, maps inputs/results and defines completion. A Skill
    never hides a multi-Tool task. Creating a reusable Skill independently is
-   allowed; verify it with a small workflow without requiring a permanent Recipe.
+   allowed; give each real Skill a canonical execution Recipe or equivalent
+   existing variant and verify its usage through that Recipe.
    A Tool supplies the primitive; a ToolSkill supplies IBS binding metadata.
    The Skill tells the Orchestrator how to use that Tool; its code implements it.
 2. **Keep data separate from code.** Declare recursive input/result schemas,
@@ -137,17 +174,19 @@ request for external approval.
 
 ## Binding Skill definition (v3)
 
-A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
-**both prose instructions and explicitly associated executable PythonCode**:
-the prose explains purpose, parameters, prerequisites and result/error handling;
-the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
+A **Skill** is one reusable Tool-usage pattern exposed as a **preloadable
+function interface**: prose plus explicitly associated PythonCode, exported
+names/signatures, helper/constant dependencies and typed invocation/result
+contracts. Loading defines functions without executing the usage. The prose
+explains the exported commands; associated PythonCode implements them. “Leaf Skill” means this same unit, not a
 different kind of Skill. A broader domain or multi-tool overview belongs to an
 **Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
 ordered workflow and references reusable components by UUID.
 
 **Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
 the ToolSkill describes its IBS binding. Binding executes nothing and grants no
-permission. The Orchestrator executes the associated PythonCode, which calls
+permission. The Orchestrator invokes a pinned export from preloaded associated PythonCode,
+which calls
 `host.<tool>(...)`; the kernel checks the current global tool policy.
 
 **Storage is not the definition:** today Skill prose is stored in `reborn_skills`
@@ -161,7 +200,7 @@ documentation, not an implicit executable entry point. The class labels
 not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
 records sharing the table, not additional tool-usage Skill types.
 
-**Execution and validation:** Tier 0 uses the associated PythonCode without an
+**Execution and validation:** Tier 0 calls the preloaded associated export without an
 LLM interpreting prose. Tier 1 can use prose in its explicit LLM steps. Never
 execute prose as Python. ToolSkill references belong to Rust binding steps;
 class-22 entry points belong to Orchestrator execution steps. Keep unrelated
@@ -188,7 +227,7 @@ Its stored text or quoted call signature is not executable PythonCode or Skill
 instructions for the Orchestrator.
 
 **The Orchestrator needs the Skill to know how to use the Tool.** The Skill's
-prose explains that usage and its associated PythonCode implements it. IBS uses
+prose explains that usage and its associated PythonCode defines the preloaded function that implements it. IBS uses
 the ToolSkill to prepare the compatible binding. Neither a ToolSkill alone nor
 an unassociated code example completes a Skill. Tier 0 executes the approved
 associated code without an LLM interpreting prose; explicit Tier-1 LLM work can
@@ -255,7 +294,7 @@ Start with these deeper docs as needed:
 
 **Component authoring ground truth:** [recipe.md](recipe.md) defines ordered
 workflows, typed inputs and the actual persisted IBS schema; [skills.md](skills.md)
-defines one Tool usage with prose plus associated PythonCode, recursive contracts,
+defines one Tool usage with prose plus preloaded function exports, recursive contracts,
 exact-combination approval and retries; [tools.md](tools.md) defines Rust primitives,
 retained implementations, live policy and recovery; [toolskills.md](toolskills.md)
 defines IBS binding metadata and its authoring/storage constraints.
@@ -328,12 +367,14 @@ checked independently of those fixed component revisions. Monty task time and
 allocation budgets are separate from the shared live-heap limit. The target
 `max_duration_secs` default is 600 seconds of executing VM time per task,
 excluding idle/queue/external waits; it never limits global Monty lifetime.
-Shared memory defaults to one conservative startup sizing from available
-capacity and reserve, then stays constant without periodic pressure monitoring.
-The operator can change the finite budget live in WebUI. Automatic adjustment is
-optional and slow; mild pressure alone never pauses all admission. Existing
-configured limits are preserved as manual settings on upgrade. Unsafe manual reductions
-are rejected; automatic reductions below the live heap remain pending while
+Shared memory defaults to one startup sizing, then stays constant without
+periodic pressure monitoring. Startup/manual budgets have the existing 512 MiB
+default as their minimum; low startup capacity readings retain that floor with
+visible status. The budget is a ceiling, not reserved memory. WebUI can adjust
+larger finite values live. Upgrade raises smaller configured values to this floor
+with a new revision and preserves larger values and modes. Automatic adjustment
+is optional and slow; mild pressure alone never pauses all admission. Unsafe
+manual reductions are rejected; automatic reductions below the live heap remain pending while
 safe reclamation and admission backpressure apply. All valid settings changes
 are live, with desired/effective state visible.
 
@@ -430,7 +471,7 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
     │      ▼                                                                     │
     │  Orchestrator executes steps in order:                                     │
     │    channel:"rust"         → bind ToolSkill into Monty namespace            │
-    │    channel:"orchestrator" → PythonCode: result = host.<tool>(...)          │
+    │    channel:"orchestrator" → PythonCode: result = skill_export(...) -> host.<tool>(...)          │
     │                              ↳ Rust Tool executes, returns result          │
     │    channel:"orchestrator" → (Tier 1 only) LLM step with recipe context     │
     │    channel:"orchestrator" → host.post_reply(...) → user                    │
@@ -474,7 +515,7 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
 | **Tool** (class 0) | Registered Rust primitive; one declared operation returns a result, classified failure or explicit wait/handle through the host boundary. | A Recipe workflow planner or autonomous agent loop |
 | **ToolSkill** (class 13) | Rust-side binding descriptor for IBS: which Tool to bind, param schema, preconditions, error policy. Lives in `reborn_tool_skills`. | Orchestrator instructions; it carries no prose for the Orchestrator, only metadata for IBS |
 | **PythonCode** (class 22) | A Python code snippet stored in the component library. The Orchestrator runs it as a step. A tool-calling snippet normally calls `host.<tool>(...)` once; pure logic makes zero calls. Only the documented dependent-chain exception permits additional calls. | An executor — the Orchestrator is the executor; the PythonCode snippet is what gets run |
-| **Skill** (class 1–3) | One Orchestrator tool-usage pattern: prose instructions **plus associated executable PythonCode** (class 22). | A multi-tool domain overview (belongs to an Extension), or a Rust binding descriptor |
+| **Skill** (class 1–3) | One Tool usage: prose **plus an associated preloadable function interface**, explicit exports/dependencies and pinned invocation (class 22). | A multi-tool domain overview (belongs to an Extension), or a Rust binding descriptor |
 | **Recipe** (class 21) | A turn template — like RNA. Carries `step_descriptions` JSONB listing component UUIDs in sequence. IBS reads it to assemble the `BuildInstruction` the Orchestrator executes. | A program; the Recipe is a template, IBS assembles the runnable structure from it |
 | **ExtensionCatalogue** (class 23) | Domain overview: `task_groups[]` pointing to recipe names | A re-documentation of individual components it owns |
 
@@ -689,7 +730,7 @@ After the four guides, consult `docs/plans/zencoder-extension-plan.md` when its 
 1. **Recipe** (class 21) — define the `RecipeVariant`: intent examples, `step_descriptions` JSONB with placeholders for component UUIDs, `variable_patterns` if needed
 2. **PythonCode snippet** (class 22) — the code snippet the Orchestrator will run at the relevant step; normally calls `host.<tool>(param=value)` once per Tool-calling snippet, with the documented dependent-chain exception; pure logic makes zero calls; assign `result = ...`
 3. **ToolSkill** (class 13) — binding descriptor for IBS: which Tool to bind, param schema, preconditions, error policy. Referenced by the `channel:"rust"` step in the Recipe's `step_descriptions`
-4. **Skill** (classes 1–3; also called Leaf Skill) — complete the tool-usage unit with prose and an explicit UUID/revision association to the PythonCode from step 2. The prose guides Tier-1 reasoning; the associated PythonCode executes the usage, including at Tier 0
+4. **Skill** (classes 1–3; also called Leaf Skill) — complete the tool-usage unit with prose and an explicit UUID/revision association to the PythonCode from step 2. The prose documents public exports and guides explicit Tier-1 reasoning; preloaded associated functions execute the usage, including at Tier0. Pin exported names/dependencies and keep mutable data isolated
 5. **ExtensionCatalogue** (class 23) — update `task_groups[]` if this belongs to an existing domain
 
 Fill in the UUID references in the Recipe's `step_descriptions` as you create each component.

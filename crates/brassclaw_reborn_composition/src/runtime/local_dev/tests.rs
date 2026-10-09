@@ -316,10 +316,10 @@ mod tests {
         extension_state: GsuiteExtensionState,
     ) -> GsuiteSurfaceHarness {
         let dir = tempfile::tempdir().expect("tempdir");
-        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            owner,
-            dir.path().join("local-dev"),
-        ))
+        let services = crate::build_reborn_services(
+            crate::RebornBuildInput::local_dev(owner, dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let run_context = run_context(label).await;
@@ -1023,6 +1023,7 @@ mod tests {
             .into_owned();
         let services = crate::build_reborn_services(
             crate::RebornBuildInput::local_dev("local-dev-no-host-owner", storage_root)
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
                 .with_local_dev_workspace_root(workspace_root.clone()),
         )
         .await
@@ -1144,10 +1145,12 @@ mod tests {
         let storage_root = dir.path().join("local-dev");
         let owner_id = "local-dev-gcal-surface-owner";
         {
-            let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-                owner_id,
-                storage_root.clone(),
-            ))
+            let services = crate::build_reborn_services(
+                crate::RebornBuildInput::local_dev(owner_id, storage_root.clone())
+                    .with_runtime_policy(
+                        crate::local_dev_runtime_policy().expect("local-dev policy"),
+                    ),
+            )
             .await
             .expect("local-dev services build");
             let local_runtime = services
@@ -1182,10 +1185,10 @@ mod tests {
                 .expect("activate google-calendar extension");
         }
 
-        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            owner_id,
-            storage_root,
-        ))
+        let services = crate::build_reborn_services(
+            crate::RebornBuildInput::local_dev(owner_id, storage_root)
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services rebuild");
         let run_context = run_context("gcal-surface").await;
@@ -1215,10 +1218,10 @@ mod tests {
     async fn local_dev_capability_port_snapshots_extensions_when_port_is_created() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
-        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            "local-dev-live-gcal-surface-owner",
-            storage_root,
-        ))
+        let services = crate::build_reborn_services(
+            crate::RebornBuildInput::local_dev("local-dev-live-gcal-surface-owner", storage_root)
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let run_context = run_context("gcal-live-surface").await;
@@ -1484,10 +1487,10 @@ mod tests {
     async fn tier_zero_builder_build_for_run_assembles_executor_for_local_dev_path() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
-        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            "tier-zero-local-dev-owner",
-            storage_root.clone(),
-        ))
+        let services = crate::build_reborn_services(
+            crate::RebornBuildInput::local_dev("tier-zero-local-dev-owner", storage_root.clone())
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let runtime = services.host_runtime.clone().expect("host runtime");
@@ -1528,10 +1531,10 @@ mod tests {
     async fn tier_zero_builder_build_for_run_assembles_executor_for_pg_path() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
-        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            "tier-zero-pg-path-owner",
-            storage_root.clone(),
-        ))
+        let services = crate::build_reborn_services(
+            crate::RebornBuildInput::local_dev("tier-zero-pg-path-owner", storage_root.clone())
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+        )
         .await
         .expect("local-dev services build");
         let runtime = services.host_runtime.clone().expect("host runtime");

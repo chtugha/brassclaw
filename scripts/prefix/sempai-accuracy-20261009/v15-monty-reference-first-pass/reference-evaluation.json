@@ -1,0 +1,305 @@
+{
+  "cases": [
+    {
+      "id": "eval-policy",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The authoring contract forbids eval in authored PythonCode regardless of upstream Monty support. toolskills.md L552-577 and skills.md L552-577 both state: 'Never use import os, import subprocess, exec(, eval(, open( or retired intrinsics. Use the registered host boundary.' sempai-monty-compatibility.md L92-106 explicitly clarifies: 'Upstream Monty has restricted eval/exec and host-mediated filesystem mechanisms. BrassClaw authored PythonCode forbids eval/exec, direct open, os/subprocess imports and unapproved I/O. Do not describe these as generally absent from Monty; describe them as forbidden by this authoring contract.' The policy is stricter than upstream capability. The standalone citation --mode run is a source-question benchmark, not the production reviewer/proposal API, and does not grant permissions. Missing runtime support remains an explicit prerequisite, not a reason to bypass the binding contract.",
+        "citations": [
+          "552ebdd51654",
+          "5442bd4426ff",
+          "9ee64db8b0ee"
+        ]
+      },
+      "citations_resolved": false,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 14.37,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A restored snapshot is not a durable effect ledger. It carries globals, functions, classes, time budget and, for a mid-feed snapshot, the paused call stack \u2014 but it does not authenticate, authorize, or record confirmed/unresolved effects. The reference is explicit: 'A dump must come from a trusted compatible producer with verified integrity. Interpreter bytes are not approval, authentication or a durable effect ledger.' (sempai-monty-compatibility.md L92-106, card be447cba9594). It also states 'Neither restored memory nor a timeout establishes that no effect happened' and forbids 'replay[ing] a whole Recipe or a completed operation after an output/reply failure' (be447cba9594). tools.md reinforces this: 'A VM crash, timeout or reply-database failure must not automatically replay the entire Recipe or reset its Tool attempt counts. Preserve confirmed effects. Expose unknown effect status as unresolved and use supported operation-specific status lookup, durable deduplication or explicit reconciliation before deciding whether the approved retry contract permits another dispatch. Without such evidence, do not replay the operation or claim exactly-once external execution.' (tools.md L313-371, card b1c9eb6c27e7). A timeout or missing completion record does not prove no effect occurred, and unknown completion may be retried only under an explicitly approved safe contract with read-only or durable deduplication evidence \u2014 not merely by restoring memory. (skills.md L497-551, card 5dba8e21f131; tools.md L235-264, card 00ad86a8783c). Therefore, restoring a snapshot by itself does not authorize replaying an unresolved external operation; reconciliation through supported persistence, status lookup, or deduplication is required first.",
+        "citations": [
+          "be447cba9594",
+          "b1c9eb6c27e7",
+          "5dba8e21f131"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 15.325,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-trust",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Parsing a snapshot's bytes is only a format check; it does not establish provenance or integrity. The reference states that a snapshot must come from a trusted, compatible producer with verified integrity, and that the caller must establish provenance and integrity before loading (sempai-authoring-reference.md : L20-28). Monty itself does not authenticate snapshots or fully validate their contents, and invalid snapshots have no correctness or availability guarantees (sempai-authoring-reference.md : L20-28). The caller must establish provenance and integrity before loading; Monty does not authenticate snapshots or fully validate their contents. Invalid snapshots have no correctness or availability guarantees.",
+        "citations": [
+          "sempai-authoring-reference.md : L20-28"
+        ]
+      },
+      "citations_resolved": false,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 13.03,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "generator-function",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects generator functions at parse time. The pinned Monty v1.0.0 limitations list (scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md, card be98cdf265c1) states yield/yield from expressions are not supported \u2014 there are no generator functions. The same is recorded in limitations/index.md (card 6ae8c4c80d41) and limitations/comprehensions.md (card df38d3c88991). A Monty component body must therefore not use yield; doing so raises NotImplementedError before any code runs. A BrassClaw authored PythonCode component additionally forbids such constructs under the authoring contract (skills.md card 5492db3e2b23, toolskills.md card 1627e3fec804).",
+        "citations": [
+          "be98cdf265c1",
+          "6ae8c4c80d41",
+          "df38d3c88991"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 10.726,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "match-language",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects match statements at parse time with NotImplementedError (evidence-card 6ae8c4c80d41, 9e4d23dfc0e1, be98cdf265c1, 70fcd01853d7). A BrassClaw PythonCode component must use if/elif/else instead, and \u00a7body-scan hard-rejects eval/exec/open/subprocess/os imports (evidence-card d68920c3c89d, 9ee64db8b0ee).",
+        "citations": [
+          "6ae8c4c80d41",
+          "9e4d23dfc0e1",
+          "be98cdf265c1"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 14.071,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "inheritance",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects class inheritance at parse time. The pinned Monty v1.0.0 documentation (commit 85c5d1f6bef038405cfc40a4eed94806e303567e) lists base classes / metaclasses as a parse-time rejection, raising NotImplementedError before any code runs. A BrassClaw PythonCode component runs inside that same Monty execution context, so it cannot inherit from a Python base class. Use simple classes (instance methods, __init__, class variables) instead, which are supported. This is a language limitation, not a BrassClaw authoring restriction.",
+        "citations": [
+          "scripts/prefix/monty-reference/v1.0.0/docs/limitations/language.md",
+          "scripts/prefix/monty-reference/v1.0.0/docs/limitations/index.md",
+          "scripts/prefix/sempai-monty-compatibility.md"
+        ]
+      },
+      "citations_resolved": false,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 10.516,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "typed-proof",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference explicitly states type-checking is static only: the typing module provides markers, not runtime enforcement, and class annotations are stored stringized. Code compiled at runtime (eval/exec) is not checked. Passing the type check does not mean the code runs. Parser-rejected constructs (match, yield) are not modelled. Five stub-only modules resolve during checking then raise ModuleNotFoundError at runtime. These are documented caveats, not guarantees.",
+        "citations": [
+          "1db6a93471ac",
+          "6ae8c4c80d41",
+          "c7d8f2153f6e"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 13.115,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "private-frame",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference explicitly states that BrassClaw's private transport is stricter than upstream: it caps frames at 64 MiB and depth at 64, and warns not to claim the upstream 256 MiB wire allowance is available to a BrassClaw task (evidence-card 9ee64db8b0ee, 467d60b0af75).",
+        "citations": [
+          "9ee64db8b0ee",
+          "467d60b0af75"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 8.667,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "task-clock",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference does not support a single cumulative task time budget across feeds. The Monty resource-limits docs (resource-limits.md L229-246) state there is no cumulative per-session budget: every limit restarts, so a long-lived session is bounded per request rather than over its lifetime (card 265076cf8950). The two duration budgets, max_feed_duration_secs and max_turn_duration_secs, both restart at their respective boundaries (feed and host answer) rather than accumulating (card 265076cf8950). The BrassClaw task account persists consumption and effective settings across steps/waits/retries, but the reference does not describe a single cumulative time budget spanning all feeds (card 9ee64db8b0ee). The removed max_allocations setting must not be reinvented to get around a limit (card 9ee64db8b0ee).",
+        "citations": [
+          "265076cf8950",
+          "9ee64db8b0ee"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 13.807,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "global-lifecycle",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A completed turn must not terminate the one global Monty orchestrator. AGENTS.md L358-405 states the orchestrator stays alive in the background for the entire instance lifetime and that completing or cancelling a turn must not terminate Monty. simplified_v3.md L123-181 and tools.md L313-371 reinforce this: only instance shutdown or a supervised fatal-runtime recovery may end the global VM's lifetime, and a Tool call or host.run_program delegation is bounded work, not another global orchestrator lifecycle. Finishing or cancelling a turn must not terminate the instance VM.",
+        "citations": [
+          "ca0e6a83fb85",
+          "1bff8d2abcad",
+          "5d47ed8b3e9e"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 9.469,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "seed-q2",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Bundled system_seed installation components use the distinct integrity-checked bootstrap path, not authored human Q2. Per skills.md L832-838, 'Bundled system_seed components use installation-owned structural/behavioral/integrity qualification without additional installed-instance human Q2.' toolskills.md L448-450 confirms this: 'system_seed is restricted to the existing trusted first-party bootstrap/integrity path; authored changes cannot claim that mode to evade Q2' and 'its q2_ref is null, while trusted successful Q1/integrity and required behavioral evidence still apply.' The distinction is provenance (trusted first-party bootstrap), not a per-instance human click. A human Q2 click is required only for authored changes (validation_mode: 'authored'), never for the controlled system_seed bootstrap path.",
+        "citations": [
+          "skills.md : L832-838",
+          "toolskills.md : L448-450"
+        ]
+      },
+      "citations_resolved": false,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 13.602,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "binding-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes. The v3 binding contract makes current global Tool policy an independent, per-dispatch gate that is checked before every actual Tool dispatch, regardless of component approval or version pinning. Evidence: tools.md L155-177 (AGENTS.md card 57d838234532) states the kernel MUST enforce the effective instance-wide allow/block setting and technical parameters before every actual dispatch in Tier 0, Tier 1 and Tier 2, and that 'Binding-time availability or a previous permission check cannot replace this check.' AGENTS.md L505-513 (card 1bff8d2abcad) and simplified_v3.md L846-857 (card 69f7057c504f) confirm the same instance-wide policy applies before every dispatch including retries and continuations, and that a globally blocked Tool produces no new effect even through a retained approved component reference. recipe.md L577-595 (card 216c2fb5d330) and skills.md L979-1065 (card 8053ce408208) reinforce that approval and version pinning grant no old permission and do not freeze global settings. Therefore an approved pinned component can still be denied at dispatch by current global policy.",
+        "citations": [
+          "57d838234532",
+          "1bff8d2abcad",
+          "69f7057c504f"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 14.287,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 111936,
+          "num_lmcache_cached_tokens": 111936,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "temperature": 0,
+  "repair": false,
+  "generation": "498a8a380b928f10e9f2eb937c6a7b1bf6741943fafcff4152aec00f37404eba",
+  "suite_sha256": "f6ed61ed1aaaaea4a93df729fffafd02db20a0829041770a1d81783f39a05f8e",
+  "production_q1_q2_verified": false,
+  "passed": 1
+}

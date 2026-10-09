@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bd4877e38e15ac36",
+  "object": "chat.completion",
+  "created": 1791514514,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"AGENTS.md (L358-366) states the global Monty orchestrator starts after migrations, component seeding and integrity verification, and bundled system_seed uses installation-owned integrity qualification without additional human Q2; only post-installation authored components require Q1, behavioral validation and human Q2.\",\n  \"citations\": [\"ca0e6a83fb85\", \"d8ca56021893\"]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 112729,
+    "total_tokens": 112839,
+    "completion_tokens": 110,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 111936,
+      "num_lmcache_cached_tokens": 111936,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

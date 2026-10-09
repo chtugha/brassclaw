@@ -373,7 +373,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 -    let live = LIVE_MEMORY.fetch_add(size, Ordering::Relaxed).saturating_add(size);
 +fn charge(size: usize, vm_owned: bool) {
 +    let previous = LIVE_MEMORY
-+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
++        .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
 +        .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocator accounting overflow")));
 +    let Some(live) = previous.checked_add(size) else {
 +        out_of_memory(format_args!("monty worker: allocator accounting overflow"));
@@ -381,7 +381,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 @@ -110,0 +312,5 @@
 +    if vm_owned {
 +        VM_LIVE_MEMORY
-+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: VM allocator accounting overflow")));
 +    }
 @@ -116,2 +322,14 @@
@@ -389,14 +389,14 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 -    LIVE_MEMORY.fetch_sub(size, Ordering::Relaxed);
 +fn refund(size: usize, vm_owned: bool) {
 +    if LIVE_MEMORY
-+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
++        .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
 +        .is_err()
 +    {
 +        out_of_memory(format_args!("monty worker: allocator accounting underflow"));
 +    }
 +    if vm_owned
 +        && VM_LIVE_MEMORY
-+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
 +            .is_err()
 +    {
 +        out_of_memory(format_args!("monty worker: VM allocator accounting underflow"));
@@ -428,16 +428,15 @@ index 0f449f81..3dd6176b 100644
 +        OOM_EXIT_CODE, PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope,
 +        VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT, allocate_into_baseline, memory_limit_with_headroom,
 diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resource.rs
-index 076f8259..821bfe22 100644
 --- a/crates/monty-types/src/resource.rs
 +++ b/crates/monty-types/src/resource.rs
-@@ -14 +14,4 @@ use std::{
+@@ -14 +14,4 @@
 -    sync::atomic::{AtomicUsize, Ordering},
 +    sync::{
 +        Arc, Mutex,
 +        atomic::{AtomicBool, AtomicUsize, Ordering},
 +    },
-@@ -33,0 +37,11 @@ pub static LIVE_MEMORY: AtomicUsize = AtomicUsize::new(0);
+@@ -33,0 +37,11 @@
 +/// Allocations made in a trusted VM allocation scope, including allocation
 +/// headers/padding. Ownership survives scope exit, reallocations and waits.
 +/// Unlike LIVE_MEMORY minus a baseline, unrelated transport allocations never
@@ -449,12 +448,15 @@ index 076f8259..821bfe22 100644
 +/// Shared soft ceiling for the worker's VM allocation domain. Only the trusted
 +/// serialized worker owner changes it; no task/reset changes this account.
 +pub static VM_MEMORY_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
-@@ -92,0 +107,2 @@ pub enum ResourceError {
+@@ -49 +63 @@
+-    let _ = BASELINE_MEMORY.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |baseline| {
++    let _ = BASELINE_MEMORY.try_update(Ordering::Relaxed, Ordering::Relaxed, |baseline| {
+@@ -92,0 +107,2 @@
 +    /// Trusted host control failed; sandboxed code cannot catch this.
 +    Control(ExecutionControlError),
-@@ -137,0 +154 @@ impl fmt::Display for ResourceError {
+@@ -137,0 +154 @@
 +            Self::Control(reason) => write!(f, "execution control: {reason:?}"),
-@@ -277,0 +295,10 @@ pub struct ResourceTracker {
+@@ -277,0 +295,10 @@
 +    // Authority is never serialized. A controlled dump requires explicit trusted
 +    // reattachment before execution; it must not silently become uncontrolled.
 +    #[serde(skip)]
@@ -465,11 +467,11 @@ index 076f8259..821bfe22 100644
 +    /// Scheduler identity, not a product task or authority grant. Main is 0;
 +    /// None denotes a discarded coroutine context. Retained over snapshots.
 +    execution_context: Cell<Option<u32>>,
-@@ -283,0 +311,3 @@ pub struct ResourceTracker {
+@@ -283,0 +311,3 @@
 +    /// Synchronous interpreter preparation, accounted independently of VM
 +    /// feed/turn limits but included in the trusted task-control clock.
 +    preparation: Arc<Mutex<PreparationAccount>>,
-@@ -316,0 +347,119 @@ impl Default for ResourceTracker {
+@@ -316,0 +347,119 @@
 +#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 +struct PreparationAccount {
 +    total: Duration,
@@ -589,7 +591,7 @@ index 076f8259..821bfe22 100644
 +    IdentityExhausted,
 +}
 +
-@@ -317,0 +467,146 @@ impl ResourceTracker {
+@@ -317,0 +467,146 @@
 +    /// Attach trusted control without resetting consumption or terminal failure.
 +    /// Reattachment after loading a controlled dump is mandatory. It does not
 +    /// clear a failure already observed while control was unavailable.
@@ -736,34 +738,34 @@ index 076f8259..821bfe22 100644
 +        }
 +    }
 +
-@@ -329,0 +625,5 @@ impl ResourceTracker {
+@@ -329,0 +625,5 @@
 +            execution_control: None,
 +            control_required: false,
 +            control_error: Cell::new(None),
 +            control_yield: Cell::new(false),
 +            execution_context: Cell::new(Some(0)),
-@@ -330,0 +631 @@ impl ResourceTracker {
+@@ -330,0 +631 @@
 +            preparation: Arc::new(Mutex::new(PreparationAccount::default())),
-@@ -396 +697,2 @@ impl ResourceTracker {
+@@ -396 +697,2 @@
 -    /// Returns the configured memory budget, if any. Hosts that bound a worker
 +    /// Returns the current effective memory budget, including an installed
 +    /// shared VM-domain ceiling. Hosts that bound a worker
-@@ -400 +702 @@ impl ResourceTracker {
+@@ -400 +702 @@
 -        self.limits.max_memory
 +        self.effective_memory_limit()
-@@ -419 +721 @@ impl ResourceTracker {
+@@ -419 +721 @@
 -        self.limits.max_memory.is_some() || self.has_time_limit()
 +        self.effective_memory_limit().is_some() || self.has_time_limit()
-@@ -429 +731 @@ impl ResourceTracker {
+@@ -429 +731 @@
 -        self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
 +        self.control_required || self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
-@@ -457 +759 @@ impl ResourceTracker {
+@@ -457 +759 @@
 -        if let Some(limit) = self.limits.max_memory {
 +        if let Some(limit) = self.effective_memory_limit() {
-@@ -476 +778 @@ impl ResourceTracker {
+@@ -476 +778 @@
 -        if let Some(limit) = self.limits.max_memory {
 +        if let Some(limit) = self.effective_memory_limit() {
-@@ -485,0 +788,11 @@ impl ResourceTracker {
+@@ -485,0 +788,11 @@
 +    fn effective_memory_limit(&self) -> Option<usize> {
 +        let shared = VM_MEMORY_ACCOUNTING
 +            .load(Ordering::Acquire)
@@ -775,21 +777,21 @@ index 076f8259..821bfe22 100644
 +        }
 +    }
 +
-@@ -492,0 +806 @@ impl ResourceTracker {
+@@ -492,0 +806 @@
 +        self.poll_execution_control()?;
-@@ -660,0 +975 @@ impl ResourceTracker {
+@@ -660,0 +975 @@
 +        self.pause_preparation();
-@@ -675,0 +991,4 @@ impl ResourceTracker {
+@@ -675,0 +991,4 @@
 +            self.resume_preparation();
 +            if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
 +                self.control_error.set(Some(error));
 +            }
-@@ -703,0 +1023 @@ impl ResourceTracker {
+@@ -703,0 +1023 @@
 +        self.pause_preparation();
-@@ -706,0 +1027,2 @@ impl ResourceTracker {
+@@ -706,0 +1027,2 @@
 +        } else {
 +            self.resume_preparation();
-@@ -741,3 +1063,7 @@ fn probe_memory() -> usize {
+@@ -741,3 +1063,7 @@
 -    LIVE_MEMORY
 -        .load(Ordering::Relaxed)
 -        .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-88128ff5504525ec",
+  "object": "chat.completion",
+  "created": 1791516569,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Design a reusable idle data-result workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a with content result = {'state': 'Idle'}. Zero inputs/dependencies; no version numbers or approval. Created exactly one class21 recipe-transfer-08 with the exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema, exact supplied UUIDs in order, each step includes one UUID. tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims. Original conversation preserved; root compatibility arrays empty under test persona.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-transfer-08\", \"description\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a with content result = {'state': 'Idle'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a with content result = {'state': 'Idle'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\", \"intent_examples\": [\"return the idle state data\", \"compute the idle state object\", \"produce the fixed idle object\", \"obtain the idle state result\", \"calculate the idle state data\", \"yield the idle state object\", \"get the fixed idle state data\", \"build the idle state object\", \"evaluate the idle data subworkflow\", \"derive the fixed idle state result\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a with content result = {'state': 'Idle'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"orchestrator\", \"goal\": \"Return state data\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"d14b7a42-2c12-57e8-9cf1-59d7e576182a\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"idle-data\", \"description\": \"Offline full-v3 export only. Host allocated unapproved draft PythonCode d14b7a42-2c12-57e8-9cf1-59d7e576182a with content result = {'state': 'Idle'}. Zero inputs/dependencies; no version numbers or approval. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required, current sink cannot preserve full v3 fields. No runtime/approval claims.\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"return the idle state data\", \"compute the idle state object\", \"produce the fixed idle object\", \"obtain the idle state result\", \"calculate the idle state data\", \"yield the idle state object\", \"get the fixed idle state data\", \"build the idle state object\", \"evaluate the idle data subworkflow\", \"derive the fixed idle state result\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114799,
+    "total_tokens": 115906,
+    "completion_tokens": 1107,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}
