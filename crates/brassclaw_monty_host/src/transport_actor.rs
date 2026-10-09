@@ -4,10 +4,14 @@
 use std::{
     collections::BTreeMap,
     fmt, io,
+    panic::AssertUnwindSafe,
     path::Path,
     process::ExitStatus,
     sync::{Arc, Mutex},
+    time::Duration,
 };
+
+use futures::{FutureExt, future::BoxFuture};
 
 use tokio::{
     sync::{mpsc, watch},
@@ -18,6 +22,7 @@ use uuid::Uuid;
 use crate::{
     VmBounds,
     global::Lifecycle,
+    heap::HeapSettings,
     process::{
         GlobalProcess, ProcessError, ProcessFailure, ProcessLimits, ProcessSnapshot, RecipeCommand,
         RootBoot, WorkerCommand, recover_command, retain_command,
@@ -250,7 +255,18 @@ impl RequestTicket {
         self.inbox.wait(self.id).await
     }
 }
+/// Result of an installation-owned durable settings commit, never a Tool grant.
+pub enum HeapCommitOutcome {
+    Committed,
+    Rejected,
+    Unknown,
+}
+struct HeapCommit {
+    future: BoxFuture<'static, HeapCommitOutcome>,
+    timeout: Duration,
+}
 struct Envelope {
+    heap_commit: Option<HeapCommit>,
     id: RequestId,
     command: WorkerCommand,
 }
@@ -298,6 +314,32 @@ impl TransportClient {
     /// receipt identity and sending its command. Full/closed queues return the
     /// whole unaccepted command. Credits include abandoned/completed requests.
     pub fn try_submit(&self, command: WorkerCommand) -> Result<RequestTicket, SubmitError> {
+        self.try_submit_inner(command, None)
+    }
+    pub(crate) fn try_submit_heap_transaction(
+        &self,
+        expected_revision: u64,
+        settings: HeapSettings,
+        commit: BoxFuture<'static, HeapCommitOutcome>,
+        timeout: Duration,
+    ) -> Result<RequestTicket, SubmitError> {
+        self.try_submit_inner(
+            WorkerCommand::UpdateHeap {
+                expected_revision,
+                settings,
+                automatic: false,
+            },
+            Some(HeapCommit {
+                future: commit,
+                timeout,
+            }),
+        )
+    }
+    fn try_submit_inner(
+        &self,
+        command: WorkerCommand,
+        heap_commit: Option<HeapCommit>,
+    ) -> Result<RequestTicket, SubmitError> {
         let submit = |kind, command| SubmitError {
             kind,
             command: Box::new(command),
@@ -363,7 +405,11 @@ impl TransportClient {
         ledger.credits_mut(control).reserved = total;
         ledger.credits_mut(control).count += 1;
         let tx = if control { &self.control_tx } else { &self.tx };
-        if let Err(error) = tx.try_send(Envelope { id, command }) {
+        if let Err(error) = tx.try_send(Envelope {
+            id,
+            command,
+            heap_commit,
+        }) {
             ledger.records.remove(&id);
             ledger.credits_mut(control).reserved -= reserved;
             ledger.credits_mut(control).count -= 1;
@@ -555,10 +601,17 @@ async fn run(
         if begun.is_err() {
             break (StopKind::AccountingFailed, process.terminate().await);
         }
-        let mut outcome = process.exchange(envelope.command).await;
+        let transactional = envelope.heap_commit.is_some();
+        let mut outcome = if let Some(commit) = envelope.heap_commit {
+            heap_transaction(&mut process, envelope.command, commit).await
+        } else {
+            process.exchange(envelope.command).await
+        };
         // The private ledger already holds the exact original command. Do not
         // retain a second decoded copy on a failed exchange.
-        if let Err(error) = &mut outcome {
+        if let Err(error) = &mut outcome
+            && !transactional
+        {
             error.command = None;
         }
         if let Ok(snapshot) = &outcome
@@ -640,6 +693,122 @@ async fn run(
         containment_error: process.take_containment_error(),
         reap_error: process.take_reap_error(),
         shutdown_failure,
+    }
+}
+
+// This barrier is inside the sole transport owner. Direct child-context
+// commands remain queued too; holding only the service loop would be insufficient.
+async fn heap_transaction(
+    process: &mut GlobalProcess,
+    command: WorkerCommand,
+    commit: HeapCommit,
+) -> ExchangeResult {
+    let WorkerCommand::UpdateHeap {
+        expected_revision,
+        settings,
+        automatic: false,
+    } = command
+    else {
+        return Err(ProcessError::new(ProcessFailure::Protocol));
+    };
+    let before = process.exchange(WorkerCommand::Inspect).await?;
+    let old = before
+        .heap
+        .effective
+        .ok_or_else(|| ProcessError::new(ProcessFailure::Protocol))?;
+    let provisional = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision,
+            settings,
+            automatic: false,
+        })
+        .await?;
+    if provisional.heap.effective != Some(settings) || provisional.heap.pending_reduction {
+        let mut error = ProcessError::new(ProcessFailure::Protocol);
+        error.snapshot = Some(Box::new(provisional));
+        return Err(error);
+    }
+    match tokio::time::timeout(
+        commit.timeout,
+        AssertUnwindSafe(commit.future).catch_unwind(),
+    )
+    .await
+    {
+        Ok(Ok(HeapCommitOutcome::Committed)) => Ok(provisional),
+        Ok(Ok(HeapCommitOutcome::Rejected)) => {
+            let revision = settings
+                .revision
+                .checked_add(1)
+                .ok_or_else(|| ProcessError::new(ProcessFailure::Protocol))?;
+            let mut rollback = process
+                .exchange(WorkerCommand::UpdateHeap {
+                    expected_revision: settings.revision,
+                    settings: HeapSettings {
+                        revision,
+                        max_vm_bytes: old.max_vm_bytes,
+                    },
+                    automatic: false,
+                })
+                .await
+                .map_err(|mut error| {
+                    // A failed rollback is fatal even when its underlying limit
+                    // error would normally be recoverable before a DB mutation.
+                    error.kind = ProcessFailure::Transport;
+                    error
+                })?;
+            if rollback.heap.effective.is_none_or(|heap| {
+                heap.revision != revision || heap.max_vm_bytes != old.max_vm_bytes
+            }) {
+                let mut error = ProcessError::new(ProcessFailure::Protocol);
+                error.snapshot = Some(Box::new(rollback));
+                return Err(error);
+            }
+            if before.heap.pending_reduction {
+                // A rejected manual edit must also preserve an earlier
+                // automatic target, not silently cancel its pending reduction.
+                let pending = before
+                    .heap
+                    .desired
+                    .ok_or_else(|| ProcessError::new(ProcessFailure::Protocol))?;
+                let restored = HeapSettings {
+                    revision: revision
+                        .checked_add(1)
+                        .ok_or_else(|| ProcessError::new(ProcessFailure::Protocol))?,
+                    max_vm_bytes: pending.max_vm_bytes,
+                };
+                rollback = process
+                    .exchange(WorkerCommand::UpdateHeap {
+                        expected_revision: revision,
+                        settings: restored,
+                        automatic: true,
+                    })
+                    .await
+                    .map_err(|mut error| {
+                        error.kind = ProcessFailure::Transport;
+                        error
+                    })?;
+                if rollback.heap.desired != Some(restored)
+                    || (!rollback.heap.pending_reduction
+                        && rollback.heap.effective != Some(restored))
+                {
+                    let mut error = ProcessError::new(ProcessFailure::Protocol);
+                    error.snapshot = Some(Box::new(rollback));
+                    return Err(error);
+                }
+            }
+            let mut error = ProcessError::new(ProcessFailure::Vm(
+                crate::VmFailure::SettingsRevisionConflict,
+            ));
+            error.snapshot = Some(Box::new(rollback));
+            Err(error)
+        }
+        _ => {
+            // A missing commit outcome cannot prove rollback is safe. Retain
+            // the provisional state and contain before any next VM command.
+            let mut error = ProcessError::new(ProcessFailure::Transport);
+            error.snapshot = Some(Box::new(provisional));
+            Err(error)
+        }
     }
 }
 

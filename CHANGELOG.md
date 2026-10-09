@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.2] - 2026-10-09
+
+This development checkpoint adds the revised memory defaults and live settings
+coordination. The paired application/worker protocol remains version 6. Full v3
+catalogue, authorization, hosting controls and platform acceptance remain open.
+
+### Changed
+
+- Default Monty memory management to one conservative startup sizing, then a
+  constant budget. WebUI settings offer a manual live budget and optional slow
+  automatic monitoring; minor pressure alone does not pause admission. Migration
+  V111 preserves existing limits as manual values and uses a 512 MiB startup
+  ceiling/fallback for new settings.
+
 ### Fixed
 
 - Preserve exact budget-gate amounts with migration V110, restoring only proven
@@ -22,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initialise hook, milestone and subagent fixtures with their required canonical
   prompt seeds, including unsubmitted-message setup paths.
 - Reject unbounded heap-budget sentinels in the adaptive calculator.
+- Keep bounded admissions waiting under memory backpressure while processing
+  cancellation, settings and active host results. Serialize manual heap changes
+  with durable settings commits across both root and child commands; reject
+  unsafe reductions before persistence and retain accepted edits after HTTP
+  cancellation.
+- Repair the isolated control-workspace Windows dependency lock and explicit
+  runtime-policy setup in retained host fixtures. Update embedding decoding to
+  stable array chunks and the Reborn checkout action to Node 24.
 
 ### Added
 

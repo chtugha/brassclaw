@@ -1854,7 +1854,10 @@ async fn production_loop_model_gateway_rejects_forged_context_summary_before_pro
         .into_iter()
         .map(|milestone| milestone.kind.kind_name())
         .collect::<Vec<_>>();
-    assert_eq!(milestone_kinds, vec!["model_started", "model_failed"]);
+    assert!(
+        milestone_kinds.is_empty(),
+        "prompt authority rejection happens before a prepared call, budget reservation or model_started event"
+    );
 }
 
 #[tokio::test]
@@ -1903,7 +1906,10 @@ async fn production_loop_model_gateway_rejects_unvalidated_surface_before_provid
         .into_iter()
         .map(|milestone| milestone.kind.kind_name())
         .collect::<Vec<_>>();
-    assert_eq!(milestone_kinds, vec!["model_started", "model_failed"]);
+    assert!(
+        milestone_kinds.is_empty(),
+        "prompt authority rejection happens before a prepared call, budget reservation or model_started event"
+    );
 }
 
 #[tokio::test]

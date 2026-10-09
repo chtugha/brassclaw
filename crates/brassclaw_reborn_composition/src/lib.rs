@@ -71,7 +71,7 @@ mod local_runtime_profile;
 mod manual_token_flow;
 mod mcp;
 mod mcp_discovery;
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", any(test, feature = "skills-db")))]
 mod monty_instance_owner;
 #[cfg(feature = "root-llm-provider")]
 mod nearai_login_serve;

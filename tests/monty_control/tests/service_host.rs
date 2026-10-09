@@ -69,6 +69,7 @@ struct FilePorts {
     retain_child_heap: bool,
     retained_vm_bytes: AtomicUsize,
     resume_child_after_edit: bool,
+    child_resumed: AtomicBool,
 }
 impl FilePorts {
     fn new(root: &std::path::Path, label: &str, pause_read: bool) -> Arc<Self> {
@@ -94,6 +95,7 @@ impl FilePorts {
             retain_child_heap: false,
             retained_vm_bytes: AtomicUsize::new(0),
             resume_child_after_edit: false,
+            child_resumed: AtomicBool::new(false),
         })
     }
     fn input(&self) -> TaskInput {
@@ -193,6 +195,7 @@ impl FilePorts {
                                         },
                                     ..
                                 }) => {
+                                    self.child_resumed.store(true, Ordering::Release);
                                     // A third feed must fail: the live reduction must not
                                     // reset the first feed already consumed by this child.
                                     let exhausted = transport
@@ -627,6 +630,147 @@ async fn queued_cancellation_passes_fifo_front_without_a_free_worker_or_capacity
         assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
         assert!(receipt.accounting.is_some());
     }
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn memory_pressure_holds_admission_without_blocking_controls_or_active_results() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start_with_capacity(FILE_ROOT, 1).await;
+    let pid = owner.worker_process_id();
+    let client = owner.client();
+    let root = client.root_identity();
+    let a = FilePorts::new(directory.path(), "pressure-active-a", true);
+    let a_ticket = client.submit(a.input(), a.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), a.started.notified())
+        .await
+        .unwrap();
+    let b = FilePorts::new(directory.path(), "pressure-active-b", true);
+    let b_ticket = client.submit(b.input(), b.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), b.started.notified())
+        .await
+        .unwrap();
+    let queued = FilePorts::new(directory.path(), "pressure-queued", false);
+    let queued_ticket = client.submit(queued.input(), queued.clone()).unwrap();
+
+    let mut abandoned = Box::pin(client.publish_memory_backpressure(0, true));
+    assert!(matches!(
+        futures::poll!(abandoned.as_mut()),
+        std::task::Poll::Pending
+    ));
+    drop(abandoned);
+    // FIFO control ownership retains the accepted pause after its waiter drops.
+    assert_eq!(
+        client.publish_memory_backpressure(0, false).await,
+        Err(ServiceFailure::SettingsConflict)
+    );
+    assert!(client.memory_admission_policy().backpressure);
+    assert_eq!(client.memory_admission_policy().revision, 1);
+    a.release.notify_one();
+    let completed = tokio::time::timeout(Duration::from_secs(10), a_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(completed.outcome, TaskOutcome::Completed { .. }));
+    assert_eq!(completed.root, root);
+    assert_eq!(queued.reads.load(Ordering::Acquire), 0);
+    assert_eq!(
+        queued_ticket
+            .control()
+            .stopped(Duration::from_millis(20))
+            .await,
+        Err(ServiceFailure::Deadline)
+    );
+
+    let waiting = FilePorts::new(directory.path(), "pressure-waiting", false);
+    let mut pending = Box::pin(client.submit_when_available(waiting.input(), waiting.clone()));
+    // The sole queue credit is held by queued_ticket, not silently expanded.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), pending.as_mut())
+            .await
+            .is_err()
+    );
+    queued_ticket.control().cancel();
+    let cancelled = tokio::time::timeout(Duration::from_secs(2), queued_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(cancelled.accounting.is_none());
+    assert_eq!(
+        cancelled.outcome,
+        TaskOutcome::Failed {
+            reason_kind: "task_cancelled".into()
+        }
+    );
+    // Its credit is now available, but pressure still prevents VM admission.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), pending.as_mut())
+            .await
+            .is_err()
+    );
+    assert_eq!(waiting.reads.load(Ordering::Acquire), 0);
+    drop(pending);
+
+    let current = client.live_task_settings().current();
+    client
+        .publish_settings(
+            current.revision,
+            brassclaw_monty_host::process::TaskSettings {
+                revision: current.revision + 1,
+                max_compute_time: Duration::from_secs(90),
+                token_budgets_enabled: current.limits.token_budgets_enabled,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        client.live_task_settings().current().revision,
+        current.revision + 1
+    );
+    let clear = client.publish_memory_backpressure(1, false).await.unwrap();
+    assert!(!clear.backpressure);
+    assert_eq!(clear.revision, 2);
+    // Dropping the parked submission returned its credit. The original input
+    // executes once after capacity returns, on the same root and worker process.
+    let ticket = tokio::time::timeout(
+        Duration::from_secs(2),
+        client.submit_when_available(waiting.input(), waiting.clone()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let completed = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed.root, root);
+    assert!(matches!(completed.outcome, TaskOutcome::Completed { .. }));
+    assert_eq!(waiting.reads.load(Ordering::Acquire), 1);
+    assert_eq!(waiting.writes.load(Ordering::Acquire), 1);
+    assert_eq!(owner.worker_process_id(), pid);
+
+    client.publish_memory_backpressure(2, true).await.unwrap();
+    let closed = FilePorts::new(directory.path(), "pressure-closed", false);
+    let mut pending = Box::pin(client.submit_when_available(closed.input(), closed.clone()));
+    assert!(matches!(
+        futures::poll!(pending.as_mut()),
+        std::task::Poll::Pending
+    ));
+    client.close_admission();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(2), pending.as_mut())
+            .await
+            .unwrap(),
+        Err(ServiceFailure::Closed)
+    ));
+    drop(pending);
+    assert_eq!(closed.reads.load(Ordering::Acquire), 0);
+    b.release.notify_one();
+    let completed = tokio::time::timeout(Duration::from_secs(10), b_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(completed.outcome, TaskOutcome::Completed { .. }));
     graceful(&mut owner).await;
 }
 
@@ -1137,4 +1281,204 @@ async fn queued_input_is_rechecked_after_live_reduction_without_truncation_or_in
         .unwrap();
     assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
     graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn manual_heap_commit_barrier_holds_direct_child_execution_and_rolls_back_safely() {
+    use brassclaw_monty_host::{heap::HeapSettings, service::HeapCommitOutcome};
+    let directory = tempfile::tempdir().unwrap();
+    let mut root = boot(FILE_ROOT);
+    root.aliases.insert("read_file".into());
+    root.bounds.values.max_feeds = 2;
+    let mut owner = ServiceOwner::start(
+        worker(),
+        root,
+        limits(),
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+        },
+        2,
+    )
+    .await
+    .unwrap();
+    let client = owner.client();
+    let identity = client.root_identity();
+    let initial = client.heap_observation().status.effective.unwrap();
+    for (label, committed) in [("rollback", false), ("commit", true)] {
+        let mut ports = FilePorts::new(directory.path(), label, false);
+        let port = Arc::get_mut(&mut ports).unwrap();
+        port.retain_child_heap = true;
+        port.resume_child_after_edit = true;
+        let task = client.submit(ports.input(), ports.clone()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), ports.started.notified())
+            .await
+            .unwrap();
+        if !committed {
+            let expected = client.heap_observation().status.desired_revision();
+            client
+                .publish_heap(
+                    expected,
+                    HeapSettings {
+                        revision: expected + 1,
+                        max_vm_bytes: 1,
+                    },
+                    true,
+                )
+                .await
+                .unwrap();
+            assert!(client.heap_observation().status.pending_reduction);
+        }
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let expected = client.heap_observation().status.desired_revision();
+        let next = HeapSettings {
+            revision: expected + 1,
+            max_vm_bytes: initial.max_vm_bytes + 8 * 1024 * 1024,
+        };
+        let commit_path = directory.path().join(format!("heap-config-{label}"));
+        if !committed {
+            std::fs::write(&commit_path, "existing configuration").unwrap();
+        }
+        let publication = tokio::spawn({
+            let commit_path = commit_path.clone();
+            let client = client.clone();
+            let entered = entered.clone();
+            let release = release.clone();
+            async move {
+                client
+                    .publish_heap_transaction(
+                        expected,
+                        next,
+                        Box::pin(async move {
+                            entered.notify_one();
+                            release.notified().await;
+                            use std::io::Write;
+                            match std::fs::OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(commit_path)
+                            {
+                                Ok(mut file) => {
+                                    if file
+                                        .write_all(next.max_vm_bytes.to_string().as_bytes())
+                                        .and_then(|()| file.sync_all())
+                                        .is_ok()
+                                    {
+                                        HeapCommitOutcome::Committed
+                                    } else {
+                                        HeapCommitOutcome::Unknown
+                                    }
+                                }
+                                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                                    HeapCommitOutcome::Rejected
+                                }
+                                Err(_) => HeapCommitOutcome::Unknown,
+                            }
+                        }),
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(2), entered.notified())
+            .await
+            .unwrap();
+        ports.release.notify_one();
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !ports.child_resumed.load(Ordering::Acquire),
+            "direct child must stay queued until commit settles"
+        );
+        assert_eq!(
+            client
+                .heap_observation()
+                .status
+                .effective
+                .unwrap()
+                .max_vm_bytes,
+            initial.max_vm_bytes
+        );
+        if committed {
+            publication.abort();
+        } // accepted operation retains ownership
+        release.notify_one();
+        if committed {
+            assert!(publication.await.unwrap_err().is_cancelled());
+        } else {
+            assert_eq!(
+                publication.await.unwrap(),
+                Err(ServiceFailure::SettingsConflict)
+            );
+            let heap = client.heap_observation().status;
+            assert!(heap.pending_reduction);
+            assert_eq!(heap.desired.unwrap().max_vm_bytes, 1);
+            assert_eq!(heap.effective.unwrap().max_vm_bytes, initial.max_vm_bytes);
+            // Restore the operator's finite value before the next admission.
+            let expected = heap.desired_revision();
+            client
+                .publish_heap(
+                    expected,
+                    HeapSettings {
+                        revision: expected + 1,
+                        max_vm_bytes: initial.max_vm_bytes,
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+        }
+        let receipt = tokio::time::timeout(Duration::from_secs(2), task.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        assert!(ports.child_resumed.load(Ordering::Acquire));
+        assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+        assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+        assert_eq!(client.root_identity(), identity);
+        if !committed {
+            assert_eq!(
+                client
+                    .heap_observation()
+                    .status
+                    .effective
+                    .unwrap()
+                    .max_vm_bytes,
+                initial.max_vm_bytes
+            );
+        } else {
+            assert_eq!(
+                std::fs::read_to_string(commit_path).unwrap(),
+                next.max_vm_bytes.to_string()
+            );
+            assert_eq!(client.heap_observation().status.effective, Some(next));
+        }
+    }
+    // Unsafe reductions must not even poll the persistence future.
+    let polled = Arc::new(AtomicBool::new(false));
+    let expected = client.heap_observation().status.desired_revision();
+    let receipt = client
+        .publish_heap_transaction(
+            expected,
+            HeapSettings {
+                revision: expected + 1,
+                max_vm_bytes: 1,
+            },
+            Box::pin({
+                let polled = polled.clone();
+                async move {
+                    polled.store(true, Ordering::Release);
+                    HeapCommitOutcome::Committed
+                }
+            }),
+        )
+        .await;
+    assert_eq!(receipt, Err(ServiceFailure::UnsafeHeapReduction));
+    assert!(!polled.load(Ordering::Acquire));
+    owner.request_shutdown();
+    let exit = owner.join().await.unwrap();
+    assert!(exit.failure.is_none());
+    assert_eq!(exit.transport.unwrap().kind, StopKind::Graceful);
 }

@@ -131,9 +131,24 @@ struct HeapPublication {
     automatic: bool,
     result: watch::Sender<Option<Result<HeapObservation, ServiceFailure>>>,
 }
+pub use crate::transport_actor::HeapCommitOutcome;
+struct HeapTransaction {
+    expected: u64,
+    settings: HeapSettings,
+    commit: BoxFuture<'static, HeapCommitOutcome>,
+    commit_timeout: Duration,
+    result: watch::Sender<Option<Result<HeapObservation, ServiceFailure>>>,
+}
+struct MemoryAdmissionPublication {
+    expected: u64,
+    backpressure: bool,
+    result: watch::Sender<Option<Result<MemoryAdmissionPolicy, ServiceFailure>>>,
+}
 enum SettingsPublication {
     Task(TaskSettingsPublication),
     Heap(HeapPublication),
+    HeapTransaction(HeapTransaction),
+    MemoryAdmission(MemoryAdmissionPublication),
 }
 impl SettingsPublication {
     fn reject(self, failure: ServiceFailure) {
@@ -142,6 +157,12 @@ impl SettingsPublication {
                 publication.result.send_replace(Some(Err(failure)));
             }
             Self::Heap(publication) => {
+                publication.result.send_replace(Some(Err(failure)));
+            }
+            Self::HeapTransaction(publication) => {
+                publication.result.send_replace(Some(Err(failure)));
+            }
+            Self::MemoryAdmission(publication) => {
                 publication.result.send_replace(Some(Err(failure)));
             }
         }
@@ -154,6 +175,14 @@ impl SettingsPublication {
 pub struct HeapObservation {
     pub status: HeapStatus,
     pub vm_live_bytes: usize,
+}
+
+/// Instance-service admission state. Its sequence is separate from persisted
+/// operator settings and worker heap revisions. It never cancels active work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryAdmissionPolicy {
+    pub revision: u64,
+    pub backpressure: bool,
 }
 impl From<&ProcessSnapshot> for HeapObservation {
     fn from(snapshot: &ProcessSnapshot) -> Self {
@@ -171,6 +200,7 @@ struct SettingsInbox {
     requests: mpsc::Receiver<SettingsPublication>,
     live: LiveMontyTaskSettings,
     heap: watch::Sender<HeapObservation>,
+    memory_admission: watch::Sender<MemoryAdmissionPolicy>,
 }
 
 struct Control {
@@ -257,20 +287,24 @@ pub struct ServiceClient {
     admission_credits: Arc<Semaphore>,
     changed: Arc<Notify>,
     closed: Arc<AtomicBool>,
+    closed_wake: Arc<Notify>,
     values: watch::Receiver<crate::VmBounds>,
     response_timeout: Duration,
     root_source_bytes: usize,
     root: RootExecutionIdentity,
     frame: usize,
+    worker_process_id: Option<u32>,
     settings: mpsc::Sender<SettingsPublication>,
     effective_settings: LiveMontyTaskSettings,
     observed_heap: watch::Receiver<HeapObservation>,
+    memory_admission: watch::Receiver<MemoryAdmissionPolicy>,
 }
 impl ServiceClient {
     /// Fence new admissions synchronously. The retained ServiceOwner still
     /// performs shutdown/cancellation and observes actual started host futures.
     pub fn close_admission(&self) {
         self.closed.store(true, Ordering::Release);
+        self.closed_wake.notify_waiters();
         self.admission_credits.close();
         self.changed.notify_one();
     }
@@ -353,8 +387,127 @@ impl ServiceClient {
         }
     }
 
+    pub fn worker_process_id(&self) -> Option<u32> {
+        self.worker_process_id
+    }
+
+    /// Check and temporarily apply a manual limit at the serialized worker
+    /// boundary, then hold every VM advancement until durable commit evidence.
+    /// Host futures remain owned. A rejected commit restores the previous limit
+    /// before any execution resumes; an unknown commit contains the service.
+    /// The supplied future is polled only after actual worker feasibility.
+    pub async fn publish_heap_transaction(
+        &self,
+        expected: u64,
+        settings: HeapSettings,
+        commit: BoxFuture<'static, HeapCommitOutcome>,
+    ) -> Result<HeapObservation, ServiceFailure> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(ServiceFailure::Closed);
+        }
+        let (result, mut receipt) = watch::channel(None);
+        self.settings
+            .try_send(SettingsPublication::HeapTransaction(HeapTransaction {
+                expected,
+                settings,
+                commit,
+                commit_timeout: self.response_timeout,
+                result,
+            }))
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
+                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
+            })?;
+        self.changed.notify_one();
+        loop {
+            if let Some(result) = *receipt.borrow_and_update() {
+                return result;
+            }
+            receipt
+                .changed()
+                .await
+                .map_err(|_| ServiceFailure::Closed)?;
+        }
+    }
+
     pub fn heap_observation(&self) -> HeapObservation {
         *self.observed_heap.borrow()
+    }
+
+    pub fn memory_admission_policy(&self) -> MemoryAdmissionPolicy {
+        *self.memory_admission.borrow()
+    }
+
+    /// Serialize pressure/measurement availability with actual admission on the
+    /// instance control lane. Stale measurements cannot clear newer pressure.
+    /// Dropping the waiter does not withdraw an accepted publication.
+    pub async fn publish_memory_backpressure(
+        &self,
+        expected: u64,
+        backpressure: bool,
+    ) -> Result<MemoryAdmissionPolicy, ServiceFailure> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(ServiceFailure::Closed);
+        }
+        let (result, mut receipt) = watch::channel(None);
+        self.settings
+            .try_send(SettingsPublication::MemoryAdmission(
+                MemoryAdmissionPublication {
+                    expected,
+                    backpressure,
+                    result,
+                },
+            ))
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
+                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
+            })?;
+        self.changed.notify_one();
+        loop {
+            if let Some(result) = *receipt.borrow_and_update() {
+                return result;
+            }
+            receipt
+                .changed()
+                .await
+                .map_err(|_| ServiceFailure::Closed)?;
+        }
+    }
+
+    /// Wait for bounded queue capacity and safe memory admission without a work
+    /// polling loop or input/history cloning. Cancellation before enqueue owns
+    /// no VM task, and dropping the future returns its queue credit.
+    pub async fn submit_when_available(
+        &self,
+        input: TaskInput,
+        ports: Arc<dyn TaskPorts>,
+    ) -> Result<TaskTicket, ServiceFailure> {
+        let credit = self
+            .admission_credits
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| ServiceFailure::Closed)?;
+        let mut memory = self.memory_admission.clone();
+        let mut heap = self.observed_heap.clone();
+        loop {
+            let closed = self.closed_wake.notified();
+            tokio::pin!(closed);
+            closed.as_mut().enable();
+            if self.closed.load(Ordering::Acquire) {
+                return Err(ServiceFailure::Closed);
+            }
+            let blocked = memory.borrow_and_update().backpressure;
+            let pending = heap.borrow_and_update().status.pending_reduction;
+            if !blocked && !pending {
+                return self.submit_with_credit(input, ports, credit);
+            }
+            tokio::select! {
+                result = memory.changed() => { result.map_err(|_| ServiceFailure::Closed)?; }
+                result = heap.changed() => { result.map_err(|_| ServiceFailure::Closed)?; }
+                _ = closed => {}
+            }
+        }
     }
 
     /// Owned publication on the same bounded control lane as task settings.
@@ -401,7 +554,9 @@ impl ServiceClient {
         if self.closed.load(Ordering::Acquire) {
             return Err(ServiceFailure::Closed);
         }
-        if self.heap_observation().status.pending_reduction {
+        if self.heap_observation().status.pending_reduction
+            || self.memory_admission_policy().backpressure
+        {
             return Err(ServiceFailure::Backpressure);
         }
         let credit =
@@ -412,6 +567,15 @@ impl ServiceClient {
                     tokio::sync::TryAcquireError::Closed => ServiceFailure::Closed,
                     tokio::sync::TryAcquireError::NoPermits => ServiceFailure::Backpressure,
                 })?;
+        self.submit_with_credit(input, ports, credit)
+    }
+
+    fn submit_with_credit(
+        &self,
+        input: TaskInput,
+        ports: Arc<dyn TaskPorts>,
+        credit: OwnedSemaphorePermit,
+    ) -> Result<TaskTicket, ServiceFailure> {
         if [
             &input.conversation_id,
             &input.message_id,
@@ -562,22 +726,30 @@ impl ServiceOwner {
         let admission_credits = Arc::new(Semaphore::new(queue_capacity));
         let (settings, settings_rx) = mpsc::channel(8);
         let (heap, observed_heap) = watch::channel(HeapObservation::from(&ready));
+        let (memory_admission, observed_memory_admission) = watch::channel(MemoryAdmissionPolicy {
+            revision: 0,
+            backpressure: false,
+        });
         let (shutdown, stop) = watch::channel(false);
         let changed = Arc::new(Notify::new());
         let closed = Arc::new(AtomicBool::new(false));
+        let closed_wake = Arc::new(Notify::new());
         let client = ServiceClient {
             admissions,
             admission_credits: admission_credits.clone(),
             changed: changed.clone(),
             closed: closed.clone(),
+            closed_wake: closed_wake.clone(),
             values: owner.client().live_vm_bounds(),
             response_timeout: process.response_timeout,
             root_source_bytes,
             root,
             frame: process.max_frame_bytes,
+            worker_process_id,
             settings,
             effective_settings: live.clone(),
             observed_heap,
+            memory_admission: observed_memory_admission,
         };
         let join = tokio::spawn(run(
             owner,
@@ -589,12 +761,14 @@ impl ServiceOwner {
             ShutdownBounds {
                 root,
                 admission_credits,
+                closed_wake,
                 workers,
                 boundary_timeout: process.response_timeout,
                 settings: SettingsInbox {
                     requests: settings_rx,
                     live,
                     heap,
+                    memory_admission,
                 },
             },
         ));
@@ -648,6 +822,7 @@ type Calls = FuturesUnordered<BoxFuture<'static, PortResult>>;
 struct ShutdownBounds {
     root: RootExecutionIdentity,
     admission_credits: Arc<Semaphore>,
+    closed_wake: Arc<Notify>,
     workers: u32,
     boundary_timeout: Duration,
     settings: SettingsInbox,
@@ -686,17 +861,21 @@ async fn update_heap(
     expected: u64,
     settings: HeapSettings,
     automatic: bool,
+    commit: Option<(BoxFuture<'static, HeapCommitOutcome>, Duration)>,
 ) -> Result<Option<ServiceFailure>, ServiceFailure> {
-    let ticket = client
-        .try_submit(WorkerCommand::UpdateHeap {
+    let submission = if let Some((commit, timeout)) = commit {
+        client.try_submit_heap_transaction(expected, settings, commit, timeout)
+    } else {
+        client.try_submit(WorkerCommand::UpdateHeap {
             expected_revision: expected,
             settings,
             automatic,
         })
-        .map_err(|error| {
-            evidence.rejected.push(*error.command);
-            ServiceFailure::Transport
-        })?;
+    };
+    let ticket = submission.map_err(|error| {
+        evidence.rejected.push(*error.command);
+        ServiceFailure::Transport
+    })?;
     let receipt = ticket.wait().await.map_err(|_| ServiceFailure::Transport)?;
     let denial = match &receipt.outcome {
         Err(error) => match error.kind {
@@ -785,6 +964,7 @@ async fn run(
             if *stop.borrow_and_update() && !shutting_down {
                 shutting_down = true;
                 closed.store(true, Ordering::Release);
+                shutdown.closed_wake.notify_waiters();
                 shutdown.admission_credits.close();
                 admissions.close();
                 for task in tasks.values() { task.control.cancel(); }
@@ -871,7 +1051,7 @@ async fn run(
                     }
                     SettingsPublication::Heap(publication) => {
                         let update = update_heap(&transport, &mut exchanges, &mut snapshot,
-                            publication.expected, publication.settings, publication.automatic).await;
+                            publication.expected, publication.settings, publication.automatic, None).await;
                         shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
                         match update {
                             Ok(denial) => {
@@ -886,6 +1066,37 @@ async fn run(
                                 return Err(error);
                             }
                         }
+                    }
+                    SettingsPublication::HeapTransaction(publication) => {
+                        let update = update_heap(&transport, &mut exchanges, &mut snapshot,
+                            publication.expected, publication.settings, false,
+                            Some((publication.commit, publication.commit_timeout))).await;
+                        shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
+                        match update {
+                            Ok(denial) => {
+                                publication.result.send_replace(Some(match denial {
+                                    Some(error) => Err(error),
+                                    None => Ok(HeapObservation::from(&snapshot)),
+                                }));
+                            }
+                            Err(error) => {
+                                publication.result.send_replace(Some(Err(error)));
+                                return Err(error);
+                            }
+                        }
+                    }
+                    SettingsPublication::MemoryAdmission(publication) => {
+                        let current = *shutdown.settings.memory_admission.borrow();
+                        let result = if publication.expected != current.revision {
+                            Err(ServiceFailure::SettingsConflict)
+                        } else if let Some(revision) = current.revision.checked_add(1) {
+                            let next = MemoryAdmissionPolicy { revision, backpressure: publication.backpressure };
+                            shutdown.settings.memory_admission.send_replace(next);
+                            Ok(next)
+                        } else {
+                            Err(ServiceFailure::SettingsConflict)
+                        };
+                        publication.result.send_replace(Some(result));
                     }
                 }
                 continue;
@@ -1016,14 +1227,11 @@ async fn run(
 
             let available = snapshot.work_waits.iter().find(|(worker, _)|
                 !tasks.values().any(|task| task.worker == *worker)).copied();
-            if !shutting_down && let Some((worker, key)) = available
+            let memory_backpressure = shutdown.settings.memory_admission.borrow().backpressure;
+            if !shutting_down && !snapshot.heap.pending_reduction
+                && !memory_backpressure
+                && let Some((worker, key)) = available
                 && let Some(admission) = queued.pop_front() {
-                if snapshot.heap.pending_reduction {
-                    // Known pre-VM rejection is returned to the original caller;
-                    // do not accumulate these safe, unissued inputs indefinitely.
-                    drop(reject(admission, ServiceFailure::Backpressure));
-                    continue;
-                }
                 // Recheck the complete typed input at the actual dispatch boundary:
                 // queued input retains its original history; it is never truncated.
                 let probe = WorkerCommand::Admit { key, task: admission.input.clone() };
@@ -1059,6 +1267,7 @@ async fn run(
                     let Some(admission) = admission else {
                         shutting_down = true;
                         closed.store(true, Ordering::Release);
+                        shutdown.closed_wake.notify_waiters();
                         shutdown.admission_credits.close();
                         for task in tasks.values() { task.control.cancel(); }
                         continue;
@@ -1107,6 +1316,7 @@ async fn run(
     }.await;
 
     closed.store(true, Ordering::Release);
+    shutdown.closed_wake.notify_waiters();
     shutdown.admission_credits.close();
     shutdown.settings.requests.close();
     while let Ok(publication) = shutdown.settings.requests.try_recv() {

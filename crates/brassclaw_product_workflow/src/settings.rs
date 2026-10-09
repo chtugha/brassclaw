@@ -154,11 +154,61 @@ pub struct SettingsComponentGraph {
 
 // ── Monty VM settings ─────────────────────────────────────────────────────────
 
+/// Memory measurement is optional after startup; the default has no monitor.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MontyMemoryMode {
+    #[default]
+    Startup,
+    Manual,
+    Automatic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MontyMemoryPolicy {
+    pub mode: MontyMemoryMode,
+    pub reserve_bytes: u64,
+    pub sample_interval_secs: u64,
+    pub growth_step_bytes: u64,
+    pub growth_headroom_bytes: u64,
+}
+impl Default for MontyMemoryPolicy {
+    fn default() -> Self {
+        Self {
+            mode: MontyMemoryMode::Startup,
+            reserve_bytes: 512 * 1024 * 1024,
+            sample_interval_secs: 60,
+            growth_step_bytes: 64 * 1024 * 1024,
+            growth_headroom_bytes: 64 * 1024 * 1024,
+        }
+    }
+}
+impl MontyMemoryPolicy {
+    pub fn validate(self) -> Result<(), &'static str> {
+        if self.reserve_bytes > i64::MAX as u64
+            || self.sample_interval_secs < 60
+            || self.sample_interval_secs > u32::MAX as u64
+            || self.growth_step_bytes == 0
+            || self.growth_step_bytes > i64::MAX as u64
+            || self.growth_headroom_bytes == 0
+            || self.growth_headroom_bytes > i64::MAX as u64
+        {
+            return Err(
+                "invalid memory policy; automatic sampling interval must be at least 60 seconds",
+            );
+        }
+        Ok(())
+    }
+}
+
 /// The Monty VM runtime settings, backed by `reborn_monty_vm_settings`.
 /// All fields are immediate-write except `active_orchestrator_id`
 /// (gated: only `Validated` orchestrators are accepted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmSettings {
+    #[serde(default)]
+    pub memory_policy: MontyMemoryPolicy,
     /// Live execution limits, distinct from shared heap and task compute time.
     #[serde(default)]
     pub execution_limits: brassclaw_host_api::MontyExecutionLimits,
@@ -197,6 +247,7 @@ pub struct MontyVmSettings {
 /// Request body for `PUT /api/settings/monty-vm`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMontyVmSettingsRequest {
+    pub memory_policy: Option<MontyMemoryPolicy>,
     pub execution_limits: Option<brassclaw_host_api::MontyExecutionLimits>,
     /// Compare-and-set revision from GET. Required by durable stores.
     pub expected_revision: Option<u64>,
@@ -257,6 +308,8 @@ pub enum MontyVmState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmStatusResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_budget: Option<MontyMemoryBudgetStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_limits: Option<MontyExecutionLimitsStatus>,
     pub state: MontyVmState,
     /// Version of the currently active orchestrator (e.g. `"1.2.3"`).
@@ -268,6 +321,23 @@ pub struct MontyVmStatusResponse {
     pub restart_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_budget: Option<MontyTaskBudgetStatus>,
+}
+
+/// Heap revisions are worker publication sequences, separate from DB revisions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MontyMemoryBudgetStatus {
+    pub mode: MontyMemoryMode,
+    pub desired_settings_revision: u64,
+    pub effective_settings_revision: u64,
+    pub effective_heap_revision: u64,
+    pub max_memory_bytes: u64,
+    pub live_heap_bytes: u64,
+    pub pending_reduction: bool,
+    pub admission_paused: bool,
+    pub measurement_status: String,
+    pub memory_sample_count: u64,
+    pub uptake: MontyBudgetUptake,
+    pub failure_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -333,7 +403,7 @@ pub trait ChatPreferenceStore: Send + Sync {
 // ── MontyVmSettingsStore ─────────────────────────────────────────────────────
 
 /// Storage error for Monty VM settings operations.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum MontyVmSettingsError {
     #[error("store unavailable: {0}")]
     Unavailable(String),
@@ -386,13 +456,14 @@ fn default_false() -> bool {
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
 pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
+        memory_policy: Default::default(),
         execution_limits: Default::default(),
         revision: 0,
         max_duration_secs: 600,
         max_allocations: None,
         allocation_count_limit_supported: false,
         retired_max_allocations: None,
-        max_memory_bytes: Some(128 * 1024 * 1024),
+        max_memory_bytes: Some(512 * 1024 * 1024),
         failure_rollback_threshold: 3,
         prior_knowledge_token_budget: 100_000,
         q4_retention_days: 30,

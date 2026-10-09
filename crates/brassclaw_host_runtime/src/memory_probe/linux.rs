@@ -269,9 +269,7 @@ fn parse_pressure(text: &str) -> ProbeResult<MontyMemoryPressure> {
     }
     // Conservative stall classification, with no invented RAM percentage.
     // The controller's configurable hysteresis governs the adjustment cadence.
-    Ok(if full > 0.0 {
-        MontyMemoryPressure::Critical
-    } else if some > 0.0 {
+    Ok(if some > 0.0 || full > 0.0 {
         MontyMemoryPressure::Elevated
     } else {
         MontyMemoryPressure::Normal
@@ -332,7 +330,7 @@ mod tests {
         assert!(parse_pressure("some avg10=0\nfull avg10=1\n").is_err());
         assert_eq!(
             parse_pressure("some avg10=0.02\nfull avg10=0.01\n").unwrap(),
-            MontyMemoryPressure::Critical
+            MontyMemoryPressure::Elevated
         );
         assert_eq!(parse_limit("max\n").unwrap(), None);
         assert_eq!(parse_limit("0\n").unwrap(), Some(0));

@@ -1812,8 +1812,11 @@ impl HostRuntimeCapabilityHarness {
         let storage_root = root.path().join("local-dev");
         let workspace_root = storage_root.join("workspace");
         std::fs::create_dir_all(&workspace_root)?;
-        let services =
-            build_reborn_services(RebornBuildInput::local_dev(service_label, storage_root)).await?;
+        let services = build_reborn_services(
+            RebornBuildInput::local_dev(service_label, storage_root)
+                .with_runtime_policy(local_testing_runtime_policy()?),
+        )
+        .await?;
         let runtime = services
             .host_runtime
             .ok_or("local-dev Reborn services missing host runtime")?;
@@ -2132,6 +2135,19 @@ impl LoopCapabilityPort for RecordingDelegatingCapabilityPort {
     }
 }
 
+// Retained native registration captures an explicit resolved policy rather
+// than relying on host_runtime_for_local_testing's dispatcher-only default.
+fn local_testing_runtime_policy()
+-> HarnessResult<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy> {
+    use brassclaw_host_api::runtime_policy::{DeploymentMode, RuntimeProfile};
+    Ok(brassclaw_runtime_policy::resolve(
+        brassclaw_runtime_policy::ResolveRequest::new(
+            DeploymentMode::LocalSingleUser,
+            RuntimeProfile::LocalDev,
+        ),
+    )?)
+}
+
 fn local_dev_host_runtime_with_http_egress(
     storage_root: PathBuf,
     egress: Arc<RecordingRuntimeHttpEgress>,
@@ -2173,7 +2189,8 @@ fn local_dev_host_runtime_with_registry_and_runtime_http_egress(
         brassclaw_triggers::InMemoryTriggerRepository::default(),
     ))?))
     .with_first_party_http_egress(egress)
-    .with_trust_policy(Arc::new(first_party_trust_policy()?));
+    .with_trust_policy(Arc::new(first_party_trust_policy()?))
+    .with_runtime_policy(local_testing_runtime_policy()?);
 
     Ok(Arc::new(services.host_runtime_for_local_testing()))
 }
@@ -2204,6 +2221,7 @@ fn local_dev_host_runtime_with_registry_and_egress(
     ))?))
     .with_runtime_http_egress(runtime_http_egress)
     .with_trust_policy(Arc::new(github_first_party_trust_policy()?))
+    .with_runtime_policy(local_testing_runtime_policy()?)
     .try_with_host_http_egress((*network_egress).clone())
     .map_err(|report| std::io::Error::other(format!("host HTTP egress failed: {report:?}")))?;
 
@@ -2236,7 +2254,8 @@ fn local_dev_host_runtime_with_live_http_egress(
             "live HTTP egress production wiring failed: {report:?}"
         ))
     })?
-    .with_trust_policy(Arc::new(first_party_trust_policy()?));
+    .with_trust_policy(Arc::new(first_party_trust_policy()?))
+    .with_runtime_policy(local_testing_runtime_policy()?);
 
     Ok(Arc::new(services.host_runtime_for_local_testing()))
 }

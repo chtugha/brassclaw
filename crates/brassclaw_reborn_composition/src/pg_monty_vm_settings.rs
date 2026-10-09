@@ -37,6 +37,27 @@ mod inner {
             }
         }
 
+        #[cfg(feature = "skills-db")]
+        pub(crate) async fn settled_get(&self) -> Result<MontyVmSettings, MontyVmSettingsError> {
+            let mut client = self.pool.get().await.map_err(Self::map_pool)?;
+            let transaction = client.transaction().await.map_err(Self::map_pg)?;
+            let row = transaction
+                .query_one(
+                    "SELECT max_duration_secs, retired_max_allocations, max_memory_bytes,
+                 failure_rollback_threshold, active_orchestrator_id, prior_knowledge_token_budget,
+                 q4_retention_days, forensic_packet_retention_days, token_budgets_enabled,
+                 revision, execution_limits, memory_policy FROM reborn_monty_vm_settings
+                 WHERE tenant_id=$1 AND user_id='default' AND agent_id=$2 AND project_id='default'
+                 FOR UPDATE",
+                    &[&self.tenant_id, &self.agent_id],
+                )
+                .await
+                .map_err(Self::map_pg)?;
+            let result = settings_from_row(&row)?;
+            transaction.commit().await.map_err(Self::map_pg)?;
+            Ok(result)
+        }
+
         fn map_pool(e: deadpool_postgres::PoolError) -> MontyVmSettingsError {
             MontyVmSettingsError::Unavailable(e.to_string())
         }
@@ -83,8 +104,16 @@ mod inner {
         execution_limits
             .validate()
             .map_err(|reason| MontyVmSettingsError::Internal(reason.into()))?;
+        let memory_policy: brassclaw_product_workflow::MontyMemoryPolicy =
+            serde_json::from_value(row.get(11)).map_err(|_| {
+                MontyVmSettingsError::Internal("invalid stored memory policy".into())
+            })?;
+        memory_policy
+            .validate()
+            .map_err(|reason| MontyVmSettingsError::Internal(reason.into()))?;
         // Schema constraints guarantee these signed values are nonnegative.
         Ok(MontyVmSettings {
+            memory_policy,
             execution_limits,
             revision: row.get::<_, i64>(9) as u64,
             max_duration_secs: row.get::<_, i32>(0) as u64,
@@ -114,7 +143,7 @@ mod inner {
                     "SELECT max_duration_secs, retired_max_allocations, max_memory_bytes,
                             failure_rollback_threshold, active_orchestrator_id,
                             prior_knowledge_token_budget, q4_retention_days,
-                            forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits
+                            forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits, memory_policy
                      FROM reborn_monty_vm_settings
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
@@ -167,6 +196,17 @@ mod inner {
                         .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
                     serde_json::to_value(limits).map_err(|_| {
                         MontyVmSettingsError::Internal("execution limits encoding failed".into())
+                    })
+                })
+                .transpose()?;
+            let memory_policy = update
+                .memory_policy
+                .map(|policy| {
+                    policy
+                        .validate()
+                        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+                    serde_json::to_value(policy).map_err(|_| {
+                        MontyVmSettingsError::Internal("memory policy encoding failed".into())
                     })
                 })
                 .transpose()?;
@@ -253,13 +293,14 @@ mod inner {
                  forensic_packet_retention_days = COALESCE($11, forensic_packet_retention_days),
                  token_budgets_enabled = COALESCE($12, token_budgets_enabled),
                  execution_limits = COALESCE($14, execution_limits),
+                 memory_policy = COALESCE($15, memory_policy),
                  revision = revision + 1
                  WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
                    AND revision=$13
                  RETURNING max_duration_secs, retired_max_allocations, max_memory_bytes,
                    failure_rollback_threshold, active_orchestrator_id,
                    prior_knowledge_token_budget, q4_retention_days,
-                   forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits",
+                   forensic_packet_retention_days, token_budgets_enabled, revision, execution_limits, memory_policy",
                     &[
                         &self.tenant_id,
                         &user_id,
@@ -275,6 +316,7 @@ mod inner {
                         &update.token_budgets_enabled,
                         &expected_revision,
                         &execution_limits,
+                        &memory_policy,
                     ],
                 )
                 .await
@@ -373,6 +415,49 @@ mod tests {
                 .is_err(),
             "old writers must fail explicitly"
         );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_memory_policy_upgrade_preserves_limits_and_new_rows_size_once() {
+        use brassclaw_product_workflow::MontyMemoryMode;
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        // Actual pre-upgrade schema shape, isolated from the fixture's full bundle.
+        client.batch_execute("CREATE SCHEMA memory_upgrade;
+            CREATE TABLE memory_upgrade.reborn_monty_vm_settings
+            (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO memory_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP COLUMN memory_policy;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN max_memory_bytes SET DEFAULT 134217728;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,max_memory_bytes,revision)
+            VALUES('old','owner','agent','project',80740352,8);").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V111__monty_memory_policy.sql"
+            ))
+            .await
+            .unwrap();
+        let old = client.query_one("SELECT max_memory_bytes,revision,memory_policy FROM reborn_monty_vm_settings WHERE tenant_id='old'", &[]).await.unwrap();
+        assert_eq!(old.get::<_, i64>(0), 77 * 1024 * 1024);
+        assert_eq!(old.get::<_, i64>(1), 9);
+        let policy: brassclaw_product_workflow::MontyMemoryPolicy =
+            serde_json::from_value(old.get(2)).unwrap();
+        assert_eq!(policy.mode, MontyMemoryMode::Manual);
+        let new = client
+            .query_one(
+                "INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id)
+            VALUES('new','owner','agent','project') RETURNING max_memory_bytes,memory_policy",
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(new.get::<_, i64>(0), 512 * 1024 * 1024);
+        let policy: brassclaw_product_workflow::MontyMemoryPolicy =
+            serde_json::from_value(new.get(1)).unwrap();
+        assert_eq!(policy.mode, MontyMemoryMode::Startup);
+        assert_eq!(policy.sample_interval_secs, 60);
+        policy.validate().unwrap();
         client.batch_execute("RESET search_path").await.unwrap();
     }
 

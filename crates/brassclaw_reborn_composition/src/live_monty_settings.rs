@@ -1,18 +1,30 @@
 //! Durable instance task-budget publication through the existing global service.
 //! The owner survives HTTP cancellation; desired edits never masquerade as uptake.
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use brassclaw_host_api::MontyExecutionLimits;
-use brassclaw_monty_host::{VmBounds, process::TaskSettings, service::ServiceClient};
+use brassclaw_monty_host::{
+    VmBounds,
+    heap::HeapSettings,
+    process::TaskSettings,
+    service::{HeapCommitOutcome, ServiceClient, ServiceFailure},
+};
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::{
-    MontyBudgetUptake, MontyExecutionLimitsStatus, MontyTaskBudgetStatus, MontyVmSettings,
-    MontyVmSettingsError, MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse,
-    UpdateMontyVmSettingsRequest,
+    MontyBudgetUptake, MontyExecutionLimitsStatus, MontyMemoryBudgetStatus, MontyMemoryMode,
+    MontyMemoryPolicy, MontyTaskBudgetStatus, MontyVmSettings, MontyVmSettingsError,
+    MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse, UpdateMontyVmSettingsRequest,
 };
+use brassclaw_resources::{AdaptiveMontyHeapBudget, MontyHeapBudgetConfig};
 use tokio::{
-    sync::{Notify, watch},
+    sync::{Mutex, Notify, watch},
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -28,14 +40,37 @@ struct Observation {
     effective: MontyVmSettings,
     // Only classified host-owned diagnostics; no DB/provider error strings.
     failure: Option<(Option<u64>, &'static str)>,
+    memory_revision: u64,
+    measurement_status: &'static str,
+    memory_sample_count: u64,
+}
+
+struct MemoryControl {
+    configured: Option<u64>,
+    policy: MontyMemoryPolicy,
+    settings_revision: u64,
+    last_critical: bool,
+    last_sample: Option<Instant>,
+    measurement_status: &'static str,
+    memory_sample_count: u64,
+    inflight_probe: Option<
+        JoinHandle<
+            Result<
+                brassclaw_resources::MontyMemorySample,
+                brassclaw_host_runtime::HostMemoryProbeError,
+            >,
+        >,
+    >,
 }
 
 pub(crate) struct LiveMontySettingsStore {
     desired: PgMontyVmSettingsStore,
     service: ServiceClient,
     ownership: GlobalOwnerCheck,
-    wake: Notify,
+    wake: Arc<Notify>,
+    edit: Arc<Mutex<MemoryControl>>,
     observed: watch::Sender<Observation>,
+    closed: AtomicBool,
 }
 
 pub(crate) struct MontySettingsOwner {
@@ -49,6 +84,7 @@ impl MontySettingsOwner {
         service: ServiceClient,
         ownership: GlobalOwnerCheck,
         initial: MontyVmSettings,
+        measurement_status: &'static str,
     ) -> Result<Self, MontyVmSettingsError> {
         if task_settings(&initial) != TaskSettings::from(service.live_task_settings().current())
             || execution_bounds(initial.execution_limits)? != service.vm_bounds()
@@ -57,7 +93,21 @@ impl MontySettingsOwner {
                 "initial task revision mismatch".into(),
             ));
         }
+        let edit = Arc::new(Mutex::new(MemoryControl {
+            configured: initial.max_memory_bytes,
+            policy: initial.memory_policy,
+            settings_revision: initial.revision,
+            last_critical: measurement_status == "startup_critical",
+            last_sample: (initial.memory_policy.mode == MontyMemoryMode::Automatic)
+                .then(Instant::now),
+            measurement_status,
+            memory_sample_count: u64::from(initial.memory_policy.mode != MontyMemoryMode::Manual),
+            inflight_probe: None,
+        }));
         let (observed, _) = watch::channel(Observation {
+            memory_revision: initial.revision,
+            memory_sample_count: u64::from(initial.memory_policy.mode != MontyMemoryMode::Manual),
+            measurement_status,
             effective: initial,
             failure: None,
         });
@@ -65,8 +115,10 @@ impl MontySettingsOwner {
             desired: PgMontyVmSettingsStore::new(pool, "default", "default"),
             service,
             ownership,
-            wake: Notify::new(),
+            wake: Arc::new(Notify::new()),
+            edit,
             observed,
+            closed: AtomicBool::new(false),
         });
         let cancel = CancellationToken::new();
         let join = tokio::spawn(reconcile_loop(store.clone(), cancel.clone()));
@@ -80,18 +132,73 @@ impl MontySettingsOwner {
         self.store.clone()
     }
     pub(crate) async fn shutdown(mut self) -> Result<(), MontyVmSettingsError> {
+        self.store.closed.store(true, Ordering::Release);
         self.cancel.cancel();
         if let Some(join) = self.join.take() {
             join.await
                 .map_err(|_| MontyVmSettingsError::Internal("settings owner failed".into()))?;
         }
+        // Accepted edits already own the mutex before being spawned. Wait for
+        // their bounded persistence/publication before the VM owner shuts down.
+        drop(self.store.edit.lock().await);
         Ok(())
     }
 }
 impl Drop for MontySettingsOwner {
     fn drop(&mut self) {
+        self.store.closed.store(true, Ordering::Release);
         self.cancel.cancel();
     }
+}
+
+/// One measurement at startup or an explicit startup-policy edit. No timer.
+pub(crate) async fn startup_heap_selection(
+    service: &ServiceClient,
+    settings: &MontyVmSettings,
+) -> Result<(usize, &'static str), MontyVmSettingsError> {
+    let fallback = settings
+        .max_memory_bytes
+        .and_then(|bytes| usize::try_from(bytes).ok())
+        .filter(|bytes| *bytes > 0)
+        .ok_or_else(|| {
+            MontyVmSettingsError::Invalid("finite startup heap value required".into())
+        })?;
+    let pid = service
+        .worker_process_id()
+        .ok_or_else(|| MontyVmSettingsError::Unavailable("worker identity unavailable".into()))?;
+    let sample = tokio::time::timeout(
+        SOURCE_BOUND,
+        tokio::task::spawn_blocking(move || {
+            brassclaw_host_runtime::sample_process_memory_capacity(pid)
+        }),
+    )
+    .await;
+    let Ok(Ok(Ok(sample))) = sample else {
+        tracing::warn!("Monty startup capacity unavailable; retaining configured finite budget");
+        return Ok((fallback, "startup_fallback"));
+    };
+    let observed = service.heap_observation();
+    let capacity = (observed.vm_live_bytes as u64)
+        .checked_add(sample.additional_capacity_bytes)
+        .ok_or_else(|| MontyVmSettingsError::Unavailable("startup capacity overflow".into()))?
+        .saturating_sub(settings.memory_policy.reserve_bytes);
+    let selected = (fallback as u64).min(capacity);
+    if selected == 0 || selected < observed.vm_live_bytes as u64 {
+        return Err(MontyVmSettingsError::Invalid(
+            "insufficient memory for startup reserve".into(),
+        ));
+    }
+    Ok((
+        usize::try_from(selected)
+            .map_err(|_| MontyVmSettingsError::Invalid("startup heap out of range".into()))?,
+        if settings.memory_policy.mode == MontyMemoryMode::Automatic
+            && sample.pressure == brassclaw_resources::MontyMemoryPressure::Critical
+        {
+            "startup_critical"
+        } else {
+            "startup_sized"
+        },
+    ))
 }
 
 pub(crate) fn execution_bounds(
@@ -157,6 +264,7 @@ impl LiveMontySettingsStore {
     }
 
     async fn reconcile(&self) -> Result<(), (Option<u64>, &'static str)> {
+        let mut memory = self.edit.lock().await;
         let desired = self
             .read_desired()
             .await
@@ -166,6 +274,9 @@ impl LiveMontySettingsStore {
             .check()
             .await
             .map_err(|_| (revision, "runtime_unavailable"))?;
+        self.reconcile_memory(&desired, &mut memory)
+            .await
+            .map_err(|reason| (revision, reason))?;
         let effective = self.service.live_task_settings().current();
         let values = execution_bounds(desired.execution_limits)
             .map_err(|_| (revision, "invalid_execution_limits"))?;
@@ -197,9 +308,168 @@ impl LiveMontySettingsStore {
         // The service publishes the shared Rust revision only after its real
         // worker acknowledges the same limits. Keep retrieval's whole snapshot.
         self.observed.send_replace(Observation {
+            memory_revision: memory.settings_revision,
+            measurement_status: memory.measurement_status,
+            memory_sample_count: memory.memory_sample_count,
             effective: desired,
             failure: None,
         });
+        Ok(())
+    }
+
+    async fn reconcile_memory(
+        &self,
+        desired: &MontyVmSettings,
+        memory: &mut MemoryControl,
+    ) -> Result<(), &'static str> {
+        let changed = memory.configured != desired.max_memory_bytes;
+        if changed {
+            let bytes = desired.max_memory_bytes.ok_or("heap_limit_missing")?;
+            let heap = self.service.heap_observation();
+            let expected = heap.status.desired_revision();
+            let next = HeapSettings {
+                revision: expected.checked_add(1).ok_or("heap_revision_exhausted")?,
+                max_vm_bytes: usize::try_from(bytes).map_err(|_| "heap_limit_out_of_range")?,
+            };
+            tokio::time::timeout(
+                UPTAKE_BOUND,
+                self.service.publish_heap(expected, next, false),
+            )
+            .await
+            .map_err(|_| "heap_publication_deadline")?
+            .map_err(|_| "heap_publication_failed")?;
+        }
+        if memory.policy != desired.memory_policy {
+            memory.last_sample = None;
+        }
+        memory.configured = desired.max_memory_bytes;
+        memory.policy = desired.memory_policy;
+        memory.settings_revision = desired.revision;
+        if desired.memory_policy.mode != MontyMemoryMode::Automatic {
+            // No OS reads in startup/manual mode after startup. Clear only the
+            // optional controller's pause; pending worker reductions stay fenced.
+            memory.last_critical = false;
+            let admission = self.service.memory_admission_policy();
+            if admission.backpressure {
+                self.service
+                    .publish_memory_backpressure(admission.revision, false)
+                    .await
+                    .map_err(|_| "memory_admission_publication_failed")?;
+            }
+            if desired.memory_policy.mode == MontyMemoryMode::Manual {
+                memory.measurement_status = "disabled";
+            }
+            return Ok(());
+        }
+        let interval = Duration::from_secs(desired.memory_policy.sample_interval_secs);
+        let now = Instant::now();
+        if memory
+            .last_sample
+            .is_some_and(|last| now.duration_since(last) < interval)
+        {
+            return Ok(());
+        }
+        memory.last_sample = Some(now);
+        let pid = self
+            .service
+            .worker_process_id()
+            .ok_or("worker_identity_unavailable")?;
+        if memory.inflight_probe.is_none() {
+            memory.memory_sample_count = memory
+                .memory_sample_count
+                .checked_add(1)
+                .ok_or("memory_sample_counter_exhausted")?;
+            memory.inflight_probe = Some(tokio::task::spawn_blocking(move || {
+                brassclaw_host_runtime::sample_process_memory_capacity(pid)
+            }));
+        }
+        // A timed-out read stays owned; never accumulate blocking probes.
+        let sample = tokio::time::timeout(
+            SOURCE_BOUND,
+            memory
+                .inflight_probe
+                .as_mut()
+                .ok_or("memory_probe_owner_missing")?,
+        )
+        .await;
+        if sample.is_ok() {
+            memory.inflight_probe.take();
+        }
+        let sample = match sample {
+            Ok(Ok(Ok(sample)))
+                if Instant::now()
+                    .checked_duration_since(sample.measured_at)
+                    .is_some_and(|age| age <= interval.saturating_mul(2)) =>
+            {
+                memory.measurement_status = "available";
+                Some(sample)
+            }
+            _ => {
+                memory.measurement_status = "unavailable";
+                None
+            }
+        };
+        self.ownership
+            .check()
+            .await
+            .map_err(|_| "runtime_unavailable")?;
+        let heap = self.service.heap_observation();
+        let effective = heap
+            .status
+            .effective
+            .ok_or("heap_observation_unavailable")?;
+        let config = MontyHeapBudgetConfig {
+            reserve_bytes: desired.memory_policy.reserve_bytes,
+            manual_ceiling_bytes: desired.max_memory_bytes,
+            growth_step_bytes: desired.memory_policy.growth_step_bytes,
+            growth_headroom_bytes: desired.memory_policy.growth_headroom_bytes,
+            max_sample_age: interval.saturating_mul(2),
+            fallback_bytes: effective.max_vm_bytes as u64,
+        };
+        let mut budget =
+            AdaptiveMontyHeapBudget::new(config).map_err(|_| "invalid_memory_policy")?;
+        budget
+            .acknowledge(effective.max_vm_bytes as u64, heap.vm_live_bytes as u64)
+            .map_err(|_| "heap_accounting_failed")?;
+        if let Some(sample) = sample {
+            memory.last_critical =
+                sample.pressure == brassclaw_resources::MontyMemoryPressure::Critical;
+        }
+        let decision = budget
+            .evaluate(heap.vm_live_bytes as u64, sample, Instant::now())
+            .map_err(|_| "heap_accounting_failed")?;
+        let admission = self.service.memory_admission_policy();
+        let paused = decision.backpressure || memory.last_critical;
+        if paused != admission.backpressure {
+            self.service
+                .publish_memory_backpressure(admission.revision, paused)
+                .await
+                .map_err(|_| "memory_admission_publication_failed")?;
+        }
+        let target = if decision.pending_reduction {
+            decision.target_bytes.max(1)
+        } else {
+            decision.proposed_bytes
+        };
+        if heap
+            .status
+            .desired
+            .is_none_or(|previous| previous.max_vm_bytes as u64 != target)
+        {
+            let expected = heap.status.desired_revision();
+            self.service
+                .publish_heap(
+                    expected,
+                    HeapSettings {
+                        revision: expected.checked_add(1).ok_or("heap_revision_exhausted")?,
+                        max_vm_bytes: usize::try_from(target)
+                            .map_err(|_| "heap_limit_out_of_range")?,
+                    },
+                    true,
+                )
+                .await
+                .map_err(|_| "heap_publication_failed")?;
+        }
         Ok(())
     }
 
@@ -234,7 +504,40 @@ impl LiveMontySettingsStore {
         } else {
             MontyBudgetUptake::Pending
         };
+        let memory = self.service.heap_observation();
+        let effective_heap = memory.status.effective;
+        let observation = self.observed.borrow().clone();
+        let memory_uptake = if closed {
+            MontyBudgetUptake::Failed
+        } else if observation.memory_revision == desired.revision
+            && !memory.status.pending_reduction
+        {
+            MontyBudgetUptake::Applied
+        } else if failure.is_some() {
+            MontyBudgetUptake::Failed
+        } else {
+            MontyBudgetUptake::Pending
+        };
         MontyVmStatusResponse {
+            memory_budget: Some(MontyMemoryBudgetStatus {
+                mode: observation.effective.memory_policy.mode,
+                desired_settings_revision: desired.revision,
+                effective_settings_revision: observation.memory_revision,
+                effective_heap_revision: effective_heap.map_or(0, |heap| heap.revision),
+                max_memory_bytes: effective_heap.map_or(0, |heap| heap.max_vm_bytes as u64),
+                live_heap_bytes: memory.vm_live_bytes as u64,
+                pending_reduction: memory.status.pending_reduction,
+                admission_paused: self.service.memory_admission_policy().backpressure
+                    || memory.status.pending_reduction,
+                measurement_status: observation.measurement_status.into(),
+                memory_sample_count: observation.memory_sample_count,
+                uptake: memory_uptake,
+                failure_reason: if memory_uptake == MontyBudgetUptake::Failed {
+                    failure.map(str::to_owned)
+                } else {
+                    None
+                },
+            }),
             execution_limits: Some(MontyExecutionLimitsStatus {
                 desired_revision: desired.revision,
                 effective_revision: effective.revision,
@@ -308,9 +611,9 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                     )
                 })?;
         }
-        if update.max_memory_bytes.is_some() || update.active_orchestrator_id.is_some() {
+        if update.active_orchestrator_id.is_some() {
             return Err(MontyVmSettingsError::Invalid(
-                "heap and orchestrator edits require their separate live publication paths".into(),
+                "orchestrator edits require their separate live publication path".into(),
             ));
         }
         if update
@@ -319,17 +622,178 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         {
             return Err(MontyVmSettingsError::RevisionConflict);
         }
-        // Subscribe before persistence to avoid a lost wake/fast acknowledgement.
+        if let Some(policy) = update.memory_policy {
+            policy
+                .validate()
+                .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+        }
         let mut observed = self.observed.subscribe();
-        let desired = tokio::time::timeout(
-            SOURCE_BOUND,
-            self.desired.upsert("default", "default", update),
-        )
-        .await
-        .map_err(|_| {
-            MontyVmSettingsError::Unavailable("settings write outcome requires readback".into())
-        })??;
-        self.wake.notify_one();
+        let store = self.desired.clone();
+        let service = self.service.clone();
+        let memory = self.edit.clone().try_lock_owned().map_err(|_| {
+            MontyVmSettingsError::Unavailable("settings edit already in progress".into())
+        })?;
+        if self.closed.load(Ordering::Acquire) {
+            return Err(MontyVmSettingsError::Unavailable(
+                "settings owner stopped".into(),
+            ));
+        }
+        let wake = self.wake.clone();
+        let mut update = update.clone();
+        // The owned operation survives an HTTP waiter disappearing. Serialize
+        // memory feasibility, durable mutation and optional-controller updates.
+        let operation = tokio::spawn(async move {
+            let mut memory = memory;
+            let before = tokio::time::timeout(SOURCE_BOUND, store.settled_get())
+                .await
+                .map_err(|_| {
+                    MontyVmSettingsError::Unavailable("settings lock deadline".into())
+                })??;
+            if update.expected_revision != Some(before.revision) {
+                return Err(MontyVmSettingsError::RevisionConflict);
+            }
+            if update.max_memory_bytes.is_some() && update.memory_policy.is_none() {
+                let mut policy = before.memory_policy;
+                policy.mode = MontyMemoryMode::Manual;
+                update.memory_policy = Some(policy);
+            }
+            let expected = patched_snapshot(&before, &update)?;
+            let manual_selection = update.memory_policy.is_some_and(|policy| {
+                policy.mode == MontyMemoryMode::Manual && policy.mode != before.memory_policy.mode
+            });
+            let startup_edit = expected.memory_policy.mode == MontyMemoryMode::Startup
+                && (update.max_memory_bytes.is_some()
+                    || update
+                        .memory_policy
+                        .is_some_and(|policy| policy != before.memory_policy));
+            let desired = if update.max_memory_bytes.is_some() || manual_selection || startup_edit {
+                let bytes = expected
+                    .max_memory_bytes
+                    .ok_or_else(|| MontyVmSettingsError::Invalid("heap limit missing".into()))?;
+                let max_vm_bytes = if startup_edit {
+                    let (bytes, status) = startup_heap_selection(&service, &expected).await?;
+                    memory.memory_sample_count =
+                        memory.memory_sample_count.checked_add(1).ok_or_else(|| {
+                            MontyVmSettingsError::Internal("memory sample counter exhausted".into())
+                        })?;
+                    memory.measurement_status = status;
+                    bytes
+                } else {
+                    usize::try_from(bytes)
+                        .ok()
+                        .filter(|bytes| *bytes > 0)
+                        .ok_or_else(|| {
+                            MontyVmSettingsError::Invalid(
+                                "heap limit must be a positive native integer".into(),
+                            )
+                        })?
+                };
+                let heap = service.heap_observation();
+                let heap_revision = heap.status.desired_revision();
+                let next = HeapSettings {
+                    revision: heap_revision.checked_add(1).ok_or_else(|| {
+                        MontyVmSettingsError::Invalid("heap revision exhausted".into())
+                    })?,
+                    max_vm_bytes,
+                };
+                let (persisted, mut result) = watch::channel(None);
+                let committed = expected.clone();
+                let commit = Box::pin(async move {
+                    let write = tokio::time::timeout(
+                        SOURCE_BOUND,
+                        store.upsert("default", "default", &update),
+                    )
+                    .await;
+                    let settled = match write {
+                        Ok(Ok(snapshot)) => Ok(snapshot),
+                        Ok(Err(
+                            error @ (MontyVmSettingsError::RevisionConflict
+                            | MontyVmSettingsError::Invalid(_)),
+                        )) => {
+                            persisted.send_replace(Some(Err(error)));
+                            return HeapCommitOutcome::Rejected;
+                        }
+                        failure => {
+                            let row = tokio::time::timeout(SOURCE_BOUND, store.settled_get()).await;
+                            match row {
+                                Ok(Ok(snapshot))
+                                    if snapshot.revision == committed.revision
+                                        && snapshots_equal(&snapshot, &committed) =>
+                                {
+                                    Ok(snapshot)
+                                }
+                                Ok(Ok(snapshot))
+                                    if snapshot.revision == before.revision
+                                        && snapshots_equal(&snapshot, &before) =>
+                                {
+                                    let error = match failure {
+                                        Ok(Err(error)) => error,
+                                        _ => MontyVmSettingsError::Unavailable(
+                                            "settings write did not commit".into(),
+                                        ),
+                                    };
+                                    persisted.send_replace(Some(Err(error)));
+                                    return HeapCommitOutcome::Rejected;
+                                }
+                                _ => {
+                                    persisted.send_replace(Some(Err(
+                                        MontyVmSettingsError::Unavailable(
+                                            "settings commit outcome requires reconciliation"
+                                                .into(),
+                                        ),
+                                    )));
+                                    return HeapCommitOutcome::Unknown;
+                                }
+                            }
+                        }
+                    };
+                    persisted.send_replace(Some(settled));
+                    HeapCommitOutcome::Committed
+                });
+                let receipt = service
+                    .publish_heap_transaction(heap_revision, next, commit)
+                    .await;
+                let persisted = result.borrow_and_update().clone();
+                if let Err(failure) = receipt {
+                    if failure == ServiceFailure::SettingsConflict
+                        && let Some(Err(error)) = persisted
+                    {
+                        return Err(error);
+                    }
+                    return Err(match failure {
+                        ServiceFailure::UnsafeHeapReduction => MontyVmSettingsError::Invalid(
+                            "heap reduction cannot be applied to current live allocations".into(),
+                        ),
+                        ServiceFailure::InvalidLimits => {
+                            MontyVmSettingsError::Invalid("heap limit is out of range".into())
+                        }
+                        _ => MontyVmSettingsError::Unavailable(
+                            "heap transaction failed; read current settings before retry".into(),
+                        ),
+                    });
+                }
+                persisted.ok_or_else(|| {
+                    MontyVmSettingsError::Internal("heap commit receipt missing".into())
+                })??
+            } else {
+                tokio::time::timeout(SOURCE_BOUND, store.upsert("default", "default", &update))
+                    .await
+                    .map_err(|_| {
+                        MontyVmSettingsError::Unavailable(
+                            "settings write outcome requires readback".into(),
+                        )
+                    })??
+            };
+            memory.configured = desired.max_memory_bytes;
+            memory.policy = desired.memory_policy;
+            memory.settings_revision = desired.revision;
+            memory.last_sample = None;
+            wake.notify_one();
+            Ok::<_, MontyVmSettingsError>(desired)
+        });
+        let desired = operation
+            .await
+            .map_err(|_| MontyVmSettingsError::Internal("settings edit owner failed".into()))??;
         // A persisted edit is returned even if uptake is pending/failed. Its
         // revision remains recoverable; this waiter never owns reconciliation.
         let wait = async {
@@ -354,6 +818,42 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         }
         Ok(desired)
     }
+}
+
+fn snapshots_equal(left: &MontyVmSettings, right: &MontyVmSettings) -> bool {
+    // DTO contains only validated public settings; comparison includes all fields.
+    serde_json::to_value(left)
+        .ok()
+        .zip(serde_json::to_value(right).ok())
+        .is_some_and(|(left, right)| left == right)
+}
+fn patched_snapshot(
+    before: &MontyVmSettings,
+    update: &UpdateMontyVmSettingsRequest,
+) -> Result<MontyVmSettings, MontyVmSettingsError> {
+    let mut fields = serde_json::to_value(before)
+        .map_err(|_| MontyVmSettingsError::Internal("settings encoding failed".into()))?;
+    let patch = serde_json::to_value(update)
+        .map_err(|_| MontyVmSettingsError::Internal("settings patch encoding failed".into()))?;
+    let object = fields
+        .as_object_mut()
+        .ok_or_else(|| MontyVmSettingsError::Internal("settings object missing".into()))?;
+    for (key, value) in patch
+        .as_object()
+        .ok_or_else(|| MontyVmSettingsError::Internal("settings patch missing".into()))?
+    {
+        if key != "expected_revision" && !value.is_null() {
+            object.insert(key.clone(), value.clone());
+        }
+    }
+    let revision = before
+        .revision
+        .checked_add(1)
+        .filter(|revision| *revision <= i64::MAX as u64)
+        .ok_or_else(|| MontyVmSettingsError::Invalid("settings revision exhausted".into()))?;
+    object.insert("revision".into(), revision.into());
+    serde_json::from_value(fields)
+        .map_err(|_| MontyVmSettingsError::Invalid("invalid settings patch".into()))
 }
 
 struct EffectiveSettings(Arc<LiveMontySettingsStore>);

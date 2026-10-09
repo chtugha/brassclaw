@@ -25,13 +25,14 @@ const EXECUTION_FIELDS = [
   "execution_slice_millis", "max_value_depth", "max_value_nodes", "max_value_bytes",
 ];
 const pendingSettings = (status) => status.state === "running" &&
-  (status.task_budget?.uptake !== "applied" || status.execution_limits?.uptake !== "applied");
+  [status.task_budget, status.execution_limits, status.memory_budget].some((budget) => budget?.uptake === "pending");
 
 export function MontyVmTab({ searchQuery = "" }) {
   const t = useT();
 
   // Settings state.
   const [settings, setSettings] = React.useState(null);
+  const persistedMemory = React.useRef(null);
   const [isLoadingSettings, setIsLoadingSettings] = React.useState(true);
   const [settingsError, setSettingsError] = React.useState(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -57,6 +58,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         if (cancelled) return;
         if (s.status === "fulfilled") {
           setSettings(s.value.settings);
+          persistedMemory.current = s.value.settings;
           if (s.value.runtime) setStatus(s.value.runtime);
         }
         else setSettingsError(s.reason);
@@ -114,7 +116,21 @@ export function MontyVmTab({ searchQuery = "" }) {
         if (!Number.isSafeInteger(value) || value <= 0) throw new Error(t("montyVm.executionLimitsInvalid"));
         executionLimits[key] = value;
       }
+      const memory = Number(settings.max_memory_bytes);
+      const policy = { ...settings.memory_policy };
+      for (const key of ["reserve_bytes", "sample_interval_secs", "growth_step_bytes", "growth_headroom_bytes"]) {
+        const value = Number(policy[key]);
+        if (!Number.isSafeInteger(value) || value < (key === "reserve_bytes" ? 0 : 1)) throw new Error(t("montyVm.memoryInvalid"));
+        policy[key] = value;
+      }
+      if (!Number.isSafeInteger(memory) || memory <= 0 || policy.sample_interval_secs < 60) throw new Error(t("montyVm.memoryInvalid"));
+      const memoryPatch = {};
+      if (memory !== persistedMemory.current?.max_memory_bytes) memoryPatch.max_memory_bytes = memory;
+      // A cap-only legacy request means manual mode. The current form must
+      // preserve its explicit mode when changing a startup fallback or ceiling.
+      if (memoryPatch.max_memory_bytes !== undefined || JSON.stringify(policy) !== JSON.stringify(persistedMemory.current?.memory_policy)) memoryPatch.memory_policy = policy;
       const updated = await updateMontyVmSettings({
+        ...memoryPatch,
         execution_limits: executionLimits,
         expected_revision: settings.revision,
         token_budgets_enabled: settings.token_budgets_enabled,
@@ -124,7 +140,10 @@ export function MontyVmTab({ searchQuery = "" }) {
         q4_retention_days: settings.q4_retention_days,
         forensic_packet_retention_days: settings.forensic_packet_retention_days,
       });
-      if (updated?.settings) setSettings(updated.settings);
+      if (updated?.settings) {
+        setSettings(updated.settings);
+        persistedMemory.current = updated.settings;
+      }
       if (updated?.runtime) {
         setStatus(updated.runtime);
         setStatusError(null);
@@ -256,6 +275,20 @@ function StatusCard({ status, isPolling, t }) {
             ${status.execution_limits.failure_reason && html`<span role="alert"> · ${status.execution_limits.failure_reason}</span>`}
           </div>
         `}
+        ${status.memory_budget && html`
+          <div className="text-sm text-[var(--v2-text-muted)]">
+            ${t("montyVm.memoryTitle")}: ${(status.memory_budget.max_memory_bytes / 1048576).toFixed(2)} MiB
+            · ${t("montyVm.heapUsed")}: ${(status.memory_budget.live_heap_bytes / 1048576).toFixed(2)} MiB
+            · ${t(`montyVm.memoryMode.${status.memory_budget.mode}`)}
+            · ${t(`montyVm.uptake.${status.memory_budget.uptake}`)}
+            · ${t("montyVm.desiredRevision")}: ${status.memory_budget.desired_settings_revision}
+            · ${t("montyVm.effectiveRevision")}: ${status.memory_budget.effective_settings_revision}
+            · ${t("montyVm.heapRevision")}: ${status.memory_budget.effective_heap_revision}
+            · ${t(`montyVm.measurement.${status.memory_budget.measurement_status}`)}
+            ${status.memory_budget.admission_paused && html`<span> · ${t("montyVm.admissionPaused")}</span>`}
+            ${status.memory_budget.failure_reason && html`<span role="alert"> · ${status.memory_budget.failure_reason}</span>`}
+          </div>
+        `}
         ${status.orchestrator_version &&
           html`
             <div className="flex items-center gap-2">
@@ -303,6 +336,19 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
     </div>
   `;
 
+  const memoryField = (key, label, factor = 1048576, policy = true) => html`
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
+      <label htmlFor=${`monty-memory-${key}`} className="text-sm">${label}</label>
+      <input id=${`monty-memory-${key}`} type="number" min=${key === "reserve_bytes" ? "0" : key === "sample_interval_secs" ? "60" : "1"} step="any"
+        className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
+        value=${(policy ? settings.memory_policy?.[key] : settings[key]) / factor}
+        disabled=${isSaving} onInput=${(event) => {
+          const value = Number(event.target.value) * factor;
+          onChange((previous) => policy ? { ...previous, memory_policy: { ...previous.memory_policy, [key]: value } } : { ...previous, [key]: value });
+        }} />
+    </div>
+  `;
+
   return html`
     <${Card} padding="none" className="p-4 sm:p-5">
       <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
@@ -311,6 +357,22 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       <p className="mb-3 text-xs text-[var(--v2-text-muted)]">${t("montyVm.allocationCountRetired")}</p>
       ${settings.retired_max_allocations != null && html`<p className="mb-3 text-xs text-[var(--v2-text-muted)]">${t("montyVm.retiredAllocationValue")}: ${settings.retired_max_allocations}</p>`}
       ${field("max_duration_secs", t("montyVm.maxDuration"), t("montyVm.maxDurationDesc"))}
+      <div className="py-3 border-t border-[var(--v2-panel-border)]">
+        <label htmlFor="monty-memory-mode" className="text-sm font-medium">${t("montyVm.memoryTitle")}</label>
+        <p className="mt-1 mb-2 text-xs text-[var(--v2-text-muted)]">${t("montyVm.memoryDesc")}</p>
+        <select id="monty-memory-mode" value=${settings.memory_policy?.mode || "startup"} disabled=${isSaving}
+          className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 text-sm"
+          onChange=${(event) => { const mode = event.target.value; onChange((previous) => ({ ...previous, memory_policy: { ...previous.memory_policy, mode } })); }}>
+          ${["startup", "manual", "automatic"].map((mode) => html`<option key=${mode} value=${mode}>${t(`montyVm.memoryMode.${mode}`)}</option>`)}
+        </select>
+        ${memoryField("max_memory_bytes", t("montyVm.memoryValue"), 1048576, false)}
+        ${memoryField("reserve_bytes", t("montyVm.memoryReserve"))}
+        ${settings.memory_policy?.mode === "automatic" && html`
+          ${memoryField("sample_interval_secs", t("montyVm.memoryInterval"), 1)}
+          ${memoryField("growth_step_bytes", t("montyVm.memoryGrowth"))}
+          ${memoryField("growth_headroom_bytes", t("montyVm.memoryHeadroom"))}
+        `}
+      </div>
       ${field("failure_rollback_threshold", t("montyVm.rollbackThreshold"), t("montyVm.rollbackThresholdDesc"))}
       <label className="flex items-center gap-3 py-3 border-t border-[var(--v2-panel-border)]">
         <input

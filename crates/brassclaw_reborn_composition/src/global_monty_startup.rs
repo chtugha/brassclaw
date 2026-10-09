@@ -35,6 +35,7 @@ pub(crate) async fn start(
         GlobalMontyOwner,
         Arc<InstalledMontyCatalogue>,
         brassclaw_product_workflow::MontyVmSettings,
+        &'static str,
     ),
     RebornRuntimeError,
 > {
@@ -90,7 +91,8 @@ pub(crate) async fn start(
     kernel
         .bind_task_budget_settings(live.clone())
         .map_err(|error| invalid(error.to_string()))?;
-    // Retain the existing explicit heap cap until the adaptive-settings migration.
+    // Start with the configured finite value. Startup sizing is applied to the
+    // actual worker before ingress; manual upgrades retain their exact value.
     // This finite physical backstop is independent of task executing time.
     let soft = usize::try_from(
         settings
@@ -121,7 +123,7 @@ pub(crate) async fn start(
         task_settings,
         max_recipe_contexts: 64,
     };
-    let owner = GlobalMontyOwner::start(
+    let mut owner = GlobalMontyOwner::start(
         &pool,
         &worker,
         GlobalServiceConfig {
@@ -143,7 +145,65 @@ pub(crate) async fn start(
     )
     .await
     .map_err(|error| invalid(error.to_string()))?;
-    Ok((owner, catalogue, settings))
+    let measurement_status =
+        if settings.memory_policy.mode == brassclaw_product_workflow::MontyMemoryMode::Manual {
+            "disabled"
+        } else {
+            let service = owner.client();
+            let selection =
+                crate::live_monty_settings::startup_heap_selection(&service, &settings).await;
+            let (selected, status) = match selection {
+                Ok(selection) => selection,
+                Err(error) => {
+                    owner.request_shutdown();
+                    check_shutdown(
+                        owner
+                            .join()
+                            .await
+                            .map_err(|error| invalid(error.to_string()))?,
+                    )?;
+                    return Err(invalid(error.to_string()));
+                }
+            };
+            if selected != soft {
+                let publication = service
+                    .publish_heap(
+                        1,
+                        HeapSettings {
+                            revision: 2,
+                            max_vm_bytes: selected,
+                        },
+                        false,
+                    )
+                    .await;
+                if let Err(error) = publication {
+                    owner.request_shutdown();
+                    check_shutdown(
+                        owner
+                            .join()
+                            .await
+                            .map_err(|error| invalid(error.to_string()))?,
+                    )?;
+                    return Err(invalid(format!(
+                        "startup heap publication failed: {error:?}"
+                    )));
+                }
+            }
+            if status == "startup_critical"
+                && service.publish_memory_backpressure(0, true).await.is_err()
+            {
+                owner.request_shutdown();
+                check_shutdown(
+                    owner
+                        .join()
+                        .await
+                        .map_err(|error| invalid(error.to_string()))?,
+                )?;
+                return Err(invalid("initial memory admission publication failed"));
+            }
+            status
+        };
+    Ok((owner, catalogue, settings, measurement_status))
 }
 pub(crate) fn check_shutdown(exit: GlobalServiceExit) -> Result<(), RebornRuntimeError> {
     let released = match exit.ownership {

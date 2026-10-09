@@ -12,7 +12,11 @@ them as an enforced Monty 1.0 resource. Active compute excludes queue/idle/exter
 external-call deadlines and shared heap are separate. `AdaptiveMontyHeapBudget`
 calculates finite targets from measured additional capacity and reserve; it
 does not probe the OS, reclaim live continuations or claim production wiring.
-Measurement failure/pending reductions require visible state and backpressure.
+The default sizes once at startup and holds a configurable finite budget.
+Automatic measurement is optional. Elevated pressure alone does not pause
+admission; missing samples prevent growth while existing finite-budget work
+continues with sufficient configured headroom. Critical pressure or proved
+insufficient capacity can apply backpressure. Pending reductions stay visible.
 
 - Own resource reservation, reconciliation, release, and quota accounting.
 - No costed or quota-limited work should execute without an active reservation or explicit documented exception.

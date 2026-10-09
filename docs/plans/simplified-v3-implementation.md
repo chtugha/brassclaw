@@ -74,6 +74,72 @@ permit allocations that prevent rollback. Preserve the acknowledged effective
 limit and distinguish automatic budget revisions from desired settings revisions.
 These prerequisites do not establish the completed adaptive-memory cutover.
 
+### Revised memory requirement — 2026-10-09 (supersedes adaptive-default entries)
+
+The operator requested the simpler default. Phase 3a now requires `startup`
+(one conservative sizing, then constant), `manual` (live operator value), and
+optional `automatic` (slow measurements; default interval 60 seconds). Historical
+adaptive-default entries below record earlier requirements and do not govern
+new implementation. Preserve existing stored limits as manual during migration.
+
+Implement in this order: persisted settings/validated DTOs and explicit upgrade;
+startup sizing with finite fallback and visible measurement status; serialized
+manual worker feasibility plus durable CAS/commit coordination; WebUI controls
+and exact desired/effective heap observations; optional controller sharing that
+publication owner. No periodic pressure measurements in startup/manual modes.
+Elevated pressure alone must not stop admission. Missing samples forbid growth,
+but retain finite-budget operation while configured headroom exists. Critical
+pressure or proved insufficient capacity can pause new work. Whole task cleanup
+and bounded queue waits remain independent requirements. Retain typed results
+between dependent steps; never discard unresolved effect evidence as cleanup.
+
+Validation must cover actual startup and WebUI edits, preserved operator values,
+no sampling in startup/manual modes, minor pressure without stalled admission,
+missing-sample fallback, critical-pressure bounded admission, unsafe manual
+reduction rejected without DB mutation, dropped waiter/commit readback, settings
+conflicts and retained VM identity. These changes are not yet accepted merely
+because the plan was revised.
+
+### Memory-mode implementation and local acceptance — 2026-10-09
+
+V111 adds the validated memory policy without changing existing byte limits;
+existing rows become manual with a revision advance. New rows default to startup
+mode with a 512 MiB ceiling/fallback. Startup sizing uses the real supervised
+worker's capacity once; missing measurements retain the finite configured value.
+Startup/manual mode never performs periodic pressure reads. Optional automatic
+mode measures no faster than its configured interval, owns timed-out probes,
+and keeps minor pressure from pausing otherwise available finite-budget work.
+
+The existing WebUI/settings path now exposes mode, cap, reserve, sampling and
+growth parameters, together with actual heap use, acknowledged revisions,
+measurement status and admission state. A manual heap edit freezes the sole
+transport owner, including direct child commands, until durable CAS/commit
+settles. Known rejection restores the previous limit and any pending automatic
+target; an unknown outcome contains the worker rather than permitting more work.
+Accepted edits survive HTTP cancellation. Memory backpressure leaves bounded
+admissions waiting under their existing attempt identities while controls and
+active results remain serviceable.
+
+Local evidence uses Rust 1.98, the NVMe target, incremental/debug info disabled
+and one serial `screen` queue. All original seven composition callers and the
+matched/unmatched regression pass with the actual retained worker and native
+PostgreSQL. The WebUI regression additionally proves manual uptake, unsafe
+reduction without DB mutation, no manual measurements, one optional measurement
+per 60-second interval, return to startup sizing and unchanged live VM identity.
+The native migration/CAS/startup-failure cases pass. Nine budget regressions,
+16 real service tests, 58 HTTP contracts, 59 model-gateway tests, two repaired
+trace tests and 27 architecture checks pass; affected library, host and control
+workspace strict lints pass. Source review and JS syntax checks cover the form.
+
+The first local queue lost its worker during mandatory cleanup; the corrected
+queue retains the real built binary outside the target and restores it beside
+the actual test executable. Feature-gate lint failures and the missed filesystem
+fixture policy were corrected and rerun. The root macOS unoptimized binary still
+emits the linker warning about the 16 MiB compact-unwind offset range. It remains
+visible; panic recovery has not been disabled. Linux/Windows native CI, complete
+job/container measurements, remaining hosting-limit controls, durable fatal
+recovery and the full catalogue/authorization/prefix cutovers remain open.
+
 ## Phase 0 evidence
 
 Run `python3 scripts/simplified_v3_inventory.py --output /tmp/simplified-v3-inventory.json`.

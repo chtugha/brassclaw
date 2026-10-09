@@ -2494,23 +2494,24 @@ pub async fn build_reborn_runtime(
                 .map(ToString::to_string)
                 .unwrap_or_else(|| "default".into()),
         };
-        let (owner, catalogue, initial_settings) = crate::global_monty_startup::start(
-            pool.clone(),
-            services
-                .monty_kernel
-                .clone()
-                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
-                    reason: "global Monty requires its captured kernel".into(),
+        let (owner, catalogue, initial_settings, memory_measurement_status) =
+            crate::global_monty_startup::start(
+                pool.clone(),
+                services.monty_kernel.clone().ok_or_else(|| {
+                    RebornRuntimeError::InvalidArgument {
+                        reason: "global Monty requires its captured kernel".into(),
+                    }
                 })?,
-            &scope,
-            substrate_memory_mounts.clone(),
-        )
-        .await?;
+                &scope,
+                substrate_memory_mounts.clone(),
+            )
+            .await?;
         let settings_owner = crate::live_monty_settings::MontySettingsOwner::start(
             pool.clone(),
             owner.client(),
             owner.ownership_check(),
             initial_settings,
+            memory_measurement_status,
         )
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: error.to_string(),
@@ -5054,7 +5055,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let (code, initial) = request(
+        let (code, mut initial) = request(
             &app,
             Method::GET,
             "settings-a",
@@ -5063,6 +5064,59 @@ mod tests {
         )
         .await;
         assert_eq!(code, StatusCode::OK);
+        assert_eq!(initial["settings"]["memory_policy"]["mode"], "startup");
+        let boot_samples = initial["runtime"]["memory_budget"]["memory_sample_count"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(boot_samples, 1);
+        let root_before_memory_edit = runtime.global_monty_owner.client().root_identity();
+        let initial_heap = runtime.global_monty_owner.client().heap_observation();
+        let heap = initial_heap.status.effective.unwrap().max_vm_bytes as u64;
+        let (code, manual) = request(&app, Method::PUT, "settings-a", "/api/settings/monty-vm",
+            serde_json::json!({"expected_revision":initial["settings"]["revision"], "max_memory_bytes":heap + 64 * 1024 * 1024})).await;
+        assert_eq!(code, StatusCode::OK, "{manual}");
+        assert_eq!(manual["settings"]["memory_policy"]["mode"], "manual");
+        assert_eq!(manual["runtime"]["memory_budget"]["uptake"], "applied");
+        assert_eq!(
+            manual["runtime"]["memory_budget"]["max_memory_bytes"],
+            heap + 64 * 1024 * 1024
+        );
+        assert_eq!(
+            manual["runtime"]["memory_budget"]["memory_sample_count"],
+            boot_samples
+        );
+        let stored_revision = manual["settings"]["revision"].as_u64().unwrap();
+        let (code, _) = request(
+            &app,
+            Method::PUT,
+            "settings-a",
+            "/api/settings/monty-vm",
+            serde_json::json!({"expected_revision":stored_revision,"max_memory_bytes":1}),
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        let (code, unchanged) = request(
+            &app,
+            Method::GET,
+            "settings-b",
+            "/api/settings/monty-vm",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(
+            unchanged["settings"]["revision"], stored_revision,
+            "unsafe manual reduction must not mutate the DB"
+        );
+        assert_eq!(
+            unchanged["runtime"]["memory_budget"]["max_memory_bytes"],
+            heap + 64 * 1024 * 1024
+        );
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            root_before_memory_edit
+        );
+        initial = unchanged;
         let initial_revision = initial["settings"]["revision"].as_u64().unwrap();
         assert_eq!(
             initial["runtime"]["task_budget"]["effective_revision"],
@@ -5125,6 +5179,14 @@ mod tests {
             )
             .await;
             assert_eq!(code, StatusCode::OK, "{result}");
+            assert_eq!(
+                result["runtime"]["memory_budget"]["memory_sample_count"],
+                boot_samples
+            );
+            assert_eq!(
+                result["runtime"]["memory_budget"]["measurement_status"],
+                "disabled"
+            );
             assert_eq!(result["runtime"]["task_budget"]["uptake"], "applied");
             assert_eq!(result["runtime"]["execution_limits"]["uptake"], "applied");
             assert_eq!(
@@ -5273,6 +5335,87 @@ mod tests {
             second["execution"]["root"]["vm_id"]
         );
         drop(client);
+        // Exercise the optional controller through the same live HTTP owner.
+        // It samples once on activation, then no more than once per interval;
+        // returning to startup mode takes one sizing and stops measurements.
+        let mut policy = initial["settings"]["memory_policy"].clone();
+        policy["mode"] = serde_json::json!("automatic");
+        let (code, automatic) = request(
+            &app,
+            Method::PUT,
+            "settings-a",
+            "/api/settings/monty-vm",
+            serde_json::json!({"expected_revision":desired.revision,"memory_policy":policy}),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{automatic}");
+        let samples = automatic["runtime"]["memory_budget"]["memory_sample_count"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(samples, boot_samples + 1);
+        assert_eq!(automatic["runtime"]["memory_budget"]["mode"], "automatic");
+        let store = runtime.webui_monty_settings_store();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(
+            store
+                .runtime_status()
+                .await
+                .unwrap()
+                .unwrap()
+                .memory_budget
+                .unwrap()
+                .memory_sample_count,
+            samples
+        );
+        tokio::time::timeout(Duration::from_secs(65), async {
+            loop {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                let budget = store
+                    .runtime_status()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .memory_budget
+                    .unwrap();
+                if budget.memory_sample_count != samples {
+                    assert_eq!(budget.memory_sample_count, samples + 1);
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        policy["mode"] = serde_json::json!("startup");
+        let (code, startup) = request(
+            &app,
+            Method::PUT,
+            "settings-a",
+            "/api/settings/monty-vm",
+            serde_json::json!({"expected_revision":desired.revision + 1,"memory_policy":policy}),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{startup}");
+        assert_eq!(startup["runtime"]["memory_budget"]["mode"], "startup");
+        assert_eq!(
+            startup["runtime"]["memory_budget"]["memory_sample_count"],
+            samples + 2
+        );
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            root_identity
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(
+            store
+                .runtime_status()
+                .await
+                .unwrap()
+                .unwrap()
+                .memory_budget
+                .unwrap()
+                .memory_sample_count,
+            samples + 2
+        );
         let store = runtime.webui_monty_settings_store();
         let status = store.runtime_status().await.unwrap().unwrap();
         assert_eq!(
@@ -5309,7 +5452,7 @@ mod tests {
             .client()
             .live_task_settings()
             .current();
-        assert_eq!(effective.revision, desired.revision);
+        assert_eq!(effective.revision, desired.revision + 2);
         assert_eq!(effective.limits.max_compute_time.as_secs(), 777);
         restarted.shutdown().await.unwrap();
     }

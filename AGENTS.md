@@ -328,8 +328,11 @@ checked independently of those fixed component revisions. Monty task time and
 allocation budgets are separate from the shared live-heap limit. The target
 `max_duration_secs` default is 600 seconds of executing VM time per task,
 excluding idle/queue/external waits; it never limits global Monty lifetime.
-Shared memory defaults to an adaptive budget based on available RAM, memory
-pressure and reserve, with an optional operator cap. Unsafe manual reductions
+Shared memory defaults to one conservative startup sizing from available
+capacity and reserve, then stays constant without periodic pressure monitoring.
+The operator can change the finite budget live in WebUI. Automatic adjustment is
+optional and slow; mild pressure alone never pauses all admission. Existing
+configured limits are preserved as manual settings on upgrade. Unsafe manual reductions
 are rejected; automatic reductions below the live heap remain pending while
 safe reclamation and admission backpressure apply. All valid settings changes
 are live, with desired/effective state visible.

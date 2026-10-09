@@ -239,3 +239,18 @@ A companion is audited separately for purpose/contract coverage. These mappings 
 Remove nine duplicated tasks owned by validator_v3 (the eight class validators and proposal submission) and eight specialized dispatch bodies covered by existing generic grep/trigger/glob code. The skill-json-parse functionality is also explicitly foreseen by the typed parse example in tools.md §9B; its separate Skill entry is removed while the mixed parse/stringify code retains serialization work. Keep the historical rows above so every original entry has a visible disposition. Keep distinct Skill usage prose with the canonical dispatcher where needed. The revised first section therefore contains **101 PythonCode conversion candidates and 92 Skill companions**.
 
 Existing-code reuse still requires conversion of the canonical executor, exact contracts/associations and production admission before redirecting callers. No approved rows or retained artifacts have been changed or deleted. Partial overlaps are not called completed replacements.
+
+
+## Recipe execution follow-up (2026-10-09)
+
+The historical newer-versus-legacy component comparison above does not establish whole-workflow execution coverage. See [monty.composition.recipes](monty.composition.recipes.md) for all 150 legacy seeded Recipe identities, newer packaged workflows and planned validator/prefix roles. It identifies skipped text/model steps, prose-only workflows, grouped executable loss, missing bindings/input layouts and semantic mismatches; [main plan §14](monty.composition.md#14-recipe-derived-execution-dependencies-2026-10-09) and [R01–R10](monty.composition.implementation.md#recipe-derived-dependencies) add missing PythonCode dependencies without duplicating existing executors. Keep original inventory counts/dispositions separate from these later required dependency additions.
+
+pc-host-kohai-complete remains superseded for root routing/No-Match execution. Its existing model primitive/UUID is nevertheless a review candidate for explicit retained Tier1 usage, after real child adapter/task/prefix/association qualification; this is a new usage requirement, not permission to restore the old root. pc-web-search-query-build and pc-grep-env-files should reuse canonical L027 and L004 where semantic/typed contracts agree; their Recipe references still need correction even though a duplicate conversion was excluded.
+
+
+Follow-up: the [counterfactual Recipe re-audit](monty.composition.recipes.md#counterfactual-re-audit-with-the-three-legacy-defects-removed) assumes correct legacy composer/doc-convert/json-parse, reuses this inventory and adds five pure roles C01–C05 with explicit overlap review. Original inventory counts above are historical and unchanged; the new roles are not additional legacy seeds or new Tool executors.
+
+
+## Subsequent whole-plan audit
+
+The original inventory counts above remain historical evidence. The [whole-plan audit](monty.composition.md#20-correctness-security-and-v3monty-alignment-audit) corrects newer Recipe designs: request preparation is not execution (especially L018 downloads), N16 candidate admission is not Q1 verdict persistence, and conditional/repeated flows require actual retained control support. C06 full-document rendering and C07 typed JSON text are proposed reusable pure parts for concrete uncovered data edges; they do not add duplicate header or HTTP/JSON executors. Existing compatible L073/text formatters are reused per exact profile. All proposed identities remain subject to the existing overlap, exact association and qualification checks, without implying runtime activation.

@@ -339,22 +339,41 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 return Err(error);
             }
         };
-        let ticket = {
-            let mut state = entry
+        {
+            let state = entry
                 .state
                 .lock()
                 .map_err(|_| failed("monty_attempt_state_failed"))?;
             if state.cancelled {
+                drop(state);
+                drop(guard);
+                self.remove(host.attempt())?;
                 return Err(failed("monty_task_cancelled"));
             }
-            let ticket = self
-                .service
-                .submit(input, ports)
-                .map_err(|_| failed("monty_task_admission_failed"))?;
-            state.phase = Phase::Submitted(ticket.control());
-            entry.changed.notify_waiters();
-            ticket
+        }
+        let ticket = match self.service.submit_when_available(input, ports).await {
+            Ok(ticket) => ticket,
+            Err(_) => {
+                // No VM admission was issued. Release the registry entry just
+                // as for failed input/port preparation; do not leak capacity.
+                drop(guard);
+                self.remove(host.attempt())?;
+                return Err(failed("monty_task_admission_failed"));
+            }
         };
+        {
+            let mut state = entry
+                .state
+                .lock()
+                .map_err(|_| failed("monty_attempt_state_failed"))?;
+            // Always retain an accepted control, including a cancellation racing
+            // with queue admission. Settlement must wait for its actual receipt.
+            state.phase = Phase::Submitted(ticket.control());
+            if state.cancelled {
+                ticket.control().cancel();
+            }
+            entry.changed.notify_waiters();
+        }
         let receipt = ticket
             .wait()
             .await

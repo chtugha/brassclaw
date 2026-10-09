@@ -1,4 +1,4 @@
-//! Deterministic adaptive heap-budget calculation. Platform measurement and
+//! Deterministic optional adaptive heap-budget calculation. Platform measurement and
 //! reclamation belong to composition; this module never probes the OS or polls.
 //! Parameters are supplied from validated settings/baseline, not fixed RAM
 //! percentages. Additional capacity excludes the live Monty heap already used.
@@ -156,24 +156,22 @@ impl AdaptiveMontyHeapBudget {
                 .map(|total_capacity| {
                     let capacity = total_capacity.saturating_sub(self.config.reserve_bytes);
                     let capped = capacity.min(self.config.manual_ceiling_bytes.unwrap_or(u64::MAX));
-                    let target = if s.pressure == MontyMemoryPressure::Critical {
-                        capped.min(live_heap_bytes)
-                    } else {
-                        capped
-                    };
-                    (target, s.pressure)
+                    // Pressure gates admission; it does not prove the worker
+                    // should lose all headroom needed to finish existing tasks.
+                    (capped, s.pressure)
                 })
         });
         let Some((target, pressure)) = target else {
             // No growth from absent/stale/future/overflowing measurement. Keep
-            // the last finite limit, and stop admitting new tasks until fresh
-            // capacity is known. Cold boot uses the explicit finite fallback.
+            // the last finite limit. Missing telemetry does not stop ordinary
+            // work while the configured admission headroom remains available.
             return Ok(MontyHeapBudgetDecision {
                 target_bytes: self.effective_bytes,
                 proposed_bytes: self.effective_bytes,
                 effective_bytes: self.effective_bytes,
                 pending_reduction: false,
-                backpressure: true,
+                backpressure: self.effective_bytes.saturating_sub(live_heap_bytes)
+                    <= self.config.growth_headroom_bytes,
                 reason: MontyHeapAdjustmentReason::MeasurementUnavailable,
             });
         };
@@ -189,7 +187,7 @@ impl AdaptiveMontyHeapBudget {
         }
         let previous = self.effective_bytes;
         let mut proposed = previous;
-        let reason = if pressure != MontyMemoryPressure::Normal {
+        let reason = if pressure == MontyMemoryPressure::Critical {
             // Pressure relief clamps usable headroom immediately. Rate limiting
             // cannot authorize consumption of newly unavailable host capacity.
             proposed = previous.min(target);
@@ -197,8 +195,9 @@ impl AdaptiveMontyHeapBudget {
         } else if target < self.effective_bytes {
             proposed = target;
             MontyHeapAdjustmentReason::CapacityReduction
-        } else if self.effective_bytes.saturating_sub(live_heap_bytes)
-            <= self.config.growth_headroom_bytes
+        } else if pressure == MontyMemoryPressure::Normal
+            && self.effective_bytes.saturating_sub(live_heap_bytes)
+                <= self.config.growth_headroom_bytes
         {
             proposed = target.min(previous.saturating_add(self.config.growth_step_bytes));
             if proposed > previous {
@@ -214,7 +213,7 @@ impl AdaptiveMontyHeapBudget {
             proposed_bytes: proposed,
             effective_bytes: self.effective_bytes,
             pending_reduction: false,
-            backpressure: pressure != MontyMemoryPressure::Normal || target == 0,
+            backpressure: pressure == MontyMemoryPressure::Critical || target == 0,
             reason,
         })
     }
@@ -336,13 +335,38 @@ mod tests {
         let decision = budget
             .evaluate(0, Some(sample(now, u64::MAX)), now)
             .unwrap();
-        assert!(decision.backpressure);
+        assert!(!decision.backpressure);
         assert_eq!(
             decision.reason,
             MontyHeapAdjustmentReason::MeasurementUnavailable
         );
         assert_eq!(decision.proposed_bytes, 200);
     }
+    #[test]
+    fn minor_pressure_and_missing_samples_leave_finite_budget_work_available() {
+        let now = Instant::now();
+        let budget = AdaptiveMontyHeapBudget::new(config()).unwrap();
+        let mut measurement = sample(now, 1000);
+        measurement.pressure = MontyMemoryPressure::Elevated;
+        for live in [50, 190] {
+            let decision = budget.evaluate(live, Some(measurement), now).unwrap();
+            assert!(!decision.backpressure);
+            assert_eq!(decision.proposed_bytes, 200); // no telemetry-driven growth
+        }
+        let missing = budget.evaluate(50, None, now).unwrap();
+        assert!(!missing.backpressure);
+        assert_eq!(missing.proposed_bytes, 200);
+        assert!(budget.evaluate(190, None, now).unwrap().backpressure);
+        // Elevated pressure cannot override actual insufficient capacity.
+        measurement.additional_capacity_bytes = 25;
+        assert!(
+            budget
+                .evaluate(150, Some(measurement), now)
+                .unwrap()
+                .backpressure
+        );
+    }
+
     #[test]
     fn rejects_manual_reduction_and_keeps_previous_configuration() {
         let now = Instant::now();
@@ -379,7 +403,7 @@ mod tests {
         let mut measurement = sample(now, 1000);
         measurement.pressure = MontyMemoryPressure::Critical;
         let decision = budget.evaluate(150, Some(measurement), now).unwrap();
-        assert_eq!(decision.proposed_bytes, 150);
+        assert_eq!(decision.proposed_bytes, 200);
         assert_eq!(decision.effective_bytes, 200);
         assert!(decision.backpressure);
         assert_eq!(decision.reason, MontyHeapAdjustmentReason::Pressure);
