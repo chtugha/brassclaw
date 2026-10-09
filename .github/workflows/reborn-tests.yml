@@ -75,7 +75,8 @@ jobs:
         with:
           key: native-memory-${{ matrix.os }}
       - name: Test actual native counters and containment classification
-        run: cargo test -p brassclaw_host_runtime --locked --lib memory_probe:: -- --nocapture
+        run: |
+          cargo test -p brassclaw_host_runtime --locked --lib memory_probe:: -- --nocapture
       - name: Check portable host adapters
         run: cargo clippy -p brassclaw_host_runtime --locked --lib -- -D warnings
 
