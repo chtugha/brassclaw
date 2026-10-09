@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a3ed0d862739694d",
+  "object": "chat.completion",
+  "created": 1791521077,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"host.post_reply present in contract\", \"result\": \"class21 recipe-transfer-09; trigger=null, steps=[], dependency_registry=null; one desc_idx=0 with a single type=component step including the supplied PythonCode UUID cc52df93-9358-5238-9317-23fea95aa6ef, tool_bindings=[], dependencies=null; one variant key\"}, {\"guard\": \"host.post_reply absent in contract\", \"result\": \"emit empty proposed_components and explain the blocker in composition_summary; do not fabricate the post_reply binding or a runnable step\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract check\", \"human Q2 approval\", \"supported class21 constructor that preserves full v3 fields (trigger, steps, dependency_registry, step_descriptions, variants)\"], \"notes\": \"The supplied draft posts a fixed user reply via host.post_reply; its ten intents must describe posting that fixed word, not returning data. The current live v3-\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114479,
+    "total_tokens": 114733,
+    "completion_tokens": 254,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

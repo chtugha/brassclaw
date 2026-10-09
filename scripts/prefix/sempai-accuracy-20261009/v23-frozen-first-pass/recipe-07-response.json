@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bcda609a0b34bb82",
+  "object": "chat.completion",
+  "created": 1791519502,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Design a reusable stable reply workflow.\"]], \"bridge_messages\": [], \"composition_summary\": \"Offline full-v3 export only. Created one unapproved class-21 recipe-transfer-07 draft. It binds the existing host.post_reply(answer:string) ToolSkill 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a and invokes the allocated PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502 (result = host.post_reply(answer='Stable')) to post exactly the fixed word as a user reply. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema; the two ordered steps include the ToolSkill then the PythonCode UUIDs, each step one UUID, tool_bindings=[] and dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], and ten distinct reply intents in the matching payload and variant arrays. Zero inputs/dependencies; no version numbers or approval. No runtime or approval claims. The current live sink drops v3 fields (step_descriptions, variants, dependency_registry); this export carries them only as an offline draft. Q1 and human Q2 are required before activation; the exact association approval record is a separate prerequisite.\", \"proposed_components\": [{\"class_code\": 21, \"payload\": {\"name\": \"recipe-transfer-07\", \"description\": \"Offline unapproved fixed-reply subworkflow; binds existing host.post_reply and invokes the allocated PythonCode to post exactly the fixed word as a user reply. No inputs and no dependencies. Q1 and human Q2 required before activation. Current live sink cannot preserve full v3 fields (step_descriptions, variants, dependency_registry); this export carries them only as an offline draft.\", \"trigger\": null, \"steps\": [], \"prior_knowledge_content\": \"Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posts exactly the fixed word via the bound existing host.post_reply.\", \"intent_examples\": [\"post the fixed stable reply\", \"reply with the stable word\", \"send the stable reply message\", \"post the stable reply\", \"give the stable reply\", \"reply stable\", \"post the stable message\", \"send the stable reply\", \"post the stable word\", \"reply with the stable word\"], \"step_descriptions\": [{\"desc_idx\": 0, \"label\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"yaml_source\": \"Documentation of supplied offline fixture steps\", \"steps\": [{\"stepnumber\": 1, \"knowledge\": \"rust\", \"goal\": \"Bind reply Tool\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"8002e1ff-f3d9-57f7-8a1c-62b33b0da73a\"], \"tool_bindings\": [], \"dependencies\": null}, {\"stepnumber\": 2, \"knowledge\": \"orchestrator\", \"goal\": \"Post fixed reply\", \"content\": \"Use the supplied offline fixture\", \"type\": \"component\", \"include\": [\"249e49eb-fc44-5605-aa6d-6b7299216502\"], \"tool_bindings\": [], \"dependencies\": null}]}], \"variants\": [{\"variant_key\": \"stable-reply\", \"description\": \"Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply\", \"step_link\": \"0:1-0:E\", \"intent_examples\": [\"post the fixed stable reply\", \"reply with the stable word\", \"send the stable reply message\", \"post the stable reply\", \"give the stable reply\", \"reply stable\", \"post the stable message\", \"send the stable reply\", \"post the stable word\", \"reply with the stable word\"], \"variable_patterns\": []}], \"dependency_registry\": null}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115585,
+    "total_tokens": 116496,
+    "completion_tokens": 911,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

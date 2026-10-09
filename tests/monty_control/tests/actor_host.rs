@@ -415,3 +415,180 @@ async fn real_child_python_failure_keeps_actor_and_root_available() {
     assert_eq!(exit.kind, StopKind::Requested);
     assert!(exit.exit_status.is_some());
 }
+
+#[tokio::test]
+async fn live_actor_limits_keep_receipts_and_control_lane_across_reductions() {
+    let initial = ActorLimits {
+        max_unclaimed: 1,
+        ..actor_limits()
+    };
+    let (mut owner, ready) = TransportOwner::start(worker(), boot(SOURCE), limits(), initial)
+        .await
+        .unwrap();
+    let client = owner.client();
+    let mut second_task = task();
+    second_task["run_id"] = json!("run-b");
+    second_task["turn_id"] = json!("turn-b");
+    second_task["message_id"] = json!("message-b");
+    let first = client
+        .try_submit(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .unwrap();
+    assert!(matches!(client.try_submit(WorkerCommand::Admit {
+        key: ready.work_waits[1].1, task: second_task.clone(),
+    }), Err(error) if error.kind == ActorFailure::Backpressure));
+    // A live increase must also remove the old physical channel ceiling.
+    client
+        .publish_limits(ActorLimits {
+            max_unclaimed: 2048,
+            ..initial
+        })
+        .unwrap();
+    let second = client
+        .try_submit(WorkerCommand::Admit {
+            key: ready.work_waits[1].1,
+            task: second_task,
+        })
+        .unwrap();
+    client.publish_limits(initial).unwrap();
+    let owned = client.capacity().unwrap();
+    assert_eq!(owned.ordinary_requests, 2);
+    assert!(owned.ordinary_over_capacity());
+    // A separate control request remains admissible while ordinary debt exists.
+    let inspected = client.try_submit(WorkerCommand::Inspect).unwrap();
+    assert_eq!(client.capacity().unwrap().control_requests, 1);
+    inspected.wait().await.unwrap().outcome.unwrap();
+    assert_eq!(client.capacity().unwrap().control_requests, 0);
+    first.wait().await.unwrap().outcome.unwrap();
+    assert_eq!(client.capacity().unwrap().ordinary_requests, 1);
+    assert!(!client.capacity().unwrap().ordinary_over_capacity());
+    // Byte reductions retain the exact original wire and reservation.
+    let reduced = ActorLimits {
+        max_reserved_frame_bytes: limits().max_frame_bytes + 1,
+        ..initial
+    };
+    client.publish_limits(reduced).unwrap();
+    assert!(client.capacity().unwrap().ordinary_over_capacity());
+    let id = second.id;
+    drop(second);
+    let receipt = client.completions().wait(id).await.unwrap();
+    assert!(receipt.transport_started);
+    assert!(matches!(
+        receipt.original_command().unwrap(),
+        WorkerCommand::Admit { .. }
+    ));
+    // The first admission leaves an unresolved root host boundary. The raw
+    // actor does not orchestrate/defer it, so this queued second admission is
+    // correctly rejected by the worker. Failed exchanges retain/refund the
+    // same transport credits and exact command evidence as successful ones.
+    assert!(matches!(receipt.outcome, Err(error) if error.kind ==
+        ProcessFailure::Vm(brassclaw_monty_host::VmFailure::WrongBoundary)));
+    assert_eq!(client.capacity().unwrap().ordinary_requests, 0);
+    assert_eq!(client.capacity().unwrap().ordinary_reserved_bytes, 0);
+    assert_eq!(
+        client.publish_limits(ActorLimits {
+            max_control_reserved_frame_bytes: limits().max_frame_bytes * 2 - 1,
+            ..initial
+        }),
+        Err(ActorFailure::InvalidLimits)
+    );
+    assert_eq!(client.capacity().unwrap().limits, reduced);
+    exchange(&client, WorkerCommand::BeginShutdown).await;
+    owner.request_termination();
+    let exit = owner.join().await.unwrap();
+    assert_eq!(exit.kind, StopKind::Requested);
+    assert_eq!(client.publish_limits(initial), Err(ActorFailure::Closed));
+}
+
+#[tokio::test]
+async fn accepted_exchanges_retain_deadlines_across_live_hosting_changes() {
+    use brassclaw_monty_host::transport_actor::HostingDeadlines;
+    let (mut owner, _) = TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+        .await
+        .unwrap();
+    let client = owner.client();
+    let initial = client.hosting_deadlines().unwrap();
+    let old = client.try_submit(WorkerCommand::Inspect).unwrap();
+    let grown = HostingDeadlines {
+        startup_timeout: Duration::from_secs(2),
+        response_timeout: Duration::from_secs(8),
+    };
+    client.publish_hosting_policy(None, Some(grown)).unwrap();
+    assert_eq!(
+        client.validate_execution_slice(Duration::from_secs(6)),
+        Err(ActorFailure::Backpressure)
+    );
+    let after_growth = client.try_submit(WorkerCommand::Inspect).unwrap();
+    let reduced = HostingDeadlines {
+        response_timeout: Duration::from_secs(3),
+        ..grown
+    };
+    client.publish_hosting_policy(None, Some(reduced)).unwrap();
+    assert_eq!(client.hosting_deadlines().unwrap(), reduced);
+    assert_eq!(
+        client.validate_execution_slice(Duration::from_secs(3)),
+        Err(ActorFailure::Backpressure)
+    );
+    // Completed receipt ownership is independent of a deadline update.
+    let old = old.wait().await.unwrap();
+    assert_eq!(old.response_timeout, initial.response_timeout);
+    old.outcome.unwrap();
+    let after_growth = after_growth.wait().await.unwrap();
+    assert_eq!(after_growth.response_timeout, grown.response_timeout);
+    after_growth.outcome.unwrap();
+    let after_reduction = client
+        .try_submit(WorkerCommand::Inspect)
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert_eq!(after_reduction.response_timeout, reduced.response_timeout);
+    after_reduction.outcome.unwrap();
+    assert_eq!(
+        client.publish_hosting_policy(
+            None,
+            Some(HostingDeadlines {
+                startup_timeout: Duration::from_secs(4),
+                ..reduced
+            })
+        ),
+        Err(ActorFailure::InvalidLimits)
+    );
+    assert_eq!(client.hosting_deadlines().unwrap(), reduced);
+    assert_eq!(
+        client.validate_execution_slice(Duration::from_secs(2)),
+        Ok(())
+    );
+    exchange(&client, WorkerCommand::BeginShutdown).await;
+    owner.request_termination();
+    assert_eq!(owner.join().await.unwrap().kind, StopKind::Requested);
+}
+
+#[tokio::test]
+async fn startup_compile_deadline_is_contained_independently_of_ipc_response() {
+    let source = format!("{}{}", "startup_value = 0\n".repeat(8000), SOURCE);
+    let mut selected = boot(&source);
+    selected.bounds.values.max_source_bytes = 192 * 1024;
+    selected.bounds.values.max_compiled_source_bytes = 256 * 1024;
+    selected.startup_timeout = Duration::from_millis(1);
+    let result = TransportOwner::start(worker(), selected, limits(), actor_limits()).await;
+    let error = match result {
+        Err(brassclaw_monty_host::transport_actor::StartError::Worker(error)) => error,
+        Err(error) => panic!("unexpected actor preflight error: {error}"),
+        Ok(_) => panic!("late worker compilation cannot publish readiness"),
+    };
+    assert!(matches!(
+        error.kind,
+        ProcessFailure::Deadline
+            | ProcessFailure::Vm(brassclaw_monty_host::VmFailure::StartupDeadline)
+    ));
+    assert!(error.exit_status.is_some());
+    assert!(error.containment_error.is_none());
+    assert!(error.reap_error.is_none());
+    assert!(
+        matches!(error.command.as_deref(), Some(WorkerCommand::Boot { boot })
+        if boot.source == source && boot.startup_timeout == Duration::from_millis(1))
+    );
+}

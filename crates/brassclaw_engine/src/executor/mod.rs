@@ -13,6 +13,7 @@ pub mod orchestrator_code_port;
 pub mod prompt;
 pub mod retained_recipe;
 pub mod retained_source;
+pub mod retained_preload;
 // The historical generic-tracker proof lives in tests/monty_legacy_tracker.
 pub mod scripting;
 pub mod structured;

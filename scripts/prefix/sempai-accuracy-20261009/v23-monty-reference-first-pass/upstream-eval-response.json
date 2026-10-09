@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a61282900bbf5bf6",
+  "object": "chat.completion",
+  "created": 1791518859,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"answer\": true, \"reason\": \"D17 states upstream Monty has restricted eval/exec, while D17 also states BrassClaw forbids them in authored components.\", \"citations\": [\"714f2f799947\", \"91e48baa1f2c\"]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114450,
+    "total_tokens": 114519,
+    "completion_tokens": 69,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

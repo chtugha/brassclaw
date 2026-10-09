@@ -281,12 +281,12 @@ mod tests {
         let activate = descriptor_for(&surface, EXTENSION_ACTIVATE_CAPABILITY_ID);
         assert!(
             activate.effects.contains(&EffectKind::Network),
-            "hosted MCP activation needs runtime HTTP egress for discovery"
+            "legacy descriptor retains its network effect; this must not enable the suspended MCP client"
         );
     }
 
     #[tokio::test]
-    async fn local_dev_extension_activate_routes_hosted_mcp_discovery_through_runtime_egress() {
+    async fn local_dev_extension_activate_keeps_legacy_outbound_mcp_disabled() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
         let services = build_reborn_services(
@@ -319,11 +319,11 @@ mod tests {
             serde_json::json!({"extension_id": "notion"}),
         )
         .await
-        .expect("hosted MCP activation succeeds");
-        assert_eq!(activate["payload"]["activated"], true);
+        .expect_err("legacy MCP activation remains disabled through the Tool path");
+        assert_eq!(activate, RuntimeFailureKind::InvalidInput);
 
         let active = active_extension_capability_ids(&extension_management).await;
-        assert!(active.iter().any(|id| id == "notion.notion-get-self"));
+        assert!(!active.iter().any(|id| id.starts_with("notion.")));
         assert!(
             storage_root
                 .join("system/extensions/notion/manifest.toml")

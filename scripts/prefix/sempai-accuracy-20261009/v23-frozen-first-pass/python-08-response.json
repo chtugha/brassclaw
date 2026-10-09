@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bbb832559011548b",
+  "object": "chat.completion",
+  "created": 1791518989,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component pc-transfer-08. It classifies raw quota with a presence guard before reading the key: missing -> {kind:\\\"missing\\\",quota:null}; explicit null -> {kind:\\\"null\\\",quota:null}; exact int 4..13 inclusive -> {kind:\\\"integer\\\",quota:original}; other -> {kind:\\\"invalid\\\",quota:null}. No bool/float/coercion/defaults/exceptions, no imports/I/O/host calls. Preserved the conversation unchanged. Unapproved target-typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites; no observed tests/submission/activation.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-transfer-08\", \"description\": \"Classify raw quota: missing -> {kind:\\\"missing\\\",quota:null}; explicit null -> {kind:\\\"null\\\",quota:null}; exact integer 4..13 -> {kind:\\\"integer\\\",quota:original}; other -> {kind:\\\"invalid\\\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Unapproved target-typed-inputs draft; selected-runner support, Q1 and human Q2 required; no observed tests/submission/activation.\", \"content\": \"quota = inputs.get('quota')\\nif quota is None and 'quota' not in inputs:\\n    result = {'kind': 'missing', 'quota': None}\\nelif quota is None:\\n    result = {'kind': 'null', 'quota': None}\\nelif type(quota) is int and 4 <= quota <= 13:\\n    result = {'kind': 'integer', 'quota': quota}\\nelse:\\n    result = {'kind': 'invalid', 'quota': None}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115299,
+    "total_tokens": 115733,
+    "completion_tokens": 434,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

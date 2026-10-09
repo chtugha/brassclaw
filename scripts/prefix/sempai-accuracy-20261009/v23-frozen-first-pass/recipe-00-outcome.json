@@ -1,0 +1,79 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable ready data-result workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode 9a047867-22a3-5bcc-8a6b-1b06c20bbeff with content result = {'state': 'Ready'}. It has no Tool calls, inputs or dependencies and returns only state DATA, never a posted message. Emitted exactly one class 21 recipe-transfer-00 with the specified keys, trigger null, empty steps, null dependency_registry, one desc_idx=0 with a single type=component step including the supplied PythonCode UUID, empty tool_bindings, null dependencies, one variant with step_link 0:1-0:E, empty variable_patterns, and ten distinct data-returning intents. No runtime or approval claims; unapproved draft, Q1 and human Q2 required; current sink cannot preserve full v3 fields.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-00",
+        "description": "Offline unapproved fixed-state-data subworkflow; no Tool calls and no posted message",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the ready state data",
+          "return the ready state object",
+          "produce the fixed ready object",
+          "obtain the ready result data",
+          "calculate the ready state result",
+          "yield the ready state object",
+          "get the fixed ready state data",
+          "build the ready state object",
+          "evaluate the ready data subworkflow",
+          "derive the fixed ready state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "9a047867-22a3-5bcc-8a6b-1b06c20bbeff"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "ready-data",
+            "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the ready state data",
+              "return the ready state object",
+              "produce the fixed ready object",
+              "obtain the ready result data",
+              "calculate the ready state result",
+              "yield the ready state object",
+              "get the fixed ready state data",
+              "build the ready state object",
+              "evaluate the ready data subworkflow",
+              "derive the fixed ready state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

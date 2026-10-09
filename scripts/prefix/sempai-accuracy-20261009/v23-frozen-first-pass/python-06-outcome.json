@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 pc-transfer-06. It classifies raw offset: missing -> {kind:'missing',offset:null}; explicit null -> {kind:'null',offset:null}; exact integer 2..11 -> {kind:'integer',offset:original}; other -> {kind:'invalid',offset:null}. No bool/float/coercion/defaults/exceptions. A helper returns its complete object; module scope invokes it and assigns result. No imports/I/O/host calls. Conversation preserved unchanged. Unapproved target-typed-inputs draft; runner support, Q1 and human Q2 remain prerequisites; no observed tests/submission/activation.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-06",
+        "description": "Classify raw offset: missing -> {kind:'missing',offset:null}; explicit null -> {kind:'null',offset:null}; exact integer 2..11 -> {kind:'integer',offset:original}; other -> {kind:'invalid',offset:null}. No bool/float/coercion/defaults/exceptions. A helper returns its complete object; module scope invokes it and assigns result. No imports/I/O/host calls. Unapproved target-typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "def classify_offset(offset):\n    if offset is None:\n        return {'kind': 'null', 'offset': None}\n    if type(offset) is int and 2 <= offset <= 11:\n        return {'kind': 'integer', 'offset': offset}\n    return {'kind': 'invalid', 'offset': None}\nif 'offset' not in inputs:\n    result = {'kind': 'missing', 'offset': None}\nelif 'offset' in inputs:\n    result = classify_offset(inputs['offset'])\nelse:\n    result = {'kind': 'missing', 'offset': None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

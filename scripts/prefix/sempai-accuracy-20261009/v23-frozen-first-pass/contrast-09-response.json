@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bbe3fbaf593794b5",
+  "object": "chat.completion",
+  "created": 1791519265,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component for pc-contrast-09. Raw records is a list of 1..2 items, each with exactly code (string length 2..5) and enabled (exact bool, False valid). Empty list is invalid; missing/null/wrong types/extra fields are invalid without exceptions or coercion. Always returns {ok:boolean, records:original if valid else []}. No I/O, imports, host calls or upstream validation assumption. Conversation preserved unchanged. This is a target-input unapproved draft only; no execution, submission, Q1/Q2 or activation was performed.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-09\", \"description\": \"Raw records must be a list of 1..2 items. Every object has exactly code and enabled, code string length 2..5 inclusive, enabled exact bool (False valid). Always result={ok:boolean,records:original if valid else []}. Empty is invalid; missing/null/wrong types/extra fields invalid without exceptions/coercion. No I/O/imports/host calls, no upstream validation assumption. Target-input unapproved draft only; selected-runner support, Q1 and human Q2 required.\", \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 1 <= len(records) <= 2\\nif ok:\\n    for item in records:\\n        if type(item) is not dict or set(item) != {'code', 'enabled'}:\\n            ok = False\\n            break\\n        if not (type(item['code']) is str and 2 <= len(item['code']) <= 5 and type(item['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115336,
+    "total_tokens": 115780,
+    "completion_tokens": 444,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b2ccbcfdc87032ff",
+  "object": "chat.completion",
+  "created": 1791520963,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design export with a bound host.post_reply reply Tool\", \"result\": \"class21 recipe-transfer-05, trigger=null, steps=[], dependency_registry=null, one desc_idx=0 with two ordered component steps (rust ToolSkill 9fd5b0e0-2d93-5f5d-bb57-63d5c93061f7 then orchestrator PythonCode ca75d647-4f0e-5a35-abe7-cee7353e03c2), one step/\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"supported full-v3 sink fields\"], \"notes\": \"Same word Available selects a posted reply effect, not data; the bound ToolSkill plus PythonCode call host.post_reply(answer='Available'). Intents request a fix\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114483,
+    "total_tokens": 114708,
+    "completion_tokens": 225,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

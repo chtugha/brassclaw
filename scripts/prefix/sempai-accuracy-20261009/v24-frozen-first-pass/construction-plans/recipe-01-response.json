@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-baafffb443935fe5",
+  "object": "chat.completion",
+  "created": 1791520846,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design export with a bound host.post_reply ToolSkill\", \"result\": \"class21 recipe-transfer-01 with one desc_idx=0 component step including the supplied ToolSkill UUID a6ed3264-13bc-56ae-9de7-064df4b3d2ce, followed by an orchestrator step including the supplied PythonCode UUID d0a73787-74ae-55cb-b6a0-25131936e06d, step_des\"}, {\"guard\": \"offline-design export with a pure-logic PythonCode only\", \"result\": \"class21 recipe-transfer-01 with one desc_idx=0 component step including only the supplied PythonCode UUID d0a73787-74ae-55cb-b6a0-25131936e06d, no ToolSkill, step_des\"}, {\"guard\": \"offline-design export with no supplied UUIDs\", \"result\": \"class21 recipe-transfer-01 with empty step_descriptions and empty proposed_components, composition_summary stating the blocking gap and that no component was emitted\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"supported full-v3 sink fields\", \"resolved ToolSkill/PythonCode identities\", \"current sink can preserve step_descriptions/variants/dependency_registry\"], \"notes\": \"The bound ToolSkill makes this a real reply effect, not data; the PythonCode is the executable step that calls host.post_reply. One desc_idx=0 with two ordered,\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114477,
+    "total_tokens": 114857,
+    "completion_tokens": 380,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

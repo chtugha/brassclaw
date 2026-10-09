@@ -267,25 +267,21 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
     }
 
-    // Wire the engine `Store` through `StoreBackedReductionRuleStore` (postgres).
-    // Step 5.3: RecipeStore is now wired through PgRecipeStoreFacade (reborn_recipes table)
-    // instead of the old StoreBackedRecipeStore (MemoryDoc-backed).
+    // Operator rulesets use the supported durable port. Legacy data is imported
+    // and validated on first access; no retired MemoryDoc adapter is attached.
     #[cfg(feature = "postgres")]
-    if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
-        let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
-            Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
-        let reduction_rule_store =
-            crate::reduction_rules_store::StoreBackedReductionRuleStore::open(Arc::clone(
-                &dyn_store,
-            ));
-        api = api.with_reduction_rule_store(Arc::new(reduction_rule_store)
-            as Arc<dyn brassclaw_product_workflow::ReductionRuleStore>);
+    if let Some(pool) = services.pg_pool.as_ref() {
+        api = api.with_reduction_rule_store(Arc::new(
+            crate::reduction_rules_store::PgReductionRuleStore::new(
+                Arc::clone(pool),
+                runtime.webui_tenant_id(),
+            ),
+        ));
         api = api.with_reduction_rules_cache_invalidator(Arc::new(
             |_project_id: &str, _user_id: &str| {
                 brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
             },
         ));
-        tracing::debug!("ReductionRuleStore wired through PgMemoryDocStore");
     }
     // Wire PgRecipeStoreFacade as the RecipeStore (reborn_recipes table).
     // Postgres is mandatory — the MemoryDoc-backed fallback has been removed.
@@ -422,37 +418,13 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         tracing::debug!("DocusStore wired through PgDocusStore");
     }
 
-    // Wire the MCP server service (Phase V — Orchestrator MCP Server settings tab).
-    // Requires skills-db (for the projection layer) + postgres (for the pool).
+    // The inbound MCP settings surface reports unavailable until qualified
+    // Recipe discovery, durable chat correlation/closure and provider sessions
+    // are wired. Never give MCP a ComponentPort or a dedicated composer.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    if let Some(pool) = services.pg_pool.as_ref() {
-        use brassclaw_engine::memory::retrieval_source::ComponentScope;
-        let scope = ComponentScope {
-            tenant_id: runtime.webui_tenant_id().to_string(),
-            user_id: String::new(),
-            agent_id: runtime.webui_agent_id().to_string(),
-            project_id: String::new(),
-        };
-        // Build a dedicated PgCompositionPort for the MCP server's tools/list projection.
-        let comp_port = Arc::new(crate::pg_composition_port::PgCompositionPort::new(
-            Arc::clone(pool),
-            None,
-            None,
-        )) as Arc<dyn brassclaw_engine::executor::ComponentPort>;
-        let svc = crate::mcp_server_service::McpServerServiceImpl::new(
-            Arc::clone(pool),
-            comp_port,
-            scope,
-            // Default to the no-op spawner; the host binary (CLI / ingress) can
-            // replace it by calling `RebornWebuiBundle::with_mcp_listener_spawner`
-            // after construction, or wire a `DefaultMcpListenerSpawner` at this
-            // call site if the host owns the wiring.
-            Arc::new(crate::mcp_server_service::NoopMcpListenerSpawner),
-        );
-        api = api.with_mcp_server_service(
-            Arc::new(svc) as Arc<dyn brassclaw_product_workflow::McpServerService>
-        );
-        tracing::debug!("McpServerService wired through McpServerServiceImpl");
+    if services.pg_pool.is_some() {
+        let svc = crate::mcp_server_service::McpServerServiceImpl::new();
+        api = api.with_mcp_server_service(Arc::new(svc));
     }
 
     // Wire the settings listing service (Skills, Tools, Actions, Extensions,

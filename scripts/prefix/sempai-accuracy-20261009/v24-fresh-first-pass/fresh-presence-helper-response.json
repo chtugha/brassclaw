@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9ce6c91e32ad62c1",
+  "object": "chat.completion",
+  "created": 1791520174,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component. The helper receives the raw inputs mapping and is called at module scope, assigning result. Absent key -> category omitted, optional_channel null; explicit null -> category unset, optional_channel null; exact integer -80..-70 -> category accepted, optional_channel original; other -> category bad, optional_channel null. No exceptions, coercion, defaults, host calls, imports, or Tool dispatch. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-presence-helper\", \"description\": \"optional_channel absent -> category omitted/null; null -> unset/null; exact integer -80..-70 -> accepted/original; other -> bad/null. Exact result keys category and optional_channel. No exceptions/coercion/defaults/host/imports. Unapproved target-typed-inputs draft only.\", \"content\": \"def classify_fresh(mapping):\\n    if 'optional_channel' not in mapping:\\n        return {'category': 'omitted', 'optional_channel': None}\\n    value = mapping['optional_channel']\\n    if value is None:\\n        return {'category': 'unset', 'optional_channel': None}\\n    if type(value) is int and -80 <= value <= -70:\\n        return {'category': 'accepted', 'optional_channel': value}\\n    return {'category': 'bad', 'optional_channel': None}\\nresult = classify_fresh(inputs)\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114398,
+    "total_tokens": 114782,
+    "completion_tokens": 384,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

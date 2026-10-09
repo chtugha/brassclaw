@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-958a1ae1efb815e3",
+  "object": "chat.completion",
+  "created": 1791519728,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"system\",\"Keep it concise concise.\"],[\"user\",\"Keep my exact request and punctuation: {a:1}.\"]], \"bridge_messages\": [], \"composition_summary\": \"Audit only; no edits authorized, even for the repeated word concise. Echoed both messages verbatim. Target provider metadata is null (catalogue_revision null, no protocol/roles/tool/reasoning capabilities), so no provider-specific rewrite was attempted. No components, intents, settings, bridge or recipe updates were proposed.\", \"proposed_components\": [], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115170,
+    "total_tokens": 115305,
+    "completion_tokens": 135,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

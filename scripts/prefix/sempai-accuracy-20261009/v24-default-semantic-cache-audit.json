@@ -1,0 +1,56 @@
+{
+  "input_sha256": "88c32e2c853708012d351cb18264ab01a7c8f06cfd752ca22aa0054ac2648042",
+  "cache_paths_verified": {
+    "cold": true,
+    "native": true,
+    "external": true
+  },
+  "behavioral_receipt": "scripts/prefix/sempai-accuracy-20261009/v24-fresh-first-pass/candidate-checks.json",
+  "behavioral_receipt_sha256": "dc21daa530cef29197820ee5fef915416982f898bdac45fe4d5ee23b4094ab9f",
+  "monty_receipt": "scripts/prefix/sempai-accuracy-20261009/v24-fresh-monty.json",
+  "monty_receipt_sha256": "ee1025745d42612f203a183af8e8759a92d18800cebe8775eea94f4e1bb9461f",
+  "results": [
+    {
+      "stage": "cold",
+      "code_sha256": "902c950fe105f89c1e090863d4278afcd0de299d1bee701bb26e3bb65f91df18",
+      "exact_previously_checked_code": true,
+      "cpython_passed": 6,
+      "cpython_total": 7,
+      "monty_passed": 6,
+      "monty_total": 7,
+      "correct": false
+    },
+    {
+      "stage": "native",
+      "code_sha256": "902c950fe105f89c1e090863d4278afcd0de299d1bee701bb26e3bb65f91df18",
+      "exact_previously_checked_code": true,
+      "cpython_passed": 6,
+      "cpython_total": 7,
+      "monty_passed": 6,
+      "monty_total": 7,
+      "correct": false
+    },
+    {
+      "stage": "external",
+      "code_sha256": "902c950fe105f89c1e090863d4278afcd0de299d1bee701bb26e3bb65f91df18",
+      "exact_previously_checked_code": true,
+      "cpython_passed": 6,
+      "cpython_total": 7,
+      "monty_passed": 6,
+      "monty_total": 7,
+      "correct": false
+    },
+    {
+      "stage": "restored_native",
+      "code_sha256": "902c950fe105f89c1e090863d4278afcd0de299d1bee701bb26e3bb65f91df18",
+      "exact_previously_checked_code": true,
+      "cpython_passed": 6,
+      "cpython_total": 7,
+      "monty_passed": 6,
+      "monty_total": 7,
+      "correct": false
+    }
+  ],
+  "scope": "Fixed writer request including previously generated untrusted plan; planner itself is not re-run across cache paths. Exact code identity allows reuse of independent Linux and Monty probes. No host or Q1/Q2 acceptance.",
+  "conclusion": "Absent-input default fails cold, native and externally restored alike. This failure is not introduced by external restoration."
+}

@@ -28,6 +28,7 @@ use crate::pg_monty_admission::PgMontyAdmission;
 /// owners must establish exact activation/review/artifact provenance before
 /// returning it. Draft behavioral validation uses a separate owner.
 pub(crate) struct SelectedMontyRecipe {
+    pub(crate) normal_match: Option<Box<crate::normal_match_evidence::NormalMatchEvidence>>,
     pub(crate) inspected: Arc<InspectedRetainedProgram>,
     pub(crate) inputs: Option<Value>,
     pub(crate) tools: Option<Arc<dyn RetainedToolPort>>,
@@ -50,6 +51,7 @@ pub(crate) enum MontyIntentSelection {
 pub(crate) trait MontyTaskCatalogue: Send + Sync {
     async fn resolve_intent(&self, query: &str) -> Result<MontyIntentSelection, PortFailure>;
     async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure>;
+    async fn refresh_command_qualification(&self);
 }
 
 /// An acknowledged instance resource policy, independent of task selection and
@@ -73,6 +75,9 @@ struct Selection {
 struct State {
     task: Option<TaskHandle>,
     intent_started: bool,
+    // Errors retain this state; they are never reported as No-Match.
+    intent_outcome: Option<&'static str>,
+    completed_reply: Option<(String, String)>,
     recipes: BTreeMap<Uuid, Arc<Selection>>,
     selection_order: Vec<Uuid>,
     checked_capacity: Option<RecipeCapacity>,
@@ -92,6 +97,19 @@ pub(crate) struct GlobalRecipePorts {
     fenced: std::sync::atomic::AtomicBool,
 }
 impl GlobalRecipePorts {
+    pub(crate) async fn refresh_command_qualification(&self) {
+        self.catalogue.refresh_command_qualification().await;
+    }
+    #[cfg(test)]
+    pub(crate) async fn matched_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
+        self.state
+            .lock()
+            .await
+            .recipes
+            .values()
+            .find(|selection| selection.selected.normal_match.is_some())
+            .map(|selection| selection.selected.inspected.clone())
+    }
     pub(crate) fn new(
         host: Arc<MontyTaskHost>,
         admission: Arc<PgMontyAdmission>,
@@ -127,7 +145,7 @@ impl GlobalRecipePorts {
         &self,
         receipt: &TaskReceipt,
     ) -> Result<Value, PortFailure> {
-        let (task, recipes, capacity) = {
+        let (task, recipes, capacity, intent_outcome, completed_reply) = {
             let state = self.state.lock().await;
             (
                 state.task,
@@ -137,6 +155,8 @@ impl GlobalRecipePorts {
                     .map(|id| state.recipes[id].clone())
                     .collect::<Vec<_>>(),
                 state.checked_capacity,
+                state.intent_outcome,
+                state.completed_reply.clone(),
             )
         };
         if task.is_some_and(|task| {
@@ -175,9 +195,21 @@ impl GlobalRecipePorts {
                 "completed_steps":execution.as_ref().map(|execution| execution.completed_step_ids().collect::<Vec<_>>()).unwrap_or_default(),
                 "pending_step":execution.as_ref().and_then(RetainedRecipeExecution::pending_step_id),
                 "failed_step":execution.as_ref().and_then(RetainedRecipeExecution::failed_step_id),
+                "normal_match":selection.selected.normal_match.as_ref().map(|evidence| json!({
+                    "matching":evidence,
+                    "recipe_completed":finished,
+                    "task_completed":matches!(receipt.outcome, TaskOutcome::Completed { .. }),
+                })),
             }));
         }
         let completed = matches!(receipt.outcome, TaskOutcome::Completed { .. });
+        if let TaskOutcome::Completed { reply_ref } = &receipt.outcome
+            && completed_reply
+                .as_ref()
+                .is_none_or(|(reference, _)| reference != reply_ref)
+        {
+            return Err(failure("task_reply_evidence_missing"));
+        }
         if completed
             && (!complete
                 || task.is_none()
@@ -205,6 +237,8 @@ impl GlobalRecipePorts {
         Ok(
             json!({"format":"monty-task-execution/1", "root":root, "root_completed":completed,
             "all_selected_recipes_complete":complete, "recipes":progress,
+            "intent_outcome":intent_outcome.unwrap_or("not_started"),
+            "reply":completed_reply.map(|(reference, checksum)| json!({"reference":reference,"content_checksum":checksum})),
             "checked_recipe_capacity":capacity.map(|capacity| json!({
                 "revision":capacity.revision,"max_recipes":capacity.max_recipes})),
             "accounting":account, "withheld_root_answers":receipt.withheld.len(),
@@ -281,6 +315,7 @@ impl GlobalRecipePorts {
                     }
                     // An uncertain/failed selection cannot match again.
                     state.intent_started = true;
+                    state.intent_outcome = Some("error");
                 }
                 let selected = self.catalogue.resolve_intent(&self.user_input).await?;
                 self.check_fence()?;
@@ -288,12 +323,23 @@ impl GlobalRecipePorts {
                     MontyIntentSelection::NoMatch
                         if self.host.run_context().trusted_internal_turn =>
                     {
+                        self.state.lock().await.intent_outcome = Some("no_match");
                         Err(failure("non_match_instruction_unavailable"))
                     }
-                    MontyIntentSelection::NoMatch => Ok(json!({"status":"no_match"})),
-                    MontyIntentSelection::Disambiguation => Ok(json!({"status":"disambiguation"})),
+                    MontyIntentSelection::NoMatch => {
+                        self.state.lock().await.intent_outcome = Some("no_match");
+                        Ok(json!({"status":"no_match"}))
+                    }
+                    MontyIntentSelection::Disambiguation => {
+                        self.state.lock().await.intent_outcome = Some("disambiguation");
+                        Ok(json!({"status":"disambiguation"}))
+                    }
                     MontyIntentSelection::Match(selected) => {
+                        if selected.normal_match.is_none() {
+                            return Err(failure("intent_evidence_missing"));
+                        }
                         let (recipe_id, step_link) = self.retain_selection(selected).await?;
+                        self.state.lock().await.intent_outcome = Some("match");
                         Ok(
                             json!({"status":"match", "component_id":recipe_id, "step_link":step_link}),
                         )
@@ -544,9 +590,15 @@ impl TaskPorts for GlobalRecipePorts {
                 self.check_recipe_completion().await?;
                 let reference = serde_json::from_value(Value::String(reply_ref.clone()))
                     .map_err(|_| failure("recipe_reply_invalid"))?;
-                self.host
+                let content = self
+                    .host
                     .published_reply_content(&reference)
                     .map_err(|_| failure("recipe_reply_invalid"))?;
+                use sha2::Digest;
+                self.state.lock().await.completed_reply = Some((
+                    reply_ref.clone(),
+                    hex::encode(sha2::Sha256::digest(content.as_bytes())),
+                ));
             }
             Ok(outcome)
         }

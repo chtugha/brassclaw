@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ba875337a240ffdc",
+  "object": "chat.completion",
+  "created": 1791518781,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"answer\":false,\"reason\":\"Upstream feed/turn clocks restart per feed/turn and are not one cumulative BrassClaw task budget (D17:440b0b7c9682). The BrassClaw task account is separate and persists consumption across steps/waits/retries (D17:440b0b7c9682).\",\"citations\":[\"440b0b7c9682\"]}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114447,
+    "total_tokens": 114546,
+    "completion_tokens": 99,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

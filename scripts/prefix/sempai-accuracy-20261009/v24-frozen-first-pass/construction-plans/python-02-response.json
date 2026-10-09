@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-80944e88725d5f33",
+  "object": "chat.completion",
+  "created": 1791520229,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'quota' not in inputs\", \"result\": \"{'accepted': False, 'quota': None}\"}, {\"guard\": \"value = inputs['quota']; if value is None\", \"result\": \"{'accepted': False, 'quota': None}\"}, {\"guard\": \"type(value) is not int\", \"result\": \"{'accepted': False, 'quota': None}\"}, {\"guard\": \"type(value) is bool\", \"result\": \"{'accepted': False, 'quota': None}\"}, {\"guard\": \"not -2 <= value <= 7\", \"result\": \"{'accepted': False, 'quota': None}\"}, {\"guard\": \"type(value) is int and -2 <= value <= 7\", \"result\": \"{'accepted': True, 'quota': value}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"no observed tests/submission/activation\", \"unapproved draft\"], \"notes\": \"Raw validator: missing and null both yield accepted=false/null. Exact int -2..7, bool rejected. No imports/I/O/host calls. Conversation preserved unchanged; no \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114123,
+    "total_tokens": 114391,
+    "completion_tokens": 268,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

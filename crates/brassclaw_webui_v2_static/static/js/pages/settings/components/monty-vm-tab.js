@@ -21,11 +21,24 @@ import {
 // ── Poll interval for live status while restarting ────────────────────────────
 const STATUS_POLL_MS = 3000;
 const EXECUTION_FIELDS = [
+  "max_recipe_contexts", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
+  "max_actor_requests", "max_actor_reserved_bytes", "max_actor_control_requests", "max_actor_control_reserved_bytes",
+  "startup_timeout_millis", "response_timeout_millis",
+  "settings_source_timeout_millis", "settings_uptake_timeout_millis",
+  "ownership_check_timeout_millis", "ownership_heartbeat_interval_millis", "max_pending_ownership_checks",
+  "cancellation_ack_timeout_millis",
   "max_source_bytes", "max_compiled_source_bytes", "max_feeds", "max_stdout_bytes",
   "execution_slice_millis", "max_value_depth", "max_value_nodes", "max_value_bytes",
 ];
 const pendingSettings = (status) => status.state === "running" &&
-  [status.task_budget, status.execution_limits, status.memory_budget].some((budget) => budget?.uptake === "pending");
+  (status.execution_limits?.recipe_contexts_over_capacity === true ||
+    status.execution_limits?.queue_over_capacity === true ||
+    status.execution_limits?.settings_over_capacity === true ||
+    status.execution_limits?.retention_over_capacity === true ||
+    status.execution_limits?.actor_over_capacity === true ||
+    status.execution_limits?.actor_control_over_capacity === true ||
+    status.execution_limits?.ownership_over_capacity === true ||
+    [status.task_budget, status.execution_limits, status.memory_budget, status.recipe_budget].some((budget) => budget?.uptake === "pending"));
 
 export function MontyVmTab({ searchQuery = "" }) {
   const t = useT();
@@ -118,7 +131,12 @@ export function MontyVmTab({ searchQuery = "" }) {
       for (const key of EXECUTION_FIELDS) {
         const value = Number(settings.execution_limits?.[key]);
         if (!Number.isSafeInteger(value) || value <= 0) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (["max_recipe_contexts", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
         executionLimits[key] = value;
+      }
+      if (executionLimits.response_timeout_millis < executionLimits.startup_timeout_millis ||
+          executionLimits.execution_slice_millis >= executionLimits.response_timeout_millis) {
+        throw new Error(t("montyVm.hostingDeadlinesInvalid"));
       }
       const memory = Number(settings.max_memory_bytes);
       const policy = { ...settings.memory_policy };
@@ -286,6 +304,30 @@ function StatusCard({ status, isPolling, t }) {
             · ${t("montyVm.desiredRevision")}: ${status.execution_limits.desired_revision}
             · ${t("montyVm.effectiveRevision")}: ${status.execution_limits.effective_revision}
             · ${t(`montyVm.uptake.${status.execution_limits.uptake}`)}
+            · ${t("montyVm.activeRecipeContexts")}: ${status.execution_limits.active_recipe_contexts} / ${status.execution_limits.limits.max_recipe_contexts}
+            ${status.execution_limits.recipe_contexts_over_capacity && html`<span> · ${t("montyVm.contextCapacityDraining")}</span>`}
+            · ${t("montyVm.queuedTasks")}: ${status.execution_limits.queued_tasks} / ${status.execution_limits.limits.max_queued_tasks}
+            · ${t("montyVm.queuedBytes")}: ${status.execution_limits.queued_bytes} / ${status.execution_limits.limits.max_queued_bytes}
+            ${status.execution_limits.queue_over_capacity && html`<span> · ${t("montyVm.queueCapacityDraining")}</span>`}
+            · ${t("montyVm.pendingSettings")}: ${status.execution_limits.pending_settings} / ${status.execution_limits.limits.max_pending_settings}
+            ${status.execution_limits.settings_over_capacity && html`<span> · ${t("montyVm.settingsCapacityDraining")}</span>`}
+            · ${t("montyVm.retainedAttempts")}: ${status.execution_limits.retained_attempts} / ${status.execution_limits.limits.max_retained_attempts}
+            ${status.execution_limits.retention_over_capacity && html`<span> · ${t("montyVm.retentionDraining")}</span>`}
+            · ${t("montyVm.execution.startup_timeout_millis")}: ${status.execution_limits.limits.startup_timeout_millis}
+            · ${t("montyVm.execution.response_timeout_millis")}: ${status.execution_limits.limits.response_timeout_millis}
+            · ${t("montyVm.execution.settings_source_timeout_millis")}: ${status.execution_limits.limits.settings_source_timeout_millis}
+            · ${t("montyVm.execution.settings_uptake_timeout_millis")}: ${status.execution_limits.limits.settings_uptake_timeout_millis}
+            · ${t("montyVm.execution.ownership_check_timeout_millis")}: ${status.execution_limits.limits.ownership_check_timeout_millis}
+            · ${t("montyVm.execution.ownership_heartbeat_interval_millis")}: ${status.execution_limits.limits.ownership_heartbeat_interval_millis}
+            · ${t("montyVm.execution.cancellation_ack_timeout_millis")}: ${status.execution_limits.limits.cancellation_ack_timeout_millis}
+            · ${t("montyVm.pendingOwnershipChecks")}: ${status.execution_limits.pending_ownership_checks} / ${status.execution_limits.limits.max_pending_ownership_checks}
+            · ${t("montyVm.ownershipEffectiveRevision")}: ${status.execution_limits.ownership_effective_revision}
+            ${status.execution_limits.ownership_over_capacity && html`<span> · ${t("montyVm.ownershipDraining")}</span>`}
+            · ${t("montyVm.actorRequests")}: ${status.execution_limits.actor_requests} / ${status.execution_limits.limits.max_actor_requests}
+            · ${t("montyVm.actorBytes")}: ${status.execution_limits.actor_reserved_bytes} / ${status.execution_limits.limits.max_actor_reserved_bytes}
+            · ${t("montyVm.actorControlRequests")}: ${status.execution_limits.actor_control_requests} / ${status.execution_limits.limits.max_actor_control_requests}
+            · ${t("montyVm.actorControlBytes")}: ${status.execution_limits.actor_control_reserved_bytes} / ${status.execution_limits.limits.max_actor_control_reserved_bytes}
+            ${(status.execution_limits.actor_over_capacity || status.execution_limits.actor_control_over_capacity) && html`<span> · ${t("montyVm.actorDraining")}</span>`}
             ${status.execution_limits.failure_reason && html`<span role="alert"> · ${status.execution_limits.failure_reason}</span>`}
           </div>
         `}

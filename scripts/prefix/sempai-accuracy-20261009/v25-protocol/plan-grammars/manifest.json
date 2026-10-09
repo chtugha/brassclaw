@@ -1,0 +1,89 @@
+{
+  "format": "sempai-compact-grammar/2",
+  "any_whitespace": false,
+  "any_order": false,
+  "xgrammar_version": "0.2.7",
+  "schemas": [
+    {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifact_kind",
+          "requirements",
+          "workflow"
+        ],
+        "properties": {
+          "artifact_kind": {
+            "type": "string",
+            "enum": [
+              "host-embedding",
+              "preload-definition",
+              "invocation-body",
+              "recipe-constructor",
+              "prompt-review"
+            ]
+          },
+          "requirements": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "aspect",
+                "contract_quote"
+              ],
+              "properties": {
+                "aspect": {
+                  "type": "string",
+                  "enum": [
+                    "artifact",
+                    "input",
+                    "output",
+                    "effect",
+                    "prerequisite",
+                    "authorized-edit"
+                  ]
+                },
+                "contract_quote": {
+                  "type": "string",
+                  "maxLength": 320
+                }
+              }
+            }
+          },
+          "workflow": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "knowledge",
+                "uuid"
+              ],
+              "properties": {
+                "knowledge": {
+                  "type": "string",
+                  "enum": [
+                    "rust",
+                    "orchestrator"
+                  ]
+                },
+                "uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "schema_sha256": "5624f55f7f7af58d3172f33db1f9249fcd2f9b883fc6b58a982e3c9f14baf547",
+      "grammar_sha256": "690d3d092e165ce65407e2cd7a85297e9f26f8b40b50cbd3f3b1e093cabb681b"
+    }
+  ],
+  "answers_or_behavioral_oracles_used": false
+}

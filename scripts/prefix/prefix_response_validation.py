@@ -47,6 +47,17 @@ def load_bundle(bundle):
         raise ValueError('Empty evidence bundle')
     if set(cards) != set(manifest['selected_card_ids']):
         raise ValueError('Evidence selection differs from manifest')
+    view_hash = manifest.get('evidence_view_manifest_sha256')
+    if view_hash is not None:
+        view_raw = (bundle / 'evidence_view_manifest.json').read_bytes()
+        if hashlib.sha256(view_raw).hexdigest() != view_hash:
+            raise ValueError('Evidence view manifest fingerprint mismatch')
+        view = json.loads(view_raw)
+        rows = view.get('cards', [])
+        if (len(rows) != len(cards) or {row.get('id') for row in rows} != set(cards)
+                or any(row.get('original_excerpt_sha256') != cards[row['id']]['excerpt_sha256']
+                       for row in rows)):
+            raise ValueError('Evidence view differs from original source selection')
     return manifest, cards
 
 

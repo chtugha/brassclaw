@@ -1,3 +1,6 @@
+//! Legacy outbound MCP helpers retained for a future client capability.
+//! Production composition does not attach this client; activation is disabled.
+
 use std::sync::Arc;
 
 use brassclaw_extensions::{
@@ -5,29 +8,15 @@ use brassclaw_extensions::{
 };
 use brassclaw_host_api::{
     CapabilityId, ExtensionId, NetworkPolicy, NetworkScheme, NetworkTargetPattern,
-    RuntimeCredentialInjection, RuntimeCredentialSource, RuntimeHttpEgress,
+    RuntimeCredentialInjection, RuntimeCredentialSource,
 };
 use brassclaw_mcp::{
-    McpHostHttpClient, McpHostHttpEgressPlan, McpHostHttpEgressPlanRequest,
-    McpHostHttpEgressPlanner, McpRuntime, McpRuntimeConfig, McpRuntimeHttpAdapter,
+    McpHostHttpEgressPlan, McpHostHttpEgressPlanRequest, McpHostHttpEgressPlanner,
 };
 
 pub(crate) const MCP_RESPONSE_BODY_LIMIT: u64 = 2 * 1024 * 1024;
 const MCP_NETWORK_EGRESS_LIMIT: u64 = 2 * 1024 * 1024;
 const MCP_TIMEOUT_MS: u32 = 60_000;
-
-pub(crate) fn hosted_http_mcp_runtime(
-    registry: Arc<SharedExtensionRegistry>,
-    runtime_http_egress: Arc<dyn RuntimeHttpEgress>,
-) -> McpRuntime<
-    McpHostHttpClient<McpRuntimeHttpAdapter<Arc<dyn RuntimeHttpEgress>>, RegistryMcpEgressPlanner>,
-> {
-    let client = McpHostHttpClient::new(
-        McpRuntimeHttpAdapter::new(runtime_http_egress),
-        RegistryMcpEgressPlanner::new(registry),
-    );
-    McpRuntime::new(McpRuntimeConfig::default(), client)
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RegistryMcpEgressPlanner {

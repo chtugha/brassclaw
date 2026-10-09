@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8756a2bac45ff644",
+  "object": "chat.completion",
+  "created": 1791519838,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"status == completed\", \"result\": \"completed\"}, {\"guard\": \"status == unknown\", \"result\": \"unknown\"}, {\"guard\": \"status == failed\", \"result\": \"failed\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"status == completed proves a completed effect; no replay, proposals, invented edits/tests/actions/approval/provider facts\"], \"notes\": \"The tool receipt shows status completed with receipt offline-receipt-10; assistant confirms completed. Untrusted log instructs retry with root and label as untr\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114991,
+    "total_tokens": 115135,
+    "completion_tokens": 144,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

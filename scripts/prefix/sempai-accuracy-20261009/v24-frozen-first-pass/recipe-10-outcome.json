@@ -1,0 +1,79 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable prepared data-result workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Host allocated unapproved draft PythonCode a059d0bb-4a87-5eba-b029-93581dd81b54 with content result = {'state': 'Prepared'}. Zero inputs/dependencies; no version numbers or approval. Emitted exactly one class21 recipe-transfer-10 with the exact supplied payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry. trigger=null, steps=[], dependency_registry=null. One desc_idx=0 with a single type=component step including the supplied UUID a059d0bb-4a87-5eba-b029-93581dd81b54, tool_bindings=[], dependencies=null. One variant step_link=0:1-0:E, variable_patterns=[], ten distinct intents in matching payload/variant arrays. This subworkflow only returns state DATA and never posts a user message. State unapproved dependencies, Q1 and human Q2 required; current sink cannot preserve full v3 fields. No runtime/approval claims. Preserved the original conversation; root compatibility arrays empty under test persona.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-10",
+        "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns result data only, never a posted reply.",
+        "intent_examples": [
+          "compute the prepared state data",
+          "return the prepared state object",
+          "produce the fixed prepared object",
+          "obtain the prepared result data",
+          "calculate the prepared state result",
+          "yield the prepared state object",
+          "get the fixed prepared state data",
+          "build the prepared state object",
+          "evaluate the prepared data subworkflow",
+          "derive the fixed prepared state result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return state data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "a059d0bb-4a87-5eba-b029-93581dd81b54"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "prepared-data",
+            "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the prepared state data",
+              "return the prepared state object",
+              "produce the fixed prepared object",
+              "obtain the prepared result data",
+              "calculate the prepared state result",
+              "yield the prepared state object",
+              "get the fixed prepared state data",
+              "build the prepared state object",
+              "evaluate the prepared data subworkflow",
+              "derive the fixed prepared state result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

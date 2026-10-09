@@ -1,5 +1,30 @@
 # monty.composition — component implementation instructions
 
+## Reply/history migration review gate
+
+The existing packaged `host-post-reply` and `host-save-history` Recipes, their
+associated Skills and PythonCode are migration inputs, **not qualified current-v3
+implementations to reuse unchanged**. Updating these exact workflows is the parent
+task; implementing the qualified preload/export adapter is its prerequisite.
+
+Before selecting a successor, independently review the actual retained definitions,
+interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
+callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
+Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
+pinned export invocation, isolated mutable state and current kernel enforcement.
+Complete the applicable exact-combination bootstrap/approval and behavioral evidence
+before activation. Names, existing package status, old acceptance receipts and the
+word “canonical” do not qualify the unchanged implementation.
+
+Preserve compatible stable UUIDs and old task selections when that reviewed migration
+supports them; do not copy deprecated source substitution, ambient step state,
+module-level Tool execution or unsafe retry guidance into the new adapter. Review
+reply/history ownership, both routing branches, history framing, finalization and
+no-replay behavior together after the adapter is qualified. Keep these internal
+usages out of public MCP discovery unless a separately qualified public contract
+explicitly permits exposure. The commented instructions below are historical only.
+
+
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
 MCP clarification: accept the listed completed command only; open a new normal chat, send it as a user message, observe its correlated terminal response, forward that response to the client and close the chat. Normal ingress/matching/IBS/Recipe/reply/history are reused; no Python reception or direct Monty/Rust execution bridge is introduced.
@@ -3954,7 +3979,11 @@ result = usage_l101(inputs)
 
 ### N01. Packaged reply: reply:code / reply:skill
 
+<!-- Historical instruction withdrawn:
 **Prose description and implementation:** Retain exact packaged successor and association. The host resolves ownership/finalization; formatting alone is not proof. Do not replay publication after history failure.
+-->
+
+**Prose description and implementation:** Independently review and upgrade the exact packaged reply usage and consuming Recipe for the qualified preload/export adapter. Retain a compatible identity only after interface, association, typed invocation, task-owned finalization and behavioral qualification agree. A history failure must never replay an already published reply.
 
 **Typed inputs/result:** answer: nonblank string; result: actual nonempty task-owned msg reference.
 

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-aff4c38495a2dbca",
+  "object": "chat.completion",
+  "created": 1791520222,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'frames' not in inputs\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"value = inputs['frames']; if value is None\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"type(value) is not list or len(value) > 2\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"for frame in value: if type(frame) is not dict or set(frame) != {'toggles'}\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"for toggle in frame['toggles']: if not (type(toggle) is bool)\", \"result\": \"{'ok': False, 'frames': []}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected class22 constructor\", \"Q1\", \"human Q2\"], \"notes\": \"frames length 0..2; each frame has exactly toggles, a list of 0..2 exact bools including False. Missing/null/wrong shapes/extra fields/numeric bools invalid. No\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114113,
+    "total_tokens": 114383,
+    "completion_tokens": 270,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

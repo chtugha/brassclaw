@@ -1,0 +1,34 @@
+{
+  "protocol": "sempai-artifact-scopes-v25",
+  "model_inference_performed": false,
+  "deployment_changed": false,
+  "grammar_engine": "XGrammar 0.2.7 in existing vLLM environment",
+  "protocol_tests": {
+    "passed": 6,
+    "skipped": 0
+  },
+  "compiler_tests": {
+    "passed": 2
+  },
+  "grammars": [
+    {
+      "label": "frozen",
+      "schemas": 32,
+      "manifest_sha256": "97f7967afda310ddd1fbb7f65b1d5ad39083eb66e91e9db047b6ca27420945ec",
+      "exact_layout_and_grammar_hashes_verified": true
+    },
+    {
+      "label": "transfer",
+      "schemas": 6,
+      "manifest_sha256": "cec4ee99c24cafc588154c65491ec99a939b5d51bdf4ed1f0a67b855d7f1524e",
+      "exact_layout_and_grammar_hashes_verified": true
+    },
+    {
+      "label": "plan",
+      "schemas": 1,
+      "manifest_sha256": "74ffa198a0b74114baa7799cc4b09adbe2bd53ea9f7740b4f46ada6a98db5fd9",
+      "exact_layout_and_grammar_hashes_verified": true
+    }
+  ],
+  "scope": "Decoder order/provenance and source preservation, not semantic completeness, runtime activation or model accuracy."
+}

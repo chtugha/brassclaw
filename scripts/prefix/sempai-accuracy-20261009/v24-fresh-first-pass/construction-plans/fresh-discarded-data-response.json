@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b536d5b6cf38f86c",
+  "object": "chat.completion",
+  "created": 1791520374,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"Supplied PythonCode 5a261cd4-ea35-5517-b971-71565df9386a body is result = {'phase': 'Discarded'} with zero inputs/dependencies. It returns phase DATA only; it帖子\", \"result\": \"The workflow returns DATA, never posts a message. Intents must describe computing/returning the Discarded phase object, not sending it.\"}, {\"guard\": \"Constructor fields: name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry\", \"result\": \"All nine fields present; trigger null, steps [], dependency_registry null.\"}, {\"guard\": \"step_descriptions: one desc_idx=0, component steps in supplied order, each with exactly one include UUID, tool_bindings [], dependencies null\", \"result\": \"Single step references the supplied PythonCode UUID 5a261cd4-ea35-5517-b971-71565df9386a; tool_bindings empty; dependencies null.\"}, {\"guard\": \"One variant with step_link 0:1-0:E, variable_patterns [], and at least ten unique matching intents in both intent_examples lists\", \"result\": \"Ten distinct DATA-returning intents; no posted-message intents.\"}, {\"guard\": \"Prior knowledge retains Q1, human Q2, unapproved dependencies and current sink gap\", \"result\": \"prior_knowledge_content states unapproved fixture, Q1/human Q2 required, current live sink cannot preserve full v3 fields, export only.\"}, {\"guard\": \"No version/approval/runtime claims; preserve messages; root compatibility arrays empty\", \"result\": \"Root arrays (proposed_recipe_updates, proposed_intent_examples, settings_adjustments) empty; no approval/activation assertions.\"}, {\"guard\": \"Returns phase DATA; no message is posted, regardless of the word Sent or Discarded\", \"result\": \"Intents avoid send/post/reply; they request the Discarded phase object.\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract check\", \"human Q2 approval\", \"supported class21 constructor\", \"resolved catalogue/draft identity for 5a261cd4-ea35-5517-b971-71565df9386a\"], \"notes\": \"Offline full-v3 export only. All supplied UUIDs are host-allocated unapproved documentation fixtures. PythonCode 5a261cd4-ea35-5517-b971-71565df9386a returns {'\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114367,
+    "total_tokens": 114969,
+    "completion_tokens": 602,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

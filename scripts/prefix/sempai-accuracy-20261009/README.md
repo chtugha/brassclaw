@@ -53,7 +53,14 @@ Latest candidate generation:
 `6bacc3a0259e54f581f547823943abc4a699459cff7ef31dcfba5b8d4d592804`
 
 It has 113,903 text tokens and reserves 16,384 tokens against the real 131,072-token
-model context. Automatic injection and native reuse passed in [the v22 priming receipt](v22-prime.json). The plain [external restore check](v22-external-cache.json) passed with zero native hits and 112,992 extra LMCache hits after displacement, followed by the correct READY answer. This qualifies the inspected in-memory MP path, not disk/restart persistence. The [structured external restore check](v22-external-cache-structured.json) also passed with zero native hits, 112,992 extra LMCache hits and correct READY JSON. Current-source knowledge probes remain separate.
+model context. Automatic injection and native reuse passed in [the v22 priming receipt](v22-prime.json). The plain [external restore check](v22-external-cache.json) passed with zero native hits and 112,992 extra LMCache hits after displacement, followed by the correct READY answer. This qualifies the inspected in-memory MP path, not disk/restart persistence. The [structured external restore check](v22-external-cache-structured.json) also passed with zero native hits, 112,992 extra LMCache hits and correct READY JSON. The refreshed [v22 knowledge trial](v22-monty-current-reference-first-pass/reference-evaluation.json)
+completed 27/28 JSON answers, with all 27 booleans correct. One seed-q2 response
+truncated to invalid JSON and remains rejected. Original citation-topic support
+was 18/28; [manual audit](v22-reference-manual-audit.json) found three equivalent
+wording/newline matcher false negatives, giving 21/28. Six wrong passage choices
+remain. Correct booleans do not establish supported explanations. A repeated
+frozen build reproduced the exact generation and manifest in the
+[reproducibility receipt](v22-reproducibility.json).
 The v19 accuracy score does not automatically become a v22 accuracy score.
 
 ## Retained evidence
@@ -74,3 +81,82 @@ a separately verified immutable local copy outside the changing checkout.
 These results support further supervised development with behavioral/citation
 gates. They do not qualify flawless general performance or production promotion
 without the missing runtime, complete-composite and no-regression acceptance.
+
+## v23 display/navigation trial and v24 development
+
+The v23 generation `a8f7820e08c2b1f5ab86d4b30bd29baa4a1a96fd3b42962fa5c155cb701cde56`
+keeps the same v22 original source bytes, selection and teaching verification.
+Only display/navigation/audit design changes. Strict JSON example compaction saves
+5,633 tokens across 38 units; decoded values and embedded programs are preserved.
+The source index costs 5,901 tokens and the audit 327. The resulting prefix has
+114,358 text tokens, 114,626 maximum rendered probe tokens and 114,048 cacheable
+tokens. Exact injection/native reuse and reproducibility passed.
+
+First pass: frozen 57/60; transfer 11/12; reference 23/28. All reference outputs are
+valid JSON and 27/28 booleans are correct. Both prior Recipe-prerequisite failures
+are fixed, while two nested validators omit any success-state assignment and one
+Recipe repeats an intent. The transfer helper now passes 9/9 probes; the missing-only
+default still fails despite the original trusted contract. Its model-derived plan
+incorrectly overrides that contract. Reference explanations and booleans can also
+disagree; wrong passage selections remain failures. No repairs count as first pass.
+The frozen actual upstream Monty trial passes 311/318 probes in 22/24 candidates;
+the retained original input receipt binds its unchanged programs. Transfer Monty
+passes 33/34 probes in 3/4 candidates. These are pure logic, not custom host/Q1/Q2.
+The v19 comparison includes source refreshes, so differences are not solely design.
+
+The v24 candidate adds general original-contract/plan checks, valid-path loop
+tracing, final-value uniqueness and proposition/boolean consistency. Grouped
+source navigation removes redundant document labels without removing evidence.
+Generation `b78d7e396f137b104e0ef2cba5a18de360e235ca3381c411475e25c1a848aa01`
+is in compiled-v24-final; earlier build prototypes remain separately retained.
+Completed v24 first pass: frozen 59/60, transfer 10/12, reference 25/28.
+Linux candidate receipts and upstream Monty receipts are retained. The frozen
+Monty check passes 302/302 probes for 23 admitted programs; one requested
+program fails the preceding pure-Python gate and is not counted as executed.
+Transfer passes 33/34. Missing-only defaults, an omitted requested transfer Recipe,
+and a contradictory MCP lifetime verdict remain failures. No production or
+flawless-performance claim follows.
+
+Hybrid-cache comparisons use compare_semantic_cache.py to hold complete requests
+and decoder constraints fixed while checking cold, native and external restore
+telemetry. They change no services and preserve all raw responses. Behavioral
+correctness must be assessed separately; differing text alone is not corruption.
+
+The paired MCP-lifetime probe proves a cold miss, 112,992 native hits and
+112,992 externally restored tokens with zero native hits. All four task
+responses give the same wrong boolean despite a correct explanation. See
+[v24-lifetime-semantic-cache.json](v24-lifetime-semantic-cache.json) and its
+[separate semantic audit](v24-lifetime-semantic-cache-audit.json). This
+particular failure occurs cold too; it does not establish general cache health.
+
+The missing-default writer also verifies cold/native/external paths (114,048
+external tokens, zero native hits). All stages emit the same code SHA as the
+retained Linux/Monty candidate: 6/7 probes pass and the absent-input default fails.
+See [raw paired results](v24-default-semantic-cache.json) and the
+[exact-code evidence reuse audit](v24-default-semantic-cache-audit.json). The
+previously generated untrusted plan stays fixed; planner regeneration is outside
+this probe. No service configuration was changed.
+
+## v25 contract corrections (no inference trial)
+
+The reviewer decoder now emits proposed_components before composition_summary,
+with the summary last. Grammar manifest v2 includes object order in its fingerprint;
+old reviewer layouts are rejected rather than accepted under the same sorted hash.
+Replacement grammars are in v25-protocol/frozen-grammars, transfer-grammars and
+plan-grammars. Archived grammars and results remain unchanged.
+
+The compiler/header and authoring procedure distinguish host embedding reference,
+preload definitions, invocation bodies, Recipe constructors and prompt review.
+Module-level result requirements apply to invocation bodies. Verified historical
+worked examples retain their exact programs and are explicitly scoped as such.
+The planner selects exact current-contract quotes with aspect labels, rather than
+inventing executable guard/result branches. Quote provenance and supplied UUIDs
+are checked; classification/coverage/behavior are not proved by those checks.
+
+Six protocol tests pass in the installed XGrammar 0.2.7 environment, including real
+accept/reject matching for decoder order. Two compiler tests verify source/evidence
+preservation. All 39 regenerated schema/grammar pairs pass exact-layout and artifact
+hash checks. See [verification](v25-protocol/verification.json). No model requests,
+service changes or prefix deployment occurred. These source changes require a fresh
+coherent source capture and normal policy/integrity qualification before compiling
+and deploying a successor; do not rewrite old expected hashes or score receipts.

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b2a70bc6162b7b4d",
+  "object": "chat.completion",
+  "created": 1791520157,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"offset not in inputs\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"offset in inputs and offset is None\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"offset in inputs and type(offset) is not int\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"offset in inputs and type(offset) is bool\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"offset in inputs and not -4 <= offset <= 5\", \"result\": \"{'accepted': False, 'offset': None}\"}, {\"guard\": \"offset in inputs and type(offset) is int and -4 <= offset <= 5\", \"result\": \"{'accepted': True, 'offset': offset}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"unapproved draft\", \"no observed tests/submission/activation\", \"preserve conversation\"], \"notes\": \"offset is optional; missing and explicit null both yield accepted=false/null. Exact int -4..5 inclusive, rejecting bool/float. Helper receives offset value, not\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114157,
+    "total_tokens": 114439,
+    "completion_tokens": 282,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

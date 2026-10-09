@@ -55,6 +55,12 @@ await asyncio.gather(*[worker(i) for i in range(worker_count)])
 None
 "#;
 
+struct HeldChild {
+    task: TaskHandle,
+    parent: brassclaw_monty_host::process::RecipeContextId,
+    transport: TransportClient,
+}
+
 struct FilePorts {
     input: PathBuf,
     reply: PathBuf,
@@ -70,6 +76,7 @@ struct FilePorts {
     retained_vm_bytes: AtomicUsize,
     resume_child_after_edit: bool,
     child_resumed: AtomicBool,
+    child_opened: Option<tokio::sync::mpsc::Sender<HeldChild>>,
 }
 impl FilePorts {
     fn new(root: &std::path::Path, label: &str, pause_read: bool) -> Arc<Self> {
@@ -96,6 +103,7 @@ impl FilePorts {
             retained_vm_bytes: AtomicUsize::new(0),
             resume_child_after_edit: false,
             child_resumed: AtomicBool::new(false),
+            child_opened: None,
         })
     }
     fn input(&self) -> TaskInput {
@@ -134,6 +142,16 @@ impl FilePorts {
         let Some(RecipeEvent::Opened { context, .. }) = opened.recipe else {
             return Err(failure("child_transport_failed"));
         };
+        if let Some(observer) = &self.child_opened {
+            observer
+                .send(HeldChild {
+                    task,
+                    parent: context,
+                    transport: transport.clone(),
+                })
+                .await
+                .map_err(|_| failure("child_transport_failed"))?;
+        }
         // The returned file content is small, while the child keeps actual
         // interpreter storage until the service closes this completed task.
         let source = "held = 'x' * 2097152\nresult = inputs['content']";
@@ -548,6 +566,195 @@ async fn dropped_waiter_retains_actual_read_and_other_task_progress() {
     }
     control.stopped(Duration::from_secs(1)).await.unwrap();
     assert!(!ports.reply.exists());
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn live_backlog_limits_preserve_debt_grow_past_channel_size_and_wake_closed_waiters() {
+    use brassclaw_monty_host::{process::TaskSettings, service::AdmissionLimits};
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start_with_capacity(FILE_ROOT, 2).await;
+    let client = owner.client();
+    let identity = client.root_identity();
+    let mut busy = Vec::new();
+    for label in ["backlog-busy-a", "backlog-busy-b"] {
+        let ports = FilePorts::new(directory.path(), label, true);
+        let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), ports.started.notified())
+            .await
+            .unwrap();
+        busy.push((ports, ticket));
+    }
+    let mut queued = Vec::new();
+    for label in ["backlog-owned-a", "backlog-owned-b"] {
+        let ports = FilePorts::new(directory.path(), label, false);
+        let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+        queued.push((ports, ticket));
+    }
+    let before = client.admission_observation();
+    assert_eq!(before.tasks, 2);
+    assert!(before.bytes > 0);
+    let settings = |revision| TaskSettings {
+        revision,
+        max_compute_time: Duration::from_secs(600),
+        token_budgets_enabled: false,
+    };
+    let reduced = client
+        .publish_hosting_settings(
+            1,
+            settings(2),
+            client.vm_bounds(),
+            8,
+            AdmissionLimits {
+                max_tasks: 1,
+                max_bytes: before.bytes - 1,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(reduced.admission.tasks, 2);
+    assert_eq!(reduced.admission.bytes, before.bytes);
+    assert!(reduced.admission.over_capacity());
+    assert_eq!(client.root_identity(), identity);
+    let waiting = FilePorts::new(directory.path(), "backlog-waiter", false);
+    assert!(matches!(
+        client.submit(waiting.input(), waiting.clone()),
+        Err(ServiceFailure::Backpressure)
+    ));
+    let mut abandoned = Box::pin(client.submit_when_available(waiting.input(), waiting.clone()));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut abandoned)
+            .await
+            .is_err()
+    );
+    drop(abandoned);
+    assert_eq!(client.admission_observation(), reduced.admission);
+    let waiter_client = client.clone();
+    let waiter_ports = waiting.clone();
+    let mut waiter = tokio::spawn(async move {
+        waiter_client
+            .submit_when_available(waiter_ports.input(), waiter_ports)
+            .await
+    });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut waiter)
+            .await
+            .is_err()
+    );
+    client
+        .publish_hosting_settings(
+            2,
+            settings(3),
+            client.vm_bounds(),
+            8,
+            AdmissionLimits {
+                max_tasks: 70,
+                max_bytes: before.bytes - 1,
+            },
+        )
+        .await
+        .unwrap();
+    // Count growth alone cannot override byte ownership.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut waiter)
+            .await
+            .is_err()
+    );
+    assert_eq!(client.admission_observation().bytes, before.bytes);
+    client
+        .publish_hosting_settings(
+            3,
+            settings(4),
+            client.vm_bounds(),
+            8,
+            AdmissionLimits {
+                max_tasks: 70,
+                max_bytes: 1024 * 1024,
+            },
+        )
+        .await
+        .unwrap();
+    let waiting_ticket = tokio::time::timeout(Duration::from_secs(2), waiter)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    queued.push((waiting, waiting_ticket));
+    for ordinal in 3..70 {
+        let ports = FilePorts::new(
+            directory.path(),
+            &format!("backlog-growth-{ordinal}"),
+            false,
+        );
+        let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+        queued.push((ports, ticket));
+    }
+    let full = client.admission_observation();
+    assert_eq!(full.tasks, 70);
+    assert!(!full.over_capacity());
+    assert!(full.bytes > before.bytes);
+    let closed_waiter = FilePorts::new(directory.path(), "backlog-close", false);
+    let mut closed =
+        Box::pin(client.submit_when_available(closed_waiter.input(), closed_waiter.clone()));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut closed)
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        client
+            .publish_hosting_settings(
+                2,
+                settings(5),
+                client.vm_bounds(),
+                8,
+                AdmissionLimits {
+                    max_tasks: 1,
+                    max_bytes: 1
+                }
+            )
+            .await,
+        Err(ServiceFailure::SettingsConflict)
+    ));
+    assert_eq!(client.admission_observation(), full);
+    client.close_admission();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(2), &mut closed)
+            .await
+            .unwrap(),
+        Err(ServiceFailure::Closed)
+    ));
+    drop(closed);
+    for (ports, ticket) in &queued {
+        ticket.control().cancel();
+        let receipt = tokio::time::timeout(Duration::from_secs(2), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receipt.accounting.is_none());
+        assert_eq!(
+            receipt.outcome,
+            TaskOutcome::Failed {
+                reason_kind: "task_cancelled".into()
+            }
+        );
+        assert_eq!(ports.reads.load(Ordering::Acquire), 0);
+        assert_eq!(ports.writes.load(Ordering::Acquire), 0);
+    }
+    assert_eq!(client.admission_observation().tasks, 0);
+    assert_eq!(client.admission_observation().bytes, 0);
+    assert_eq!(closed_waiter.reads.load(Ordering::Acquire), 0);
+    for (ports, ticket) in &busy {
+        ports.release.notify_one();
+        let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.root, identity);
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+        assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+    }
     graceful(&mut owner).await;
 }
 
@@ -1178,6 +1385,127 @@ async fn live_bounds_reach_retained_children_without_resetting_feeds_or_recipe_l
 }
 
 #[tokio::test]
+async fn live_child_capacity_drains_owned_contexts_and_keeps_their_original_state() {
+    use brassclaw_monty_host::process::{
+        ProcessFailure, RecipeCommand, RecipeEvent, TaskSettings, WorkerCommand,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let identity = client.root_identity();
+    let (opened_tx, mut opened_rx) = tokio::sync::mpsc::channel(2);
+    let mut children = Vec::new();
+    for label in ["context-capacity-a", "context-capacity-b"] {
+        let mut ports = FilePorts::new(directory.path(), label, false);
+        let writable = Arc::get_mut(&mut ports).unwrap();
+        writable.retain_child_heap = true;
+        writable.resume_child_after_edit = true;
+        writable.child_opened = Some(opened_tx.clone());
+        let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), ports.started.notified())
+            .await
+            .unwrap();
+        children.push((ports, ticket));
+    }
+    let HeldChild {
+        task,
+        parent,
+        transport,
+    } = opened_rx.recv().await.unwrap();
+    let before = client.recipe_context_capacity();
+    assert_eq!(before.active, 2);
+    let mut bounds = client.vm_bounds();
+    bounds.max_feeds = 2;
+    let reduced = client
+        .publish_execution_settings(
+            1,
+            TaskSettings {
+                revision: 2,
+                max_compute_time: Duration::from_secs(30),
+                token_budgets_enabled: false,
+            },
+            bounds,
+            1,
+        )
+        .await
+        .unwrap();
+    assert_eq!(reduced.recipe_context_capacity.limit, 1);
+    assert_eq!(reduced.recipe_context_capacity.active, 2);
+    assert_eq!(reduced.accounting.len(), 2);
+    assert!(reduced.accounting.iter().all(|account| {
+        account
+            .compute_time
+            .is_some_and(|elapsed| elapsed > Duration::ZERO)
+    }));
+    let denied = transport
+        .try_submit(WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task,
+                parent: Some(parent),
+            },
+        })
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert!(matches!(
+        denied.outcome,
+        Err(brassclaw_monty_host::process::ProcessError {
+            kind: ProcessFailure::Vm(brassclaw_monty_host::VmFailure::ResourceLimit),
+            ..
+        })
+    ));
+    assert_eq!(client.recipe_context_capacity().active, 2);
+    let grown = client
+        .publish_execution_settings(
+            2,
+            TaskSettings {
+                revision: 3,
+                max_compute_time: Duration::from_secs(30),
+                token_budgets_enabled: false,
+            },
+            bounds,
+            3,
+        )
+        .await
+        .unwrap();
+    assert_eq!(grown.recipe_context_capacity.limit, 3);
+    let opened = transport
+        .try_submit(WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task,
+                parent: Some(parent),
+            },
+        })
+        .unwrap()
+        .wait()
+        .await
+        .unwrap()
+        .outcome
+        .unwrap();
+    assert!(matches!(opened.recipe, Some(RecipeEvent::Opened { .. })));
+    assert_eq!(client.recipe_context_capacity().active, 3);
+    for (ports, ticket) in children {
+        ports.release.notify_one();
+        let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        assert_eq!(receipt.root, identity);
+        assert!(ports.child_resumed.load(Ordering::Acquire));
+        assert_eq!(
+            std::fs::read(&ports.reply).unwrap(),
+            std::fs::read(&ports.input).unwrap()
+        );
+        assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+    }
+    assert_eq!(client.recipe_context_capacity().active, 0);
+    assert_eq!(client.root_identity(), identity);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
 async fn reduced_value_limit_preserves_completed_host_result_and_fails_only_its_task() {
     use brassclaw_monty_host::{HostAnswer, process::TaskSettings};
     let directory = tempfile::tempdir().unwrap();
@@ -1289,6 +1617,194 @@ async fn queued_input_is_rechecked_after_live_reduction_without_truncation_or_in
         .unwrap();
     assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
     graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn live_settings_capacity_retains_accepted_edits_and_grows_beyond_eight() {
+    use brassclaw_monty_host::{
+        heap::HeapSettings,
+        process::TaskSettings,
+        service::{HeapCommitOutcome, HeapObservation, ServiceClient, ServiceHostingLimits},
+    };
+    async fn held_commit(
+        client: ServiceClient,
+        path: std::path::PathBuf,
+    ) -> (
+        Arc<Notify>,
+        tokio::task::JoinHandle<Result<HeapObservation, ServiceFailure>>,
+    ) {
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let expected = client.heap_observation().status.desired_revision();
+        let next = HeapSettings {
+            revision: expected + 1,
+            max_vm_bytes: client
+                .heap_observation()
+                .status
+                .effective
+                .unwrap()
+                .max_vm_bytes
+                + 1024,
+        };
+        let publication = tokio::spawn({
+            let entered = entered.clone();
+            let release = release.clone();
+            async move {
+                client
+                    .publish_heap_transaction(
+                        expected,
+                        next,
+                        Box::pin(async move {
+                            entered.notify_one();
+                            release.notified().await;
+                            use std::io::Write;
+                            match std::fs::OpenOptions::new()
+                                .create_new(true)
+                                .write(true)
+                                .open(path)
+                            {
+                                Ok(mut file) => match file
+                                    .write_all(next.max_vm_bytes.to_string().as_bytes())
+                                    .and_then(|()| file.sync_all())
+                                {
+                                    Ok(()) => HeapCommitOutcome::Committed,
+                                    Err(_) => HeapCommitOutcome::Unknown,
+                                },
+                                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                                    HeapCommitOutcome::Rejected
+                                }
+                                Err(_) => HeapCommitOutcome::Unknown,
+                            }
+                        }),
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(2), entered.notified())
+            .await
+            .unwrap();
+        (release, publication)
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let identity = client.root_identity();
+    assert_eq!(client.settings_capacity().limit, 8);
+    let first_path = directory.path().join("first-committed-settings");
+    let (release, commit) = held_commit(client.clone(), first_path.clone()).await;
+    let hosting = |limit| ServiceHostingLimits {
+        admission: client.admission_observation().limits,
+        max_pending_settings: limit,
+        max_retained_attempts: 256,
+        actor: None,
+        deadlines: None,
+    };
+    let settings = |revision| TaskSettings {
+        revision,
+        max_compute_time: Duration::from_secs(600),
+        token_budgets_enabled: false,
+    };
+    let mut reduction = Box::pin(client.publish_control_settings(
+        1,
+        settings(2),
+        client.vm_bounds(),
+        8,
+        hosting(2),
+    ));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), &mut reduction)
+            .await
+            .is_err()
+    );
+    let mut abandoned = Vec::new();
+    for expected_pending in 3..=8 {
+        let mut edit = Box::pin(client.publish_memory_backpressure(0, false));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut edit)
+                .await
+                .is_err()
+        );
+        assert_eq!(client.settings_capacity().pending, expected_pending);
+        abandoned.push(edit);
+    }
+    assert_eq!(
+        client.publish_memory_backpressure(0, false).await,
+        Err(ServiceFailure::Backpressure)
+    );
+    drop(abandoned);
+    assert_eq!(
+        client.settings_capacity().pending,
+        8,
+        "dropped waiters retain accepted edits"
+    );
+    release.notify_one();
+    let committed = commit.await.unwrap().unwrap();
+    let reduced = tokio::time::timeout(Duration::from_secs(2), reduction)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reduced.settings_capacity.limit, 2);
+    assert_eq!(reduced.settings_capacity.pending, 7);
+    assert!(reduced.settings_capacity.over_capacity());
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while client.settings_capacity().pending != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        client.memory_admission_policy().revision,
+        1,
+        "accepted first edit survived; stale successors failed CAS"
+    );
+    assert_eq!(
+        std::fs::read_to_string(first_path).unwrap(),
+        committed.status.effective.unwrap().max_vm_bytes.to_string()
+    );
+    let grown = client
+        .publish_control_settings(2, settings(3), client.vm_bounds(), 8, hosting(20))
+        .await
+        .unwrap();
+    assert_eq!(grown.settings_capacity.limit, 20);
+    assert_eq!(client.root_identity(), identity);
+    let second_path = directory.path().join("second-committed-settings");
+    let (release, commit) = held_commit(client.clone(), second_path.clone()).await;
+    let mut queued = Vec::new();
+    for expected_pending in 2..=20 {
+        let mut edit = Box::pin(client.publish_memory_backpressure(1, false));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut edit)
+                .await
+                .is_err()
+        );
+        assert_eq!(client.settings_capacity().pending, expected_pending);
+        queued.push(edit);
+    }
+    assert_eq!(
+        client.publish_memory_backpressure(1, false).await,
+        Err(ServiceFailure::Backpressure)
+    );
+    owner.request_shutdown();
+    assert_eq!(
+        client.publish_memory_backpressure(1, false).await,
+        Err(ServiceFailure::Closed)
+    );
+    release.notify_one();
+    let committed = commit.await.unwrap().unwrap();
+    for edit in queued {
+        assert_eq!(edit.await, Err(ServiceFailure::Closed));
+    }
+    let exit = owner.join().await.unwrap();
+    assert!(exit.failure.is_none());
+    assert_eq!(client.settings_capacity().pending, 0);
+    assert_eq!(client.memory_admission_policy().revision, 1);
+    assert_eq!(client.root_identity(), identity);
+    assert_eq!(
+        std::fs::read_to_string(second_path).unwrap(),
+        committed.status.effective.unwrap().max_vm_bytes.to_string()
+    );
+    assert_eq!(exit.transport.unwrap().kind, StopKind::Graceful);
 }
 
 #[tokio::test]
@@ -1489,4 +2005,228 @@ async fn manual_heap_commit_barrier_holds_direct_child_execution_and_rolls_back_
     let exit = owner.join().await.unwrap();
     assert!(exit.failure.is_none());
     assert_eq!(exit.transport.unwrap().kind, StopKind::Graceful);
+}
+#[tokio::test]
+async fn live_retention_capacity_preserves_owned_credits_and_grows_beyond_256() {
+    use brassclaw_monty_host::{process::TaskSettings, service::ServiceHostingLimits};
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let root = client.root_identity();
+    assert_eq!(client.retained_attempts().limit, 256);
+    let mut retained = (0..256)
+        .map(|_| client.try_retain_attempt().unwrap())
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        client.try_retain_attempt(),
+        Err(ServiceFailure::Backpressure)
+    ));
+    let publish = |expected, revision, limit| {
+        let client = client.clone();
+        async move {
+            client
+                .publish_control_settings(
+                    expected,
+                    TaskSettings {
+                        revision,
+                        max_compute_time: Duration::from_secs(600),
+                        token_budgets_enabled: false,
+                    },
+                    client.vm_bounds(),
+                    8,
+                    ServiceHostingLimits {
+                        admission: client.admission_observation().limits,
+                        max_pending_settings: client.settings_capacity().limit,
+                        max_retained_attempts: limit,
+                        actor: None,
+                        deadlines: None,
+                    },
+                )
+                .await
+                .unwrap()
+        }
+    };
+    let grown = publish(1, 2, 257).await;
+    assert_eq!(grown.effective_settings.revision, 2);
+    assert_eq!(grown.retained_attempts.limit, 257);
+    retained.push(client.try_retain_attempt().unwrap());
+    assert_eq!(client.retained_attempts().retained, 257);
+    let reduced = publish(2, 3, 1).await;
+    assert!(reduced.retained_attempts.over_capacity());
+    assert_eq!(reduced.retained_attempts.retained, 257);
+    assert_eq!(client.live_task_settings().current().revision, 3);
+    assert!(matches!(
+        client.try_retain_attempt(),
+        Err(ServiceFailure::Backpressure)
+    ));
+    retained.truncate(1);
+    assert_eq!(client.retained_attempts().retained, 1);
+    assert!(matches!(
+        client.try_retain_attempt(),
+        Err(ServiceFailure::Backpressure)
+    ));
+    retained.clear();
+    let final_credit = client.try_retain_attempt().unwrap();
+    assert_eq!(client.root_identity(), root);
+    graceful(&mut owner).await;
+    assert!(matches!(
+        client.try_retain_attempt(),
+        Err(ServiceFailure::Closed)
+    ));
+    assert_eq!(client.retained_attempts().retained, 1);
+    drop(final_credit);
+    assert_eq!(client.retained_attempts().retained, 0);
+}
+
+#[tokio::test]
+async fn actor_policy_is_published_with_the_worker_settings_revision() {
+    use brassclaw_monty_host::{process::TaskSettings, service::ServiceHostingLimits};
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let root = client.root_identity();
+    let initial = client.actor_capacity().unwrap().limits;
+    let limits = ActorLimits {
+        max_unclaimed: 2048,
+        max_control_unclaimed: 2049,
+        ..initial
+    };
+    let hosting = |actor| ServiceHostingLimits {
+        admission: client.admission_observation().limits,
+        max_pending_settings: client.settings_capacity().limit,
+        max_retained_attempts: client.retained_attempts().limit,
+        actor: Some(actor),
+        deadlines: None,
+    };
+    let settings = TaskSettings {
+        revision: 2,
+        max_compute_time: Duration::from_secs(600),
+        token_budgets_enabled: false,
+    };
+    let invalid = ActorLimits {
+        max_control_reserved_frame_bytes: 1,
+        ..limits
+    };
+    assert!(matches!(
+        client
+            .publish_control_settings(1, settings, client.vm_bounds(), 8, hosting(invalid))
+            .await,
+        Err(ServiceFailure::InvalidLimits)
+    ));
+    assert_eq!(client.live_task_settings().current().revision, 1);
+    assert_eq!(client.actor_capacity().unwrap().limits, initial);
+    let receipt = client
+        .publish_control_settings(1, settings, client.vm_bounds(), 8, hosting(limits))
+        .await
+        .unwrap();
+    assert_eq!(receipt.effective_settings.revision, 2);
+    assert_eq!(receipt.actor_capacity.limits, limits);
+    assert_eq!(client.actor_capacity().unwrap().limits, limits);
+    assert_eq!(client.live_task_settings().current().revision, 2);
+    assert!(matches!(
+        client
+            .publish_control_settings(1, settings, client.vm_bounds(), 8, hosting(initial))
+            .await,
+        Err(ServiceFailure::SettingsConflict)
+    ));
+    assert_eq!(client.actor_capacity().unwrap().limits, limits);
+    let settings = TaskSettings {
+        revision: 3,
+        ..settings
+    };
+    let reduced = ActorLimits {
+        max_unclaimed: 1,
+        max_control_unclaimed: 1,
+        ..initial
+    };
+    let receipt = client
+        .publish_control_settings(2, settings, client.vm_bounds(), 8, hosting(reduced))
+        .await
+        .unwrap();
+    assert_eq!(receipt.actor_capacity.limits, reduced);
+    assert_eq!(client.root_identity(), root);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn live_hosting_deadlines_share_revision_and_preserve_global_root() {
+    use brassclaw_monty_host::{
+        process::TaskSettings, service::ServiceHostingLimits, transport_actor::HostingDeadlines,
+    };
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let root = client.root_identity();
+    let initial = client.hosting_deadlines().unwrap();
+    let policy = |deadlines| ServiceHostingLimits {
+        admission: client.admission_observation().limits,
+        max_pending_settings: client.settings_capacity().limit,
+        max_retained_attempts: client.retained_attempts().limit,
+        actor: None,
+        deadlines: Some(deadlines),
+    };
+    let settings = TaskSettings {
+        revision: 2,
+        max_compute_time: Duration::from_secs(600),
+        token_budgets_enabled: false,
+    };
+    let grown = HostingDeadlines {
+        startup_timeout: Duration::from_secs(2),
+        response_timeout: Duration::from_secs(8),
+    };
+    let mut unsafe_slice = client.vm_bounds();
+    unsafe_slice.execution_slice = initial.response_timeout;
+    // A bigger future deadline does not extend already accepted old requests.
+    assert!(matches!(
+        client
+            .publish_control_settings(1, settings, unsafe_slice, 8, policy(grown))
+            .await,
+        Err(ServiceFailure::Backpressure)
+    ));
+    assert_eq!(client.hosting_deadlines().unwrap(), initial);
+    assert_eq!(client.live_task_settings().current().revision, 1);
+    let receipt = client
+        .publish_control_settings(1, settings, client.vm_bounds(), 8, policy(grown))
+        .await
+        .unwrap();
+    assert_eq!(receipt.effective_settings.revision, 2);
+    assert_eq!(receipt.hosting_deadlines, grown);
+    assert_eq!(client.hosting_deadlines().unwrap(), grown);
+    assert!(matches!(
+        client
+            .publish_control_settings(1, settings, client.vm_bounds(), 8, policy(initial))
+            .await,
+        Err(ServiceFailure::InvalidLimits)
+    ));
+    assert!(matches!(
+        client
+            .publish_control_settings(
+                1,
+                settings,
+                client.vm_bounds(),
+                8,
+                policy(HostingDeadlines {
+                    startup_timeout: Duration::from_secs(1),
+                    response_timeout: Duration::from_secs(4)
+                })
+            )
+            .await,
+        Err(ServiceFailure::SettingsConflict)
+    ));
+    // The fixture's original 10 s startup / 5 s IPC pair is a legacy direct
+    // transport boot; new coordinated settings require the safe relationship.
+    assert_eq!(client.hosting_deadlines().unwrap(), grown);
+    let settings = TaskSettings {
+        revision: 3,
+        ..settings
+    };
+    let reduced = HostingDeadlines {
+        response_timeout: Duration::from_secs(3),
+        ..grown
+    };
+    let receipt = client
+        .publish_control_settings(2, settings, client.vm_bounds(), 8, policy(reduced))
+        .await
+        .unwrap();
+    assert_eq!(receipt.hosting_deadlines, reduced);
+    assert_eq!(client.live_task_settings().current().revision, 3);
+    assert_eq!(client.root_identity(), root);
+    graceful(&mut owner).await;
 }

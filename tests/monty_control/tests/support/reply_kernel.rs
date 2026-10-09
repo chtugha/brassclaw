@@ -128,13 +128,6 @@ pub(super) fn kernel(
 ) -> Kernel {
     build_kernel(host, reply_tool, Some(memory_tool), filesystem)
 }
-pub(super) fn reply_only_kernel(
-    host: Arc<MontyTaskHost>,
-    reply_tool: Uuid,
-    filesystem: Arc<PostgresRootFilesystem>,
-) -> Kernel {
-    build_kernel(host, reply_tool, None, filesystem)
-}
 fn build_kernel(
     host: Arc<MontyTaskHost>,
     reply_tool: Uuid,

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ab1c2b722de47190",
+  "object": "chat.completion",
+  "created": 1791518841,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is []\", \"result\": \"trigger: null, steps: []\"}, {\"guard\": \"dependency_registry is null\", \"result\": \"dependency_registry: null\"}, {\"guard\": \"one desc_idx=0 with component steps in supplied order\", \"result\": \"step 1 knowledge rust include ed366513-fe34-5022-9c90-daa6ab946493 tool_bindings [] dependencies null; step 2 knowledge orchestrator include 20ffa6ad-e015-54c6-8f29-ffe72d40f365 tool_bindings [] dependencies null\"}, {\"guard\": \"one variant step_link 0:1-0:E\", \"result\": \"step_link: 0:1-0:E, variable_patterns: []\"}, {\"guard\": \"at least ten unique matching intents in both intent_examples lists\", \"result\": \"ten distinct say/post/sent intents in variant and in desc intent_examples\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"unapproved documentation fixture\", \"supported full-v3 sink\"], \"notes\": \"Fixed word Sent is a reply effect via host.post_reply; no PythonCode body, no inputs, no dependencies. Preserve volatile messages; empty root compatibility and桥\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115213,
+    "total_tokens": 115534,
+    "completion_tokens": 321,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

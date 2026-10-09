@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component for the raw quota validator. Raw inputs may omit quota or contain any JSON value. Missing and explicit null both yield accepted=false/quota=null. Accept exact integer -2..7 inclusive; bool, float, string, list, dict, null and out-of-range values are rejected. Always result={accepted:boolean, quota:original if accepted else null}. No imports, I/O or host calls. Conversation preserved unchanged. This is an unapproved target-typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites. No execution, submission, activation or approval occurred.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-02",
+        "description": "Raw quota may be absent or any JSON value. Accept exact integer -2..7 inclusive (not bool/float). Always result={accepted:boolean, quota:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. No imports/I/O/host calls. Unapproved target-typed-inputs draft; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "quota = inputs.get('quota')\naccepted = type(quota) is int and -2 <= quota <= 7\nresult = {'accepted': accepted, 'quota': quota if accepted else None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

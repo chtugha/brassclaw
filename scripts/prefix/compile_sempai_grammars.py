@@ -13,7 +13,9 @@ from pathlib import Path
 
 
 def fingerprint(schema):
-    return hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    # XGrammar's fixed-order decoder follows properties insertion order. Sorting
+    # keys would let distinct decoder layouts share one fingerprint/artifact.
+    return hashlib.sha256(json.dumps(schema, separators=(',', ':')).encode()).hexdigest()
 
 
 def compile_schemas(source, output):
@@ -23,11 +25,11 @@ def compile_schemas(source, output):
     rows = []
     for schema in schemas:
         key = fingerprint(schema)
-        grammar = str(xgrammar.Grammar.from_json_schema(schema, any_whitespace=False))
+        grammar = str(xgrammar.Grammar.from_json_schema(schema, any_whitespace=False, any_order=False))
         (output / (key + '.ebnf')).write_text(grammar)
         rows.append({'schema': schema, 'schema_sha256': key,
                      'grammar_sha256': hashlib.sha256(grammar.encode()).hexdigest()})
-    receipt = {'format': 'sempai-compact-grammar/1', 'any_whitespace': False,
+    receipt = {'format': 'sempai-compact-grammar/2', 'any_whitespace': False, 'any_order': False,
                'xgrammar_version': importlib.metadata.version('xgrammar'), 'schemas': rows,
                'answers_or_behavioral_oracles_used': False}
     (output / 'manifest.json').write_text(json.dumps(receipt, indent=2) + '\n')

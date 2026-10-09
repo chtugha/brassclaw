@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-92308b28513e6113",
+  "object": "chat.completion",
+  "created": 1791520157,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"key absent\", \"result\": \"category omitted, optional_channel null\"}, {\"guard\": \"explicit null\", \"result\": \"category unset, optional_channel null\"}, {\"guard\": \"exact int -80..-70\", \"result\": \"category accepted, optional_channel original\"}, {\"guard\": \"other\", \"result\": \"category bad, optional_channel null\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs\", \"unapproved draft\"], \"notes\": \"category has four distinct outcomes (omitted/unset/accepted/bad); optional_channel is original only on the accepted branch, else null. Helper receives raw input\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114111,
+    "total_tokens": 114278,
+    "completion_tokens": 167,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

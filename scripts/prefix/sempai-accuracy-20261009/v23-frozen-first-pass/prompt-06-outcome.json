@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Answer accurately accurately."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edits authorized. The system wording is quoted user-selected content with repeated 'accurately', and the user request repeats 'exact request and punctuation' — neither repetition is an authorized edit. Echoed every message verbatim. Target provider metadata is null/unknown (model cyankiwi/Ornith-1.5-9B-AWQ-INT4, max_model_len 131072, no protocol_capabilities, no catalogue_revision), so no provider-specific role/tool/reasoning syntax was inferred or applied. No components, intents, settings or recipe updates were proposed.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

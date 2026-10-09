@@ -31,7 +31,7 @@ use crate::{
 
 type ExchangeResult = Result<ProcessSnapshot, ProcessError>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActorLimits {
     pub max_unclaimed: usize,
     /// Reserved command + maximum response frame bytes, not a physical heap
@@ -42,10 +42,14 @@ pub struct ActorLimits {
 }
 impl ActorLimits {
     fn valid(self, frame: usize) -> bool {
-        (1..=1024).contains(&self.max_unclaimed)
+        self.max_unclaimed > 0
+            && u32::try_from(self.max_unclaimed).is_ok()
             && self.max_reserved_frame_bytes > frame
-            && (1..=1024).contains(&self.max_control_unclaimed)
-            && self.max_control_reserved_frame_bytes > frame
+            && self.max_control_unclaimed > 0
+            && u32::try_from(self.max_control_unclaimed).is_ok()
+            && frame
+                .checked_mul(2)
+                .is_some_and(|minimum| self.max_control_reserved_frame_bytes >= minimum)
     }
     fn lane(self, control: bool) -> (usize, usize) {
         if control {
@@ -56,6 +60,51 @@ impl ActorLimits {
         } else {
             (self.max_unclaimed, self.max_reserved_frame_bytes)
         }
+    }
+}
+/// Counts cover queued, executing and completed-but-unclaimed requests. Each
+/// lane has independent credits, so ordinary saturation cannot consume control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActorCapacityObservation {
+    pub limits: ActorLimits,
+    pub ordinary_requests: usize,
+    pub ordinary_reserved_bytes: usize,
+    pub control_requests: usize,
+    pub control_reserved_bytes: usize,
+}
+impl ActorCapacityObservation {
+    pub fn ordinary_over_capacity(self) -> bool {
+        self.ordinary_requests > self.limits.max_unclaimed
+            || self.ordinary_reserved_bytes > self.limits.max_reserved_frame_bytes
+    }
+    pub fn control_over_capacity(self) -> bool {
+        self.control_requests > self.limits.max_control_unclaimed
+            || self.control_reserved_bytes > self.limits.max_control_reserved_frame_bytes
+    }
+}
+/// Host lifecycle/control deadlines, not Monty task compute accounts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostingDeadlines {
+    pub startup_timeout: Duration,
+    pub response_timeout: Duration,
+}
+impl HostingDeadlines {
+    pub fn valid(self) -> bool {
+        !self.startup_timeout.is_zero()
+            && self
+                .startup_timeout
+                .subsec_nanos()
+                .is_multiple_of(1_000_000)
+            && self
+                .response_timeout
+                .subsec_nanos()
+                .is_multiple_of(1_000_000)
+            && self.startup_timeout.as_millis() <= u64::MAX as u128
+            && self.response_timeout.as_millis() <= u64::MAX as u128
+            && self.response_timeout >= self.startup_timeout
+            && std::time::Instant::now()
+                .checked_add(self.response_timeout)
+                .is_some()
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -125,6 +174,7 @@ impl std::error::Error for StartError {
 }
 
 struct Record {
+    response_timeout: Duration,
     wire: Vec<u8>,
     reserved: usize,
     transport_started: bool,
@@ -138,6 +188,8 @@ struct Credits {
     reserved: usize,
 }
 struct Ledger {
+    deadlines: HostingDeadlines,
+    limits: ActorLimits,
     records: BTreeMap<RequestId, Record>,
     ordinary: Credits,
     control: Credits,
@@ -170,6 +222,7 @@ pub struct CompletionInbox {
 pub struct TransportReceipt {
     pub id: RequestId,
     pub transport_started: bool,
+    pub response_timeout: Duration,
     wire: Vec<u8>,
     pub outcome: ExchangeResult,
 }
@@ -217,6 +270,7 @@ impl CompletionInbox {
         Ok(TransportReceipt {
             id,
             transport_started: record.transport_started,
+            response_timeout: record.response_timeout,
             wire: record.wire,
             outcome: record.outcome.take().expect("checked outcome"),
         })
@@ -266,26 +320,118 @@ struct HeapCommit {
     timeout: Duration,
 }
 struct Envelope {
+    response_timeout: Duration,
     heap_commit: Option<HeapCommit>,
     id: RequestId,
     command: WorkerCommand,
 }
 #[derive(Clone)]
 pub struct TransportClient {
-    tx: mpsc::Sender<Envelope>,
-    control_tx: mpsc::Sender<Envelope>,
+    tx: mpsc::UnboundedSender<Envelope>,
+    control_tx: mpsc::UnboundedSender<Envelope>,
     inbox: CompletionInbox,
-    limits: ActorLimits,
     values: watch::Receiver<VmBounds>,
+    recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
     frame: usize,
     stopped: watch::Receiver<Option<StopKind>>,
 }
 impl TransportClient {
+    pub fn validate_limits(&self, limits: ActorLimits) -> Result<(), ActorFailure> {
+        if limits.valid(self.frame) {
+            Ok(())
+        } else {
+            Err(ActorFailure::InvalidLimits)
+        }
+    }
+    pub fn capacity(&self) -> Result<ActorCapacityObservation, ActorFailure> {
+        let ledger = self
+            .inbox
+            .ledger
+            .lock()
+            .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        Ok(ActorCapacityObservation {
+            limits: ledger.limits,
+            ordinary_requests: ledger.ordinary.count,
+            ordinary_reserved_bytes: ledger.ordinary.reserved,
+            control_requests: ledger.control.count,
+            control_reserved_bytes: ledger.control.reserved,
+        })
+    }
+    /// Trusted host policy publication after the shared worker revision ACK.
+    /// Reductions keep every existing credit; refunds drain capacity debt.
+    pub fn publish_limits(&self, limits: ActorLimits) -> Result<(), ActorFailure> {
+        self.publish_hosting_policy(Some(limits), None)
+    }
+    /// Live slice increases cannot invalidate older accepted exchanges. The
+    /// current deadline also bounds every new acceptance before worker ACK.
+    pub fn validate_execution_slice(&self, slice: Duration) -> Result<(), ActorFailure> {
+        let ledger = self
+            .inbox
+            .ledger
+            .lock()
+            .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        if ledger.closed {
+            return Err(ActorFailure::Closed);
+        }
+        if slice >= ledger.deadlines.response_timeout
+            || ledger
+                .records
+                .values()
+                .any(|record| record.outcome.is_none() && slice >= record.response_timeout)
+        {
+            return Err(ActorFailure::Backpressure);
+        }
+        Ok(())
+    }
+
+    pub fn hosting_deadlines(&self) -> Result<HostingDeadlines, ActorFailure> {
+        Ok(self
+            .inbox
+            .ledger
+            .lock()
+            .map_err(|_| ActorFailure::AccountingUnavailable)?
+            .deadlines)
+    }
+    /// Publication is atomic with acceptance into both lanes. Requests accepted
+    /// earlier retain their own response deadline, including queued requests.
+    pub fn publish_hosting_policy(
+        &self,
+        limits: Option<ActorLimits>,
+        deadlines: Option<HostingDeadlines>,
+    ) -> Result<(), ActorFailure> {
+        if let Some(limits) = limits {
+            self.validate_limits(limits)?;
+        }
+        if deadlines.is_some_and(|deadlines| {
+            !deadlines.valid() || self.values.borrow().execution_slice >= deadlines.response_timeout
+        }) {
+            return Err(ActorFailure::InvalidLimits);
+        }
+        let mut ledger = self
+            .inbox
+            .ledger
+            .lock()
+            .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        if ledger.closed {
+            return Err(ActorFailure::Closed);
+        }
+        if let Some(limits) = limits {
+            ledger.limits = limits;
+        }
+        if let Some(deadlines) = deadlines {
+            ledger.deadlines = deadlines;
+        }
+        Ok(())
+    }
     pub(crate) fn frame_limit(&self) -> usize {
         self.frame
     }
     pub fn live_vm_bounds(&self) -> watch::Receiver<VmBounds> {
         self.values.clone()
+    }
+
+    pub fn live_recipe_contexts(&self) -> watch::Receiver<crate::process::RecipeContextCapacity> {
+        self.recipe_contexts.clone()
     }
 
     pub fn completions(&self) -> CompletionInbox {
@@ -352,7 +498,6 @@ impl TransportClient {
                     command: RecipeCommand::Start { .. }
                 }
         );
-        let (count_limit, byte_limit) = self.limits.lane(control);
         let ledger = match self.inbox.ledger.lock() {
             Ok(ledger) => ledger,
             Err(_) => return Err(submit(ActorFailure::AccountingUnavailable, command)),
@@ -360,7 +505,7 @@ impl TransportClient {
         if ledger.closed {
             return Err(submit(ActorFailure::Closed, command));
         }
-        if ledger.credits(control).count >= count_limit {
+        if ledger.credits(control).count >= ledger.limits.lane(control).0 {
             return Err(submit(ActorFailure::Backpressure, command));
         }
         drop(ledger);
@@ -379,9 +524,10 @@ impl TransportClient {
         if ledger.closed {
             return Err(submit(ActorFailure::Closed, command));
         }
-        if ledger.credits(control).count >= count_limit {
+        if ledger.credits(control).count >= ledger.limits.lane(control).0 {
             return Err(submit(ActorFailure::Backpressure, command));
         }
+        let byte_limit = ledger.limits.lane(control).1;
         let total = match ledger.credits(control).reserved.checked_add(reserved) {
             Some(total) if total <= byte_limit => total,
             _ => return Err(submit(ActorFailure::Backpressure, command)),
@@ -390,10 +536,17 @@ impl TransportClient {
         if ledger.records.contains_key(&id) {
             return Err(submit(ActorFailure::AccountingUnavailable, command));
         }
+        let response_timeout = match &command {
+            WorkerCommand::Boot { boot } => {
+                ledger.deadlines.response_timeout.min(boot.startup_timeout)
+            }
+            _ => ledger.deadlines.response_timeout,
+        };
         let (ready, _) = watch::channel(false);
         ledger.records.insert(
             id,
             Record {
+                response_timeout,
                 wire,
                 reserved,
                 transport_started: false,
@@ -405,7 +558,8 @@ impl TransportClient {
         ledger.credits_mut(control).reserved = total;
         ledger.credits_mut(control).count += 1;
         let tx = if control { &self.control_tx } else { &self.tx };
-        if let Err(error) = tx.try_send(Envelope {
+        if let Err(error) = tx.send(Envelope {
+            response_timeout,
             id,
             command,
             heap_commit,
@@ -413,14 +567,7 @@ impl TransportClient {
             ledger.records.remove(&id);
             ledger.credits_mut(control).reserved -= reserved;
             ledger.credits_mut(control).count -= 1;
-            return Err(match error {
-                mpsc::error::TrySendError::Closed(envelope) => {
-                    submit(ActorFailure::Closed, envelope.command)
-                }
-                mpsc::error::TrySendError::Full(envelope) => {
-                    submit(ActorFailure::Backpressure, envelope.command)
-                }
-            });
+            return Err(submit(ActorFailure::Closed, error.0.command));
         }
         Ok(RequestTicket {
             id,
@@ -490,16 +637,30 @@ impl TransportOwner {
         tokio::runtime::Handle::try_current()
             .map_err(|_| StartError::Actor(ActorFailure::RuntimeUnavailable))?;
         let values = boot.bounds.values;
-        let (process, ready) = GlobalProcess::start(executable, boot, process_limits)
+        let context_limit = boot.max_recipe_contexts;
+        let deadlines = HostingDeadlines {
+            startup_timeout: boot.startup_timeout,
+            response_timeout: process_limits.response_timeout,
+        };
+        let (mut process, ready) = GlobalProcess::start(executable, boot, process_limits)
             .await
             .map_err(StartError::Worker)?;
-        let (tx, rx) = mpsc::channel(limits.max_unclaimed);
-        let (control_tx, control_rx) = mpsc::channel(limits.max_control_unclaimed);
+        let context_capacity = match ready.recipe_context_capacity {
+            Some(capacity) if capacity.limit == context_limit && capacity.active == 0 => capacity,
+            _ => {
+                process.terminate().await;
+                return Err(StartError::Actor(ActorFailure::InvalidLimits));
+            }
+        };
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (control_tx, control_rx) = mpsc::unbounded_channel();
         let (stop, stop_rx) = watch::channel(false);
         let (stopped, observed_stop) = watch::channel(None);
         let worker_process_id = process.worker_process_id();
         let inbox = CompletionInbox {
             ledger: Arc::new(Mutex::new(Ledger {
+                limits,
+                deadlines,
                 records: BTreeMap::new(),
                 ordinary: Credits::default(),
                 control: Credits::default(),
@@ -507,17 +668,27 @@ impl TransportOwner {
             })),
         };
         let (values_tx, values_rx) = watch::channel(values);
+        let (contexts_tx, contexts_rx) = watch::channel(context_capacity);
         let client = TransportClient {
             tx,
             control_tx,
             inbox: inbox.clone(),
-            limits,
             values: values_rx,
+            recipe_contexts: contexts_rx,
             frame: process_limits.max_frame_bytes,
             stopped: observed_stop,
         };
         let join = tokio::spawn(run(
-            process, rx, control_rx, stop_rx, inbox, stopped, values_tx,
+            process,
+            rx,
+            control_rx,
+            stop_rx,
+            inbox,
+            stopped,
+            RuntimeObservations {
+                values: values_tx,
+                recipe_contexts: contexts_tx,
+            },
         ));
         Ok((
             Self {
@@ -563,18 +734,32 @@ impl Drop for TransportOwner {
         self.stop.send_replace(true);
     }
 }
+struct RuntimeObservations {
+    values: watch::Sender<VmBounds>,
+    recipe_contexts: watch::Sender<crate::process::RecipeContextCapacity>,
+}
+
 async fn run(
     mut process: GlobalProcess,
-    mut rx: mpsc::Receiver<Envelope>,
-    mut control_rx: mpsc::Receiver<Envelope>,
+    mut rx: mpsc::UnboundedReceiver<Envelope>,
+    mut control_rx: mpsc::UnboundedReceiver<Envelope>,
     mut stop: watch::Receiver<bool>,
     inbox: CompletionInbox,
     stopped: watch::Sender<Option<StopKind>>,
-    values: watch::Sender<VmBounds>,
+    observed: RuntimeObservations,
 ) -> ActorExit {
     let mut shutdown_failure = None;
     let mut control_burst = 0usize;
     let (kind, exit_status) = loop {
+        let deadline = inbox
+            .ledger
+            .lock()
+            .map(|ledger| ledger.deadlines.response_timeout)
+            .map_err(|_| ());
+        let Ok(deadline) = deadline else {
+            break (StopKind::AccountingFailed, process.terminate().await);
+        };
+        process.set_response_timeout(deadline);
         let next = tokio::select! { biased;
             observed = process.wait_idle_exit() => {
                 let status = if observed.is_some() { observed } else { process.terminate().await };
@@ -601,6 +786,7 @@ async fn run(
         if begun.is_err() {
             break (StopKind::AccountingFailed, process.terminate().await);
         }
+        process.set_response_timeout(envelope.response_timeout);
         let transactional = envelope.heap_commit.is_some();
         let mut outcome = if let Some(commit) = envelope.heap_commit {
             heap_transaction(&mut process, envelope.command, commit).await
@@ -617,7 +803,12 @@ async fn run(
         if let Ok(snapshot) = &outcome
             && let Some(bounds) = snapshot.vm_bounds
         {
-            values.send_replace(bounds);
+            observed.values.send_replace(bounds);
+        }
+        if let Ok(snapshot) = &outcome
+            && let Some(capacity) = snapshot.recipe_context_capacity
+        {
+            observed.recipe_contexts.send_replace(capacity);
         }
         let graceful = outcome
             .as_ref()
@@ -815,8 +1006,8 @@ async fn heap_transaction(
 // Reserve control/completion capacity without starving admitted work. Both
 // queues are bounded and instance termination has priority in every round.
 async fn next_command(
-    rx: &mut mpsc::Receiver<Envelope>,
-    control: &mut mpsc::Receiver<Envelope>,
+    rx: &mut mpsc::UnboundedReceiver<Envelope>,
+    control: &mut mpsc::UnboundedReceiver<Envelope>,
     stop: &mut watch::Receiver<bool>,
     prefer_work: bool,
 ) -> Option<(Envelope, bool)> {

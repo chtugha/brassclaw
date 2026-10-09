@@ -1,0 +1,78 @@
+[
+  {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "artifact_kind",
+      "requirements",
+      "workflow"
+    ],
+    "properties": {
+      "artifact_kind": {
+        "type": "string",
+        "enum": [
+          "host-embedding",
+          "preload-definition",
+          "invocation-body",
+          "recipe-constructor",
+          "prompt-review"
+        ]
+      },
+      "requirements": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 12,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "aspect",
+            "contract_quote"
+          ],
+          "properties": {
+            "aspect": {
+              "type": "string",
+              "enum": [
+                "artifact",
+                "input",
+                "output",
+                "effect",
+                "prerequisite",
+                "authorized-edit"
+              ]
+            },
+            "contract_quote": {
+              "type": "string",
+              "maxLength": 320
+            }
+          }
+        }
+      },
+      "workflow": {
+        "type": "array",
+        "maxItems": 8,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "knowledge",
+            "uuid"
+          ],
+          "properties": {
+            "knowledge": {
+              "type": "string",
+              "enum": [
+                "rust",
+                "orchestrator"
+              ]
+            },
+            "uuid": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        }
+      }
+    }
+  }
+]

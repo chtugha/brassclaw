@@ -14,7 +14,8 @@ use brassclaw_monty_host::{
     VmBounds,
     heap::HeapSettings,
     process::TaskSettings,
-    service::{HeapCommitOutcome, ServiceClient, ServiceFailure},
+    service::{AdmissionLimits, HeapCommitOutcome, ServiceClient, ServiceFailure},
+    transport_actor::{ActorLimits, HostingDeadlines},
 };
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::{
@@ -32,9 +33,38 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{global_monty_owner::GlobalOwnerCheck, pg_monty_vm_settings::PgMontyVmSettingsStore};
 
-const SOURCE_BOUND: Duration = Duration::from_secs(2);
-const UPTAKE_BOUND: Duration = Duration::from_secs(5);
 const RECONCILE_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Clone, Copy)]
+struct SettingsDeadlines {
+    source: Duration,
+    uptake: Duration,
+    cancellation: Duration,
+}
+impl SettingsDeadlines {
+    fn from_limits(limits: MontyExecutionLimits) -> Self {
+        Self {
+            source: Duration::from_millis(limits.settings_source_timeout_millis),
+            uptake: Duration::from_millis(limits.settings_uptake_timeout_millis),
+            cancellation: Duration::from_millis(limits.cancellation_ack_timeout_millis),
+        }
+    }
+    fn validate(self) -> Result<(), MontyVmSettingsError> {
+        let now = Instant::now();
+        if self.source.is_zero()
+            || self.uptake.is_zero()
+            || now.checked_add(self.source).is_none()
+            || now.checked_add(self.uptake).is_none()
+            || self.cancellation.is_zero()
+            || now.checked_add(self.cancellation).is_none()
+        {
+            return Err(MontyVmSettingsError::Invalid(
+                "settings deadlines exceed the host clock representation".into(),
+            ));
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone)]
 struct Observation {
@@ -87,8 +117,32 @@ impl MontySettingsOwner {
         initial: MontyVmSettings,
         measurement_status: &'static str,
     ) -> Result<Self, MontyVmSettingsError> {
-        if task_settings(&initial) != TaskSettings::from(service.live_task_settings().current())
+        let owner_policy = ownership.snapshot().map_err(|_| {
+            MontyVmSettingsError::Internal("ownership accounting unavailable".into())
+        })?;
+        if owner_policy.revision != initial.revision
+            || owner_policy.limits
+                != crate::global_monty_owner::OwnershipLimits::from_execution(
+                    initial.execution_limits,
+                )
+            || task_settings(&initial) != TaskSettings::from(service.live_task_settings().current())
             || execution_bounds(initial.execution_limits)? != service.vm_bounds()
+            || initial.execution_limits.max_recipe_contexts
+                != service.recipe_context_capacity().limit
+            || admission_limits(initial.execution_limits)? != service.admission_observation().limits
+            || initial.execution_limits.max_pending_settings != service.settings_capacity().limit
+            || initial.execution_limits.max_retained_attempts != service.retained_attempts().limit
+            || hosting_deadlines(initial.execution_limits)?
+                != service.hosting_deadlines().map_err(|_| {
+                    MontyVmSettingsError::Internal("hosting accounting unavailable".into())
+                })?
+            || actor_limits(initial.execution_limits)?
+                != service
+                    .actor_capacity()
+                    .map_err(|_| {
+                        MontyVmSettingsError::Internal("actor accounting unavailable".into())
+                    })?
+                    .limits
         {
             return Err(MontyVmSettingsError::Internal(
                 "initial task revision mismatch".into(),
@@ -157,6 +211,16 @@ pub(crate) async fn startup_heap_selection(
     service: &ServiceClient,
     settings: &MontyVmSettings,
 ) -> Result<(usize, &'static str), MontyVmSettingsError> {
+    let deadlines = SettingsDeadlines::from_limits(settings.execution_limits);
+    deadlines.validate()?;
+    startup_heap_selection_with_deadline(service, settings, deadlines.source).await
+}
+
+async fn startup_heap_selection_with_deadline(
+    service: &ServiceClient,
+    settings: &MontyVmSettings,
+    source_deadline: Duration,
+) -> Result<(usize, &'static str), MontyVmSettingsError> {
     let fallback = settings
         .max_memory_bytes
         .and_then(|bytes| usize::try_from(bytes).ok())
@@ -170,7 +234,7 @@ pub(crate) async fn startup_heap_selection(
         .worker_process_id()
         .ok_or_else(|| MontyVmSettingsError::Unavailable("worker identity unavailable".into()))?;
     let sample = tokio::time::timeout(
-        SOURCE_BOUND,
+        source_deadline,
         tokio::task::spawn_blocking(move || {
             brassclaw_host_runtime::sample_process_memory_capacity(pid)
         }),
@@ -217,6 +281,12 @@ pub(crate) fn execution_bounds(
     limits
         .validate()
         .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+    SettingsDeadlines::from_limits(limits).validate()?;
+    if !crate::global_monty_owner::OwnershipLimits::from_execution(limits).valid() {
+        return Err(MontyVmSettingsError::Invalid(
+            "ownership controls exceed the host clock representation".into(),
+        ));
+    }
     let native = |value: u64| {
         usize::try_from(value).map_err(|_| {
             MontyVmSettingsError::Invalid("execution limit exceeds native representation".into())
@@ -233,8 +303,89 @@ pub(crate) fn execution_bounds(
         max_value_bytes: native(limits.max_value_bytes)?,
     })
 }
-fn observed_limits(bounds: VmBounds) -> MontyExecutionLimits {
+pub(crate) fn admission_limits(
+    limits: MontyExecutionLimits,
+) -> Result<AdmissionLimits, MontyVmSettingsError> {
+    limits
+        .validate()
+        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+    Ok(AdmissionLimits {
+        max_tasks: limits.max_queued_tasks,
+        max_bytes: usize::try_from(limits.max_queued_bytes).map_err(|_| {
+            MontyVmSettingsError::Invalid("queued bytes exceed native representation".into())
+        })?,
+    })
+}
+
+pub(crate) fn actor_limits(
+    limits: MontyExecutionLimits,
+) -> Result<ActorLimits, MontyVmSettingsError> {
+    limits
+        .validate()
+        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+    let native = |value| {
+        usize::try_from(value).map_err(|_| {
+            MontyVmSettingsError::Invalid("actor capacity exceeds native representation".into())
+        })
+    };
+    Ok(ActorLimits {
+        max_unclaimed: native(u64::from(limits.max_actor_requests))?,
+        max_reserved_frame_bytes: native(limits.max_actor_reserved_bytes)?,
+        max_control_unclaimed: native(u64::from(limits.max_actor_control_requests))?,
+        max_control_reserved_frame_bytes: native(limits.max_actor_control_reserved_bytes)?,
+    })
+}
+
+pub(crate) fn hosting_deadlines(
+    limits: MontyExecutionLimits,
+) -> Result<HostingDeadlines, MontyVmSettingsError> {
+    limits
+        .validate()
+        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+    let deadlines = HostingDeadlines {
+        startup_timeout: Duration::from_millis(limits.startup_timeout_millis),
+        response_timeout: Duration::from_millis(limits.response_timeout_millis),
+    };
+    if !deadlines.valid() {
+        return Err(MontyVmSettingsError::Invalid(
+            "hosting deadlines exceed the host clock representation".into(),
+        ));
+    }
+    Ok(deadlines)
+}
+
+fn observed_limits(
+    bounds: VmBounds,
+    max_recipe_contexts: u32,
+    admission: AdmissionLimits,
+    max_pending_settings: u32,
+    max_retained_attempts: u32,
+    actor: ActorLimits,
+    deadlines: (
+        HostingDeadlines,
+        SettingsDeadlines,
+        crate::global_monty_owner::OwnershipLimits,
+    ),
+) -> MontyExecutionLimits {
+    let (deadlines, settings_deadlines, ownership) = deadlines;
     MontyExecutionLimits {
+        max_recipe_contexts,
+        max_queued_tasks: admission.max_tasks,
+        max_queued_bytes: admission.max_bytes as u64,
+        max_pending_settings,
+        max_retained_attempts,
+        max_actor_requests: actor.max_unclaimed as u32,
+        max_actor_reserved_bytes: actor.max_reserved_frame_bytes as u64,
+        max_actor_control_requests: actor.max_control_unclaimed as u32,
+        max_actor_control_reserved_bytes: actor.max_control_reserved_frame_bytes as u64,
+        startup_timeout_millis: deadlines.startup_timeout.as_millis() as u64,
+        response_timeout_millis: deadlines.response_timeout.as_millis() as u64,
+        settings_source_timeout_millis: settings_deadlines.source.as_millis() as u64,
+        settings_uptake_timeout_millis: settings_deadlines.uptake.as_millis() as u64,
+        cancellation_ack_timeout_millis: settings_deadlines.cancellation.as_millis() as u64,
+        ownership_check_timeout_millis: ownership.check_timeout.as_millis() as u64,
+        ownership_heartbeat_interval_millis: ownership.heartbeat_interval.as_millis() as u64,
+        max_pending_ownership_checks: ownership.max_pending_checks,
         max_source_bytes: bounds.max_source_bytes as u64,
         max_compiled_source_bytes: bounds.max_compiled_source_bytes as u64,
         max_feeds: bounds.max_feeds as u64,
@@ -255,6 +406,9 @@ fn task_settings(settings: &MontyVmSettings) -> TaskSettings {
 }
 
 impl LiveMontySettingsStore {
+    fn deadlines(&self) -> SettingsDeadlines {
+        SettingsDeadlines::from_limits(self.observed.borrow().effective.execution_limits)
+    }
     /// Internal read port for retrieval. It returns the complete acknowledged
     /// snapshot, not a newer desired token mode or prior-knowledge ceiling.
     pub(crate) fn effective_view(self: &Arc<Self>) -> Arc<dyn MontyVmSettingsStore> {
@@ -273,8 +427,26 @@ impl LiveMontySettingsStore {
         })
     }
 
+    pub(crate) fn cancellation_policy_source(
+        &self,
+    ) -> Arc<dyn crate::global_monty_driver::CancellationAckSource> {
+        // This receiver does not own the service retaining the task factory.
+        // Last acknowledged policy remains usable to settle a failed service.
+        Arc::new(EffectiveCancellationPolicy {
+            observed: self.observed.subscribe(),
+        })
+    }
+
     async fn read_desired(&self) -> Result<MontyVmSettings, MontyVmSettingsError> {
-        let settings = tokio::time::timeout(SOURCE_BOUND, self.desired.get("default", "default"))
+        self.read_desired_with_deadline(self.deadlines().source)
+            .await
+    }
+
+    async fn read_desired_with_deadline(
+        &self,
+        deadline: Duration,
+    ) -> Result<MontyVmSettings, MontyVmSettingsError> {
+        let settings = tokio::time::timeout(deadline, self.desired.get("default", "default"))
             .await
             .map_err(|_| MontyVmSettingsError::Unavailable("settings source deadline".into()))??;
         if settings.revision == 0 {
@@ -286,46 +458,116 @@ impl LiveMontySettingsStore {
     }
 
     async fn reconcile(&self) -> Result<(), (Option<u64>, &'static str)> {
-        let mut memory = self.edit.lock().await;
+        // Capture the effective policy before any await. A subsequent edit
+        // cannot retime this accepted reconciliation or its readback/ACK waits.
+        let acknowledged = self.observed.borrow().effective.clone();
+        let deadlines = SettingsDeadlines::from_limits(acknowledged.execution_limits);
+        let mut memory = tokio::time::timeout(deadlines.source, self.edit.lock())
+            .await
+            .map_err(|_| (None, "settings_edit_lock_deadline"))?;
         let desired = self
-            .read_desired()
+            .read_desired_with_deadline(deadlines.source)
             .await
             .map_err(|_| (None, "settings_source_unavailable"))?;
         let revision = Some(desired.revision);
+        if desired.revision < acknowledged.revision {
+            return Err((revision, "settings_revision_regressed"));
+        }
+        if desired.revision == acknowledged.revision && !snapshots_equal(&desired, &acknowledged) {
+            return Err((revision, "settings_revision_conflict"));
+        }
+        let effective = self.service.live_task_settings().current();
+        let owner_policy = self
+            .ownership
+            .snapshot()
+            .map_err(|_| (revision, "ownership_accounting_unavailable"))?;
+        let owner_limits =
+            crate::global_monty_owner::OwnershipLimits::from_execution(desired.execution_limits);
+        if owner_policy.revision < acknowledged.revision
+            || owner_policy.revision > effective.revision
+            || owner_policy.revision > desired.revision
+            || (owner_policy.revision == desired.revision && owner_policy.limits != owner_limits)
+        {
+            return Err((revision, "ownership_revision_conflict"));
+        }
+        let values = execution_bounds(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_execution_limits"))?;
+        let hosting = hosting_deadlines(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_hosting_deadlines"))?;
+        self.service
+            .validate_runtime_bounds(values, hosting.response_timeout)
+            .map_err(|_| (revision, "unsupported_execution_limits"))?;
+        let actor = actor_limits(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_actor_limits"))?;
+        self.service
+            .validate_actor_limits(actor)
+            .map_err(|_| (revision, "unsupported_actor_limits"))?;
+        if desired.revision < effective.revision {
+            return Err((revision, "settings_revision_regressed"));
+        }
+        if desired.revision == effective.revision
+            && (hosting
+                != self
+                    .service
+                    .hosting_deadlines()
+                    .map_err(|_| (revision, "hosting_accounting_unavailable"))?
+                || task_settings(&desired) != TaskSettings::from(effective)
+                || values != self.service.vm_bounds()
+                || desired.execution_limits.max_recipe_contexts
+                    != self.service.recipe_context_capacity().limit
+                || admission_limits(desired.execution_limits)
+                    .map_err(|_| (revision, "invalid_admission_limits"))?
+                    != self.service.admission_observation().limits
+                || desired.execution_limits.max_pending_settings
+                    != self.service.settings_capacity().limit
+                || desired.execution_limits.max_retained_attempts
+                    != self.service.retained_attempts().limit
+                || actor
+                    != self
+                        .service
+                        .actor_capacity()
+                        .map_err(|_| (revision, "actor_accounting_unavailable"))?
+                        .limits)
+        {
+            return Err((revision, "settings_revision_conflict"));
+        }
+        // Validate the complete desired revision before any heap/worker effect.
         self.ownership
             .check()
             .await
             .map_err(|_| (revision, "runtime_unavailable"))?;
-        self.reconcile_memory(&desired, &mut memory)
+        self.reconcile_memory(&desired, &mut memory, deadlines)
             .await
             .map_err(|reason| (revision, reason))?;
-        let effective = self.service.live_task_settings().current();
-        let values = execution_bounds(desired.execution_limits)
-            .map_err(|_| (revision, "invalid_execution_limits"))?;
-        self.service
-            .validate_vm_bounds(values)
-            .map_err(|_| (revision, "unsupported_execution_limits"))?;
-        if desired.revision < effective.revision {
-            return Err((revision, "settings_revision_regressed"));
-        }
-        if desired.revision == effective.revision {
-            if task_settings(&desired) != TaskSettings::from(effective)
-                || values != self.service.vm_bounds()
-            {
-                return Err((revision, "settings_revision_conflict"));
-            }
-        } else {
+        if desired.revision != effective.revision {
             tokio::time::timeout(
-                UPTAKE_BOUND,
-                self.service.publish_runtime_settings(
+                deadlines.uptake,
+                self.service.publish_control_settings(
                     effective.revision,
                     task_settings(&desired),
                     values,
+                    desired.execution_limits.max_recipe_contexts,
+                    brassclaw_monty_host::service::ServiceHostingLimits {
+                        admission: admission_limits(desired.execution_limits)
+                            .map_err(|_| (revision, "invalid_admission_limits"))?,
+                        max_pending_settings: desired.execution_limits.max_pending_settings,
+                        max_retained_attempts: desired.execution_limits.max_retained_attempts,
+                        actor: Some(actor),
+                        deadlines: Some(hosting),
+                    },
                 ),
             )
             .await
             .map_err(|_| (revision, "settings_publication_deadline"))?
             .map_err(|_| (revision, "settings_publication_failed"))?;
+        }
+        // The service has acknowledged the VM/Rust controls. Publish the exact
+        // ownership successor before exposing the full effective snapshot. A
+        // timed-out earlier worker ACK can settle this same desired revision.
+        if owner_policy.revision != desired.revision {
+            self.ownership
+                .publish(owner_policy.revision, desired.revision, owner_limits)
+                .map_err(|_| (revision, "ownership_publication_failed"))?;
         }
         // The service publishes the shared Rust revision only after its real
         // worker acknowledges the same limits. Keep retrieval's whole snapshot.
@@ -343,6 +585,7 @@ impl LiveMontySettingsStore {
         &self,
         desired: &MontyVmSettings,
         memory: &mut MemoryControl,
+        deadlines: SettingsDeadlines,
     ) -> Result<(), &'static str> {
         let changed = memory.configured != desired.max_memory_bytes;
         let observed_heap = self.service.heap_observation();
@@ -366,7 +609,7 @@ impl LiveMontySettingsStore {
                 max_vm_bytes: usize::try_from(bytes).map_err(|_| "heap_limit_out_of_range")?,
             };
             tokio::time::timeout(
-                UPTAKE_BOUND,
+                deadlines.uptake,
                 self.service.publish_heap(expected, next, false),
             )
             .await
@@ -385,10 +628,14 @@ impl LiveMontySettingsStore {
             memory.last_critical = false;
             let admission = self.service.memory_admission_policy();
             if admission.backpressure {
-                self.service
-                    .publish_memory_backpressure(admission.revision, false)
-                    .await
-                    .map_err(|_| "memory_admission_publication_failed")?;
+                tokio::time::timeout(
+                    deadlines.uptake,
+                    self.service
+                        .publish_memory_backpressure(admission.revision, false),
+                )
+                .await
+                .map_err(|_| "memory_admission_publication_deadline")?
+                .map_err(|_| "memory_admission_publication_failed")?;
             }
             if desired.memory_policy.mode == MontyMemoryMode::Manual {
                 memory.measurement_status = "disabled";
@@ -419,7 +666,7 @@ impl LiveMontySettingsStore {
         }
         // A timed-out read stays owned; never accumulate blocking probes.
         let sample = tokio::time::timeout(
-            SOURCE_BOUND,
+            deadlines.source,
             memory
                 .inflight_probe
                 .as_mut()
@@ -475,10 +722,14 @@ impl LiveMontySettingsStore {
         let admission = self.service.memory_admission_policy();
         let paused = decision.backpressure || memory.last_critical;
         if paused != admission.backpressure {
-            self.service
-                .publish_memory_backpressure(admission.revision, paused)
-                .await
-                .map_err(|_| "memory_admission_publication_failed")?;
+            tokio::time::timeout(
+                deadlines.uptake,
+                self.service
+                    .publish_memory_backpressure(admission.revision, paused),
+            )
+            .await
+            .map_err(|_| "memory_admission_publication_deadline")?
+            .map_err(|_| "memory_admission_publication_failed")?;
         }
         let target = if decision.pending_reduction {
             decision.target_bytes.max(1)
@@ -491,8 +742,9 @@ impl LiveMontySettingsStore {
             .is_none_or(|previous| previous.max_vm_bytes as u64 != target)
         {
             let expected = heap.status.desired_revision();
-            self.service
-                .publish_heap(
+            tokio::time::timeout(
+                deadlines.uptake,
+                self.service.publish_heap(
                     expected,
                     HeapSettings {
                         revision: expected.checked_add(1).ok_or("heap_revision_exhausted")?,
@@ -500,17 +752,28 @@ impl LiveMontySettingsStore {
                             .map_err(|_| "heap_limit_out_of_range")?,
                     },
                     true,
-                )
-                .await
-                .map_err(|_| "heap_publication_failed")?;
+                ),
+            )
+            .await
+            .map_err(|_| "heap_publication_deadline")?
+            .map_err(|_| "heap_publication_failed")?;
         }
         Ok(())
     }
 
     fn observation(&self, desired: &MontyVmSettings) -> MontyVmStatusResponse {
+        let observation = self.observed.borrow().clone();
+        let settings_deadlines =
+            SettingsDeadlines::from_limits(observation.effective.execution_limits);
         let effective = self.service.live_task_settings().current();
         let failed = self.observed.borrow().failure;
-        let closed = self.ownership.is_closed();
+        let actor = self.service.actor_capacity().ok();
+        let deadlines = self.service.hosting_deadlines().ok();
+        let ownership = self.ownership.snapshot().ok();
+        let closed = self.ownership.is_closed()
+            || actor.is_none()
+            || deadlines.is_none()
+            || ownership.is_none();
         let failure = if closed {
             Some("runtime_unavailable")
         } else {
@@ -528,10 +791,28 @@ impl LiveMontySettingsStore {
         } else {
             MontyBudgetUptake::Pending
         };
-        let limits = observed_limits(self.service.vm_bounds());
+        let contexts = self.service.recipe_context_capacity();
+        let admission = self.service.admission_observation();
+        let settings_capacity = self.service.settings_capacity();
+        let retained_attempts = self.service.retained_attempts();
+        let hosting = actor.zip(deadlines).zip(ownership);
+        let limits = hosting.map(|((actor, deadlines), ownership)| {
+            observed_limits(
+                self.service.vm_bounds(),
+                contexts.limit,
+                admission.limits,
+                settings_capacity.limit,
+                retained_attempts.limit,
+                actor.limits,
+                (deadlines, settings_deadlines, ownership.limits),
+            )
+        });
         let limits_uptake = if closed {
             MontyBudgetUptake::Failed
-        } else if desired.revision == effective.revision && desired.execution_limits == limits {
+        } else if desired.revision == effective.revision
+            && ownership.is_some_and(|ownership| ownership.revision == desired.revision)
+            && Some(desired.execution_limits) == limits
+        {
             MontyBudgetUptake::Applied
         } else if failure.is_some() {
             MontyBudgetUptake::Failed
@@ -540,7 +821,6 @@ impl LiveMontySettingsStore {
         };
         let memory = self.service.heap_observation();
         let effective_heap = memory.status.effective;
-        let observation = self.observed.borrow().clone();
         let memory_uptake = if closed {
             MontyBudgetUptake::Failed
         } else if observation.memory_revision == desired.revision
@@ -590,16 +870,44 @@ impl LiveMontySettingsStore {
                     None
                 },
             }),
-            execution_limits: Some(MontyExecutionLimitsStatus {
-                desired_revision: desired.revision,
-                effective_revision: effective.revision,
-                limits,
-                uptake: limits_uptake,
-                failure_reason: if limits_uptake == MontyBudgetUptake::Failed {
-                    failure.map(str::to_owned)
-                } else {
-                    None
-                },
+            execution_limits: hosting.map(|((actor, deadlines), ownership)| {
+                MontyExecutionLimitsStatus {
+                    pending_ownership_checks: ownership.pending_checks,
+                    ownership_over_capacity: ownership.over_capacity(),
+                    ownership_effective_revision: ownership.revision,
+                    actor_requests: actor.ordinary_requests as u64,
+                    actor_reserved_bytes: actor.ordinary_reserved_bytes as u64,
+                    actor_over_capacity: actor.ordinary_over_capacity(),
+                    actor_control_requests: actor.control_requests as u64,
+                    actor_control_reserved_bytes: actor.control_reserved_bytes as u64,
+                    actor_control_over_capacity: actor.control_over_capacity(),
+                    retained_attempts: retained_attempts.retained,
+                    retention_over_capacity: retained_attempts.over_capacity(),
+                    pending_settings: settings_capacity.pending,
+                    settings_over_capacity: settings_capacity.over_capacity(),
+                    queued_tasks: admission.tasks,
+                    queued_bytes: admission.bytes as u64,
+                    queue_over_capacity: admission.over_capacity(),
+                    active_recipe_contexts: contexts.active as u64,
+                    recipe_contexts_over_capacity: contexts.active > contexts.limit as usize,
+                    desired_revision: desired.revision,
+                    effective_revision: effective.revision,
+                    limits: observed_limits(
+                        self.service.vm_bounds(),
+                        contexts.limit,
+                        admission.limits,
+                        settings_capacity.limit,
+                        retained_attempts.limit,
+                        actor.limits,
+                        (deadlines, settings_deadlines, ownership.limits),
+                    ),
+                    uptake: limits_uptake,
+                    failure_reason: if limits_uptake == MontyBudgetUptake::Failed {
+                        failure.map(str::to_owned)
+                    } else {
+                        None
+                    },
+                }
             }),
             state: if closed {
                 MontyVmState::Error
@@ -654,14 +962,30 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         _project: &str,
         update: &UpdateMontyVmSettingsRequest,
     ) -> Result<MontyVmSettings, MontyVmSettingsError> {
+        // Reject intrinsic invalidity before contending with the controller.
+        // A periodic reconciliation must not turn a below-floor edit into 503.
+        if update.max_memory_bytes.is_some_and(|bytes| {
+            bytes < brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES
+                || bytes > i64::MAX as u64
+                || usize::try_from(bytes).is_err()
+        }) {
+            return Err(MontyVmSettingsError::Invalid(
+                "max_memory_bytes must be at least the 512 MiB default and fit the host".into(),
+            ));
+        }
         if let Some(limits) = update.execution_limits {
+            admission_limits(limits)?;
+            self.service.validate_actor_limits(actor_limits(limits)?)
+                .map_err(|_| MontyVmSettingsError::Invalid("ordinary actor bytes must exceed one frame; control bytes must reserve a full request and response".into()))?;
             self.service
-                .validate_vm_bounds(execution_bounds(limits)?)
-                .map_err(|_| {
-                    MontyVmSettingsError::Invalid(
-                        "execution limits exceed current transport or response settings".into(),
-                    )
-                })?;
+                .validate_runtime_bounds(
+                    execution_bounds(limits)?,
+                    hosting_deadlines(limits)?.response_timeout,
+                )
+                .map_err(|error| MontyVmSettingsError::Invalid(match error {
+                    ServiceFailure::Backpressure => "VM slice must fit current and pending IPC deadlines; increase the response deadline first and let earlier exchanges finish".into(),
+                    _ => "execution limits exceed current transport or response settings".into(),
+                }))?;
         }
         if update.active_orchestrator_id.is_some() {
             return Err(MontyVmSettingsError::Invalid(
@@ -679,12 +1003,13 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                 .validate()
                 .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
         }
+        let deadlines = self.deadlines();
         let mut observed = self.observed.subscribe();
         let store = self.desired.clone();
         let service = self.service.clone();
-        let memory = self.edit.clone().try_lock_owned().map_err(|_| {
-            MontyVmSettingsError::Unavailable("settings edit already in progress".into())
-        })?;
+        let memory = tokio::time::timeout(deadlines.source, self.edit.clone().lock_owned())
+            .await
+            .map_err(|_| MontyVmSettingsError::Unavailable("settings edit lock deadline".into()))?;
         if self.closed.load(Ordering::Acquire) {
             return Err(MontyVmSettingsError::Unavailable(
                 "settings owner stopped".into(),
@@ -696,7 +1021,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         // memory feasibility, durable mutation and optional-controller updates.
         let operation = tokio::spawn(async move {
             let mut memory = memory;
-            let before = tokio::time::timeout(SOURCE_BOUND, store.settled_get())
+            let before = tokio::time::timeout(deadlines.source, store.settled_get())
                 .await
                 .map_err(|_| {
                     MontyVmSettingsError::Unavailable("settings lock deadline".into())
@@ -723,7 +1048,9 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                     .max_memory_bytes
                     .ok_or_else(|| MontyVmSettingsError::Invalid("heap limit missing".into()))?;
                 let max_vm_bytes = if startup_edit {
-                    let (bytes, status) = startup_heap_selection(&service, &expected).await?;
+                    let (bytes, status) =
+                        startup_heap_selection_with_deadline(&service, &expected, deadlines.source)
+                            .await?;
                     memory.memory_sample_count =
                         memory.memory_sample_count.checked_add(1).ok_or_else(|| {
                             MontyVmSettingsError::Internal("memory sample counter exhausted".into())
@@ -752,7 +1079,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                 let committed = expected.clone();
                 let commit = Box::pin(async move {
                     let write = tokio::time::timeout(
-                        SOURCE_BOUND,
+                        deadlines.source,
                         store.upsert("default", "default", &update),
                     )
                     .await;
@@ -766,7 +1093,8 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                             return HeapCommitOutcome::Rejected;
                         }
                         failure => {
-                            let row = tokio::time::timeout(SOURCE_BOUND, store.settled_get()).await;
+                            let row =
+                                tokio::time::timeout(deadlines.source, store.settled_get()).await;
                             match row {
                                 Ok(Ok(snapshot))
                                     if snapshot.revision == committed.revision
@@ -828,13 +1156,16 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                     MontyVmSettingsError::Internal("heap commit receipt missing".into())
                 })??
             } else {
-                tokio::time::timeout(SOURCE_BOUND, store.upsert("default", "default", &update))
-                    .await
-                    .map_err(|_| {
-                        MontyVmSettingsError::Unavailable(
-                            "settings write outcome requires readback".into(),
-                        )
-                    })??
+                tokio::time::timeout(
+                    deadlines.source,
+                    store.upsert("default", "default", &update),
+                )
+                .await
+                .map_err(|_| {
+                    MontyVmSettingsError::Unavailable(
+                        "settings write outcome requires readback".into(),
+                    )
+                })??
             };
             memory.configured = desired.max_memory_bytes;
             memory.policy = desired.memory_policy;
@@ -850,11 +1181,20 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         // revision remains recoverable; this waiter never owns reconciliation.
         let wait = async {
             loop {
-                if self
-                    .observation(&desired)
+                let status = self.observation(&desired);
+                let pending = status
                     .task_budget
-                    .is_some_and(|budget| budget.uptake != MontyBudgetUptake::Pending)
-                {
+                    .is_some_and(|budget| budget.uptake == MontyBudgetUptake::Pending)
+                    || status
+                        .execution_limits
+                        .is_some_and(|budget| budget.uptake == MontyBudgetUptake::Pending)
+                    || status
+                        .recipe_budget
+                        .is_some_and(|budget| budget.uptake == MontyBudgetUptake::Pending)
+                    || status
+                        .memory_budget
+                        .is_some_and(|budget| budget.uptake == MontyBudgetUptake::Pending);
+                if !pending {
                     break;
                 }
                 if observed.changed().await.is_err() {
@@ -862,7 +1202,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                 }
             }
         };
-        if tokio::time::timeout(UPTAKE_BOUND, wait).await.is_err() {
+        if tokio::time::timeout(deadlines.uptake, wait).await.is_err() {
             tracing::warn!(
                 revision = desired.revision,
                 "Monty task settings persisted; uptake acknowledgement remains pending"
@@ -948,12 +1288,32 @@ impl crate::global_recipe_ports::RecipeCapacitySource for EffectiveRecipeCapacit
 }
 
 struct EffectiveSettings(Arc<LiveMontySettingsStore>);
+struct EffectiveCancellationPolicy {
+    observed: watch::Receiver<Observation>,
+}
+impl crate::global_monty_driver::CancellationAckSource for EffectiveCancellationPolicy {
+    fn current(
+        &self,
+    ) -> Result<
+        crate::global_monty_driver::CancellationAckSettings,
+        brassclaw_turns::run_profile::AgentLoopDriverError,
+    > {
+        let snapshot = self.observed.borrow();
+        crate::global_monty_driver::CancellationAckSettings {
+            revision: snapshot.effective.revision,
+            timeout: SettingsDeadlines::from_limits(snapshot.effective.execution_limits)
+                .cancellation,
+        }
+        .validate()
+    }
+}
 async fn effective_snapshot(
     mut observed: watch::Receiver<Observation>,
     live: &brassclaw_resources::LiveMontyTaskSettings,
     ownership: &GlobalOwnerCheck,
 ) -> Result<MontyVmSettings, MontyVmSettingsError> {
-    tokio::time::timeout(UPTAKE_BOUND, async {
+    let deadlines = SettingsDeadlines::from_limits(observed.borrow().effective.execution_limits);
+    tokio::time::timeout(deadlines.uptake, async {
         loop {
             if ownership.is_closed() {
                 return Err(MontyVmSettingsError::Unavailable(
@@ -1024,5 +1384,132 @@ async fn reconcile_loop(store: Arc<LiveMontySettingsStore>, cancel: Cancellation
                 }
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_settings_edit_retains_source_deadline_and_rejects_same_revision_mutation() {
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
+        let home = tempfile::tempdir().expect("runtime home");
+        let gateway = Arc::new(crate::test_support::BudgetTestGateway::new());
+        let input = crate::RebornRuntimeInput::from_services(
+            rig.build_input("coordination-owner", home.path())
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local policy")),
+        )
+        .with_model_gateway_override(gateway.clone());
+        let runtime = crate::build_reborn_runtime(input)
+            .await
+            .expect("actual global runtime");
+        let settings = runtime.webui_monty_settings_store();
+        let before = settings.get("default", "default").await.unwrap();
+        assert_eq!(before.execution_limits.settings_source_timeout_millis, 2000);
+        let mut limits = before.execution_limits;
+        limits.settings_source_timeout_millis = 200;
+        limits.settings_uptake_timeout_millis = 9000;
+        let update = serde_json::from_value(serde_json::json!({
+            "expected_revision":before.revision,"execution_limits":limits,
+        }))
+        .unwrap();
+        let mut client = rig.pool.get().await.unwrap();
+        let transaction = client.transaction().await.unwrap();
+        transaction
+            .query_one(
+                "SELECT revision FROM reborn_monty_vm_settings
+            WHERE tenant_id='default' AND user_id='default' AND agent_id='default'
+            AND project_id='default' FOR UPDATE",
+                &[],
+            )
+            .await
+            .unwrap();
+        let entered = Arc::new(Notify::new());
+        let editing = {
+            let settings = settings.clone();
+            let entered = entered.clone();
+            tokio::spawn(async move {
+                entered.notify_one();
+                settings.upsert("default", "default", &update).await
+            })
+        };
+        entered.notified().await;
+        // An actual row lock makes the accepted source operation exceed the
+        // requested successor's 200 ms. It must retain the old 2 s deadline.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(
+            !editing.is_finished(),
+            "edit must be waiting for the real database lock"
+        );
+        transaction.commit().await.unwrap();
+        let changed = editing
+            .await
+            .unwrap()
+            .expect("accepted old deadline survives reduction");
+        assert_eq!(changed.revision, before.revision + 1);
+        let status = settings.runtime_observation(&changed).unwrap();
+        let execution = status.execution_limits.unwrap();
+        assert_eq!(execution.uptake, MontyBudgetUptake::Applied);
+        assert_eq!(execution.limits, limits);
+        assert_eq!(execution.effective_revision, changed.revision);
+        let heap = status.memory_budget.unwrap().max_memory_bytes;
+
+        // Restore normal deadlines via the real operator port before exercising
+        // catalogue-independent corruption detection. No VM restart is used.
+        limits.settings_source_timeout_millis = 2000;
+        limits.settings_uptake_timeout_millis = 5000;
+        let update = serde_json::from_value(serde_json::json!({
+            "expected_revision":changed.revision,"execution_limits":limits,
+        }))
+        .unwrap();
+        let restored = settings
+            .upsert("default", "default", &update)
+            .await
+            .unwrap();
+        let mut corrupt_limits = limits;
+        corrupt_limits.settings_source_timeout_millis = 7000;
+        let error = client
+            .execute(
+                "UPDATE reborn_monty_vm_settings SET execution_limits=$1,
+            max_memory_bytes=$2 WHERE tenant_id='default' AND user_id='default'
+            AND agent_id='default' AND project_id='default' AND revision=$3",
+                &[
+                    &serde_json::to_value(corrupt_limits).unwrap(),
+                    &((heap + brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES) as i64),
+                    &(restored.revision as i64),
+                ],
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
+        let persisted = settings.get("default", "default").await.unwrap();
+        assert!(snapshots_equal(&persisted, &restored));
+        let status = settings.runtime_status().await.unwrap().unwrap();
+        assert_eq!(status.state, MontyVmState::Running);
+        let execution = status.execution_limits.unwrap();
+        assert_eq!(execution.uptake, MontyBudgetUptake::Applied);
+        assert_eq!(execution.limits, limits);
+        assert_eq!(execution.effective_revision, restored.revision);
+        assert_eq!(
+            status.memory_budget.unwrap().max_memory_bytes,
+            heap,
+            "rejected unversioned edits must not change the actual heap"
+        );
+        assert_eq!(
+            gateway.call_count(),
+            0,
+            "settings work must not call a model"
+        );
+        drop(settings);
+        drop(client);
+        runtime
+            .shutdown()
+            .await
+            .expect("settled global owner shutdown");
     }
 }

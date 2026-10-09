@@ -1,0 +1,79 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Make a reusable Discarded workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. One class-21 Recipe (fresh-discarded-data) returns the phase DATA object {'phase':'Discarded'} with zero inputs and no Tool calls; no message is posted regardless of the word Discarded. trigger null, steps [], dependency_registry null. One desc_idx=0 with a single component step including the supplied PythonCode UUID 5a261cd4-ea35-5517-b971-71565df9386a, tool_bindings [], dependencies null. One variant with step_link 0:1-0:E, variable_patterns [], and ten distinct DATA-returning intents in both intent_examples lists. prior_knowledge_content retains Q1, human Q2, unapproved fixture, current live sink gap and no version/approval/runtime claims. Root compatibility arrays empty; original messages preserved unchanged.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fresh-discarded-data",
+        "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message. Returns the fixed phase object {'phase':'Discarded'} only. Unapproved documentation fixture; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns phase DATA, never a posted reply.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Returns phase DATA only, never a posted reply. No version/approval/runtime claims.",
+        "intent_examples": [
+          "compute the discarded phase data",
+          "return the discarded phase object",
+          "produce the fixed discarded object",
+          "obtain the discarded result data",
+          "calculate the discarded phase result",
+          "yield the discarded phase object",
+          "get the fixed discarded state data",
+          "build the discarded phase object",
+          "evaluate the discarded data subworkflow",
+          "derive the fixed discarded phase result"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Return phase data",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "5a261cd4-ea35-5517-b971-71565df9386a"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fresh-discarded-data",
+            "description": "Offline unapproved data-return subworkflow; no Tool calls and no posted message",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "compute the discarded phase data",
+              "return the discarded phase object",
+              "produce the fixed discarded object",
+              "obtain the discarded result data",
+              "calculate the discarded phase result",
+              "yield the discarded phase object",
+              "get the fixed discarded state data",
+              "build the discarded phase object",
+              "evaluate the discarded data subworkflow",
+              "derive the fixed discarded phase result"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

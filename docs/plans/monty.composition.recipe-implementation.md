@@ -1,5 +1,30 @@
 # monty.composition — per-Recipe implementation instructions
 
+## Reply/history migration review gate
+
+The existing packaged `host-post-reply` and `host-save-history` Recipes, their
+associated Skills and PythonCode are migration inputs, **not qualified current-v3
+implementations to reuse unchanged**. Updating these exact workflows is the parent
+task; implementing the qualified preload/export adapter is its prerequisite.
+
+Before selecting a successor, independently review the actual retained definitions,
+interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
+callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
+Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
+pinned export invocation, isolated mutable state and current kernel enforcement.
+Complete the applicable exact-combination bootstrap/approval and behavioral evidence
+before activation. Names, existing package status, old acceptance receipts and the
+word “canonical” do not qualify the unchanged implementation.
+
+Preserve compatible stable UUIDs and old task selections when that reviewed migration
+supports them; do not copy deprecated source substitution, ambient step state,
+module-level Tool execution or unsafe retry guidance into the new adapter. Review
+reply/history ownership, both routing branches, history framing, finalization and
+no-replay behavior together after the adapter is qualified. Keep these internal
+usages out of public MCP discovery unless a separately qualified public contract
+explicitly permits exposure. The commented instructions below are historical only.
+
+
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
 MCP clarification: accept the listed completed command only; open a new normal chat, send it as a user message, observe its correlated terminal response, forward that response to the client and close the chat. Normal ingress/matching/IBS/Recipe/reply/history are reused; no Python reception or direct Monty/Rust execution bridge is introduced.
@@ -16255,7 +16280,11 @@ result = {"snapshot_ref": inputs["snapshot_ref"]}
 
 **Purpose:** Deliver one validated prepared response for the admitted task.
 
+<!-- Historical instruction withdrawn:
 **Implementation and overlap disposition:** No new Python body is identified for the supported limited path. Retain exact qualification, one output owner and effect/delivery fencing. **Legacy duplicate exists:** host-post-reply above; use this canonical successor, do not install a second match.
+-->
+
+**Implementation and overlap disposition:** Review and upgrade this exact packaged reply Recipe and its associated usage with the qualified preload/export adapter before reuse. The older same-named Recipe is also a migration candidate, not a fallback. Preserve compatible stable identity only after checking current interface, typed binding, finalization and effect/delivery contracts; qualify the successor with actual runtime evidence.
 
 **Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
 
@@ -16332,7 +16361,11 @@ result = usage_n01(inputs)
 
 **Purpose:** Format and persist the completed turn once.
 
+<!-- Historical instruction withdrawn:
 **Implementation and overlap disposition:** No new Python body is identified for the supported limited path. Verify exact layout and durable turn/effect ownership for broader consumers. **Legacy duplicate exists:** host-save-history above; reuse this successor.
+-->
+
+**Implementation and overlap disposition:** Review and upgrade this exact packaged history Recipe, formatter and writer after the qualified preload/export adapter is implemented. The older same-named Recipe is not an approved substitute. Check record framing, both routing branches, typed edges, task ownership and durable no-replay behavior; preserve compatible identity and qualify the complete successor before reuse.
 
 **Behavior/input profile:** Use the exact finite usage-specific input/result contracts linked below. Preserve the original admitted operation and explicit selector constants from the source variant; confirm each selector against the real registered adapter before authoring. Captures refine to semantic names/types, not quoted slots.
 

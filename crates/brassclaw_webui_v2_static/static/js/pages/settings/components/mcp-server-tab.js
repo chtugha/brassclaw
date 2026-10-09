@@ -1,12 +1,7 @@
 /**
- * McpServerTab — Settings tab for the Orchestrator MCP Server (Phase V).
- *
- * MCP server lifecycle:
- * 1. Operator changes port / auto_start and clicks Save — `PUT /api/settings/mcp-server`.
- * 2. Operator clicks "Start" / "Stop" — confirmation appears for Stop.
- * 3. On confirm, `POST /api/settings/mcp-server/start` or `.../stop` is called.
- * 4. Status indicator polls `GET /api/settings/mcp-server/status` every 3s
- *    while state is `starting`; stops once `running`/`stopped`/`error`.
+ * Inbound MCP settings/readiness. The instance owns the server lifetime;
+ * Kohai owns request-local provider connections. Missing chat integration is
+ * displayed explicitly; this surface never starts/stops the listener.
  */
 import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
@@ -17,12 +12,7 @@ import {
   fetchMcpServerSettings,
   updateMcpServerSettings,
   fetchMcpServerStatus,
-  startMcpServer,
-  stopMcpServer,
 } from "../lib/settings-api.js";
-
-// ── Poll interval for live status while starting ──────────────────────────────
-const STATUS_POLL_MS = 3000;
 
 export function McpServerTab({ searchQuery = "" }) {
   const t = useT();
@@ -37,12 +27,6 @@ export function McpServerTab({ searchQuery = "" }) {
 
   // Status state.
   const [status, setStatus] = React.useState(null);
-  const [isPolling, setIsPolling] = React.useState(false);
-
-  // Action state.
-  const [showStopConfirm, setShowStopConfirm] = React.useState(false);
-  const [isActioning, setIsActioning] = React.useState(false);
-  const [actionError, setActionError] = React.useState(null);
 
   // Load settings + status on mount.
   React.useEffect(() => {
@@ -66,33 +50,6 @@ export function McpServerTab({ searchQuery = "" }) {
     };
   }, []);
 
-  // Poll status while starting.
-  React.useEffect(() => {
-    if (!isPolling) return;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const st = await fetchMcpServerStatus();
-        if (!cancelled) {
-          setStatus(st);
-          if (st.state === "running" || st.state === "stopped" || st.state === "error") {
-            setIsPolling(false);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setIsPolling(false);
-          setActionError(err.message || String(err));
-        }
-      }
-    };
-    const timer = setInterval(poll, STATUS_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [isPolling]);
-
   const handleSave = React.useCallback(async () => {
     if (!settings) return;
     setIsSaving(true);
@@ -113,36 +70,6 @@ export function McpServerTab({ searchQuery = "" }) {
     }
   }, [settings]);
 
-  const handleStart = React.useCallback(async () => {
-    setIsActioning(true);
-    setActionError(null);
-    try {
-      const result = await startMcpServer({});
-      setStatus(result);
-      if (result.state === "starting") {
-        setIsPolling(true);
-      }
-    } catch (err) {
-      setActionError(err.message || String(err));
-    } finally {
-      setIsActioning(false);
-    }
-  }, []);
-
-  const handleStop = React.useCallback(async () => {
-    setShowStopConfirm(false);
-    setIsActioning(true);
-    setActionError(null);
-    try {
-      const result = await stopMcpServer({});
-      setStatus(result);
-    } catch (err) {
-      setActionError(err.message || String(err));
-    } finally {
-      setIsActioning(false);
-    }
-  }, []);
-
   if (isLoadingSettings) {
     return html`<${McpServerSkeleton} />`;
   }
@@ -159,7 +86,7 @@ export function McpServerTab({ searchQuery = "" }) {
     <div className="space-y-5">
 
       ${/* Status indicator */ ""}
-      ${status && html`<${StatusCard} status=${status} isPolling=${isPolling} t=${t} />`}
+      ${status && html`<${StatusCard} status=${status} t=${t} />`}
 
       ${/* Error banners */ ""}
       ${saveError && html`
@@ -167,12 +94,6 @@ export function McpServerTab({ searchQuery = "" }) {
           ${saveError}
         </div>
       `}
-      ${actionError && html`
-        <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          ${actionError}
-        </div>
-      `}
-
       ${/* Settings form */ ""}
       ${settings && html`
         <${SettingsForm}
@@ -185,26 +106,13 @@ export function McpServerTab({ searchQuery = "" }) {
         />
       `}
 
-      ${/* Lifecycle section */ ""}
-      <${LifecycleSection}
-        status=${status}
-        isActioning=${isActioning}
-        isPolling=${isPolling}
-        showStopConfirm=${showStopConfirm}
-        onRequestStop=${() => setShowStopConfirm(true)}
-        onConfirmStop=${handleStop}
-        onCancelStop=${() => setShowStopConfirm(false)}
-        onStart=${handleStart}
-        t=${t}
-      />
-
     </div>
   `;
 }
 
 // ── StatusCard ────────────────────────────────────────────────────────────────
 
-function StatusCard({ status, isPolling, t }) {
+function StatusCard({ status, t }) {
   const tone =
     status.state === "running"
       ? "positive"
@@ -221,24 +129,20 @@ function StatusCard({ status, isPolling, t }) {
         <div className="flex items-center gap-2">
           <span className="text-sm text-[var(--v2-text-muted)]">${t("mcpServer.state")}</span>
           <${Badge} tone=${tone} label=${status.state} size="sm" />
-          ${isPolling &&
-            html`<span className="text-xs text-[var(--v2-text-muted)] animate-pulse">
-              ${t("mcpServer.polling")}
-            </span>`}
         </div>
-        ${status.bound_port != null &&
+        ${status.port != null &&
           html`
             <div className="flex items-center gap-2">
               <span className="text-sm text-[var(--v2-text-muted)]">${t("mcpServer.boundPort")}</span>
               <span className="font-mono text-xs text-[var(--v2-text-strong)]">
-                ${status.bound_port}
+                ${status.port}
               </span>
             </div>
           `}
-        ${status.error_message &&
+        ${status.error &&
           html`
             <div className="flex items-center gap-2">
-              <span className="text-sm text-red-300">${status.error_message}</span>
+              <span className="text-sm text-red-300">${status.error}</span>
             </div>
           `}
       </div>
@@ -279,9 +183,8 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
             <input
               type="checkbox"
               className="h-4 w-4 rounded border-[var(--v2-panel-border)] accent-[var(--v2-accent)]"
-              checked=${settings.auto_start ?? false}
-              disabled=${isSaving}
-              onChange=${(e) => onChange((prev) => ({ ...prev, auto_start: e.target.checked }))}
+              checked=${true}
+              disabled=${true}
             />
           </div>
         </div>
@@ -292,64 +195,6 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
         <//>
         ${savedOk && html`<span className="text-sm text-[var(--v2-positive)]">${t("common.saved")}</span>`}
       </div>
-    <//>
-  `;
-}
-
-// ── LifecycleSection ──────────────────────────────────────────────────────────
-
-function LifecycleSection({
-  status,
-  isActioning,
-  isPolling,
-  showStopConfirm,
-  onRequestStop,
-  onConfirmStop,
-  onCancelStop,
-  onStart,
-  t,
-}) {
-  const isRunning = status?.state === "running";
-  const isBusy = isActioning || isPolling;
-
-  return html`
-    <${Card} padding="none" className="p-4 sm:p-5">
-      <h3 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
-        ${t("mcpServer.lifecycle")}
-      </h3>
-      ${showStopConfirm
-        ? html`
-            <div className="rounded-lg border border-yellow-400/30 bg-yellow-500/10 px-4 py-3">
-              <p className="mb-3 text-sm text-[var(--v2-text-strong)]">${t("mcpServer.stopConfirm")}</p>
-              <div className="flex gap-2">
-                <${Button} variant="destructive" onClick=${onConfirmStop} disabled=${isBusy}>
-                  ${t("mcpServer.stopConfirmYes")}
-                <//>
-                <${Button} variant="secondary" onClick=${onCancelStop} disabled=${isBusy}>
-                  ${t("common.cancel")}
-                <//>
-              </div>
-            </div>
-          `
-        : html`
-            <div className="flex gap-2">
-              <${Button}
-                variant="primary"
-                onClick=${onStart}
-                disabled=${isBusy || isRunning}
-              >
-                ${isActioning && !isRunning ? t("mcpServer.starting") : t("mcpServer.start")}
-              <//>
-              <${Button}
-                variant="secondary"
-                onClick=${onRequestStop}
-                disabled=${isBusy || !isRunning}
-              >
-                ${t("mcpServer.stop")}
-              <//>
-            </div>
-          `
-      }
     <//>
   `;
 }

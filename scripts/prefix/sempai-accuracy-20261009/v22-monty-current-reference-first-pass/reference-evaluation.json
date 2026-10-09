@@ -412,6 +412,244 @@
           "num_lmcache_extra_cached_tokens": 0
         }
       }
+    },
+    {
+      "id": "mcp-source",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "MCP accepts only the completed listed command and forwards the correlated chat result; it has no direct Monty/IBS/Rust Tool execution connection and accepts no Python source.",
+        "citations": [
+          "714f2f799947",
+          "2489be7f6c72"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.259,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "shared-defaults",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "skills.md \u00a73 forbids shared mutable function defaults, captured task objects, and closures over another task's inputs; each invocation/task owns its own mutable state.",
+        "citations": [
+          "4a81ae8867b2",
+          "3d36e5155aa4"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 2.949,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "export-api",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The Skill interface documentation explicitly states that export fields are a target specification, not fields accepted by current INSERT APIs, and that no invented fields may be appended to existing JSON formats (skills.md L148-177, L446-503). It repeatedly warns that missing store/runtime support is implementation work, not proof of an available insertion path.",
+        "citations": [
+          "534be94fd078",
+          "107cc9abcaaa",
+          "4a81ae8867b2"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 4.231,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "exports-live-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 preloaded Skill exports do not enable a Tool; the matching ToolSkill binding and current global kernel policy are still required before every actual host.<tool>(...) dispatch (skills.md L231-251, toolskills.md L53-88).",
+        "citations": [
+          "ebdbdb86e8ad",
+          "7be48f43621c"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.379,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-listing",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "MCP tools/list is derived from available activated, approved mcp-call-skill-recipes, not raw Skill rows; a raw Skill row alone is not a listing entry. skills.md L53-66 (EVIDENCE-CARD 1eb80630e4cb) and L294-315 (EVIDENCE-CARD 6458c0f387c9) state the MCP server is built from approved recipes and that raw Skill presence does not create a listing entry.",
+        "citations": [
+          "1eb80630e4cb",
+          "6458c0f387c9"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 4.769,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-connect-order",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "The binding v3 target states the MCP server stays running, and Kohai connects/advertises to the provider only after final prefix addition and immediately before sending the prompt, then disconnects that request on the complete answer.",
+        "citations": [
+          "574ee62c503a",
+          "2489be7f6c72"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.176,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-server-lifetime",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The MCP server stays running; only the single provider request's connection is disconnected on the complete answer, not the server itself.",
+        "citations": [
+          "2489be7f6c72"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 2.74,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-refresh-pins",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The MCP server stays running and only refreshes discovery at startup/restart and on qualified catalogue changes; an in-flight call keeps its advertised contract and normal chat task snapshot, and a new feed must not silently redirect old functions to a newer handler.",
+        "citations": [
+          "6458c0f387c9",
+          "2489be7f6c72"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 3.336,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "monty-memory-ceiling",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The 512 MiB minimum is a budget ceiling, not reserved memory; it is a limit, not a reservation. AGENTS.md L399-407 states the budget is 'a ceiling, not reserved memory' and shared memory defaults to one startup sizing that stays constant without periodic pressure monitoring.",
+        "citations": [
+          "5b6bb5721f21"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.551,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "monty-upgrade-floor",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "AGENTS.md L546-554 states that an upgrade raises smaller configured values to the 512 MiB floor with a new revision while preserving larger values and modes. This is a binding target contract, not proof of completed implementation.",
+        "citations": [
+          "5b6bb5721f21"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 3.164,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 112992,
+          "num_lmcache_cached_tokens": 112992,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
     }
   ],
   "temperature": 0,
@@ -421,5 +659,5 @@
   "suite_sha256": "89a38f97dcdf20ee644ae4fdb6267cb599f9b1758187f3b3e452f7ead724f1a6",
   "production_q1_q2_verified": false,
   "support_check": "Topic regex on cited originals; reasons additionally require semantic review. Not a general entailment verifier.",
-  "passed": 14
+  "passed": 18
 }

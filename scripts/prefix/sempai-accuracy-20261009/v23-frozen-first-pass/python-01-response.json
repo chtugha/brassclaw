@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a583b675b133f4d7",
+  "object": "chat.completion",
+  "created": 1791518703,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component for the requested window contract. Raw window may be absent or any JSON value; exact int -3..6 inclusive accepted (bool/float/strings rejected); always result={accepted:boolean, window:original if accepted else null}. No imports, I/O or host calls. No execution, submission, Q1/Q2 or activation occurred.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-transfer-01\", \"description\": \"Raw window may omit or contain any JSON value. Accept exact integers -3..6 inclusive (not bool/float). Always result={accepted:boolean, window:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs needs selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"window = inputs.get('window')\\naccepted = type(window) is int and -3 <= window <= 6\\nresult = {'accepted': accepted, 'window': window if accepted else None}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115304,
+    "total_tokens": 115580,
+    "completion_tokens": 276,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

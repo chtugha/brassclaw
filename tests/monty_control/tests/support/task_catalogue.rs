@@ -75,6 +75,9 @@ fn failure() -> PortFailure {
 }
 #[async_trait]
 impl MontyTaskCatalogue for ValidationCatalogue {
+    // This explicit draft validator never advertises an activated MCP command.
+    async fn refresh_command_qualification(&self) {}
+
     async fn resolve_intent(&self, query: &str) -> Result<MontyIntentSelection, PortFailure> {
         let context = self.host.run_context();
         let scope = IntentScope {
@@ -167,6 +170,12 @@ impl MontyTaskCatalogue for ValidationCatalogue {
                 });
                 // Commit the coherent read before spawning the bounded utility.
                 tx.commit().await.map_err(|_| failure())?;
+                // Local draft-validation generation; this is a committed match
+                // observation and supplies neither approval nor activation.
+                let normal_match = crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
+                    uuid::Uuid::new_v4(), query, &matched,
+                    program.inputs().instruction(), &inputs,
+                ).ok_or_else(failure)?;
                 let inspected = Arc::new(
                     InspectedRetainedProgram::inspect(
                         RetainedProgram::Tools(program),
@@ -176,6 +185,7 @@ impl MontyTaskCatalogue for ValidationCatalogue {
                     .map_err(|_| failure())?,
                 );
                 return Ok(MontyIntentSelection::Match(SelectedMontyRecipe {
+                    normal_match: Some(Box::new(normal_match)),
                     inspected,
                     inputs: Some(inputs),
                     tools: Some(tools),
@@ -189,7 +199,11 @@ impl MontyTaskCatalogue for ValidationCatalogue {
         if name == "host-post-reply" {
             return Ok(self.reply.select());
         }
-        // This validation catalogue has no approved named history workflow.
+        if name == "host-save-history" {
+            // Actual reviewed packaged definitions, still an explicit draft
+            // behavioral catalogue rather than authored activation evidence.
+            return Ok(self.reply.history());
+        }
         Err(PortFailure::new("history_persistence_failed").unwrap())
     }
 }

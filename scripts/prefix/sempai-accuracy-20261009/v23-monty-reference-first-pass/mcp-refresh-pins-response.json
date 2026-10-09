@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-90624910f26348cf",
+  "object": "chat.completion",
+  "created": 1791519107,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"The MCP server stays running and only refreshes discovery at startup/restart and on qualified catalogue changes; an in-flight call keeps its advertised contract and normal chat task snapshot, so a refresh cannot silently replace it (skills.md L6458c0f387c9, toolskills.md L473-504).\",\n  \"citations\": [\"6458c0f387c9\", \"a1c8acdb10be\"]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114446,
+    "total_tokens": 114565,
+    "completion_tokens": 119,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

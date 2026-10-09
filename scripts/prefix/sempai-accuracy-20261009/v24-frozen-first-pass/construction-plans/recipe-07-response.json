@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-81dd2e0f06c71f53",
+  "object": "chat.completion",
+  "created": 1791521017,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"host.post_reply is an actual user-reply effect, not returned data\", \"result\": \"class_code 21, fixed-word reply workflow posting 'Stable' via the bound existing ToolSkill 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a and PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502\"}, {\"guard\": \"persisted IBS uses knowledge/stepnumber/type/include, not channel/step_id\", \"result\": \"one desc_idx=0 with two steps: stepnumber 1 knowledge rust type component include ToolSkill, stepnumber 2 knowledge orchestrator type component include PythonCode\"}, {\"guard\": \"one UUID per component step, binding step immediately followed by its PythonCode step\", \"result\": \"step 1 includes 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a, step 2 includes 249e49eb-fc44-5605-aa6d-6b7299216502, tool_bindings empty, dependencies null\"}, {\"guard\": \"step_link selects description 0 step 1 through its end\", \"result\": \"step_link 0:1-0:E, one variant, variable_patterns empty\"}, {\"guard\": \"ten distinct natural-language intents, command and natural forms, no repeats\", \"result\": \"reply stable, post stable, say stable, send the stable reply, respond with stable, tell me stable, please say stable, please reply stable, post the fixed stable message, send the fixed stable message\"}, {\"guard\": \"trigger null, steps empty, dependency_registry null, no version numbers or approval\", \"result\": \"all required keys present, unapproved draft, Q1 and human Q2 required, no runtime/approval claims\"}, {\"guard\": \"preserve original conversation; root compatibility arrays empty under test persona\", \"result\": \"adjusted_volatile_messages copies the supplied user message once, bridge/proposed arrays empty, composition_summary states unapproved draft with no execution/submission/Q1/Q2/activation\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval of the authored class21 draft\", \"supported class21 Recipe constructor and full-v3 sink fields\", \"resolved host.post_reply binding and PythonCode implementation identity\", \"current global Tool policy allows host.post_reply dispatch\"], \"notes\": \"This is an offline full-v3 export only. The subworkflow posts the fixed word 'Stable' as a user reply using the bound existing host.post_reply ToolSkill and its\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114489,
+    "total_tokens": 115122,
+    "completion_tokens": 633,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

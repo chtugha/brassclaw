@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-98cd58ec25133ee7",
+  "object": "chat.completion",
+  "created": 1791519144,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"slots not in inputs\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"type(slots) is not list\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"len(slots) > 4\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"any item not (type is int and 2 <= item <= 6)\", \"result\": \"{'ok': False, 'slots': []}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected-runner support for inputs mapping\", \"Q1 and human Q2 before activation\"], \"notes\": \"Contract is empty-allowed (0..4), so no presence guard is needed; use inputs.get('slots') and validate list type, length 0..4, and each item exact int 2..6. No钴\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114915,
+    "total_tokens": 115136,
+    "completion_tokens": 221,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

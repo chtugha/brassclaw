@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-af9c0d8d38be7e64",
+  "object": "chat.completion",
+  "created": 1791520875,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design export only; no submission, Q1/Q2, activation, runtime or approval claims\", \"result\": \"class21 recipe-transfer-02 full-v3 export with the exact supplied keys and UUIDs\"}, {\"guard\": \"host allocated unapproved draft PythonCode 6ca96ef8-0b75-572f-987b-38c8d423828 with content result = {'state': 'Healthy'}; zero inputs/dependencies; no version/\", \"result\": \"single desc_idx=0 component step including that one UUID, tool_bindings=[] and dependencies=null\"}, {\"guard\": \"this subworkflow only returns state DATA and never posts a user message\", \"result\": \"ten distinct DATA-returning intents; no host.post_reply effect\"}, {\"guard\": \"trigger=null, steps=[], dependency_registry=null; one variant step_link=0:1-0:E, variable_patterns=[]; ten distinct intents in matching payload/variant arrays\", \"result\": \"one variant with the supplied step_link and ten distinct routing intents\"}, {\"guard\": \"exact payload keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry\", \"result\": \"all nine keys present exactly once; root compatibility arrays empty under test persona\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval\", \"supported class21 constructor and full-v3 sink fields\", \"resolved catalogue/draft UUIDs and adapter/ABI support\"], \"notes\": \"The supplied program result = {'state': 'Healthy'} is DATA only; it cannot satisfy say/post/reply intents. Intents must describe computing/returning the Healthy\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114391,
+    "total_tokens": 114794,
+    "completion_tokens": 403,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

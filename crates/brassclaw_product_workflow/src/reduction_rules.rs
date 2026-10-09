@@ -515,11 +515,10 @@ pub struct AuthorReductionRuleResponse {
     pub description: Option<String>,
 }
 
-/// Port the WebUI v2 facade depends on. Implementations are free to use
-/// any backing store; the composition crate ships a libSQL-backed
-/// adapter that reuses the same settings table as the per-provider token
-/// limits. Reads are user+project scoped so per-project isolation
-/// matches the engine orchestrator's `(project_id, user_id)` cache key.
+/// Port the WebUI v2 operator facade depends on. The production composition
+/// uses durable PostgreSQL rulesets and imports verified legacy rows once.
+/// User/project keys identify persisted data; they confer no Tool authority.
+/// The retired engine loader is not a current consumer of these settings.
 #[async_trait]
 pub trait ReductionRuleStore: Send + Sync {
     /// List the rules for `(user_id, project_id)`, ordered with ascending
@@ -532,11 +531,10 @@ pub trait ReductionRuleStore: Send + Sync {
     ) -> Result<Vec<ReductionRuleConfigView>, ReductionRuleStoreError>;
 
     /// Replace the rule set atomically. Returns the canonical ordered
-    /// list as it now exists in the store. Implementations must drop a
-    /// stale entry from the in-process cache the engine keeps; the
-    /// composition-backed adapter wraps the engine's
-    /// `invalidate_reduction_rules_cache()` so subsequent over-budget
-    /// turns pick up the change without waiting for a restart.
+    /// list as it now exists in the store. The composition adapter preserves
+    /// the existing cache-invalidation notification after durable publication.
+    /// An explicit complete replacement can repair corrupt stored rules; list
+    /// reports corruption rather than returning a fabricated empty result.
     async fn replace(
         &self,
         user_id: &str,

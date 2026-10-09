@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-974f782e12beca58",
+  "object": "chat.completion",
+  "created": 1791519315,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and the supplied program only assigns result data (no host.post_reply, no Tool call, no dependency)\", \"result\": \"class_code 21, name recipe-transfer-00, trigger null, steps empty, dependency_registry null, one desc_idx=0 with a single type=component step including the supplied PythonCode UUID 9a047867-22a3-5bcc-8a6b-1b06c20bbeff, tool_bindings empty, dependencies nil\"}, {\"guard\": \"the supplied program calls a bound host.post_reply or a Tool\", \"result\": \"do not emit this recipe; the workflow would post a message, which the contract forbids\"}, {\"guard\": \"missing required payload keys or a second component step\", \"result\": \"do not emit; exactly one class21 recipe with the specified keys and one component step\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"unapproved draft, Q1 and human Q2 required; current sink cannot preserve full v3 fields\"], \"notes\": \"The supplied program result = {'state': 'Ready'} returns only state DATA and never posts a message, so the workflow's intents describe computing/returning the '\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115177,
+    "total_tokens": 115469,
+    "completion_tokens": 292,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

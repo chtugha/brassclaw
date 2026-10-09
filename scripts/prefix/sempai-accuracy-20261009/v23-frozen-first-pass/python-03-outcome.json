@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-03. Raw inputs may omit lag or contain any JSON value. Accept exact integers -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. The helper receives the whole mapping, checks key presence before reading the value, and the module invokes it and assigns its returned object to result. No imports, I/O or host calls. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-03",
+        "description": "Raw inputs may omit lag or contain any JSON value. Accept exact integers -1..8 inclusive (not bool/float). Always result={accepted:boolean,lag:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Unapproved target typed-inputs draft only; selected-runner support, Q1 and human Q2 remain prerequisites.",
+        "content": "def inspect_lag(mapping):\n    if 'lag' not in mapping:\n        return {'accepted': False, 'lag': None}\n    lag = mapping['lag']\n    if not (type(lag) is int and not type(lag) is bool and -1 <= lag <= 8):\n        return {'accepted': False, 'lag': None}\n    return {'accepted': True, 'lag': lag}\nresult = inspect_lag(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

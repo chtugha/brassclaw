@@ -10,7 +10,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use brassclaw_monty_host::service::{TaskInput, TaskOutcome, TaskPorts, TaskReceipt};
+use brassclaw_monty_host::service::{
+    ServiceClient, TaskInput, TaskOutcome, TaskPorts, TaskReceipt,
+};
 use brassclaw_pg::PgPool;
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_turns::{
@@ -20,9 +22,10 @@ use brassclaw_turns::{
 use serde_json::{Value, json};
 
 use crate::{
-    global_monty_driver::GlobalTaskPortsFactory,
+    global_monty_driver::{CancellationAckSettings, CancellationAckSource, GlobalTaskPortsFactory},
     global_monty_owner::GlobalOwnerCheck,
     global_recipe_ports::{GlobalRecipePorts, MontyTaskCatalogue, RecipeCapacitySource},
+    monty_attempt_retention::{AttemptRetentionLease, AttemptRetentionRegistry},
     pg_monty_admission::PgMontyAdmission,
 };
 
@@ -42,6 +45,7 @@ pub(crate) trait MontyCatalogueProvider: Send + Sync {
 
 struct RetainedTask {
     host: Arc<MontyTaskHost>,
+    retention: Arc<AttemptRetentionLease>,
     admission: Arc<PgMontyAdmission>,
     ports: Option<Arc<GlobalRecipePorts>>,
     receipt: Option<Arc<TaskReceipt>>,
@@ -58,6 +62,7 @@ pub(crate) type OwnedMontySettlement = (
     Arc<PgMontyAdmission>,
     Arc<GlobalRecipePorts>,
     Arc<TaskReceipt>,
+    Arc<AttemptRetentionLease>,
 );
 
 /// Retains the exact private address before database I/O, and actual ports and
@@ -69,7 +74,8 @@ pub(crate) struct OwnedGlobalTaskFactory {
     ownership: GlobalOwnerCheck,
     catalogue: Arc<dyn MontyCatalogueProvider>,
     recipe_capacity: Arc<dyn RecipeCapacitySource>,
-    capacity: usize,
+    cancellation: Arc<dyn CancellationAckSource>,
+    retention: Arc<AttemptRetentionRegistry>,
     tasks: Mutex<HashMap<MontyTaskAttempt, RetainedTask>>,
 }
 
@@ -78,18 +84,20 @@ impl OwnedGlobalTaskFactory {
         pool: Arc<PgPool>,
         ownership: GlobalOwnerCheck,
         catalogue: Arc<dyn MontyCatalogueProvider>,
-        capacity: usize,
+        service: ServiceClient,
         recipe_capacity: Arc<dyn RecipeCapacitySource>,
+        cancellation: Arc<dyn CancellationAckSource>,
     ) -> Result<Self, AgentLoopDriverError> {
-        if capacity == 0 {
-            return Err(failed("monty_task_capacity_invalid"));
+        if service.retained_attempts().limit == 0 {
+            return Err(failed("monty_retention_unavailable"));
         }
         Ok(Self {
             pool,
             ownership,
             catalogue,
             recipe_capacity,
-            capacity,
+            cancellation,
+            retention: AttemptRetentionRegistry::new(service),
             tasks: Mutex::new(HashMap::new()),
         })
     }
@@ -133,12 +141,21 @@ impl OwnedGlobalTaskFactory {
                 .ok_or_else(|| failed("monty_task_registry_failed"))?,
             task.receipt
                 .ok_or_else(|| failed("monty_task_registry_failed"))?,
+            task.retention,
         )))
     }
 }
 
 #[async_trait]
 impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
+    fn retention_registry(&self) -> Arc<AttemptRetentionRegistry> {
+        self.retention.clone()
+    }
+    fn cancellation_acknowledgement(
+        &self,
+    ) -> Result<CancellationAckSettings, AgentLoopDriverError> {
+        self.cancellation.current()
+    }
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
@@ -158,6 +175,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         {
             return Err(failed("monty_admission_identity_invalid"));
         }
+        let retention = self.retention.retain(&host)?;
         self.ownership
             .check()
             .await
@@ -172,15 +190,11 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             if tasks.contains_key(&host.attempt()) {
                 return Err(failed("monty_admission_replay_requires_recovery"));
             }
-            if tasks.len() >= self.capacity {
-                return Err(AgentLoopDriverError::Unavailable {
-                    reason: "Monty retained task capacity exhausted".into(),
-                });
-            }
             tasks.insert(
                 host.attempt(),
                 RetainedTask {
                     host: host.clone(),
+                    retention,
                     admission: admission.clone(),
                     ports: None,
                     receipt: None,
@@ -291,6 +305,9 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // recovery never rereads latest, restores dispatch or repeats an effect.
         outcome["execution"] = report;
         admission.settle(outcome).await?;
+        // Optional discovery observes only acknowledged durable evidence. Its
+        // pending/error state cannot replay or invalidate a completed task.
+        ports.refresh_command_qualification().await;
         let mut tasks = self.tasks()?;
         if let Some(task) = tasks.get_mut(&host.attempt()) {
             // Another acknowledgement may have already transferred this exact
@@ -305,6 +322,9 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // Only a real published completion with acknowledged durable settlement
         // frees this bounded slot. The global driver still owns its receipt.
         if matches!(receipt.outcome, TaskOutcome::Completed { .. }) {
+            if let Some(task) = tasks.get(&host.attempt()) {
+                task.retention.completed()?;
+            }
             tasks.remove(&host.attempt());
         }
         Ok(())

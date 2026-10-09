@@ -7,6 +7,7 @@
 //! already exposes (`code`, `kind`, `status_code`, `retryable`, and the typed
 //! validation hint).
 
+use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use brassclaw_product_workflow::{
@@ -63,6 +64,25 @@ impl WebUiV2HttpError {
 impl From<RebornServicesError> for WebUiV2HttpError {
     fn from(error: RebornServicesError) -> Self {
         Self(error)
+    }
+}
+
+impl From<JsonRejection> for WebUiV2HttpError {
+    fn from(rejection: JsonRejection) -> Self {
+        // Deserialization failures are invalid settings, like validation in
+        // the facade. Never publish the extractor's text: it can contain the
+        // supplied value. Preserve body-limit and content-type HTTP statuses.
+        let status = if matches!(rejection, JsonRejection::JsonDataError(_)) {
+            400
+        } else {
+            rejection.status().as_u16()
+        };
+        let code = if status >= 500 {
+            RebornServicesErrorCode::Internal
+        } else {
+            RebornServicesErrorCode::InvalidRequest
+        };
+        Self(RebornServicesError::from_status(code, status, false))
     }
 }
 

@@ -101,6 +101,23 @@ pub(super) fn require_leaf_python(
             .ok_or("PythonCode includes must be an array")?
             .is_empty(),
     };
+    if crate::executor::retained_preload::PreloadDeclaration::parse(
+        draft.document(),
+        draft.dependencies(),
+    )
+    .map_err(|_| "invalid retained preload dependency contract")?
+    .is_some()
+    {
+        if includes
+            || draft
+                .document()
+                .get("dependency_registry")
+                .is_some_and(|v| !v.is_null())
+        {
+            return Err("legacy include assembly cannot be combined with a preload library");
+        }
+        return Ok(());
+    }
     if !draft.dependencies().is_empty()
         || includes
         || draft

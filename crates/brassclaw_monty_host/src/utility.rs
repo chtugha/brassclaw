@@ -28,7 +28,7 @@ use crate::{
     process::{ProcessFailure, ProcessLimits, encode, read_frame, transport_value, write_frame},
 };
 
-const PROTOCOL: u32 = 2;
+const PROTOCOL: u32 = 3;
 
 /// Caller-authored utility source is intentionally not an approved component.
 /// Data remains separately injected values, never Python source substitution.

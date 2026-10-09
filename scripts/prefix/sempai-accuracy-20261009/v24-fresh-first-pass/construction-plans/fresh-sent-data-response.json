@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-92f7763fb0b24972",
+  "object": "chat.completion",
+  "created": 1791520290,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"word Sent or Discarded\", \"result\": \"phase DATA only; no host.post_reply effect\"}, {\"guard\": \"constructor fields\", \"result\": \"name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry\"}, {\"guard\": \"trigger/steps/dependency_registry\", \"result\": \"null / [] / null\"}, {\"guard\": \"step_descriptions\", \"result\": \"one desc_idx=0, one component step, single UUID, tool_bindings [], dependencies null\"}, {\"guard\": \"variant\", \"result\": \"step_link 0:1-0:E, variable_patterns [], >=10 unique intents in both lists\"}, {\"guard\": \"supplied UUID\", \"result\": \"87cce336-5dad-5ab2-b406-0cf100426698\"}, {\"guard\": \"prior_knowledge_content\", \"result\": \"retain Q1, human Q2, unapproved dependencies, current sink gap\"}, {\"guard\": \"root arrays\", \"result\": \"proposed_recipe_updates, proposed_intent_examples, settings_adjustments, proposed_components all empty\"}, {\"guard\": \"composition_summary\", \"result\": \"offline export only; no execution/approval/activation claims\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"offline full-v3 export only\", \"unapproved documentation fixture\", \"no execution/approval/activation\", \"empty root compatibility arrays\", \"preserve supplied messages\", \"short factual summary after payload\"], \"notes\": \"The word Sent is a state word, not a posted message. This is a data-return subworkflow with zero inputs and zero dependencies. All supplied UUIDs are unapproved\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114357,
+    "total_tokens": 114746,
+    "completion_tokens": 389,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

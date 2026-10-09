@@ -48,6 +48,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
+      - name: Validate installer and uninstaller file operations
+        run: |
+          bash -n install.sh uninstall.sh
+          python3 scripts/test_installer.py
+          python3 scripts/test_uninstaller.py
+
       - name: Build
         run: cargo build --locked --release -p brassclaw -p brassclaw_monty_host --bins --target ${{ matrix.target }}
 

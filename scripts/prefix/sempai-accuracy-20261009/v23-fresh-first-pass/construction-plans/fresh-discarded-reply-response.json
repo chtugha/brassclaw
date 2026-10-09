@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8ef0c8604c0c1444",
+  "object": "chat.completion",
+  "created": 1791518932,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"post_reply is an actual message effect, not returned data\", \"result\": \"recipe-fresh-discarded-reply posts the fixed word once as a reply\"}, {\"guard\": \"zero inputs and zero dependencies\", \"result\": \"trigger null, steps [], dependency_registry null\"}, {\"guard\": \"one desc_idx=0 with component steps in supplied order, one UUID per step\", \"result\": \"step 1 rust binds ToolSkill 3f75ea20-c8c0-5b6a-9e88-00623ccb9951, step 2 orchestrator runs PythonCode b310004d-c2cc-5e14-b8a7-b0d07c638369\"}, {\"guard\": \"one variant step_link 0:1-0:E, variable_patterns []\", \"result\": \"single variant covering the fixed-reply workflow\"}, {\"guard\": \"at least ten unique matching intents in both intent_examples lists\", \"result\": \"distinct say/post/reply/send/produce/return/derive/obtain/evaluate/build intents\"}, {\"guard\": \"prior knowledge retains Q1, human Q2, unapproved dependencies and current sink gap\", \"result\": \"prior_knowledge_content documents unapproved fixture, Q1/Q2 prerequisites and lossy live sink\"}, {\"guard\": \"no version/approval/runtime claims; preserve messages; root compatibility arrays empty\", \"result\": \"root arrays empty, no activation claims, messages preserved verbatim\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"host-allocated unapproved documentation fixtures\", \"offline full-v3 export only\", \"Q1 and human Q2 before activation\", \"supported class21 constructor and sink fields\", \"actual host post_reply adapter contract\", \"current global Tool policy at dispatch\"], \"notes\": \"This is an unverified Sempai construction plan, not a final reviewer envelope. The plan exports one class21 recipe-fresh-discarded-reply using the two supplied \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115225,
+    "total_tokens": 115680,
+    "completion_tokens": 455,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

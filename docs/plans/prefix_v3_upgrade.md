@@ -35,8 +35,11 @@ migrated to this interface before being accepted as updated v3 implementations.
 
 
 Status: implementation plan, not shipped functionality. Source and evidence review:
-2026-10-07. This revision incorporates Sempai quality experiments and the reproduced
-LMCache transfer failure; it does not deploy code or change inference services.
+2026-10-09. This revision incorporates Sempai quality experiments, the reproduced
+LMCache transfer failure and the v25 compiler/client protocol corrections. The v25
+source and decoder checks are development evidence: no v25 prefix generation or
+model-accuracy qualification has been published by those checks. This plan update
+does not deploy code or change inference services.
 The workspace package version is `1.6.0`; release identity also needs a commit and
 content manifest because version numbers alone do not identify the working tree.
 
@@ -203,7 +206,7 @@ Relevant inspected files:
 
 | Profile ID | UI label | Compiler entry point | Source content |
 | --- | --- | --- | --- |
-| `base-prompt` | BrassClaw Base Prompt | `base-promt-compiler.py` | Current release docs and complete approved component snapshot. |
+| `base-prompt` | BrassClaw Base Prompt | `base-promt-compiler.py` (planned) | Current release docs and complete approved component snapshot. |
 | `defensive` | Defensive / Servers and Networks | `Defensive-compiler.py` | Existing defensive source families and security/maintenance evidence. |
 | `homeassistant` | Home Assistant / MQTT / Modbus / YAML | `Homeassistant-compiler.py` | Existing official domain sources and coverage gates. |
 | `tomedo` | tomedo / API / macOS / PostgreSQL / Billing and Coding | `tomedo-compiler.py` | Existing official docs, qualified forum observations and curated local findings; no clinical knowledge. |
@@ -224,6 +227,16 @@ After obtaining behavior parity, extract the common evidence/assembly machinery
 into a shared module. Keep small profile entry points and profile-specific source
 adapters. Preserve independent caches, raw sources and historical generations.
 Sharing a rendering engine must not mix domain source databases or approval rules.
+
+Current parity is limited: the Sempai compiler has the v25 scoped artifact audit,
+reviewed strict-JSON display projection and evidence-view manifest; the independent
+Home Assistant, Defensive and tomedo compilers do not yet share those features.
+Neither the base nor Prefix-Maker compiler entry point exists yet. Port and qualify
+these evidence/rendering facilities in the shared engine before claiming parity.
+Keep Sempai's reviewer/planner schemas in its consumer adapter, not in domain answer
+contracts. Inventory each profile's collection modes, source configuration, coverage
+and validation adapters; generic domain-source environment variables are not a
+supported way to configure the current Sempai compiler.
 
 Builds expose explicit input/output directories, pinned model/tokenizer artifacts
 and a machine-readable result. An offline build from a fixed source snapshot is
@@ -252,7 +265,7 @@ Resume verified stages; never publish a killed compiler's incomplete export.
 | --- | --- |
 | Input manifest | Canonical release/catalogue/source/policy/compiler/tokenizer/template identities and all pinned dependencies. |
 | Raw source package | Complete original bytes, source disposition, selected/omitted whole-unit map and licensing metadata. |
-| Evidence index | Stable IDs, original ranges/fields/revisions, original and rendered hashes, applicability and navigation. |
+| Evidence index | Stable IDs, original ranges/fields/revisions, original, display and rendered hashes, the pinned transformation/mapping manifest, applicability and navigation. |
 | Model input | Stable reference text and registered client/server rendering adapter; no job IDs, live conversation or fetch timestamps. |
 | Token manifest | Actual reference/shared/full-envelope token counts and leading-token hashes across supported variants; runtime cache assumptions separate. |
 | Build validation receipt | Coverage, artifact integrity, source/teacher checks, capacity, deterministic reproduction and specific blocked/error reasons. |
@@ -264,6 +277,91 @@ content ID or stable model text. Avoid hash cycles: establish generation identit
 from canonical immutable inputs/rendered payloads, then attach receipts to it.
 Different output directories/worker hosts must not change evidence IDs, compiled
 text, templates or leading token IDs.
+
+### 4.2 Current Sempai build configuration and creation instructions
+
+This is the audited standalone v25 procedure, not an implemented WebUI job or a
+portable interface for every model. Production Generate must resolve equivalent
+immutable typed inputs from the accepted design and source export; it must not
+inherit shell environment or discover processes. Record the compiler file digest
+and pipeline revision `2026-10-09-sempai-artifact-scopes-v25` with every build.
+
+| Current setting | Actual behavior and production requirement |
+| --- | --- |
+| Context target/reserve | Defaults are 100,000 requested prefix tokens, 131,072 context tokens and 31,072 reserved tokens. Reserve must be at least 8,192. Effective capacity is the lesser of the request and model context minus reserve, checked against rendered envelope variants. The experimental 114,688 / 16,384 split is an explicit Ornith design choice, not the default or a guarantee of fit. |
+| Model/tokenizer | `ORNITH_MODEL_CONFIG` identifies local config; the tokenizer loads offline from that resolved file's parent directory. Supply a coherent pinned config/tokenizer directory. `TOKENIZER_MODEL` does not replace this selector. The current adapter requires the inspected 24-linear/8-full architecture and single-GPU FP8 attention geometry; a new model requires a supported adapter, not just a new DB design. |
+| Source inputs | `SEMPAI_SOURCE_ROOT` supplies the declared complete source package and teaching dependencies. Optional `SEMPAI_SOURCE_MANIFEST` pins the captured manifest. `CODING_REPOS` and `CODING_WEB_SOURCES` are rejected. Collection retains all declared originals; selection changes only the model-facing view. |
+| Reviewed selection | `SEMPAI_REFERENCE_POLICY` must match the current document/excerpt hashes and whole-unit coordinates, inventory every unit and satisfy mandatory/topic coverage. Without it, the compiler renders literal originals; strict-JSON display projection is enabled only with the reviewed policy. Stale v22/v24 policies cannot qualify edited v25 sources. |
+| Offline mode | Collect, distill and reduce are deterministic source stages with no synthesis calls; context uses `--offline`. Offline geometry is an assumption recorded as unverified serving configuration, not a cache qualification receipt. |
+| Online discovery | The current context preflight combines target `/models` with process inspection on the compiler host and requires explicit hybrid flags and exact chunk/block equality. This is stricter than some supported runtime configurations and unsuitable for proving a remote target. Replace it with a versioned target-evidence adapter; do not modify operator services to satisfy the heuristic. |
+| Identity/publication | Current generation identity includes compiler bytes and profile fields containing local artifact paths; source records also carry checkout provenance. Cross-host/path independence in §4.1 is a migration requirement, not demonstrated current behavior. Generation publication and the local `current` pointer do not activate a provider prefix. |
+
+The current reviewed-policy gate requires complete model-visible `recipe.md`,
+`skills.md`, `tools.md`, `toolskills.md`, `sempai-authoring-reference.md`,
+`sempai-monty-compatibility.md`, `sempai-worked-examples.md` and
+`crates/brassclaw_interceptor/src/packet.rs`; source/topic coverage gates additionally
+apply to the selected corpus. Other whole units may be omitted only under reviewed
+selection while their full originals remain retained. The schema-1 policy status is
+`reviewed-source-selection`; each unit records path, line bounds, document/excerpt
+hashes and an exact boolean selection. Its status label alone is not review evidence.
+The present renderer orders ordinary sources before verified worked examples and
+the compatibility overlay, followed by dispatch navigation, the source-heading index,
+factual checks, scoped artifact audit and request boundary. This ordering is currently
+compiler code, not an arbitrary provider-generated layout option. Port supported
+layout changes explicitly and qualify them before exposing them as accepted designs.
+
+Before running the example, supply an existing dedicated compiler Python environment
+with the declared dependencies, a coherent source package including official Monty
+artifacts and verified teaching receipts, local model/tokenizer files and a newly
+reviewed selection policy for that exact package. The placeholder paths must be
+replaced; use a fresh build directory. Do not install into or change the operator's
+vLLM environment. Reuse unchanged teaching evidence only when its complete pinned
+checker/dependency combination still matches; revalidate affected examples after
+source drift. Never repair a stale policy by automatically rewriting its hashes.
+
+```sh
+export PREFIX_CHECKOUT=/path/to/brassclaw
+export PREFIX_PYTHON=/path/to/compiler-environment/bin/python
+export SEMPAI_SOURCE_ROOT=/path/to/coherent-source-package
+export ORNITH_MODEL_CONFIG=/path/to/pinned-model-and-tokenizer/config.json
+export CODING_DISTILL_CACHE=/path/to/new-sempai-build-directory
+export SEMPAI_REFERENCE_POLICY=/path/to/reviewed-current-source-policy.json
+export MODEL_CONTEXT_LIMIT=131072
+export PREFIX_WORKSPACE_RESERVE_TOKENS=16384
+unset CODING_REPOS CODING_WEB_SOURCES
+# Remove an inherited source-manifest setting unless it pins this exact package.
+unset SEMPAI_SOURCE_MANIFEST
+
+"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode plan
+"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode collect
+"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode distill
+"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode reduce
+"$PREFIX_PYTHON" "$PREFIX_CHECKOUT/scripts/prefix/sempai-compiler.py" --mode context --offline --context-tokens 114688
+```
+
+For a source-manifest-pinned build, explicitly set `SEMPAI_SOURCE_MANIFEST` to the
+matching immutable manifest instead of unsetting it. Do not add `--offline` to the
+other stages: that flag is accepted only by context. Avoid `--mode all` for this
+procedure: its context call currently uses defaults rather than the CLI context
+request. Legacy triage/run modes are not required to create this exact-source prefix.
+If mandatory selected units exceed capacity, retain the failed build and resolve
+coverage/model capacity; the example does not authorize automatic truncation.
+
+Publish and inspect the immutable `generations/<generation-id>/` artifacts, including
+`context_100k.md` (a legacy filename, not its measured size), template, source/evidence
+manifests, policy, teaching receipts and token/build manifest. Pin those paths rather
+than the mutable top-level aliases or `current` pointer. Complete original documents
+remain under the build's `raw/documents/` and teaching material under `raw/teaching/`;
+the generation directory alone is not the complete raw source package. Production
+publication must retain that package separately with integrity and retention links.
+A build's `external_cache_reuse_verified=false` cannot become a warmed/qualified badge.
+
+Consumer schema/grammar generation is a separate protocol artifact step. Pin exact
+ordered schemas, grammar compiler/runtime identity and decoder options; regenerate
+incompatible planner/reviewer grammars. The retained v25 protocol checks do not
+constitute a newly generated prefix or model inference result. Optional provider
+planning and quality evaluations remain explicit Tier-1 workflows, never hidden
+inside model-free Generate.
 
 ## 5. Base-prompt knowledge: complete originals and applicability
 
@@ -485,6 +583,84 @@ separate and cannot conceal first-pass regressions. Actual custom Monty loader,
 Tool binding, full approved component associations, proposal persistence and the
 installed consumer path remain independent production acceptance gates.
 
+The refreshed v22 knowledge trial completed 27/28 JSON answers, with all 27 boolean
+answers correct; one response was truncated and stays failed. Its original citation
+topic check passed 18/28. Manual review identified three narrow wording/newline
+matcher false negatives, yielding 21/28 supported answers, with six unrelated
+passage selections still rejected. Preserve both original and audited receipts.
+Recompilation of the identical pinned v22 inputs reproduced its exact generation
+and manifest. This does not convert the old 58/60 trial into a current-content
+score or remove the no-regression/production prerequisites.
+
+The same-source v23 display/navigation experiment preserves v22's exact original
+evidence and selected 220 units. Lossless strict-JSON display compaction saves
+5,633 tokens; a source-heading index and general artifact audit use that space.
+All 28 reference responses are valid JSON, 27 booleans are correct and the
+unchanged topic-support checker accepts 23 complete answers; correct explanations
+with reversed booleans and unrelated citation IDs remain failures. Frozen first
+pass is 57/60, transfer 11/12. Both earlier Recipe-prerequisite failures are fixed,
+but two validators never enter a success state and one Recipe repeats an intent.
+This is development evidence, not accepted no-regression promotion. Retain the
+failed drafts and comparison instead of claiming a perfect design. The following
+v24 candidate groups navigation by document and strengthens contract-versus-plan,
+valid-path, cardinality and boolean-proposition audits. Its fixed first-pass suite
+passes 59/60, transfer 10/12 and strict reference checks 25/28. The missing-only
+default remains incorrect; one transfer request emits no requested Recipe, and
+the MCP server-lifetime answer still contradicts its own explanation. Preserve
+these failures. Actual upstream Monty checks pass 302/302 probes for the 23 frozen
+programs admitted by the pure-Python gate, not all 24 requested programs; transfer
+passes 33/34. This is not flawless or complete production qualification.
+
+Qualification must also check decoder field order against the accepted design.
+The historical v24 evaluation schema emitted `composition_summary` before
+`proposed_components`, contrary to the prefix's instruction to summarize after
+checking the final artifact. Reference output emits the boolean before its reason.
+The v25 evaluator now emits proposed_components before composition_summary, with
+the summary last; other field constraints remain unchanged. Grammar manifest v2
+fingerprints the ordered schema and enforces fixed property order. The loader
+rejects old reviewer grammars with stale ordering, while retaining compatible v1
+artifacts only when their exact schema/layout still matches. New planning
+schemas necessarily require regenerated grammars. Local tests and installed
+XGrammar 0.2.7 matching verify accepted artifact-first and rejected summary-first
+output. This fixes a protocol contradiction, not a demonstrated accuracy score.
+Evidence/reason-before-verdict for reference questions remains a separate future
+change. Preserve baseline artifacts and distinguish client-format changes from
+prefix-only improvements.
+
+The v25 authoring procedure and compiler classify host embedding examples,
+preload definitions, invocation bodies, Recipe constructors and prompt review
+separately. Module-level result/invocation requirements apply to invocation bodies;
+preload definitions expose typed returns without running at load. Retain upstream
+Monty originals and verified teaching programs. Optional planning now returns
+exact current-contract quotes with aspect labels and supplied Recipe references,
+not invented executable branches. The host verifies quote provenance and reference
+identity; artifact classification, coverage and semantic agreement still require
+review of the complete original contract. Neither valid quote selection nor JSON
+shape proves code behavior or authorizes activation. Empty compatibility arrays
+never cancel requested component drafts; offline constructor support is distinct
+from live execution/sink limitations. Fresh source capture and normal policy/integrity
+qualification precede compilation; these edits do not rewrite published generations
+or change the deployed prefix automatically.
+
+The v24 paired MCP-lifetime probe verifies a cold miss, 112,992 native reused
+tokens and an external restore with zero native hits and 112,992 extra LMCache
+tokens. The same incorrect boolean and correct explanation appear in all paths;
+this particular polarity failure is reproducible without cached execution.
+The retained `v24-lifetime-semantic-cache.json` and its separate audit establish
+only this fixed question, not general cache correctness. Keep task/grammar/content
+identical across cache paths and score semantics independently. A short READY
+sentinel alone cannot qualify Sempai behavior.
+
+The paired v24 missing-default writer probe also verifies cold/native/external
+paths, with 114,048 tokens externally restored and zero native hits. All four
+writer stages emit exactly the same code, bound by SHA-256 to the retained Linux
+and upstream Monty checks (6/7 behavior probes pass; absence fails). Reuse that
+exact-code evidence explicitly instead of implying new executions. This holds
+the already-generated untrusted plan fixed; it does not test planner regeneration
+or prove correctness of all restored tasks. Both paired cases reproduce their
+failures cold, so these particular errors cannot be attributed solely to cache
+restoration. The active startup log also confirms automatic `align` mode.
+
 ### 5.1 Knowledge quality and model-facing structure
 
 Include a pinned official Monty documentation package and a separate BrassClaw
@@ -538,10 +714,47 @@ become chat roles or new instructions. Do not summarize away executable artifact
 or repeatedly duplicate instructions. Stable source/component identifiers support
 navigation and citation checks.
 
+Separate original evidence from its model-facing display. A reviewed model design
+may compact standalone strict JSON examples only when decoded values and embedded
+program strings remain identical. Keep Python, YAML and prose literal; preserve
+ambiguous JSON (duplicate keys, nonfinite values and precision-sensitive numeric
+lexemes) unchanged. Retain original excerpts, source locations and quote resolution
+against original bytes. Pin a display manifest to the generation with original,
+display and rendered-card hashes; reject changed mappings rather than rewriting
+evidence fingerprints. Verify transformations with real teaching artifacts and
+negative examples. Display hashes establish integrity, not semantic approval.
+
+Generate a compact task-boundary source/section index from actual selected headings
+and exact citation IDs. Navigation labels never replace evidence identities. Do not
+embed evaluation questions, expected answers or candidate feedback in that index.
+Include a short general artifact audit scoped to five distinct artifact kinds:
+host embedding, preload definition, invocation body, Recipe constructor and prompt
+review. Host setup examples are embedding references, not class-22 entry points.
+Preload definitions export typed functions without running them; invocation bodies
+call the approved entry point and capture its result. Historical standalone teaching
+programs do not override preload authoring rules. Trace absent/null/type/boundary
+branches and typed returns against the actual artifact contract; verify
+Recipe prerequisites in the emitted artifact rather than only its summary. Keep
+this model-specific layout within the rendered context plus workspace reserve;
+reject overflow without dropping mandatory evidence. Measure citation support,
+first-pass emitted artifacts and transfer behavior before accepting a redesign.
+
+Audit optional model-derived plans as source-anchored navigation against the entire
+original trusted contract, not as executable branch specifications. Exact selected
+quotes prove provenance only; they may omit requirements or misclassify an artifact.
+Derive and check every branch from the original contract, including missing-only
+defaults; an intermediate plan cannot cancel or invent them. Explicitly trace a valid path
+through reject-on-failure loops and verify their success-state assignment. Count
+distinct final values for cardinality/uniqueness requirements. For binary source
+questions, the boolean must answer the actual proposition, including negation,
+and agree with the explanation. Locate support in the full original evidence
+before copying an ID; an index heading is navigation, not supporting evidence.
+
 Teaching must transfer beyond a fixture: presence before value access, missing
 versus null, exact booleans versus integers, recursive container/item constraints,
 numeric boundaries, defaults only on missing inputs, complete invalid results,
-helper invocation and module-level result assignment, typed step handoff, effects
+helper invocation and module-level result assignment for invocation bodies,
+effect-free preload exports and typed returns, typed step handoff, effects
 and supported proposal transport. Pair positive complete examples with scoped
 negative contrasts. Validate whole artifacts and behavior against independently
 specified contracts; AST/schema success alone does not establish meaning.
@@ -683,7 +896,7 @@ define migrations/DTOs explicitly where current storage lacks these records.
 | --- | --- |
 | Model specification revision | Stable registered model identity plus exact weights/config/tokenizer/template identities, technical context/output limits, supported roles/tools/thinking/grammar, architecture and attention/recurrent-state facts with versioned evidence and Unknown where unavailable. Display name alone is not identity. |
 | Target runtime/cache revision | DB provider/model binding, injection adapter, actual deployment/backend/KV and recurrent dtypes, group/page/chunk/checkpoint layout, effective limits and capability/qualification receipts. Model architecture and deployment-specific cache settings remain separate. |
-| Model design revision | Immutable formatting/ordering/whole-unit selection, teaching and rendering rules, explicit prefix-capacity/reserve contract and supported compiler options, linked to exact model specification and compatible target runtime revisions, Prefix-Maker proposal/review evidence and schema/hash. |
+| Model design revision | Immutable formatting/ordering/whole-unit selection, evidence-view transformation and audit/procedure revisions, teaching/rendering rules, explicit prefix-capacity/reserve contract and supported compiler-adapter revision/options. Pin consumer envelope and optional planner schemas, property order, fingerprints and decoder constraints separately from factual sources. Link exact model specification and compatible target runtime revisions, Prefix-Maker proposal/review evidence and schema/hash. |
 | Profile/model design selection | Revision-checked mapping from profile and consumer to an accepted model design/coverage revision and compatible target; profile requirements remain independent of reusable model formatting defaults. |
 
 A model can have multiple historical designs and profile-specific overrides; do not
@@ -719,7 +932,11 @@ provider-assisted redesign calls inside Generate or provider settings save. If n
 compatible prefix is ready, keep the previous working selection until a staged switch
 commits, or expose the newly selected target as blocked under its explicit lifecycle.
 Never silently serve the old incompatible prefix, downgrade to a tiny fallback or
-disable deterministic Tier-0/management paths. New tasks use revision-checked selected
+disable deterministic Tier-0/management paths. Unsupported architecture, rendering options or decoder contracts require adapter
+implementation and qualification before a design can be accepted. A provider-produced
+design cannot add compiler features or silently ignore unknown options. The current
+Ornith-specific adapter is not evidence of general multi-model compilation.
+New tasks use revision-checked selected
 targets/designs; retained tasks keep pinned references subject to the provider's live
 availability/policy contract. Preserve old model designs and generation history.
 
@@ -855,6 +1072,14 @@ and active generation, source freshness, build status, last build duration,
 rendered tokens, coverage gaps, validation status and per-provider cache status.
 Keep ordinary UI copy about knowledge and readiness; expose hashes/geometry and
 raw manifests in an expandable details area.
+
+Before Generate, show the resolved model/design revision, compiler adapter and source
+snapshot, requested/effective prefix capacity, workspace/output reserve, coverage
+policy and evidence-display mode. Distinguish stored defaults from experimental
+settings. Unsupported options, stale selection policies and incompatible ordered
+consumer grammars block readiness with their actual prerequisite; do not silently
+ignore them or ask the operator to repair runtime services. The UI resolves DB-owned
+inputs, rather than copying the standalone shell environment from §4.2.
 
 Actions: Generate / Regenerate for each profile; View job / Cancel while running;
 View sources and validation; Activate a chosen compatible generation; Warm /
@@ -1224,6 +1449,38 @@ does not prove the manager is disabled. Sparse align-mode checkpoints exist at
 scheduler boundaries, not every attention block. Larger prefill batches require a
 separate measured experiment, never automatic adjustment by Generate.
 
+For GDN/linear-attention hybrids, qualify behavior as well as cache-hit counts.
+The inspected Ornith release has 24 linear-attention and eight full-attention
+layers; its current unified block is 1,056 tokens. These facts are model/runtime
+specific, not universal defaults. `--no-disable-hybrid-kv-cache-manager` keeps the
+manager enabled but cannot prove recurrent-state restoration. Record effective
+Mamba cache mode, attention/recurrent dtypes, page layout, group separation and
+checkpoint granularity separately from INT4 weight quantization. Do not infer
+an INT4 KV cache from AWQ weights. GDN cached/fresh generation is not necessarily
+bit-identical; compare behavioral scores with fixed requests and decoding rather
+than treating any token difference as corruption. Preserve cold, native, external
+and restored-native outcomes independently. A sentinel restore is not a semantic
+accuracy comparison. See the [LMCache hybrid guide](https://docs.lmcache.ai/mp/hybrid_models.html).
+
+For an inspected block size N, an align-mode batch in [N, 2N) offers finer boundary
+checkpoints; larger batches trade checkpoint density for prefill throughput when
+supported group separation is active. Benchmark those modes under a fixed design
+before selecting a model's accepted settings. Never apply another model's N,
+force unsupported all-mode or enable speculative/sub-block features merely from
+generic documentation. Preserve operator-owned deployment settings during prefix
+generation; a configuration experiment needs separate retained runtime evidence.
+
+For this hybrid, the linear layers retain recurrent summaries rather than an
+independent attention key/value pair for every preceding token. Full-attention
+layers still retain their KV history; cache capacity alone does not establish
+reliable retrieval of every rule. Trial semantically grouped references, explicit
+source/contract precedence and a compact terminal audit near the volatile task.
+Keep these structures stable within an accepted design and preserve all selected
+original evidence. Measure generalization and citation support, not only the
+frozen score. Do not insert arbitrary padding or claim that placing a paragraph
+on a 1,056-token boundary improves its meaning: physical checkpoint alignment
+and semantic source organization are separate properties to qualify.
+
 `cache_salt` only namespaces entries. Use a stable namespace under the target's
 cache-isolation/runtime-layout contract; never create a salt per request or change
 it between prime/planner/writer/repair calls within an experiment. Introduce no
@@ -1316,6 +1573,15 @@ reject a legitimate translation. Show that limitation and require appropriate
 review. Production evaluation includes wrong-but-verbatim citations and misleading
 source/version combinations, not just invented IDs.
 
+Allow a model-specific design to select short readable citation handles if it
+performs better than opaque hashes. Implement this through a registered rendering/
+resolver contract and accepted response schema, not invented response fields.
+Each immutable generation must map every unique handle to its exact source card,
+revision/range/checksum; ambiguous, missing or wrong-generation handles fail closed.
+The readable name is navigation, never source identity or semantic proof. Keep full
+integrity fingerprints and original evidence. Compare valid-but-unrelated handles
+and quoted passages as well as invented ones before accepting that design.
+
 Only Home Assistant currently has static configuration adapters. Defensive server/
 firewall configs, SQL and tomedo API payloads require their own versioned parsers,
 schemas or non-mutating application checks. Never treat the YAML check as validation
@@ -1335,7 +1601,17 @@ artifact, not exist only in a prose summary.
 An optional contract-planning model call is untrusted intermediate data, not an
 executable plan or approval. Each independent call/validation usage has its own
 Recipe step. Version output schemas/grammars and pin their hashes and supported
-parser behavior. Protected-message/single-proposal/single-variant constraints apply
+parser behavior. The current optional planner schema contains `artifact_kind`,
+`requirements` (aspect plus exact contiguous `contract_quote`) and `workflow`
+(ordered knowledge/UUID references supplied by the original instruction). Mechanical
+validation rejects empty/non-source quotes, non-Recipe workflows, unsupplied UUIDs
+and extra executable branch fields. This does not establish classification, complete
+coverage, correct order/bindings or behavior; the writer still reads the entire
+original contract. Keep this planning schema distinct from persisted Recipe JSON.
+Emit requested artifacts before `composition_summary`, and derive the summary from
+the actual payload. Fixed-order grammars must fingerprint ordered serialization;
+canonical key sorting or dictionary equality cannot establish decoder compatibility.
+Protected-message/single-proposal/single-variant constraints apply
 only when the trusted authoring contract requires them; offline benchmark settings
 must not restrict general v3 Recipes. Unsupported fields/APIs are failures.
 
@@ -1363,6 +1639,10 @@ UUIDs, unsupported store fields or false Tier-0/Q2/runtime claims.
 Include the saved build specification, six seeded profile coverage matrices and custom-profile coverage contracts, artifact/
 identity schemas, worker dependency/resource contract and a target capability matrix
 for injection, token inspection, grammar, native/external cache and validation support.
+Inventory per-profile compiler capabilities and differences, including supported
+architectures, source adapters, projection/policy behavior, protocol schemas/order
+and actual entry-point defaults. Bind that capability revision to accepted designs;
+unknown options fail validation rather than disappearing during compilation.
 Specify section 5.3's model/specification/runtime/design identities, immutable schemas,
 profile/consumer selection rules, provider-switch impact and the confirmed design-job
 contracts before implementing database or UI fields. Unknown capabilities stay explicit.
@@ -1427,6 +1707,10 @@ pass all contracts applicable to their consumers.
 
 Copy the HA compiler to `base-promt-compiler.py`, replace its domain content, add
 document/component adapters, then extract shared compiler code with parity tests.
+Port §4.2's v25 evidence-view and scoped-audit facilities deliberately; qualify each
+profile adapter and keep Sempai consumer schemas separate. Implement the installed
+source-package path, environment-independent worker inputs, model adapter capability
+checks and raw-package publication rather than wrapping the shell example unchanged.
 Build reproducible release source packages and seed their registration through
 shared boot. Preserve original documents/code and complete structured records.
 Package the dedicated Sempai compiler/procedure and full authoring/validation source
@@ -1442,9 +1726,13 @@ survives export; no HA topic leakage; missing reference/coverage fails the build
 two offline builds of the same input produce identical source/evidence/template/
 leading-token fingerprints; raw originals survive failed builds. Fresh install,
 upgrade and reseed preserve integrity, operator edits and retained old versions.
-Also require host/path-independent content identity; byte/hash agreement between
-source, evidence and rendered text; reproducible whole-unit selection; intact
-YAML/Python/JSON; reviewed conflicting/versioned sources; tutorial mutation checks
+Also require host/path-independent content identity (including removal of current
+path-dependent model/source fields from canonical identity), reproducible whole-unit
+selection and exact byte/hash agreement between source and original evidence.
+For reviewed strict-JSON displays, require decoded-value and embedded-program
+identity plus separately verified original/display/rendered hashes; do not demand
+raw/display byte equality or normalize ambiguous JSON. YAML, Python and prose remain
+literal. Require reviewed conflicting/versioned sources; tutorial mutation checks
 and transitive validator fingerprints. Prove zero provider/network/process discovery
 through the actual worker entry point. No optional synthesis mode is invoked.
 
@@ -1514,6 +1802,26 @@ transfer cases with different domains/field names/bounds, hold them out of teach
 and report first-pass separately from repair acceptance. Verify grammar/schema
 fingerprints and host-authorized edit constraints without forcing every Recipe to
 one variant. A rejected candidate stays rejected, even if its summary claims success.
+Test artifact-first/summary-last decoding through the actual production consumer,
+including rejection of old reviewer order even when a canonical sorted fingerprint
+matches. Regenerate incompatible planner grammars; test exact quote provenance,
+missing requirements, erroneous artifact classification and invented defaults/branches.
+Verify invocation audits cannot force effectful loading or module-level result
+assignment into preload definitions. Validate empty proposal arrays against the
+requested artifact, not against compatibility arrays or optimistic summaries.
+The six v25 protocol tests and source/compiler checks are standalone development
+evidence; production sink/loader acceptance and fresh first-pass/transfer/cache-path
+model qualification remain prerequisites, not inferred improvements.
+
+Validate current Skill preload definitions and their invocation artifacts separately
+through the selected production Monty host/ABI: effect-free loading, dependency
+order/export resolution, isolated mutable state, complete returned results and
+retained task selections. Upstream Monty pure-logic probes do not certify that loader,
+kernel binding or private transport. Include current MCP discovery/ordinary-chat
+contracts as source-backed knowledge checks, without inventing an external Python
+execution API or treating documented targets as implemented support. Include correct
+answers with unrelated valid citation IDs and wrong-but-verbatim quotes as failures;
+source resolution, quotation fidelity and semantic support remain separate gates.
 
 ### Phase C2 — Minimum provider resolver before activation
 

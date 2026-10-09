@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-88fbe55290a018e7",
+  "object": "chat.completion",
+  "created": 1791518726,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'frames' not in inputs\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"value = inputs['frames']; if value is None\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"type(value) is not list\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"len(value) > 2\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"for frame in value: if type(frame) is not dict or set(frame) != {'toggles'}\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"for frame in value: if not (type(frame['toggles']) is list and 0 <= len(frame['toggles']) <= 2)\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"for frame in value: if not (all(type(t) is bool for t in frame['toggles']))\", \"result\": \"{'ok': False, 'frames': []}\"}, {\"guard\": \"valid; result = {'ok': True, 'frames': value}\", \"result\": \"{'ok': True, 'frames': value}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected class22 constructor support\", \"Q1\", \"human Q2\"], \"notes\": \"frames is a raw list; each frame is a dict with exactly the key 'toggles' mapping to a list of exact bools (False valid). Missing key, explicit null, wrong type\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114905,
+    "total_tokens": 115278,
+    "completion_tokens": 373,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

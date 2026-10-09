@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9cfec8d2d4e1f1f9",
+  "object": "chat.completion",
+  "created": 1791520723,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'records' not in inputs\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"value = inputs['records']; if value is None\", \"result\": \"{'ok': False, 'records': None}\"}, {\"guard\": \"type(value) is not list or len(value) not in 1..3\", \"result\": \"{'ok': False, 'records': []}\"}, {\"guard\": \"for item in value: type(item) is not dict or set(item) != {'code', 'enabled'}\", \"result\": \"valid = False; break\"}, {\"guard\": \"for item in value: type(item['code']) is not str or len(item['code']) not in 2..5\", \"result\": \"valid = False; break\"}, {\"guard\": \"for item in value: type(item['enabled']) is not bool\", \"result\": \"valid = False; break\"}, {\"guard\": \"valid and result = {'ok': valid, 'records': value if valid else []}\", \"result\": \"ok=valid, records=original if valid else []\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected class-22 runner inputs support\", \"Q1\", \"human Q2\"], \"notes\": \"records is a required list (1..3), so a helper must receive the mapping to distinguish absent from null; module code calls it and assigns result. code length 2.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114159,
+    "total_tokens": 114495,
+    "completion_tokens": 336,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

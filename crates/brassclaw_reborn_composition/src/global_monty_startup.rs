@@ -14,7 +14,6 @@ use brassclaw_monty_host::{
     global::GlobalBounds,
     heap::HeapSettings,
     process::{ProcessLimits, RootBoot, TaskSettings, installed_worker},
-    transport_actor::ActorLimits,
 };
 use brassclaw_pg::PgPool;
 use brassclaw_product_workflow::MontyVmSettingsStore;
@@ -106,6 +105,8 @@ pub(crate) async fn start(
         .ok_or_else(|| invalid("Monty physical backstop overflow"))?;
     let values = crate::live_monty_settings::execution_bounds(settings.execution_limits)
         .map_err(|error| invalid(error.to_string()))?;
+    let deadlines = crate::live_monty_settings::hosting_deadlines(settings.execution_limits)
+        .map_err(|error| invalid(error.to_string()))?;
     let boot = RootBoot {
         heap_settings: Some(HeapSettings {
             revision: 1,
@@ -119,9 +120,9 @@ pub(crate) async fn start(
             workers: 2,
             max_pending_calls: 128,
         },
-        startup_timeout: Duration::from_secs(30),
+        startup_timeout: deadlines.startup_timeout,
         task_settings,
-        max_recipe_contexts: 64,
+        max_recipe_contexts: settings.execution_limits.max_recipe_contexts,
     };
     let mut owner = GlobalMontyOwner::start(
         &pool,
@@ -131,15 +132,19 @@ pub(crate) async fn start(
             process: ProcessLimits {
                 hard_memory_bytes: hard,
                 max_frame_bytes: frame,
-                response_timeout: Duration::from_secs(30),
+                response_timeout: deadlines.response_timeout,
             },
-            actor: ActorLimits {
-                max_unclaimed: 8,
-                max_reserved_frame_bytes: frame * 16,
-                max_control_unclaimed: 8,
-                max_control_reserved_frame_bytes: frame * 16,
-            },
-            queue_capacity: 64,
+            actor: crate::live_monty_settings::actor_limits(settings.execution_limits)
+                .map_err(|error| invalid(error.to_string()))?,
+            queue_capacity: settings.execution_limits.max_queued_tasks,
+            max_pending_settings: settings.execution_limits.max_pending_settings,
+            max_retained_attempts: settings.execution_limits.max_retained_attempts,
+            queue_bytes: crate::live_monty_settings::admission_limits(settings.execution_limits)
+                .map_err(|error| invalid(error.to_string()))?
+                .max_bytes,
+            ownership: crate::global_monty_owner::OwnershipLimits::from_execution(
+                settings.execution_limits,
+            ),
             live,
         },
     )

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a346e9141af2cb55",
+  "object": "chat.completion",
+  "created": 1791519364,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}, {\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-02, description offline unapproved data-return subworkflow returning only state DATA, no Tool calls and no posted message, trigger null, steps empty, dependency_registry null, Q1 and human Q2 required, current sink may c\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval\", \"exact association approval for any future activation\", \"selected runner typed-input support for any future execution\"], \"notes\": \"The host-allocated draft 6ca96ef8-0b75-572f-987b-38c88d423828 returns only {'state': 'Healthy'} with no Tool calls, inputs or dependencies. Per the worked-exam\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115183,
+    "total_tokens": 116058,
+    "completion_tokens": 875,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -27,3 +27,16 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 [lints.rust]
 unsafe_code = "forbid"
+
+# The owning transport/service package runs the same actual-worker acceptance
+# cases as the composition integration workspace, without depending on Engine.
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "actor_host"
+path = "../../tests/monty_control/tests/actor_host.rs"
+
+[[test]]
+name = "service_host"
+path = "../../tests/monty_control/tests/service_host.rs"

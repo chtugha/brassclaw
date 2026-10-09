@@ -103,6 +103,8 @@ pub(crate) mod embedding_providers;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 mod fetch_cached_content;
+#[cfg(feature = "skills-db")]
+pub mod mcp_recipe_catalogue;
 /// Phase V: McpServerService — lifecycle management (start/stop) for the MCP server.
 pub mod mcp_server_service;
 #[cfg(feature = "migrate-from-libsql")]
@@ -110,7 +112,7 @@ pub mod migration;
 #[cfg(feature = "skills-db")]
 mod monty_task_input;
 pub(crate) mod orchestrator_lookup_impl;
-/// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
+/// Inbound MCP transport: qualified Recipe commands through ordinary chat.
 pub mod orchestrator_mcp_server;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_association_review;
@@ -132,8 +134,6 @@ pub(crate) mod pg_extension_catalogue_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_intent_inputs_store;
 pub(crate) mod pg_kohai_port;
-#[cfg(feature = "postgres")]
-pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_monty_vm_settings;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_prefix_bundle_backends;
@@ -1032,7 +1032,16 @@ mod global_monty_driver;
 mod global_recipe_ports;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod normal_match_evidence;
+
+#[cfg(feature = "skills-db")]
+mod mcp_command_qualification;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_task_factory;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod monty_attempt_retention;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod pg_monty_admission;

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-802c3dd3131648ff",
+  "object": "chat.completion",
+  "created": 1791521104,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design export with a supplied class21 draft PythonCode returning fixed state data and no Tool calls\", \"result\": \"class21 recipe-transfer-10, trigger=null, steps=[], dependency_registry=null, one desc_idx=0 with a single type=component step including the supplied UUID a059d0bb-4a87-5eba-b029-93581dd81b54, tool_bindings=[], dependencies=null, one variant step_link=0:1-\"}, {\"guard\": \"offline-design export with a supplied class21 draft that calls host.post_reply\", \"result\": \"class21 recipe-transfer-10, trigger=null, steps=[], dependency_registry=null, one desc_idx=0 with a single type=component step including the supplied UUID, tool_bindings=[], dependencies=null, one variant step_link=0:1-\"}, {\"guard\": \"offline-design export with no supplied draft and no resolved UUIDs\", \"result\": \"no class21 recipe emitted; composition_summary states the blocking gap (missing constructor/UUIDs)\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"offline full-v3 export only; unapproved draft, Q1 and human Q2 required; current sink cannot preserve full v3 fields; no runtime/approval claims; preserve the 1\"], \"notes\": \"The supplied draft returns only state DATA (result = {'state': 'Prepared'}), so the recipe's ten intents describe computing/returning that data, never posting a\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114385,
+    "total_tokens": 114737,
+    "completion_tokens": 352,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

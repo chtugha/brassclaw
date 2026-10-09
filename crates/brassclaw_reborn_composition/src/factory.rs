@@ -66,7 +66,6 @@ use crate::local_dev_capability_policy::local_dev_capability_policy;
 use crate::local_dev_mounts::{
     ambient_workspace_mount_view, memory_mount_view, skill_management_mount_view,
 };
-use crate::mcp::hosted_http_mcp_runtime;
 #[cfg(feature = "postgres")]
 use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::product_auth_providers::{OAuthProviderComposition, compose_provider_client};
@@ -97,11 +96,8 @@ use crate::{
 pub(crate) type LocalDevRootFilesystem = CompositeRootFilesystem;
 
 /// Output of [`build_local_dev_root_filesystem`]: the composed local-dev
-/// root filesystem and, when libSQL is the substrate, a clone of the raw
-/// libSQL handle. The handle backs both the local-dev trigger repository
-/// and the canonical Reborn identity store, so each rides the same
-/// `reborn-local-dev.db` rather than opening a second handle to the file
-/// (see `RebornRuntime::open_reborn_identity_resolver`).
+/// root filesystem. The hybrid production path keeps local project files
+/// while mounting durable memory on its existing Postgres pool.
 struct LocalDevRootFilesystemBundle {
     filesystem: Arc<LocalDevRootFilesystem>,
 }
@@ -190,34 +186,6 @@ where
         })
 }
 
-fn attach_hosted_mcp_runtime<F, G, S, R>(
-    services: HostRuntimeServices<F, G, S, R>,
-) -> Result<HostRuntimeServices<F, G, S, R>, RebornBuildError>
-where
-    F: brassclaw_filesystem::RootFilesystem + 'static,
-    G: brassclaw_resources::ResourceGovernor + 'static,
-    S: brassclaw_processes::ProcessStore + 'static,
-    R: brassclaw_processes::ProcessResultStore + 'static,
-{
-    // Soft-disable when host runtime HTTP egress is absent. Builds without
-    // egress — in-memory test services, minimal compositions — must still
-    // succeed; only hosted MCP capabilities go dark.
-    let Some(runtime_ports) = services.product_auth_provider_runtime_ports() else {
-        tracing::debug!(
-            "skipping hosted MCP runtime: host runtime HTTP egress absent \
-             (only affects hosted MCP extensions, e.g. Notion, NEAR AI)"
-        );
-        return Ok(services);
-    };
-    let runtime_http_egress = runtime_ports.runtime_http_egress();
-    let registry = services.shared_extension_registry();
-
-    Ok(services.with_mcp_runtime(Arc::new(hosted_http_mcp_runtime(
-        registry,
-        runtime_http_egress,
-    ))))
-}
-
 #[cfg(feature = "postgres")]
 pub(crate) fn apply_production_runtime_process_binding<F, G, S, R>(
     services: HostRuntimeServices<F, G, S, R>,
@@ -263,9 +231,6 @@ pub struct RebornServices {
     #[cfg(feature = "postgres")]
     pub(crate) pg_token_settings_store:
         Option<Arc<crate::pg_token_settings_store::PgTokenSettingsStore>>,
-    /// Postgres-backed engine `Store` for `MemoryDoc` operations (production path).
-    #[cfg(feature = "postgres")]
-    pub(crate) pg_memory_doc_store: Option<Arc<crate::pg_memory_doc_store::PgMemoryDocStore>>,
     /// Trigger repository for the automation facade (fire_now path).
     pub(crate) trigger_repository: Option<Arc<dyn brassclaw_triggers::TriggerRepository>>,
     /// Trusted submitter for manual trigger fire (fire_now path).
@@ -531,8 +496,6 @@ impl RebornServices {
             pg_safety_config_store: None,
             #[cfg(feature = "postgres")]
             pg_token_settings_store: None,
-            #[cfg(feature = "postgres")]
-            pg_memory_doc_store: None,
             trigger_repository: None,
             trusted_submitter: None,
             trigger_materializer: None,
@@ -802,8 +765,13 @@ async fn build_local_dev(
     })?;
     // System skills are now DB rows seeded via `builtin_bootstrap.rs` Passes 8–14
     // (Phase P.1). The `bundled_skills.rs` VFS installer has been removed.
-    let filesystem_bundle =
-        build_local_dev_root_filesystem(&root, &workspace_root, host_home_root.as_ref()).await?;
+    let filesystem_bundle = build_local_dev_root_filesystem(
+        &root,
+        &workspace_root,
+        host_home_root.as_ref(),
+        pg_pool.as_ref(),
+    )
+    .await?;
     let filesystem = filesystem_bundle.filesystem;
     let trigger_repository = local_dev_trigger_repository();
     let runtime_workspace_mounts =
@@ -901,7 +869,8 @@ async fn build_local_dev(
         services = services.with_runtime_process_port(Arc::new(process_port));
     }
     services = apply_runtime_process_binding(services, runtime_process_binding);
-    services = attach_hosted_mcp_runtime(services)?;
+    // Legacy outbound MCP client attachment is intentionally suspended.
+    // HTTP egress does not enable external MCP servers or provider advertisement.
     let product_auth_runtime_ports = require_product_auth_runtime_ports(&services)?;
     let provider_composition = compose_provider_client(
         oauth_provider_configs,
@@ -1159,8 +1128,6 @@ async fn build_local_dev(
         pg_safety_config_store: None,
         #[cfg(feature = "postgres")]
         pg_token_settings_store: None,
-        #[cfg(feature = "postgres")]
-        pg_memory_doc_store: None,
         trigger_repository: None,
         trusted_submitter: None,
         trigger_materializer: None,
@@ -1378,28 +1345,63 @@ async fn build_local_dev_root_filesystem(
     root: &Path,
     workspace_root: &Path,
     host_home_root: Option<&LocalDevHostHomeRoot>,
+    pg_pool: Option<&Arc<deadpool_postgres::Pool>>,
 ) -> Result<LocalDevRootFilesystemBundle, RebornBuildError> {
     let local = Arc::new(local_dev_project_filesystem(
         root,
         workspace_root,
         host_home_root,
     )?);
-    eprintln!(
-        "brassclaw: local-dev: /memory is backed by InMemoryBackend; memory documents are ephemeral and will be lost on restart"
-    );
     let mut composite = CompositeRootFilesystem::new();
-    mount_local_dev_memory_root(&mut composite, Arc::new(InMemoryBackend::new()))?;
-    // Mount an in-memory backend at /tenants so that per-tenant structured
-    // records (conversations state, auth accounts, secrets, approvals, etc.)
-    // have a backend when ScopedFilesystem resolves per-user aliases such as
-    // /conversations → /tenants/<t>/users/<u>/conversations.  Without this,
-    // local-dev builds that exercise auth flows or the trigger poller fail
-    // with "no backend mount found for virtual path /tenants/…".
-    mount_local_dev_tenant_root(&mut composite, Arc::new(InMemoryBackend::new()))?;
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = pg_pool {
+        let records = Arc::new(brassclaw_filesystem::PostgresRootFilesystem::new(
+            (**pool).clone(),
+        ));
+        // The universal-filesystem schema has its own migration owner. A failed
+        // attachment aborts startup; never fall back to ephemeral production data.
+        records.run_migrations().await?;
+        mount_local_dev_memory_root(&mut composite, Arc::clone(&records))?;
+        mount_local_dev_tenant_root(&mut composite, records, BackendKind::DatabaseFilesystem)?;
+    } else {
+        mount_ephemeral_local_dev_memory_root(&mut composite)?;
+        mount_local_dev_tenant_root(
+            &mut composite,
+            Arc::new(InMemoryBackend::new()),
+            BackendKind::Custom("in-memory".to_string()),
+        )?;
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        if pg_pool.is_some() {
+            return Err(RebornBuildError::InvalidConfig {
+                reason: "durable memory requires the Postgres filesystem feature".to_string(),
+            });
+        }
+        mount_ephemeral_local_dev_memory_root(&mut composite)?;
+        mount_local_dev_tenant_root(
+            &mut composite,
+            Arc::new(InMemoryBackend::new()),
+            BackendKind::Custom("in-memory".to_string()),
+        )?;
+    }
+    // Scoped aliases such as /conversations resolve under /tenants. Their
+    // structured records share the durable production backend, while isolated
+    // local-dev fixtures use ephemeral mounts. Domain stores retain ownership
+    // of record schemas, encryption and identity validation.
     mount_local_dev_project_roots(&mut composite, local)?;
     Ok(LocalDevRootFilesystemBundle {
         filesystem: Arc::new(composite),
     })
+}
+
+fn mount_ephemeral_local_dev_memory_root(
+    composite: &mut CompositeRootFilesystem,
+) -> Result<(), RebornBuildError> {
+    eprintln!(
+        "brassclaw: local-dev: /memory is backed by InMemoryBackend; memory documents are ephemeral and will be lost on restart"
+    );
+    mount_local_dev_memory_root(composite, Arc::new(InMemoryBackend::new()))
 }
 
 fn local_dev_project_filesystem(
@@ -1454,6 +1456,7 @@ where
 fn mount_local_dev_tenant_root<F>(
     root: &mut CompositeRootFilesystem,
     backend: Arc<F>,
+    kind: BackendKind,
 ) -> Result<(), RebornBuildError>
 where
     F: RootFilesystem + 'static,
@@ -1462,7 +1465,7 @@ where
         local_dev_mount_descriptor(
             "/tenants",
             "local-dev-tenants",
-            BackendKind::Custom("in-memory".to_string()),
+            kind,
             StorageClass::StructuredRecords,
             ContentKind::StructuredRecord,
             IndexPolicy::NotIndexed,
@@ -1948,15 +1951,6 @@ fn notion_mcp_allowed_effects() -> Vec<EffectKind> {
     ]
 }
 
-#[cfg(test)]
-fn nearai_allowed_effects() -> Vec<EffectKind> {
-    vec![
-        EffectKind::DispatchCapability,
-        EffectKind::Network,
-        EffectKind::UseSecret,
-    ]
-}
-
 #[cfg(feature = "postgres")]
 type FilesystemProductionHostRuntimeServices<F> = HostRuntimeServices<
     F,
@@ -2286,8 +2280,7 @@ mod tests {
     use brassclaw_host_api::{
         CapabilityGrant, CapabilityGrantId, CapabilityId, CapabilitySet, EffectKind,
         ExecutionContext, ExtensionId, GrantConstraints, MountAlias, MountGrant, MountPermissions,
-        NetworkPolicy, NetworkScheme, NetworkTargetPattern, Principal, ResourceEstimate,
-        RuntimeCredentialAccountProviderId, RuntimeCredentialRequirementSource, RuntimeKind,
+        NetworkPolicy, NetworkTargetPattern, Principal, ResourceEstimate, RuntimeKind,
         SecretHandle, TenantId, TrustClass, UserId, VirtualPath,
     };
     use brassclaw_host_runtime::{
@@ -2555,28 +2548,148 @@ mod tests {
         );
     }
 
-    /// Verify that `attach_hosted_mcp_runtime` is soft-disabled when the host
-    /// runtime has no HTTP egress (e.g. in-memory-only test services). The
-    /// function must not panic or return an error; it simply skips the MCP
-    /// runtime attachment so the rest of the composition continues.
-    #[test]
-    fn attach_hosted_mcp_runtime_skips_services_without_http_egress() {
-        let services = HostRuntimeServices::new(
-            Arc::new(ExtensionRegistry::new()),
-            Arc::new(LocalFilesystem::new()),
-            Arc::new(InMemoryResourceGovernor::new()),
-            Arc::new(GrantAuthorizer::new()),
-            ProcessServices::in_memory(),
-            CapabilitySurfaceVersion::new("surface-v1").unwrap(),
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    async fn native_hybrid_memory_tools_preserve_documents_and_search_after_rebuild() {
+        use brassclaw_conversations::{
+            ConversationBindingService, ConversationRouteKind, ExternalConversationRef,
+            ExternalEventId, ResolveConversationRequest,
+        };
+        use brassclaw_host_runtime::MEMORY_READ_CAPABILITY_ID;
+
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let home = tempfile::tempdir().expect("runtime home");
+        let input = || {
+            rig.build_input("durable-memory-owner", home.path())
+                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy"))
+        };
+        let first = build_reborn_services(input()).await.expect("first build");
+        let binding_request = || ResolveConversationRequest {
+            tenant_id: TenantId::new("durable-memory-tenant").expect("tenant"),
+            adapter_kind: AdapterKind::new("telegram").expect("adapter"),
+            adapter_installation_id: AdapterInstallationId::new("durable-installation")
+                .expect("installation"),
+            external_actor_ref: ExternalActorRef::new("user", "durable-actor").expect("actor"),
+            external_conversation_ref: ExternalConversationRef::new(
+                None,
+                "durable-chat",
+                None,
+                None,
+            )
+            .expect("conversation"),
+            external_event_id: ExternalEventId::new("durable-event").expect("event"),
+            route_kind: ConversationRouteKind::Direct,
+            requested_agent_id: None,
+            requested_project_id: None,
+        };
+        let conversations = first
+            .local_runtime
+            .as_ref()
+            .expect("first local substrate")
+            .durable_trigger_conversation_services()
+            .await
+            .expect("conversation store attachment");
+        let request = binding_request();
+        conversations
+            .pair_external_actor(
+                request.tenant_id.clone(),
+                request.adapter_kind.clone(),
+                request.adapter_installation_id.clone(),
+                request.external_actor_ref.clone(),
+                UserId::new("durable-memory-owner").expect("owner"),
+            )
+            .await
+            .expect("persist authorized actor pairing");
+        let binding = conversations
+            .resolve_or_create_binding(request)
+            .await
+            .expect("persist conversation binding");
+        drop(conversations);
+        invoke_json(
+            first.host_runtime.as_ref().expect("first runtime").as_ref(),
+            MEMORY_WRITE_CAPABILITY_ID,
+            memory_context(MEMORY_WRITE_CAPABILITY_ID),
+            serde_json::json!({
+                "target": "projects/alpha/notes.md",
+                "content": "durable memory restart marker",
+                "append": false,
+                "metadata": {"purpose": "restart-regression"}
+            }),
+        )
+        .await
+        .expect("write through the ordinary registered Tool");
+        drop(first);
+
+        // No surviving runtime or repository may supply an in-memory cache.
+        let second = build_reborn_services(input()).await.expect("second build");
+        let conversations = second
+            .local_runtime
+            .as_ref()
+            .expect("second local substrate")
+            .durable_trigger_conversation_services()
+            .await
+            .expect("rehydrate conversation store");
+        assert_eq!(
+            conversations
+                .lookup_binding(binding_request())
+                .await
+                .expect("persisted actor and route"),
+            binding,
         );
-        // product_auth_provider_runtime_ports() is None without HTTP egress.
-        assert!(services.product_auth_provider_runtime_ports().is_none());
+        drop(conversations);
+        let runtime = second.host_runtime.as_ref().expect("second runtime");
+        let read = invoke_json(
+            runtime.as_ref(),
+            MEMORY_READ_CAPABILITY_ID,
+            memory_context(MEMORY_READ_CAPABILITY_ID),
+            serde_json::json!({"path": "projects/alpha/notes.md"}),
+        )
+        .await
+        .expect("read persisted document after rebuilding all services");
+        assert_eq!(read["content"], "durable memory restart marker");
+        let search = invoke_json(
+            runtime.as_ref(),
+            MEMORY_SEARCH_CAPABILITY_ID,
+            memory_context(MEMORY_SEARCH_CAPABILITY_ID),
+            serde_json::json!({"query": "restart marker", "limit": 5}),
+        )
+        .await
+        .expect("search persisted chunk projections after rebuild");
+        assert_eq!(search["result_count"], 1);
+        assert_eq!(search["results"][0]["path"], "projects/alpha/notes.md");
 
-        // attach_hosted_mcp_runtime must succeed (soft-skip) rather than error.
-        let services = attach_hosted_mcp_runtime(services).expect("soft-disable must not error");
+        invoke_json(
+            runtime.as_ref(),
+            MEMORY_WRITE_CAPABILITY_ID,
+            memory_context(MEMORY_WRITE_CAPABILITY_ID),
+            serde_json::json!({
+                "target": "projects/alpha/notes.md",
+                "old_string": "restart marker",
+                "new_string": "updated marker"
+            }),
+        )
+        .await
+        .expect("CAS patch against the persistent repository");
+        drop(second);
+        let third = build_reborn_services(input()).await.expect("third build");
+        let read = invoke_json(
+            third.host_runtime.as_ref().expect("third runtime").as_ref(),
+            MEMORY_READ_CAPABILITY_ID,
+            memory_context(MEMORY_READ_CAPABILITY_ID),
+            serde_json::json!({"path": "projects/alpha/notes.md"}),
+        )
+        .await
+        .expect("patched document survives another rebuild");
+        assert_eq!(read["content"], "durable memory updated marker");
+        drop(third);
 
-        // Runtime ports still absent — no egress was added by the attachment.
-        assert!(services.product_auth_provider_runtime_ports().is_none());
+        rig.pool.close();
+        let error =
+            build_local_dev_root_filesystem(home.path(), home.path(), None, Some(&rig.pool))
+                .await
+                .err()
+                .expect("an unavailable durable mount must abort attachment");
+        assert!(matches!(error, RebornBuildError::Filesystem(_)));
     }
 
     #[tokio::test]
@@ -2694,64 +2807,47 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_dev_notion_mcp_installs_activates_and_reaches_auth_gate() {
-        let dir = tempfile::tempdir().expect("tempdir");
+    async fn local_dev_legacy_outbound_mcp_stays_inactive() {
+        let dir = tempfile::tempdir().unwrap();
         let services = build_reborn_services(
-            RebornBuildInput::local_dev("local-dev-notion-mcp-owner", dir.path().join("local-dev"))
-                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
+            RebornBuildInput::local_dev("disabled-mcp-owner", dir.path().join("local-dev"))
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
         )
         .await
-        .expect("local-dev services build");
-        let local_runtime = services.local_runtime.as_ref().expect("local runtime");
-        let extension_management = local_runtime
+        .unwrap();
+        let extension_management = services
+            .local_runtime
+            .as_ref()
+            .unwrap()
             .extension_management
             .as_ref()
-            .expect("extension management");
-        let notion_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").expect("valid ref");
-        let catalog = AvailableExtensionCatalog::from_first_party_assets()
-            .expect("first-party extensions load");
-        let notion_package = catalog.resolve(&notion_ref).expect("Notion MCP is bundled");
-        let capability_ids = notion_package
-            .package
-            .manifest
-            .capabilities
-            .iter()
-            .map(|capability| capability.id.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(capability_ids.len(), 18);
-        assert!(capability_ids.contains(&"notion.notion-create-pages"));
-        assert!(capability_ids.contains(&"notion.notion-query-data-sources"));
-        assert!(capability_ids.contains(&"notion.notion-create-comment"));
-        assert!(capability_ids.contains(&"notion.notion-get-self"));
-
-        extension_management
-            .install(notion_ref.clone())
+            .unwrap();
+        for name in ["notion", "nearai"] {
+            let package_ref =
+                LifecyclePackageRef::new(LifecyclePackageKind::Extension, name).unwrap();
+            extension_management
+                .install(package_ref.clone())
+                .await
+                .unwrap();
+            let error = extension_management
+                .activate(package_ref, ExtensionActivationMode::Static)
+                .await
+                .expect_err("MCP client is suspended");
+            assert!(
+                error
+                    .to_string()
+                    .contains("outbound MCP client capability is disabled")
+            );
+        }
+        let capabilities = extension_management
+            .active_model_visible_capabilities()
             .await
-            .expect("install Notion MCP");
-        extension_management
-            .activate(notion_ref, ExtensionActivationMode::Static)
-            .await
-            .expect("activate Notion MCP");
-
-        let outcome = services
-            .host_runtime
-            .as_ref()
-            .expect("host runtime")
-            .invoke_capability(RuntimeCapabilityRequest::new(
-                notion_mcp_context("notion.notion-search"),
-                CapabilityId::new("notion.notion-search").unwrap(),
-                ResourceEstimate::default(),
-                serde_json::json!({ "query": "project notes" }),
-                notion_mcp_trust_decision(),
-            ))
-            .await
-            .expect("runtime invocation completes");
-
-        let RuntimeCapabilityOutcome::AuthRequired(gate) = outcome else {
-            panic!("expected missing Notion token to open auth gate, got {outcome:?}");
-        };
-        assert_eq!(gate.capability_id.as_str(), "notion.notion-search");
+            .unwrap();
+        assert!(
+            !capabilities
+                .iter()
+                .any(|capability| matches!(capability.provider.as_str(), "notion" | "nearai"))
+        );
     }
 
     #[tokio::test]
@@ -2803,83 +2899,6 @@ mod tests {
         };
         assert_eq!(failure.capability_id.as_str(), "web-access.search");
         assert_eq!(failure.kind, RuntimeFailureKind::Backend);
-    }
-
-    #[tokio::test]
-    async fn local_dev_nearai_mcp_installs_and_activates_model_visible_capability() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let services = build_reborn_services(
-            RebornBuildInput::local_dev("local-dev-nearai-mcp-owner", dir.path().join("local-dev"))
-                .with_runtime_policy(crate::local_dev_runtime_policy().expect("local-dev policy")),
-        )
-        .await
-        .expect("local-dev services build");
-        let local_runtime = services.local_runtime.as_ref().expect("local runtime");
-        let extension_management = local_runtime
-            .extension_management
-            .as_ref()
-            .expect("extension management");
-        let nearai_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "nearai").expect("valid ref");
-
-        extension_management
-            .install(nearai_ref.clone())
-            .await
-            .expect("install NEAR AI MCP");
-        extension_management
-            .activate(nearai_ref, ExtensionActivationMode::Static)
-            .await
-            .expect("activate NEAR AI MCP");
-
-        let capabilities = extension_management
-            .active_model_visible_capabilities()
-            .await
-            .expect("active capabilities");
-        let search = capabilities
-            .iter()
-            .find(|capability| capability.id.as_str() == "nearai.search")
-            .expect("nearai.search active");
-
-        assert_eq!(search.provider.as_str(), "nearai");
-        assert_eq!(search.effects, nearai_allowed_effects());
-        assert_eq!(search.runtime_credentials.len(), 1);
-        assert_eq!(
-            search.runtime_credentials[0].handle,
-            SecretHandle::new("llm_nearai_api_key").unwrap()
-        );
-        // NEAR AI MCP credential is sourced from a product-auth account so that the
-        // user-facing setup flow is the manual-token product-auth surface (shared
-        // with GitHub WASM), not an out-of-band SecretStore handle drop.
-        // The 'handle' field remains the staging slot name the MCP egress planner
-        // reads from RuntimeSecretInjectionStore after the obligation handler resolves
-        // the access secret via RuntimeCredentialAccountResolver.
-        assert_eq!(
-            search.runtime_credentials[0].source,
-            RuntimeCredentialRequirementSource::ProductAuthAccount {
-                provider: RuntimeCredentialAccountProviderId::new("nearai").unwrap(),
-                setup: Default::default(),
-            }
-        );
-        assert_eq!(
-            search.runtime_credentials[0].audience.host_pattern,
-            "private.near.ai"
-        );
-    }
-
-    #[test]
-    fn attach_hosted_mcp_runtime_skips_services_without_runtime_http_egress() {
-        let services = HostRuntimeServices::new(
-            Arc::new(ExtensionRegistry::new()),
-            Arc::new(LocalFilesystem::new()),
-            Arc::new(InMemoryResourceGovernor::new()),
-            Arc::new(GrantAuthorizer::new()),
-            ProcessServices::in_memory(),
-            CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-        );
-
-        let services = attach_hosted_mcp_runtime(services).expect("attach is optional");
-
-        assert!(services.product_auth_provider_runtime_ports().is_none());
     }
 
     #[tokio::test]
@@ -3042,35 +3061,6 @@ mod tests {
                         mounts: MountView::new(Vec::new()).expect("valid empty mount view"),
                         network: NetworkPolicy::default(),
                         secrets: vec![SecretHandle::new("missing-google-access-token").unwrap()],
-                        resource_ceiling: None,
-                        expires_at: None,
-                        max_invocations: None,
-                    },
-                }],
-            },
-            MountView::new(Vec::new()).expect("valid empty mount view"),
-        )
-        .expect("valid execution context")
-    }
-
-    fn notion_mcp_context(capability_id: &str) -> ExecutionContext {
-        let extension_id = ExtensionId::new("caller").expect("valid extension id");
-        ExecutionContext::local_default(
-            UserId::new("local-dev-test-user").expect("valid user id"),
-            extension_id.clone(),
-            RuntimeKind::Mcp,
-            TrustClass::Sandbox,
-            CapabilitySet {
-                grants: vec![CapabilityGrant {
-                    id: CapabilityGrantId::new(),
-                    capability: CapabilityId::new(capability_id).expect("valid capability id"),
-                    grantee: Principal::Extension(extension_id),
-                    issued_by: Principal::HostRuntime,
-                    constraints: GrantConstraints {
-                        allowed_effects: notion_mcp_allowed_effects(),
-                        mounts: MountView::new(Vec::new()).expect("valid empty mount view"),
-                        network: notion_mcp_network_policy(),
-                        secrets: vec![SecretHandle::new("mcp_notion_access_token").unwrap()],
                         resource_ceiling: None,
                         expires_at: None,
                         max_invocations: None,
@@ -3397,43 +3387,11 @@ mod tests {
         }
     }
 
-    fn notion_mcp_network_policy() -> NetworkPolicy {
-        NetworkPolicy {
-            allowed_targets: vec![NetworkTargetPattern {
-                scheme: Some(NetworkScheme::Https),
-                host_pattern: "mcp.notion.com".to_string(),
-                port: None,
-            }],
-            deny_private_ip_ranges: true,
-            max_egress_bytes: None,
-        }
-    }
-
-    fn notion_mcp_allowed_effects() -> Vec<EffectKind> {
-        vec![
-            EffectKind::DispatchCapability,
-            EffectKind::Network,
-            EffectKind::UseSecret,
-        ]
-    }
-
     fn trust_decision() -> TrustDecision {
         TrustDecision {
             effective_trust: EffectiveTrustClass::user_trusted(),
             authority_ceiling: AuthorityCeiling {
                 allowed_effects: allowed_effects(),
-                max_resource_ceiling: None,
-            },
-            provenance: TrustProvenance::Default,
-            evaluated_at: chrono::Utc::now(),
-        }
-    }
-
-    fn notion_mcp_trust_decision() -> TrustDecision {
-        TrustDecision {
-            effective_trust: EffectiveTrustClass::user_trusted(),
-            authority_ceiling: AuthorityCeiling {
-                allowed_effects: notion_mcp_allowed_effects(),
                 max_resource_ceiling: None,
             },
             provenance: TrustProvenance::Default,

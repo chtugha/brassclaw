@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ad7ea57ca32118f9",
+  "object": "chat.completion",
+  "created": 1791518984,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": true,\n  \"reason\": \"The reference states loading is not an invocation or a new Recipe effect step, and that preloading definitions is assembly preparation while invoking the pinned export is a separate operation (skills.md 1086b833f7f0, 534be94fd078; recipe.md 099304cbaf9a).\",\n  \"citations\": [\"1086b833f7f0\", \"534be94fd078\", \"099304cbaf9a\"]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114442,
+    "total_tokens": 114579,
+    "completion_tokens": 137,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -153,7 +153,7 @@ pub fn usage_drafts(
             "host.memory_write",
             "builtin.memory_write",
             "memory_write",
-            "result = host.memory_write(content=inputs['content'], target='daily_log')",
+            "def save_turn_history(inputs):\n    return host.memory_write(content=inputs['content'], target='daily_log')",
             json!({"content":string}),
             json!({"content":"content"}),
             json!({"target":{"type":"string","checks":[],"depends_on":[],"meaning":"Append to the daily log"}}),
@@ -167,7 +167,7 @@ pub fn usage_drafts(
             "host.post_reply",
             "host.post_reply",
             "post_reply",
-            "result = host.post_reply(answer=inputs['answer'])",
+            "def publish_turn_reply(inputs):\n    return host.post_reply(answer=inputs['answer'])",
             json!({"answer":string}),
             json!({"answer":"answer"}),
             json!({}),
@@ -175,6 +175,17 @@ pub fn usage_drafts(
             "Publish the supplied answer once to this admitted task's transcript.",
         )
     };
+    let export = if history {
+        "save_turn_history"
+    } else {
+        "publish_turn_reply"
+    };
+    let preload = json!({"format":"python-preload/2","exports":{export:{"symbol":export,"parameters":["inputs"],"mapping":true}},
+        "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":export});
+    let failure = json!({"action":"stop","max_attempts":1,"idempotency":"not_assumed",
+        "idempotency_evidence_ref":null,"retryable_outcomes":[]});
+    let interface = json!({"format":"skill-interface/1","python_code_uuid":code,
+        "exports":preload["exports"],"inputs":inputs,"result":result,"failure":failure,"dependencies":[],"private_symbols":[]});
     let prose = format!(
         r#"Purpose
 {purpose}
@@ -192,7 +203,7 @@ Prerequisites
 The exact admitted task owns the transcript and memory address. The selected Tool implementation and adapter must be retained; current global policy and technical constraints apply at dispatch. No additional invocation approval is granted.
 
 Execution
-PythonCode {code} calls {callable} once. {argument_description}
+PythonCode {code} defines the pinned {export}(inputs) export without effects. The invocation boundary validates typed inputs and captures its returned value. The export calls {callable} once. {argument_description}
 
 Result
 {result_description} This usage invokes no downstream Tool.
@@ -230,8 +241,7 @@ Examples and acceptance
         json!({"format":"skill-association/1","skill_uuid":skill,"python_code_uuid":code,
         "tool_skill_uuid":descriptor,"tool_uuid":tool,"callable":callable,"inputs":inputs,
         "arguments":arguments,"code_arguments":fixed,"result":result,
-        "failure":{"action":"stop","max_attempts":1,"idempotency":"not_assumed",
-        "idempotency_evidence_ref":null,"retryable_outcomes":[]}})
+        "failure":failure})
         .to_string();
     let task_inputs = if history {
         json!({"user_input":string,"answer":string,"reply_ref":string})
@@ -317,7 +327,10 @@ Examples and acceptance
         "variants":[{"variant_key":"selected","step_link":"0:1-0:E",
         "intent_examples":examples,"variable_patterns":variables}],
         "step_descriptions":[{"desc_idx":0,"label":"Explicit typed usage","yaml_source":"","steps":steps}],
-        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":task_inputs,"steps":layouts}}});
+        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":task_inputs,"steps":layouts}},
+        "invocations":{"selected":if history {
+            json!({"0:1":"format_turn_history","0:3":export})
+        } else {json!({"0:2":export})}}});
     let mut drafts = vec![
         (
             descriptor,
@@ -330,14 +343,14 @@ Examples and acceptance
         (
             code,
             22,
-            json!({"content":body,"input_contract":inputs,"result_contract":result}),
+            json!({"content":body,"preload":preload,"input_contract":inputs,"result_contract":result}),
             vec![],
             Value::Null,
         ),
         (
             skill,
             1,
-            json!({"body":prose}),
+            json!({"body":prose,"interface":interface}),
             vec![code, descriptor, tool],
             json!(association),
         ),
@@ -346,7 +359,9 @@ Examples and acceptance
     if history {
         dependencies.push(formatter.expect("validated history formatter"));
         drafts.push((formatter.expect("validated history formatter"),22,json!({"content":
-            r"result = 'User: ' + inputs['user_input'] + '\nAssistant: ' + inputs['answer'] + '\nReply: ' + inputs['reply_ref']",
+            "def format_turn_history(inputs):\n    import json\n    return json.dumps({'format': 'completed-turn/1', 'user_input': inputs['user_input'], 'answer': inputs['answer'], 'reply_ref': inputs['reply_ref']}) + '\\n'",
+            "preload":{"format":"python-preload/2","exports":{"format_turn_history":{"symbol":"format_turn_history","parameters":["inputs"],"mapping":true}},
+                "private_functions":{},"constants":[],"imports":["json"],"dependencies":[],"default_export":"format_turn_history"},
             "input_contract":task_inputs,"result_contract":{"type":"string"}}),vec![],Value::Null));
     }
     drafts.push((root, 21, recipe, dependencies, Value::Null));

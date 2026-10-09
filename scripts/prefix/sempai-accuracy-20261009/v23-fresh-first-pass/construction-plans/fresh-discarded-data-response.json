@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b00aceb28217dfdb",
+  "object": "chat.completion",
+  "created": 1791518886,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is [] and dependency_registry is null\", \"result\": \"name: recipe-fresh-discarded-data, description: Offline unapproved data-return subworkflow; no Tool calls and no posted message, trigger: null, steps: [], prior_knowledge_content: Unapproved documentation fixture dependencies; Q1 and human Q2 required. The\"}, {\"guard\": \"one desc_idx=0 with a single component step\", \"result\": \"stepnumber 1, knowledge orchestrator, goal Return state data, content Use the supplied offline fixture, type component, include 5a261cd4-ea35-5517-b971-71565df9386a, tool_bindings [], dependencies null\"}, {\"guard\": \"one variant with step_link 0:1-0:E\", \"result\": \"variant_key fresh-discarded-data, description Offline unapproved data-return subworkflow; no Tool calls and no posted message, step_link 0:1-0:E, variable_patterns []\"}, {\"guard\": \"intent_examples list\", \"result\": \"at least ten unique intents about computing/returning the Discarded phase DATA, e.g. compute the discarded phase data, return the discarded phase object, produce the fixed discarded object, obtain the discarded result data, calculate the discarded state\"}, {\"guard\": \"matching set list\", \"result\": \"the same ten-plus distinct intents repeated as a matching set\"}, {\"guard\": \"root compatibility arrays\", \"result\": \"proposed_recipe_updates, proposed_intent_examples, settings_adjustments, bridge_messages, proposed_components all empty; adjusted_volatile_messages preserves the original user message once\"}, {\"guard\": \"composition_summary\", \"result\": \"Offline unapproved data-return subworkflow; no Tool calls and no posted message. The constructor preserves full v3 fields; steps is empty and the executable references are in step_descriptions. No actual tests, Q1/Q2, submission or activation occurred in\"}, {\"guard\": \"no version/approval/runtime claims\", \"result\": \"omit any version/approval/runtime claims; do not fabricate tests, approval or activation; preserve all original messages verbatim\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"supported full-v3 sink fields\", \"resolved catalogue/draft identities\"], \"notes\": \"Returns phase DATA only; no message is posted regardless of the word Sent or Discarded. All supplied UUIDs are host-allocated unapproved documentation fixtures.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115159,
+    "total_tokens": 115717,
+    "completion_tokens": 558,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

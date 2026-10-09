@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8b5a3202e9a1e34d",
+  "object": "chat.completion",
+  "created": 1791518710,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component. The helper checks exact bool type (type(value) is bool), which accepts False and rejects 0/1/strings; missing/null/0/1/string are all invalid. Module-level result is assigned by calling the helper. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-boolean-helper\", \"description\": \"Exact bool armed includes False. Missing/null/0/1/string invalid. Always result={checked:boolean,armed:original bool if checked else null}. No coercion/imports/host/exceptions. Target inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"def check_armed(value):\\n    checked = type(value) is bool\\n    return {'checked': checked, 'armed': value if checked else None}\\nresult = check_armed(inputs.get('armed'))\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115244,
+    "total_tokens": 115509,
+    "completion_tokens": 265,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

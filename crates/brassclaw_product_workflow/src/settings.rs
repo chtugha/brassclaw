@@ -257,6 +257,9 @@ pub struct MontyVmSettings {
 pub struct UpdateMontyVmSettingsRequest {
     pub max_recipes_per_task: Option<u32>,
     pub memory_policy: Option<MontyMemoryPolicy>,
+    /// Full replacement when present. Database compatibility defaults must not
+    /// silently overwrite an operator's limits in an incomplete API request.
+    #[serde(default, deserialize_with = "deserialize_execution_limits_update")]
     pub execution_limits: Option<brassclaw_host_api::MontyExecutionLimits>,
     /// Compare-and-set revision from GET. Required by durable stores.
     pub expected_revision: Option<u64>,
@@ -272,6 +275,67 @@ pub struct UpdateMontyVmSettingsRequest {
     pub active_orchestrator_id: Option<String>,
     /// Toggle the global token-budget kill switch (§0.21).
     pub token_budgets_enabled: Option<bool>,
+}
+
+fn deserialize_execution_limits_update<'de, D>(
+    deserializer: D,
+) -> Result<Option<brassclaw_host_api::MontyExecutionLimits>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(transparent)]
+    struct CompleteLimits(
+        #[serde(deserialize_with = "deserialize_complete_execution_limits")]
+        brassclaw_host_api::MontyExecutionLimits,
+    );
+    Option::<CompleteLimits>::deserialize(deserializer).map(|value| value.map(|value| value.0))
+}
+
+fn deserialize_complete_execution_limits<'de, D>(
+    deserializer: D,
+) -> Result<brassclaw_host_api::MontyExecutionLimits, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct CompleteLimitsVisitor;
+    impl<'de> serde::de::Visitor<'de> for CompleteLimitsVisitor {
+        type Value = brassclaw_host_api::MontyExecutionLimits;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a complete Monty execution limits object")
+        }
+        fn visit_map<M>(self, mut incoming: M) -> Result<Self::Value, M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            use serde::de::Error;
+            // Derive required names from the canonical DTO, without a second
+            // field list that could miss the next settings migration. Values
+            // from this template are never used as request defaults.
+            let template =
+                serde_json::to_value(Self::Value::default()).map_err(M::Error::custom)?;
+            let required = template
+                .as_object()
+                .ok_or_else(|| M::Error::custom("execution limits definition is not an object"))?;
+            let mut values = serde_json::Map::new();
+            while let Some(key) = incoming.next_key::<String>()? {
+                if !required.contains_key(&key) {
+                    return Err(M::Error::custom("unknown execution limits field"));
+                }
+                if values.contains_key(&key) {
+                    return Err(M::Error::custom("duplicate execution limits field"));
+                }
+                values.insert(key, incoming.next_value::<serde_json::Value>()?);
+            }
+            if values.len() != required.len() {
+                return Err(M::Error::custom(
+                    "execution_limits requires every field from the current settings response",
+                ));
+            }
+            serde_json::from_value(serde_json::Value::Object(values)).map_err(M::Error::custom)
+        }
+    }
+    deserializer.deserialize_map(CompleteLimitsVisitor)
 }
 
 /// Response for both GET and PUT of Monty VM settings.
@@ -363,6 +427,26 @@ pub struct MontyMemoryBudgetStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyExecutionLimitsStatus {
+    pub pending_ownership_checks: u64,
+    pub ownership_over_capacity: bool,
+    pub ownership_effective_revision: u64,
+    pub actor_requests: u64,
+    pub actor_reserved_bytes: u64,
+    pub actor_over_capacity: bool,
+    pub actor_control_requests: u64,
+    pub actor_control_reserved_bytes: u64,
+    pub actor_control_over_capacity: bool,
+    pub retained_attempts: u32,
+    pub retention_over_capacity: bool,
+    pub pending_settings: u32,
+    pub settings_over_capacity: bool,
+    /// Owned backlog, including pending admission; excludes running VM tasks.
+    pub queued_tasks: u32,
+    pub queued_bytes: u64,
+    pub queue_over_capacity: bool,
+    /// Actual worker-owned contexts; existing usage survives a reduction.
+    pub active_recipe_contexts: u64,
+    pub recipe_contexts_over_capacity: bool,
     pub desired_revision: u64,
     pub effective_revision: u64,
     pub limits: brassclaw_host_api::MontyExecutionLimits,
@@ -617,12 +701,13 @@ pub enum McpServerState {
     Error,
 }
 
-/// Persisted settings for the Orchestrator MCP Server.
+/// Process-local compatibility settings for the inbound MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerSettings {
     /// TCP port the MCP server listens on. Default: 9090.
     pub port: u16,
-    /// Whether the server should auto-start on boot.
+    /// Compatibility field: always true. Server lifetime is instance-owned,
+    /// independent of Kohai's request-local provider connection.
     pub auto_start: bool,
 }
 
@@ -630,7 +715,7 @@ impl Default for McpServerSettings {
     fn default() -> Self {
         Self {
             port: 9090,
-            auto_start: false,
+            auto_start: true,
         }
     }
 }
@@ -642,7 +727,7 @@ pub struct UpdateMcpServerSettingsRequest {
     /// to apply.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
-    /// New auto-start value.
+    /// Compatibility field; false is rejected by the inbound service.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_start: Option<bool>,
 }
@@ -659,7 +744,7 @@ pub struct McpServerStatusResponse {
     pub state: McpServerState,
     /// Port currently being listened on. `None` when stopped.
     pub port: Option<u16>,
-    /// Full endpoint URL when running, e.g. `http://0.0.0.0:9090/mcp`.
+    /// Full authenticated endpoint URL when running.
     pub endpoint_url: Option<String>,
     /// Human-readable error message when `state == "error"`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -692,7 +777,8 @@ pub enum McpServerServiceError {
     Internal(String),
 }
 
-/// Service port for managing the Orchestrator MCP Server lifecycle.
+/// Inbound MCP settings/readiness facade. Instance startup/shutdown owns the
+/// server lifetime; provider connections must not start or stop its listener.
 ///
 /// Backed by `McpServerServiceImpl` in `brassclaw_reborn_composition`.
 /// In DB-less / no-composition mode the default trait impl returns 501.
@@ -860,4 +946,87 @@ pub enum SettingsListingError {
     /// No row with that id in this tenant's scope for the requested type.
     #[error("settings component not found: {0}")]
     NotFound(String),
+}
+
+#[cfg(test)]
+mod execution_limits_update_tests {
+    use super::UpdateMontyVmSettingsRequest;
+    use brassclaw_host_api::MontyExecutionLimits;
+
+    #[test]
+    fn execution_limit_updates_require_every_current_field() {
+        let limits = MontyExecutionLimits {
+            max_pending_ownership_checks: 17,
+            ..Default::default()
+        };
+        let complete = serde_json::to_value(limits).unwrap();
+        let update: UpdateMontyVmSettingsRequest = serde_json::from_value(
+            serde_json::json!({"expected_revision":7,"execution_limits":complete}),
+        )
+        .unwrap();
+        assert_eq!(update.execution_limits, Some(limits));
+        for field in complete.as_object().unwrap().keys() {
+            let mut incomplete = complete.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            let body = serde_json::json!({"expected_revision":7,"execution_limits":incomplete});
+            assert!(
+                serde_json::from_value::<UpdateMontyVmSettingsRequest>(body.clone()).is_err(),
+                "missing {field} must not reset that field to its default"
+            );
+            assert!(
+                serde_json::from_str::<UpdateMontyVmSettingsRequest>(&body.to_string()).is_err(),
+                "raw JSON missing {field} must not reset that field to its default"
+            );
+        }
+        // Legacy database decoding still has its migration defaults. Only the
+        // API replacement contract requires all fields, not stored old rows.
+        let mut legacy = complete;
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("max_pending_ownership_checks");
+        let stored: MontyExecutionLimits = serde_json::from_value(legacy).unwrap();
+        assert_eq!(stored.max_pending_ownership_checks, 8);
+    }
+
+    #[test]
+    fn execution_limit_updates_keep_patch_and_strict_json_semantics() {
+        for body in ["{}", r#"{"execution_limits":null}"#] {
+            let update: UpdateMontyVmSettingsRequest = serde_json::from_str(body).unwrap();
+            assert_eq!(update.execution_limits, None);
+        }
+        let complete = serde_json::to_value(MontyExecutionLimits::default()).unwrap();
+        for invalid in [
+            serde_json::Value::Null,
+            serde_json::json!("17"),
+            serde_json::json!(1.5),
+        ] {
+            let mut value = complete.clone();
+            value["max_pending_ownership_checks"] = invalid;
+            assert!(
+                serde_json::from_value::<UpdateMontyVmSettingsRequest>(
+                    serde_json::json!({"execution_limits":value})
+                )
+                .is_err()
+            );
+        }
+        let mut unknown = complete.clone();
+        unknown["unsupported_limit"] = serde_json::json!(1);
+        assert!(
+            serde_json::from_value::<UpdateMontyVmSettingsRequest>(
+                serde_json::json!({"execution_limits":unknown})
+            )
+            .is_err()
+        );
+        // Converting directly through Value would silently discard duplicate
+        // keys. The request visitor must retain the original parser's error.
+        let duplicate = format!(
+            "{{\"execution_limits\":{{\"max_pending_ownership_checks\":17,{}}}}}",
+            serde_json::to_string(&complete)
+                .unwrap()
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+        );
+        assert!(serde_json::from_str::<UpdateMontyVmSettingsRequest>(&duplicate).is_err());
+    }
 }

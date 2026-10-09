@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-af4902a121208bcf",
+  "object": "chat.completion",
+  "created": 1791519523,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"class_code 21, name recipe-transfer-08, description offline unapproved idle-data-result subworkflow returning state data only, no posted message, Q1 and human Q2 required, current sink cannot preserve full v3 fields, unapproved draft not submitted or激活, no\"}, {\"guard\": \"one desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema\", \"result\": \"stepnumber 1, knowledge orchestrator, goal return idle state data, type component, include d14b7a42-2c12-57e8-9cf1-59d7e576182a, tool_bindings empty, dependencies null\"}, {\"guard\": \"one variant with step_link 0:1-0:E\", \"result\": \"variant_key transfer-08, description offline unapproved idle-data-result subworkflow returning state data only, variable_patterns empty, ten distinct intents\"}, {\"guard\": \"intent_examples array\", \"result\": \"compute the idle state data, return the idle state object, produce the fixed idle object, obtain the idle result data, calculate the idle state result, yield the idle state object, get the fixed idle state data, build the idle state object, evaluate the id\"}, {\"guard\": \"dependency_registry is null\", \"result\": \"dependency_registry null, prior_knowledge_content unapproved documentation fixture dependencies with Q1 and human Q2 required, current sink cannot preserve full v3 fields, export only no submission or activation\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval of authored recipe\", \"resolved catalogue/draft identities for the class22 fixture\", \"supported class21 constructor fields\", \"supported proposal sink that preserves full v3 fields\"], \"notes\": \"The supplied program result = {'state': 'Idle'} is pure data with no Tool call, input or dependency; it cannot satisfy say/post/reply intents, so its ten intent\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115183,
+    "total_tokens": 115645,
+    "completion_tokens": 462,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

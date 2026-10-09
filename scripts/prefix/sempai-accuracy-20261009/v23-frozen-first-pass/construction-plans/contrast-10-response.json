@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b07ba00d8895c80c",
+  "object": "chat.completion",
+  "created": 1791519276,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"records is not a list\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"len(records) > 3\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"records is []\", \"result\": \"ok=true, records=[]\"}, {\"guard\": \"records is null\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"records is a non-empty list\", \"result\": \"ok=true, records=records\"}, {\"guard\": \"an item is not a dict\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"an item has a key other than code/enabled\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"an item is missing code or enabled\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"an item's code is not a string\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"an item's code length is not 2..5\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"an item's enabled is not an exact bool\", \"result\": \"ok=false, records=[]\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract checks\", \"human Q2 approval\", \"selected-runner support for the inputs interface\"], \"notes\": \"No provider facts, dependencies or runtime support invented. Draft is unapproved; no tests or approval claims.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114951,
+    "total_tokens": 115280,
+    "completion_tokens": 329,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

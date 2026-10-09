@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-81b8d73a71197370",
+  "object": "chat.completion",
+  "created": 1791517492,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": true,\n  \"reason\": \"Yes \u2014 preloaded Skill exports do not enable a Tool; the matching ToolSkill binding and current global kernel policy are still required before every actual host.<tool>(...) dispatch (skills.md L231-251, toolskills.md L53-88).\",\n  \"citations\": [\"ebdbdb86e8ad\", \"7be48f43621c\"]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 113995,
+    "total_tokens": 114098,
+    "completion_tokens": 103,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

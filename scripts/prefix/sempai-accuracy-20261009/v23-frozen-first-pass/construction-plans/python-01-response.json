@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-abcf8df3c53bd640",
+  "object": "chat.completion",
+  "created": 1791518687,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"window not in inputs\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"window is None\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"type(window) is not int\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"type(window) is bool\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"not -3 <= window <= 6\", \"result\": \"{'accepted': False, 'window': None}\"}, {\"guard\": \"type(window) is int and -3 <= window <= 6\", \"result\": \"{'accepted': True, 'window': window}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval\", \"selected-runner typed inputs support\", \"exact association approval\"], \"notes\": \"window is a required input; absent key and explicit null both yield accepted=false/window=null. Exact int -3..6 inclusive, rejecting bool/float/strings. No host\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114915,
+    "total_tokens": 115180,
+    "completion_tokens": 265,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

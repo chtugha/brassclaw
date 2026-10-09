@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-04. Raw ttl may be absent or any JSON value; accepts exact int 0..9 inclusive (bool/float/null rejected); always result={accepted:boolean, ttl:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. No imports/I/O/host calls. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-04",
+        "description": "Raw ttl may be absent or any JSON value. Accept exact integers 0..9 inclusive (not bool/float). Always result={accepted:boolean, ttl:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs needs runner support; unapproved draft, not submitted or activated.",
+        "content": "ttl = inputs.get('ttl')\naccepted = type(ttl) is int and 0 <= ttl <= 9\nresult = {'accepted': accepted, 'ttl': ttl if accepted else None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

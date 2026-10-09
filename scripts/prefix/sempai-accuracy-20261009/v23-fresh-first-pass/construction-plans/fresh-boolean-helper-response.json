@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9d211b193c3e3751",
+  "object": "chat.completion",
+  "created": 1791518695,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"key absent\", \"result\": \"{'checked': False, 'armed': None}\"}, {\"guard\": \"value is None\", \"result\": \"{'checked': False, 'armed': None}\"}, {\"guard\": \"value is bool and value is False\", \"result\": \"{'checked': True, 'armed': False}\"}, {\"guard\": \"value is bool and value is True\", \"result\": \"{'checked': True, 'armed': True}\"}, {\"guard\": \"value is 0\", \"result\": \"{'checked': False, 'armed': None}\"}, {\"guard\": \"value is 1\", \"result\": \"{'checked': False, 'armed': None}\"}, {\"guard\": \"value is string\", \"result\": \"{'checked': False, 'armed': None}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected class22 constructor support\", \"Q1\", \"human Q2\"], \"notes\": \"Exact bool type check (type(value) is bool) accepts False and rejects 0/1/strings. Module-level result assignment via called helper. No host/imports/exceptions.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114853,
+    "total_tokens": 115121,
+    "completion_tokens": 268,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

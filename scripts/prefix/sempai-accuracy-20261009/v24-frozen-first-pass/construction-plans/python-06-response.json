@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-805976cb643c538f",
+  "object": "chat.completion",
+  "created": 1791520382,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"offset not in inputs\", \"result\": \"{'kind': 'missing', 'offset': None}\"}, {\"guard\": \"offset in inputs and offset is None\", \"result\": \"{'kind': 'null', 'offset': None}\"}, {\"guard\": \"offset in inputs, type(offset) is int, 2 <= offset <= 11\", \"result\": \"{'kind': 'integer', 'offset': offset}\"}, {\"guard\": \"else\", \"result\": \"{'kind': 'invalid', 'offset': None}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"target typed inputs needs runner support\", \"unapproved draft\", \"no observed tests/submission/activation\", \"Q1 and human Q2 required for activation\"], \"notes\": \"Contract is a presence-aware classifier: missing key and explicit null are distinct outcomes, so the helper must receive the whole inputs mapping (not inputs['x\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114187,
+    "total_tokens": 114407,
+    "completion_tokens": 220,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,263 +1,258 @@
 #!/usr/bin/env bash
-# BrassClaw install script.
-# Downloads the latest (or pinned) release binary from GitHub and installs it.
-# Works on Linux (amd64) and macOS (arm64, amd64).
-#
-# The binary is self-contained: PostgreSQL 16 binaries AND the pgvector
-# extension are compiled in at build time. No Postgres installation, no gcc,
-# no make, no network access beyond downloading the binary itself.
-#
-# Run as root for a system install with a systemd service; run as a normal user
-# for a user-local install without a service.
-#
-# Usage:
-#   bash install.sh               # latest release, auto-detect arch
-#   bash install.sh -v 0.9.0     # pin to a specific version
-#   sudo bash install.sh          # system install + systemd service
-
+# Install a verified BrassClaw application/worker pair from a GitHub release.
+# Linux amd64 and macOS arm64/amd64. PostgreSQL/pgvector are embedded in the
+# application; Monty is a separate companion executable from the same release.
+# Usage: bash install.sh [-v version] [--startup-timeout seconds]
+# Root on systemd Linux installs a service; other installs are started manually.
 set -euo pipefail
 
-# ── configurable ──────────────────────────────────────────────────────────────
 GITHUB_REPO="chtugha/brassclaw"
 BINARY_NAME="brassclaw-reborn"
 LEGACY_BINARY_NAME="brassclaw"
 SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── parse flags ───────────────────────────────────────────────────────────────
 PINNED_VERSION=""
-while getopts "v:" opt; do
-    case $opt in
-        v) PINNED_VERSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-v version]"; exit 1 ;;
-    esac
-done
+STARTUP_TIMEOUT=180
+INSTALL_MODE="user"
+USE_SYSTEMD=false
+EXISTING_SERVICE=false
+WAS_RUNNING=false
+START_ATTEMPTED=false
+PAIR_COMMITTING=false
+LOCK_DIR=""
+STAGE_DIR=""
+DOWNLOAD_DIR=""
+SERVICE_HOME=""
+SERVICE_URL=""
+NEW_TOKEN=""
+TARGET_NAMES=("$BINARY_NAME" "monty_worker")
 
-# ── privilege / install mode ──────────────────────────────────────────────────
-if [[ $EUID -eq 0 ]]; then
-    INSTALL_DIR="/usr/local/bin"
-    INSTALL_MODE="system"
-else
-    INSTALL_DIR="$HOME/.local/bin"
-    INSTALL_MODE="user"
-fi
+log_info()  { printf '[INFO]  %s\n' "$*"; }
+log_warn()  { printf '[WARN]  %s\n' "$*" >&2; }
+log_error() { printf '[ERROR] %s\n' "$*" >&2; }
+log_step()  { printf '[STEP]  %s\n' "$*"; }
 
-# ── colours ───────────────────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; NC='\033[0m'
+usage() {
+    printf 'Usage: %s [-v version] [--startup-timeout seconds]\n' "$0"
+}
 
-log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
-log_step()  { echo -e "${BLUE}[STEP]${NC}  $*"; }
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--version)
+                [[ $# -ge 2 ]] || { usage >&2; return 1; }
+                PINNED_VERSION="${2#v}"
+                shift 2 ;;
+            --startup-timeout)
+                [[ $# -ge 2 && "$2" =~ ^[1-9][0-9]{0,4}$ ]] || { usage >&2; return 1; }
+                STARTUP_TIMEOUT="$2"
+                shift 2 ;;
+            -h|--help) usage; exit 0 ;;
+            *) usage >&2; return 1 ;;
+        esac
+    done
+    if [[ -n "$PINNED_VERSION" && ! "$PINNED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]; then
+        log_error 'Invalid release version.'
+        return 1
+    fi
+}
 
-# ── detect platform ───────────────────────────────────────────────────────────
+require_commands() {
+    local name
+    for name in curl python3 cat tr sed tail mktemp install cp mv chmod mkdir ln rm rmdir od id uname; do
+        command -v "$name" >/dev/null || { log_error "Required command missing: $name"; return 1; }
+    done
+    python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || {
+        log_error 'Python 3.9+ is required for release metadata and safe uninstallation.'
+        return 1
+    }
+    if ! command -v sha256sum >/dev/null && ! command -v shasum >/dev/null; then
+        log_error 'Install sha256sum or shasum; checksum verification is required.'
+        return 1
+    fi
+}
+
 detect_artifact() {
-    local os arch
-    os="$(uname -s)"
-    arch="$(uname -m)"
-    case "$os/$arch" in
-        Linux/x86_64)   echo "brassclaw-linux-amd64" ;;
-        Darwin/arm64)   echo "brassclaw-macos-arm64" ;;
-        Darwin/x86_64)  echo "brassclaw-macos-amd64" ;;
-        Linux/aarch64)
-            log_error "Linux ARM64 pre-built binaries are not in the release matrix yet." >&2
-            log_info  "To build from source:" >&2
-            log_info  "  cargo build --release --bin brassclaw" >&2
-            log_info  "  sudo cp target/release/brassclaw /usr/local/bin/brassclaw-reborn" >&2
-            log_info  "Then re-run: sudo bash install.sh (it will find the binary already installed)" >&2
-            exit 1 ;;
+    local platform
+    platform="$(uname -s)/$(uname -m)"
+    case "$platform" in
+        Linux/x86_64) echo 'brassclaw-linux-amd64' ;;
+        Darwin/arm64) echo 'brassclaw-macos-arm64' ;;
+        Darwin/x86_64) echo 'brassclaw-macos-amd64' ;;
         *)
-            log_error "Unsupported platform: $os/$arch" >&2
-            log_info  "Build from source: cargo build --release --bin brassclaw" >&2
-            exit 1 ;;
+            log_error "No prebuilt release for $platform. Build and install BOTH binaries:"
+            log_info '  cargo build --locked --release -p brassclaw -p brassclaw_monty_host --bins' >&2
+            log_info '  sudo install -m 0755 target/release/brassclaw /usr/local/bin/brassclaw-reborn' >&2
+            log_info '  sudo install -m 0755 target/release/monty_worker /usr/local/bin/monty_worker' >&2
+            log_info 'Start manually as a non-root user; rerunning this installer still requires a supported release.' >&2
+            return 1 ;;
     esac
 }
 
-# ── resolve version ───────────────────────────────────────────────────────────
+select_release() {
+    # Resolve a complete release from one catalogue response. Older stable
+    # releases may predate the companion worker; never mix release versions.
+    python3 -c '
+import json, re, sys
+asset = sys.argv[1]
+required = {asset, asset + ".sha256", asset + "-monty-worker", asset + "-monty-worker.sha256"}
+releases = json.load(sys.stdin)
+if not isinstance(releases, list):
+    raise SystemExit("Invalid GitHub release catalogue.")
+for release in sorted(releases, key=lambda r: r.get("published_at") or "", reverse=True):
+    tag = release.get("tag_name", "")
+    names = {entry.get("name") for entry in release.get("assets", [])}
+    if not release.get("draft") and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?", tag) and required <= names:
+        if release.get("prerelease"):
+            print("[WARN]  Newest complete application/worker release is a prerelease: " + tag + ". Use -v to choose a specific release.", file=sys.stderr)
+        print(tag[1:])
+        break
+else:
+    raise SystemExit("No complete application/worker release found. Use -v to pin a supported release.")
+' "$1"
+}
+
 resolve_version() {
     if [[ -n "$PINNED_VERSION" ]]; then
         echo "$PINNED_VERSION"
         return
     fi
-    log_step "Fetching latest release version from GitHub..." >&2
     local latest
-    latest=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" \
-        | grep '"tag_name"' \
-        | sed 's/.*"tag_name": *"v\([^"]*\)".*/\1/' \
-        | tr -d '[:space:]')
-    if [[ -z "$latest" ]]; then
-        log_error "Could not determine latest version. Use -v to pin a version." >&2
-        log_info  "Example: bash install.sh -v 0.9.0" >&2
-        exit 1
-    fi
+    latest=$(curl -fsSL --connect-timeout 10 --max-time 60 \
+        "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=100" \
+        | select_release "$1")
+    [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]] || {
+        log_error 'Could not determine latest release. Use -v to pin a version.'
+        return 1
+    }
     echo "$latest"
 }
 
-# ── checksum verification ─────────────────────────────────────────────────────
 sha256_check() {
-    local file="$1" expected_file="$2"
-    local hash
-    hash=$(awk '{print $1}' "$expected_file")
-    if command -v sha256sum &>/dev/null; then
-        echo "$hash  $file" | sha256sum -c - >/dev/null
-    elif command -v shasum &>/dev/null; then
-        echo "$hash  $file" | shasum -a 256 -c - >/dev/null
+    local file="$1" expected_file="$2" expected actual
+    # Release checksum assets contain exactly one SHA-256 digest, not filenames.
+    expected=$(cat "$expected_file")
+    [[ "$expected" =~ ^[[:xdigit:]]{64}$ ]] || {
+        log_error 'Malformed SHA-256 checksum.'
+        return 1
+    }
+    if command -v sha256sum >/dev/null; then
+        actual=$(sha256sum "$file") || return 1
+    elif command -v shasum >/dev/null; then
+        actual=$(shasum -a 256 "$file") || return 1
     else
-        log_warn "No sha256 tool found — skipping checksum verification." >&2
+        log_error 'No SHA-256 tool available; refusing installation.'
+        return 1
     fi
+    actual="${actual%% *}"
+    [[ "$(printf '%s' "$actual" | tr 'A-F' 'a-f')" == "$(printf '%s' "$expected" | tr 'A-F' 'a-f')" ]]
 }
 
-# ── download binary ───────────────────────────────────────────────────────────
-download_binary() {
-    local version="$1" artifact="$2"
+download_pair() {
+    local version="$1" artifact="$2" asset
     local base_url="https://github.com/$GITHUB_REPO/releases/download/v$version"
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    # shellcheck disable=SC2064
-    trap "rm -rf '$tmp_dir'" EXIT
-
-    # Both verified executables are staged before replacing either installed file.
-    local asset
+    DOWNLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/brassclaw-download.XXXXXX")
     for asset in "$artifact" "$artifact-monty-worker"; do
-        log_step "Downloading $asset v$version..."
-        if ! curl -fsSL --retry 3 --retry-connrefused \
-                -o "$tmp_dir/$asset" "$base_url/$asset"; then
-            log_error "Download failed: $base_url/$asset" >&2
-            exit 1
-        fi
-        if ! curl -fsSL --retry 3 -o "$tmp_dir/$asset.sha256" \
-                "$base_url/$asset.sha256"; then
-            log_error "Missing required checksum for $asset. Aborting." >&2
-            exit 1
-        fi
-        if ! sha256_check "$tmp_dir/$asset" "$tmp_dir/$asset.sha256"; then
-            log_error "Checksum mismatch for $asset. Aborting." >&2
-            exit 1
-        fi
-        chmod +x "$tmp_dir/$asset"
+        log_step "Downloading and verifying $asset v$version"
+        curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-time 600 \
+            -o "$DOWNLOAD_DIR/$asset" "$base_url/$asset"
+        curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 \
+            -o "$DOWNLOAD_DIR/$asset.sha256" "$base_url/$asset.sha256"
+        sha256_check "$DOWNLOAD_DIR/$asset" "$DOWNLOAD_DIR/$asset.sha256" || {
+            log_error "Checksum verification failed for $asset."
+            return 1
+        }
     done
+}
 
+prepare_service() {
+    [[ "$USE_SYSTEMD" == true ]] || return 0
+    local load_state exec_start
+    load_state=$(systemctl show "$SERVICE_NAME" --property=LoadState --value)
+    if [[ "$load_state" != not-found ]]; then
+        [[ "$load_state" == loaded ]] || { log_error "Existing service is $load_state; repair it first."; return 1; }
+        EXISTING_SERVICE=true
+        exec_start=$(systemctl show "$SERVICE_NAME" --property=ExecStart --value)
+        case "$exec_start" in
+            *"path=$INSTALL_DIR/$BINARY_NAME ;"*) ;;
+            *"path=$INSTALL_DIR/$LEGACY_BINARY_NAME ;"*) TARGET_NAMES+=("$LEGACY_BINARY_NAME") ;;
+            *) log_error 'Existing service uses another executable path. Upgrade that installation explicitly.'; return 1 ;;
+        esac
+        # Do not rewrite the unit, drop-ins, credentials, User, data root or flags.
+        log_info 'Preserving the existing service unit and all operator configuration.'
+    fi
+}
+
+stage_pair() {
+    local artifact="$1" name
     mkdir -p "$INSTALL_DIR"
-    chmod +x "$tmp_dir/$artifact"
-
-    # Back up current binary (single .bak, not accumulating timestamped copies).
-    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
-        log_step "Backing up existing binary to $INSTALL_DIR/$BINARY_NAME.bak"
-        cp "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME.bak"
+    LOCK_DIR="$INSTALL_DIR/.brassclaw-install.lock"
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        LOCK_DIR=""
+        log_error "Another installation holds $INSTALL_DIR/.brassclaw-install.lock. If interrupted, inspect it before removing it."
+        return 1
     fi
-
-    mv "$tmp_dir/$artifact-monty-worker" "$INSTALL_DIR/monty_worker"
-    mv "$tmp_dir/$artifact" "$INSTALL_DIR/$BINARY_NAME"
-    log_info "Installed: $INSTALL_DIR/$BINARY_NAME"
-
-    # Remove legacy binaries left behind by older installs.
-    for legacy in \
-        "$INSTALL_DIR/$LEGACY_BINARY_NAME" \
-        "$INSTALL_DIR/$LEGACY_BINARY_NAME.bak"; do
-        if [[ -f "$legacy" ]]; then
-            rm -f "$legacy"
-            log_info "Removed legacy binary: $legacy"
+    printf '%s\n' "$$" > "$LOCK_DIR/owner.pid"
+    # Inspect after acquiring the lock: another installer may have created the
+    # unit while we downloaded. Never turn that concurrent install into a reset.
+    prepare_service
+    if [[ ( -e "$INSTALL_DIR/$LEGACY_BINARY_NAME" || -L "$INSTALL_DIR/$LEGACY_BINARY_NAME" ) && " ${TARGET_NAMES[*]} " != *" $LEGACY_BINARY_NAME "* ]]; then
+        TARGET_NAMES+=("$LEGACY_BINARY_NAME")
+    fi
+    STAGE_DIR=$(mktemp -d "$INSTALL_DIR/.brassclaw-install.XXXXXX")
+    chmod 700 "$STAGE_DIR"
+    mkdir "$STAGE_DIR/previous"
+    # Stage on the destination filesystem so replacement uses rename, not copy.
+    install -m 0755 "$DOWNLOAD_DIR/$artifact" "$STAGE_DIR/$BINARY_NAME"
+    install -m 0755 "$DOWNLOAD_DIR/$artifact-monty-worker" "$STAGE_DIR/monty_worker"
+    if [[ " ${TARGET_NAMES[*]} " == *" $LEGACY_BINARY_NAME "* ]]; then
+        ln -s "$BINARY_NAME" "$STAGE_DIR/$LEGACY_BINARY_NAME"
+    fi
+    for name in "${TARGET_NAMES[@]}"; do
+        if [[ -e "$INSTALL_DIR/$name" || -L "$INSTALL_DIR/$name" ]]; then
+            [[ -f "$INSTALL_DIR/$name" ]] || { log_error "Not a regular executable: $INSTALL_DIR/$name"; return 1; }
+            cp -p "$INSTALL_DIR/$name" "$STAGE_DIR/previous/$name"
         fi
     done
-
-    trap - EXIT
-    rm -rf "$tmp_dir"
 }
 
-# ── config dir (user-mode only) ───────────────────────────────────────────────
-create_config_dir() {
-    [[ $INSTALL_MODE == "system" ]] && return 0
-    local config_dir="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
-    if [[ ! -d "$config_dir" ]]; then
-        log_step "Creating config directory: $config_dir"
-        mkdir -p "$config_dir"
-    else
-        log_info "Config directory already exists: $config_dir"
-    fi
-}
-
-# ── systemd service (system-mode only) ───────────────────────────────────────
-create_systemd_service() {
-    [[ $INSTALL_MODE != "system" ]] && return 0
-    if ! command -v systemctl &>/dev/null; then
-        log_warn "systemctl not found — skipping service install."
-        log_info  "To start manually: $INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000"
-        return 0
-    fi
-
-    # Use the real user who invoked sudo.  Fall back to a dedicated 'brassclaw'
-    # system account.  initdb refuses to run as root, so root is never allowed.
-    local service_user="${SUDO_USER:-}"
-    if [[ -z "$service_user" || "$service_user" == "root" ]]; then
-        service_user="brassclaw"
-        if ! id "$service_user" &>/dev/null; then
-            log_step "Creating system user '$service_user'..."
-            useradd --system --no-create-home --shell /usr/sbin/nologin "$service_user"
+restore_pair() {
+    local name failed=false
+    for name in "${TARGET_NAMES[@]}"; do
+        if [[ -f "$STAGE_DIR/previous/$name" ]]; then
+            # Move the original inode back, with its original permissions.
+            mv -f "$STAGE_DIR/previous/$name" "$INSTALL_DIR/$name" || failed=true
+        else
+            rm -f "$INSTALL_DIR/$name" || failed=true
         fi
-    fi
+    done
+    [[ "$failed" == false ]]
+}
 
-    # Resolve the service user's home directory.
-    local home_dir
-    home_dir=$(eval echo "~$service_user" 2>/dev/null || true)
-    # System users created with --no-create-home have no real home; use /var/lib/brassclaw.
-    if [[ -z "$home_dir" || "$home_dir" == "~$service_user" || ! -d "$home_dir" ]]; then
-        home_dir="/var/lib/brassclaw"
-        mkdir -p "$home_dir"
-        chown "$service_user:$service_user" "$home_dir"
-    fi
+commit_pair() {
+    local name
+    # Keep a matching backup pair. Do all fallible backup copies before replacing
+    # the live files. Do not retain a stale backup for an absent old companion.
+    for name in "${TARGET_NAMES[@]}"; do
+        if [[ -f "$STAGE_DIR/previous/$name" ]]; then
+            cp -p "$STAGE_DIR/previous/$name" "$STAGE_DIR/$name.bak"
+            mv -f "$STAGE_DIR/$name.bak" "$INSTALL_DIR/$name.bak"
+        else
+            rm -f "$INSTALL_DIR/$name.bak"
+        fi
+    done
+    PAIR_COMMITTING=true
+    for name in "${TARGET_NAMES[@]}"; do
+        mv -f "$STAGE_DIR/$name" "$INSTALL_DIR/$name"
+    done
+    PAIR_COMMITTING=false
+}
 
-    local reborn_home="${home_dir}/.brassclaw/reborn"
-    local service_file="$SYSTEMD_DIR/$SERVICE_NAME.service"
-
-    # On upgrade: preserve the existing WebUI token and user_id so operator
-    # bookmarks and client config continue to work after a version update.
-    local webui_token="" webui_user_id="" is_upgrade=false
-    if [[ -f "$service_file" ]]; then
-        is_upgrade=true
-        webui_token=$(grep -oP '(?<=Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=)\S+' \
-            "$service_file" 2>/dev/null || true)
-        webui_user_id=$(grep -oP '(?<=Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=)\S+' \
-            "$service_file" 2>/dev/null || true)
-    fi
-    if [[ -z "$webui_token" ]]; then
-        # Avoid SIGPIPE under set -euo pipefail: read a large fixed block with
-        # dd so tr drains fully, then cut to 40 chars with ${var:0:40}.
-        _raw=$(dd if=/dev/urandom bs=256 count=1 2>/dev/null | LC_ALL=C tr -dc 'A-Za-z0-9')
-        webui_token="${_raw:0:40}"
-        unset _raw
-    fi
-    if [[ -z "$webui_user_id" ]]; then
-        webui_user_id="brassclaw-admin"
-    fi
-
-    # Stop a running instance so the old process releases port 3000 before
-    # systemd starts the new one.
-    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-        log_step "Stopping running service for upgrade..."
-        systemctl stop "$SERVICE_NAME"
-        sleep 1
-    fi
-
-    # Create the data directory before writing the service file.
-    if [[ ! -d "$reborn_home" ]]; then
-        log_step "Creating data directory: $reborn_home"
-        mkdir -p "$reborn_home"
-    fi
-    chown -R "$service_user:$service_user" "$reborn_home"
-
-    # NOTE: No Postgres download, extraction, or pgvector build steps here.
-    # The binary is fully self-contained: PostgreSQL 16 binaries and the
-    # pgvector extension are embedded in the binary at compile time (build.rs
-    # + include_bytes!).  They are extracted from the binary on first boot
-    # into $BRASSCLAW_REBORN_HOME/postgres/bin — no network access, no gcc,
-    # no make required.
-
-    log_step "Writing $service_file"
-    cat > "$service_file" <<EOF
+render_systemd_unit() {
+    local service_user="$1" reborn_home="$2" home_dir="$3"
+    cat <<EOF
 [Unit]
-Description=BrassClaw AI Agent
+Description=BrassClaw Reborn Agent
 Documentation=https://github.com/$GITHUB_REPO
 After=network-online.target
 Wants=network-online.target
@@ -268,130 +263,205 @@ User=$service_user
 WorkingDirectory=$reborn_home
 Environment=BRASSCLAW_REBORN_HOME=$reborn_home
 Environment=BRASSCLAW_RUNTIME_PROFILE=local_dev
-Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
-Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=$webui_user_id
-# Embedded Postgres listens on 127.0.0.1:5434 by default (loopback only).
-# To change the port:    Environment=BRASSCLAW_EMBEDDED_PG_PORT=5434
-# To allow LAN access (first-boot only — written once to postgresql.conf by initdb):
-#                        Environment=BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES=0.0.0.0
-#   After first boot edit \$BRASSCLAW_REBORN_HOME/postgres/data/postgresql.conf directly.
-# To use an external Postgres instead of the embedded one:
-#                        Environment=BRASSCLAW_PG_URL=postgresql://user:pass@host:5432/brassclaw
-ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
+EnvironmentFile=/etc/brassclaw/secrets.env
+ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 127.0.0.1 --port 3000
 Restart=on-failure
 RestartSec=5
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=180
 StandardOutput=journal
 StandardError=journal
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=$reborn_home $home_dir /tmp
+ReadWritePaths=$home_dir /tmp
 
 [Install]
 WantedBy=multi-user.target
 EOF
-    chmod 640 "$service_file"
+}
 
+create_systemd_service() {
+    [[ "$USE_SYSTEMD" == true && "$EXISTING_SERVICE" == false ]] || return 0
+    local service_user=brassclaw home_dir=/var/lib/brassclaw group_name
+    if ! id "$service_user" >/dev/null 2>&1; then
+        useradd --system --home-dir "$home_dir" --no-create-home --shell /usr/sbin/nologin "$service_user"
+    fi
+    [[ "$(id -u "$service_user")" != 0 ]] || { log_error 'The service account must not be root.'; return 1; }
+    group_name=$(id -gn "$service_user")
+    SERVICE_HOME="$home_dir/.brassclaw/reborn"
+    install -d -m 0700 -o "$service_user" -g "$group_name" "$home_dir" "$home_dir/.brassclaw" "$SERVICE_HOME"
+    # Hex avoids short alphanumeric output after filtering random input.
+    NEW_TOKEN=$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')
+    [[ "$NEW_TOKEN" =~ ^[[:xdigit:]]{64}$ ]] || return 1
+    install -d -m 0755 /etc/brassclaw
+    # Preserve preexisting operator secrets even when no service is installed.
+    if [[ ! -e /etc/brassclaw/secrets.env ]]; then
+        (umask 077; printf 'BRASSCLAW_REBORN_WEBUI_TOKEN=%s\nBRASSCLAW_REBORN_WEBUI_USER_ID=brassclaw-admin\n' "$NEW_TOKEN" > /etc/brassclaw/secrets.env)
+    else
+        NEW_TOKEN=""
+        log_info 'Using existing /etc/brassclaw/secrets.env; ensure it contains the WebUI token and identity.'
+    fi
+    render_systemd_unit "$service_user" "$SERVICE_HOME" "$home_dir" > "$STAGE_DIR/$SERVICE_NAME.service"
+    install -m 0644 "$STAGE_DIR/$SERVICE_NAME.service" "$SYSTEMD_DIR/$SERVICE_NAME.service"
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
-    systemctl start "$SERVICE_NAME"
+}
 
-    # Wait up to 45 s for the service to become active.  On first boot the binary
-    # extracts the embedded Postgres archive from itself (~40 MB decompression),
-    # runs initdb, starts the server, runs migrations, and then starts the web
-    # server — all without any network access.
-    log_step "Waiting for service to start (first boot extracts embedded Postgres)..."
-    local i=0
-    while [[ $i -lt 45 ]]; do
-        if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-            break
+process_env_value() {
+    local pid="$1" key="$2" entry
+    [[ "$pid" =~ ^[1-9][0-9]*$ && "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    [[ -r "/proc/$pid/environ" ]] || return 1
+    while IFS= read -r -d '' entry; do
+        if [[ "${entry%%=*}" == "$key" ]]; then
+            printf '%s' "${entry#*=}"
+            return 0
         fi
-        if systemctl is-failed --quiet "$SERVICE_NAME" 2>/dev/null; then
-            break
+    done < "/proc/$pid/environ"
+    return 1
+}
+
+loopback_url() {
+    local url="$1"
+    case "$url" in
+        http://0.0.0.0:*) url="http://127.0.0.1:${url##*:}" ;;
+        'http://[::]:'*) url="http://[::1]:${url##*:}" ;;
+    esac
+    # Only the numeric listener address from our own process banner is accepted.
+    [[ "$url" =~ ^http://([0-9.]+|\[[0-9a-fA-F:]+\]):[0-9]+$ ]] || return 1
+    printf '%s' "$url"
+}
+
+wait_for_readiness() {
+    local deadline=$((SECONDS + STARTUP_TIMEOUT)) invocation pid logs url token_var token status
+    local credential_file="$STAGE_DIR/readiness.header"
+    log_step 'Waiting for the application and global Monty to be ready...'
+    while (( SECONDS < deadline )); do
+        invocation=$(systemctl show "$SERVICE_NAME" --property=InvocationID --value)
+        pid=$(systemctl show "$SERVICE_NAME" --property=MainPID --value)
+        if [[ -n "$invocation" && "$pid" != 0 ]] && systemctl is-active --quiet "$SERVICE_NAME"; then
+            logs=$(journalctl --quiet --no-pager -o cat "_SYSTEMD_INVOCATION_ID=$invocation" 2>/dev/null) || logs=""
+            url=$(printf '%s\n' "$logs" | sed -n 's/^[[:space:]]*listen[[:space:]]*: \(http:[^[:space:]]*\).*/\1/p' | tail -n 1)
+            token_var=$(printf '%s\n' "$logs" | sed -n 's/.*auth[[:space:]]*:.*token \$\([A-Za-z_][A-Za-z0-9_]*\),.*/\1/p' | tail -n 1)
+            if url=$(loopback_url "$url") && token=$(process_env_value "$pid" "$token_var") && [[ -n "$token" && "$token" != *$'\n'* && "$token" != *$'\r'* ]]; then
+                # Keep credentials out of curl's argv and logs. Never use a proxy
+                # or follow redirects when sending the operator bearer token.
+                (umask 077; printf 'Authorization: Bearer %s\n' "$token" > "$credential_file")
+                status=$(curl --noproxy '*' --fail --silent --connect-timeout 1 --max-time 2 \
+                    --header "@$credential_file" "$url/api/settings/monty-vm/status") || status=""
+                rm -f "$credential_file"
+                if [[ "$status" =~ \"state\"[[:space:]]*:[[:space:]]*\"running\" ]] \
+                    && systemctl is-active --quiet "$SERVICE_NAME" \
+                    && [[ "$(systemctl show "$SERVICE_NAME" --property=InvocationID --value)" == "$invocation" ]]; then
+                    SERVICE_URL="$url"
+                    SERVICE_HOME=$(process_env_value "$pid" BRASSCLAW_REBORN_HOME) || SERVICE_HOME=""
+                    log_info 'Application HTTP listener and live Monty status are ready.'
+                    return 0
+                fi
+            fi
         fi
         sleep 1
-        (( i++ )) || true
     done
-
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
-        log_info "Service started successfully"
-    else
-        log_error "Service failed to start — check: journalctl -u $SERVICE_NAME -n 50" >&2
-        log_info  "Common causes:" >&2
-        log_info  "  - BRASSCLAW_REBORN_WEBUI_TOKEN not set (already set in service file)" >&2
-        log_info  "  - Port 3000 already in use (change with --port in ExecStart)" >&2
-        log_info  "  - Disk full (binary extracts ~200 MB of Postgres data on first boot)" >&2
-        exit 1
-    fi
-
-    echo ""
-    if [[ "$is_upgrade" == "true" ]]; then
-        echo -e "${GREEN}✓  Upgraded — existing WebUI token preserved:${NC}"
-        echo -e "   ${GREEN}$webui_token${NC}"
-    else
-        echo -e "${YELLOW}⚠  Save your WebUI token (needed to log in):${NC}"
-        echo -e "   ${GREEN}$webui_token${NC}"
-    fi
-    echo "   (also stored in $service_file)"
-    echo ""
+    log_error "Application readiness timed out after $STARTUP_TIMEOUT seconds. See journalctl -u $SERVICE_NAME -n 100."
+    return 1
 }
 
-# ── post-install summary ──────────────────────────────────────────────────────
+cleanup() {
+    local result=$? retain_stage=false
+    trap - EXIT
+    if [[ "$PAIR_COMMITTING" == true ]]; then
+        log_warn 'Executable replacement interrupted; restoring the previous pair.'
+        restore_pair || { log_error "Restore failed. Previous files are retained in $STAGE_DIR/previous."; retain_stage=true; }
+    fi
+    if [[ "$result" != 0 && "$START_ATTEMPTED" == true ]]; then
+        # Fence Restart=on-failure while the operator diagnoses a failed boot.
+        systemctl stop "$SERVICE_NAME" || log_error 'Could not stop the failed release; inspect the service immediately.'
+        log_warn 'New release failed to become ready. It has been stopped; installed executables are retained for diagnosis.'
+        if [[ -f "$INSTALL_DIR/$BINARY_NAME.bak" ]]; then
+            log_warn "Previous executables are retained in $INSTALL_DIR/*.bak. Check database migration compatibility before restoring them."
+        fi
+    elif [[ "$result" != 0 && "$WAS_RUNNING" == true && "$retain_stage" == false ]]; then
+        systemctl start "$SERVICE_NAME" || log_error 'Could not restart the previous service; inspect its journal.'
+    fi
+    [[ -z "$DOWNLOAD_DIR" ]] || rm -rf "$DOWNLOAD_DIR" || log_warn "Could not remove $DOWNLOAD_DIR"
+    if [[ -n "$STAGE_DIR" && "$retain_stage" == false ]]; then
+        rm -rf "$STAGE_DIR" || log_warn "Could not remove $STAGE_DIR"
+    fi
+    if [[ -n "$LOCK_DIR" ]]; then
+        rm -f "$LOCK_DIR/owner.pid"
+        rmdir "$LOCK_DIR" || log_warn "Could not remove $LOCK_DIR"
+    fi
+    exit "$result"
+}
+
 print_summary() {
     local version="$1"
-    local config_dir
-    echo ""
-    echo -e "${BLUE}══════════════════════════════════════════${NC}"
-    echo -e "${GREEN}  BrassClaw v$version installed!${NC}"
-    echo -e "${BLUE}══════════════════════════════════════════${NC}"
-    echo -e "  Binary:   $INSTALL_DIR/$BINARY_NAME"
-
-    if [[ $INSTALL_MODE == "system" ]]; then
-        # Resolve the service user's data dir for display.
-        local svc_home="/var/lib/brassclaw"
-        if id "$SERVICE_NAME" &>/dev/null; then
-            local _h; _h=$(eval echo "~$SERVICE_NAME" 2>/dev/null || true)
-            [[ -n "$_h" && -d "$_h" ]] && svc_home="$_h"
+    log_info "BrassClaw v$version installed: $INSTALL_DIR/$BINARY_NAME and $INSTALL_DIR/monty_worker"
+    if [[ "$USE_SYSTEMD" == true ]]; then
+        printf '  Data: %s\n' "${SERVICE_HOME:-see the preserved service configuration}"
+        printf '  Local WebUI: %s\n  Service: systemctl status %s\n' "$SERVICE_URL" "$SERVICE_NAME"
+        printf '  Logs: journalctl -u %s -f\n' "$SERVICE_NAME"
+        if [[ -n "$NEW_TOKEN" ]]; then
+            printf '  Save your WebUI token: %s\n  Stored in /etc/brassclaw/secrets.env\n' "$NEW_TOKEN"
+        else
+            log_info 'Existing operator credentials preserved.'
         fi
-        config_dir="$svc_home/.brassclaw/reborn"
-        echo -e "  Data:     $config_dir"
-        echo -e "  Service:  systemctl {start|stop|restart|status} $SERVICE_NAME"
-        echo -e "  Logs:     journalctl -u $SERVICE_NAME -f"
-        local ip
-        ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
-        echo -e "  WebUI:    http://${ip}:3000"
     else
-        config_dir="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
-        echo -e "  Data:     $config_dir"
-        echo ""
-        echo -e "${BLUE}To start:${NC}"
-        echo -e "  BRASSCLAW_REBORN_WEBUI_TOKEN=<token> \\"
-        echo -e "  BRASSCLAW_REBORN_WEBUI_USER_ID=me \\"
-        echo -e "  $BINARY_NAME serve"
-        if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-            echo ""
-            echo -e "${YELLOW}Add to PATH:${NC}"
-            echo -e "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
-            echo -e "  source ~/.bashrc"
+        if [[ "$INSTALL_MODE" == user ]]; then
+            printf '  Data: %s\n' "${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
+        else
+            printf '  Data: the non-root operator\047s BRASSCLAW_REBORN_HOME (default ~/.brassclaw/reborn)\n'
         fi
+        printf '  Start as a non-root user (PostgreSQL refuses root):\n'
+        printf '  BRASSCLAW_REBORN_WEBUI_TOKEN=<token> BRASSCLAW_REBORN_WEBUI_USER_ID=me %s serve\n' "$INSTALL_DIR/$BINARY_NAME"
+        [[ ":$PATH:" == *":$INSTALL_DIR:"* ]] || printf '  Add %s to your shell PATH.\n' "$INSTALL_DIR"
     fi
-    echo -e "${BLUE}══════════════════════════════════════════${NC}"
-    echo ""
 }
 
-# ── main ──────────────────────────────────────────────────────────────────────
 main() {
-    local version artifact
-    version=$(resolve_version)
+    parse_args "$@"
+    require_commands
+    local artifact version
     artifact=$(detect_artifact)
-
-    echo -e "${BLUE}BrassClaw installer — v$version ($artifact → $BINARY_NAME, $INSTALL_MODE mode)${NC}"
-    echo ""
-
-    download_binary "$version" "$artifact"
-    create_config_dir
+    version=$(resolve_version "$artifact")
+    if [[ $EUID -eq 0 ]]; then
+        INSTALL_MODE=system
+        INSTALL_DIR=/usr/local/bin
+        if [[ "$(uname -s)" == Linux ]] && command -v systemctl >/dev/null; then
+            USE_SYSTEMD=true
+            command -v journalctl >/dev/null || { log_error 'journalctl is required for readiness checks.'; return 1; }
+        fi
+    else
+        INSTALL_DIR="$HOME/.local/bin"
+    fi
+    trap cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    download_pair "$version" "$artifact"
+    if [[ "$USE_SYSTEMD" == false ]]; then
+        log_info 'For a manual upgrade, stop running BrassClaw instances before replacing executables.'
+    fi
+    stage_pair "$artifact"
+    if [[ "$USE_SYSTEMD" == true ]]; then
+        if systemctl is-active --quiet "$SERVICE_NAME"; then WAS_RUNNING=true; fi
+        # Stop even an activating/restarting service before the pair changes.
+        if [[ "$EXISTING_SERVICE" == true ]]; then systemctl stop "$SERVICE_NAME"; fi
+    fi
+    commit_pair
     create_systemd_service
+    if [[ "$USE_SYSTEMD" == true ]]; then
+        START_ATTEMPTED=true
+        systemctl start "$SERVICE_NAME"
+        wait_for_readiness
+    elif [[ "$INSTALL_MODE" == user ]]; then
+        mkdir -p "${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
+    fi
     print_summary "$version"
 }
 
-main
+# Sourceable for focused tests without downloading, installing or touching services.
+# BASH_SOURCE is unset when the installer is piped into bash.
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+    main "$@"
+fi

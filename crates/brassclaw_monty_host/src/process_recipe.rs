@@ -107,6 +107,7 @@ pub enum RecipeCommand {
         expected_revision: u64,
         settings: TaskSettings,
         values: VmBounds,
+        max_recipe_contexts: Option<u32>,
     },
     UpdateSettings {
         expected_revision: u64,
@@ -188,6 +189,15 @@ pub struct TaskAccounting {
     pub failure: Option<String>,
 }
 
+/// Actual worker-owned retention. Usage may exceed a newly reduced limit;
+/// existing contexts survive and only subsequent opens are refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecipeContextCapacity {
+    pub limit: u32,
+    pub active: usize,
+}
+
 struct TaskRecord {
     run_id: String,
     budget: SharedMontyTaskBudget,
@@ -209,6 +219,12 @@ pub(crate) struct WorkerRecipes {
     bounds: VmBounds,
 }
 impl WorkerRecipes {
+    pub(crate) fn context_capacity(&self) -> RecipeContextCapacity {
+        RecipeContextCapacity {
+            limit: self.max_contexts as u32,
+            active: self.contexts.len(),
+        }
+    }
     pub(crate) fn bounds(&self) -> VmBounds {
         self.bounds
     }
@@ -219,7 +235,7 @@ impl WorkerRecipes {
         max_contexts: u32,
         bounds: VmBounds,
     ) -> Result<Self, VmError> {
-        if max_tasks == 0 || max_contexts < max_tasks || !bounds.valid() {
+        if max_tasks == 0 || max_contexts == 0 || !bounds.valid() {
             return Err(VmError::kind(VmFailure::InvalidBounds));
         }
         let live = LiveMontyTaskSettings::new(settings.into())
@@ -531,8 +547,9 @@ impl WorkerRecipes {
                 expected_revision,
                 settings,
                 values,
+                max_recipe_contexts,
             } => {
-                if !values.valid() {
+                if !values.valid() || max_recipe_contexts == Some(0) {
                     return Err(VmError::kind(VmFailure::InvalidBounds));
                 }
                 // Publish first: failed validation/CAS leaves every VM unchanged.
@@ -548,6 +565,9 @@ impl WorkerRecipes {
                     context.vm.update_bounds(values);
                 }
                 self.bounds = values;
+                if let Some(limit) = max_recipe_contexts {
+                    self.max_contexts = limit as usize;
+                }
                 Ok(RecipeEvent::SettingsUpdated)
             }
             RecipeCommand::UpdateSettings {

@@ -25,6 +25,7 @@ pub(crate) struct PgMontyAdmission {
     scope: TurnScope,
     turn_id: TurnId,
     accepted: AcceptedMessageRef,
+    trusted_internal_turn: bool,
     attempt: MontyTaskAttempt,
     key: [u8; 32],
     checksum: [u8; 32],
@@ -68,6 +69,7 @@ impl PgMontyAdmission {
             scope: context.scope.clone(),
             turn_id: context.turn_id,
             accepted,
+            trusted_internal_turn: context.trusted_internal_turn,
             attempt,
             key: Sha256::digest(nonce).into(),
             checksum: Sha256::digest(claim).into(),
@@ -96,10 +98,10 @@ impl PgMontyAdmission {
             .ok_or_else(|| failed("monty_admission_identity_invalid"))?
             .to_owned();
         let inserted = transaction.execute("INSERT INTO brassclaw_monty_task_admissions
-            (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase)
-            VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved') ON CONFLICT (run_id) DO NOTHING",
+            (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase, trusted_internal_turn)
+            VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved',$8) ON CONFLICT (run_id) DO NOTHING",
             &[&self.attempt.run_id.as_uuid(), &self.turn_id.as_uuid(), &scope, &self.accepted.as_str(),
-                &runner, &&self.checksum[..], &&self.key[..]])
+                &runner, &&self.checksum[..], &&self.key[..], &self.trusted_internal_turn])
             .await.map_err(|_| failed("monty_admission_database_failed"))?;
         if inserted != 1 {
             return Err(failed("monty_admission_replay_requires_recovery"));
@@ -264,10 +266,11 @@ fn validate_outcome(value: &Value) -> Result<(), AgentLoopDriverError> {
             || execution.get("catalogue_activation") != Some(&Value::Bool(false))
             || execution.get("root_completed").and_then(Value::as_bool)
                 != Some(object.get("status").and_then(Value::as_str) == Some("completed"))
-            || execution
-                .get("recipes")
-                .and_then(Value::as_array)
-                .is_none_or(|recipes| recipes.len() > 8)
+            // Selection already checks the acknowledged live Recipe capacity.
+            // Settlement preserves the actual retained executions, even if the
+            // operator has since reduced that capacity. Applying another bound
+            // here would strand completed effects and their audit evidence.
+            || execution.get("recipes").and_then(Value::as_array).is_none()
             || (object.get("status").and_then(Value::as_str) == Some("completed")
                 && execution.get("all_selected_recipes_complete") != Some(&Value::Bool(true)))
         {

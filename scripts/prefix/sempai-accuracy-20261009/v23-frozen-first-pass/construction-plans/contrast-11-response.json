@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b6c5208a02b09b41",
+  "object": "chat.completion",
+  "created": 1791519295,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"records absent\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"records present, null\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"records wrong type (not list)\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"records list, length 0\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"records list, length 1..4\", \"result\": \"ok=true, records=original\"}, {\"guard\": \"records list, length >4\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"item not dict\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"item has extra field\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"item missing code/enabled\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"code not str\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"code str length <2 or >5\", \"result\": \"ok=false, records=[]\"}, {\"guard\": \"code str length 2..5\", \"result\": \"ok=true, records=original (if all valid)\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract check\", \"human Q2 approval\", \"selected-runner support for inputs mapping\", \"exact association approval\"], \"notes\": \"One class22 pc-contrast-11 draft only. Records list 1..4, each object exactly code (str len 2..5) and enabled (exact bool, False valid). result={ok:boolean, ...\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114951,
+    "total_tokens": 115319,
+    "completion_tokens": 368,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

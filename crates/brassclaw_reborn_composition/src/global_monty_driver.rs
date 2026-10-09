@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use crate::monty_attempt_retention::{AttemptRetentionLease, AttemptRetentionRegistry};
 use async_trait::async_trait;
 use brassclaw_monty_host::service::{
     ServiceClient, TaskControl, TaskInput, TaskOutcome, TaskPorts, TaskReceipt,
@@ -26,11 +27,37 @@ use futures::{
 };
 use tokio::sync::Notify;
 
+/// Last complete acknowledged policy. Capturing it grants no dispatch authority.
+#[derive(Clone, Copy)]
+pub(crate) struct CancellationAckSettings {
+    pub(crate) revision: u64,
+    pub(crate) timeout: Duration,
+}
+impl CancellationAckSettings {
+    pub(crate) fn validate(self) -> Result<Self, AgentLoopDriverError> {
+        if self.revision == 0
+            || self.timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(self.timeout)
+                .is_none()
+        {
+            return Err(invalid("invalid Monty cancellation acknowledgement policy"));
+        }
+        Ok(self)
+    }
+}
+pub(crate) trait CancellationAckSource: Send + Sync {
+    fn current(&self) -> Result<CancellationAckSettings, AgentLoopDriverError>;
+}
+
 /// Builds the exact admitted ports and catalogue snapshot, without executing a
 /// Tool, resolving intent or selecting a Recipe. Those operations are requested
 /// by the already-running Python orchestrator after admission.
 #[async_trait]
 pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
+    fn retention_registry(&self) -> Arc<AttemptRetentionRegistry>;
+    fn cancellation_acknowledgement(&self)
+    -> Result<CancellationAckSettings, AgentLoopDriverError>;
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
@@ -58,6 +85,7 @@ struct AttemptState {
 }
 struct Attempt {
     host: Arc<MontyTaskHost>,
+    retention: Arc<AttemptRetentionLease>,
     state: Mutex<AttemptState>,
     changed: Notify,
     settlement: Mutex<Option<Settlement>>,
@@ -76,14 +104,19 @@ pub(crate) struct GlobalMontyDriver {
     threads: Arc<dyn SessionThreadService>,
     ports: Arc<dyn GlobalTaskPortsFactory>,
     attempts: Mutex<HashMap<MontyTaskAttempt, Arc<Attempt>>>,
-    max_attempts: usize,
+    retention: Arc<AttemptRetentionRegistry>,
 }
 
 /// Private host ownership plus its actual service receipt for reconciliation.
 // Control retains the actual TaskPorts, including child failures and Tool answers.
 // Transferring only the host/receipt would discard that reconciliation evidence.
 #[cfg(test)]
-pub(crate) type MontySettlement = (Arc<MontyTaskHost>, Arc<TaskReceipt>, TaskControl);
+pub(crate) type MontySettlement = (
+    Arc<MontyTaskHost>,
+    Arc<TaskReceipt>,
+    TaskControl,
+    Arc<AttemptRetentionLease>,
+);
 
 impl GlobalMontyDriver {
     /// Trusted fixture inspection of the original host, never a reconstructed
@@ -106,17 +139,19 @@ impl GlobalMontyDriver {
         service: ServiceClient,
         threads: Arc<dyn SessionThreadService>,
         ports: Arc<dyn GlobalTaskPortsFactory>,
-        max_attempts: usize,
     ) -> Result<Self, AgentLoopDriverError> {
-        if max_attempts == 0 {
-            return Err(invalid("global Monty attempt capacity must be positive"));
+        let retention = ports.retention_registry();
+        if !retention.bound_to(&service) {
+            return Err(invalid(
+                "Monty driver and retention owner identify different instances",
+            ));
         }
         Ok(Self {
             service,
             threads,
             ports,
             attempts: Mutex::new(HashMap::new()),
-            max_attempts,
+            retention,
         })
     }
 
@@ -128,13 +163,10 @@ impl GlobalMontyDriver {
         if attempts.contains_key(&host.attempt()) {
             return Err(invalid("Monty attempt is already registered"));
         }
-        if attempts.len() >= self.max_attempts {
-            return Err(AgentLoopDriverError::Unavailable {
-                reason: "Monty retained attempt capacity exhausted".into(),
-            });
-        }
+        let retention = self.retention.retain(&host)?;
         let entry = Arc::new(Attempt {
             host,
+            retention,
             state: Mutex::new(AttemptState {
                 cancelled: false,
                 phase: Phase::Preparing,
@@ -257,7 +289,12 @@ impl GlobalMontyDriver {
             }
         }
         attempts.remove(&attempt);
-        Ok(Some((entry.host.clone(), receipt, control)))
+        Ok(Some((
+            entry.host.clone(),
+            receipt,
+            control,
+            entry.retention.clone(),
+        )))
     }
 }
 
@@ -331,6 +368,13 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 })
                 .collect(),
         };
+        // History preparation may await. Keep the shared private credit active
+        // before constructing ports or retaining an admission address.
+        if let Err(error) = entry.retention.ensure_active(&host) {
+            drop(guard);
+            self.remove(host.attempt())?;
+            return Err(error);
+        }
         let ports = match self.ports.build(host.clone(), &input).await {
             Ok(ports) => ports,
             Err(error) => {
@@ -421,7 +465,21 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             return Ok(());
         };
         entry.host.fence_dispatch();
-        tokio::time::timeout(Duration::from_secs(5), async {
+        // Fence and request cancellation before policy lookup or any await.
+        // Even an unavailable policy must not leave a submitted task running.
+        {
+            let mut state = entry
+                .state
+                .lock()
+                .map_err(|_| failed("monty_attempt_state_failed"))?;
+            state.cancelled = true;
+            if let Phase::Submitted(control) = &state.phase {
+                control.cancel();
+            }
+        }
+        entry.changed.notify_waiters();
+        let policy = self.ports.cancellation_acknowledgement()?.validate()?;
+        tokio::time::timeout(policy.timeout, async {
             loop {
                 let changed = entry.changed.notified();
                 tokio::pin!(changed);

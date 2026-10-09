@@ -207,7 +207,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     for invalid_output in [false, true] {
         let prepared = retained_program::program(&store, invalid_output).await;
-        assert_eq!(prepared.bindings()["0:2"].combination().len(), 4);
+        assert_eq!(prepared.bindings()["0:2"].combination().len(), 5);
         assert!(std::ptr::eq(
             prepared.bindings()["0:2"].combination(),
             prepared.bindings()["0:4"].combination()
@@ -294,7 +294,12 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             .await
             .unwrap(),
         );
-        assert_eq!(inspected.source_checks().len(), 1);
+        assert_eq!(inspected.source_checks().len(), 2);
+        assert_eq!(inspected.preload_order().len(), 2);
+        assert_eq!(
+            inspected.invocation("0:2"),
+            Some("result = parse_usage(inputs=inputs)")
+        );
         let mut execution =
             RetainedRecipeExecution::new_for_behavioral_validation(task, inspected).unwrap();
         assert!(execution.observations().is_empty());
@@ -477,7 +482,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                 prepared.inputs().instruction().recipe().uuid.to_string()
             );
             assert_eq!(selection["variant_key"], "selected");
-            assert_eq!(selection["components"].as_array().unwrap().len(), 5);
+            assert_eq!(selection["components"].as_array().unwrap().len(), 6);
             let arguments: Value = serde_json::from_str(row.get(4)).unwrap();
             assert_eq!(arguments["data"], inputs["data"]);
         }
@@ -808,4 +813,39 @@ async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
     assert!(exit.exit_status.is_some());
     assert!(exit.containment_error.is_none());
     assert!(exit.reap_error.is_none());
+}
+
+#[tokio::test]
+async fn selected_export_preflight_rejects_unsafe_libraries_before_execution() {
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    for source in [
+        "effect = host.json(data='{}')\ndef parse_usage(inputs):\n    return _parse_data(inputs)",
+        "def parse_usage(inputs=host.json(data='{}')):\n    return _parse_data(inputs)",
+        "def parse_usage(inputs):\n    return _missing_dependency(inputs)",
+        "def parse_usage(inputs):\n    first = _parse_data(inputs)\n    return host.json(data=inputs['data'], operation='parse')",
+        "def parse_usage(inputs):\n    first = _parse_data(inputs)\n    return _parse_data(inputs)",
+        "def parse_usage(inputs):\n    for item in [inputs]:\n        _parse_data(item)\n    return _parse_data(inputs)",
+        "def parse_usage(inputs):\n    alias = _parse_data\n    return alias(inputs)",
+        "def parse_usage(inputs):\n    values = [_parse_data(item) for item in [inputs, inputs]]\n    return values[0]",
+        "STATE = []\ndef parse_usage(inputs):\n    STATE.append(inputs['data'])\n    return _parse_data(inputs)",
+        "def parse_usage(inputs):\n    global STATE\n    STATE = inputs\n    return _parse_data(inputs)",
+    ] {
+        let program = retained_program::program_with_preload_source(&store, source).await;
+        assert!(matches!(
+            InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
+                .await,
+            Err(RetainedSourceError::Invalid { .. })
+        ));
+    }
+    let client = rig.pool.get().await.unwrap();
+    let count: i64 = client
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count, 0,
+        "invalid libraries must not record a dispatch intent or invoke a Tool"
+    );
 }

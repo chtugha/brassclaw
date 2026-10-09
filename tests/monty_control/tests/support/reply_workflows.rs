@@ -56,10 +56,14 @@ pub(crate) async fn reply_program(pool: Arc<PgPool>) -> Arc<RetainedToolProgram>
 
 pub(crate) struct PreparedNamedReply {
     selected: SelectedMontyRecipe,
+    history: SelectedMontyRecipe,
     kernel: Arc<reply_kernel::Kernel>,
     block_on_selection: std::sync::atomic::AtomicBool,
 }
 impl PreparedNamedReply {
+    pub(crate) fn history(&self) -> SelectedMontyRecipe {
+        copy_selection(&self.history)
+    }
     pub(crate) fn select(&self) -> SelectedMontyRecipe {
         if self
             .block_on_selection
@@ -80,19 +84,23 @@ pub(crate) async fn prepare_named_reply(
     block_reply: bool,
 ) -> PreparedNamedReply {
     let filesystem = Arc::new(PostgresRootFilesystem::new((*pool).clone()));
-    let kernel = Arc::new(reply_kernel::reply_only_kernel(
+    filesystem.run_migrations().await.unwrap();
+    let history_program = programs::program(&PgComponentRevisionStore::new(pool), true).await;
+    let kernel = Arc::new(reply_kernel::kernel(
         host.clone(),
         program.bindings()["0:2"].tool().uuid,
+        history_program.bindings()["0:3"].tool().uuid,
         filesystem,
     ));
     let tools = Arc::new(Tools {
-        host,
+        host: host.clone(),
         program: program.clone(),
-        admission,
+        admission: admission.clone(),
         kernel: kernel.clone(),
         block_history: block_reply,
     });
     let selected = SelectedMontyRecipe {
+        normal_match: None,
         inspected: Arc::new(
             InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
                 .await
@@ -101,8 +109,26 @@ pub(crate) async fn prepare_named_reply(
         inputs: None,
         tools: Some(tools),
     };
+    let history_tools = Arc::new(Tools {
+        host,
+        program: history_program.clone(),
+        admission,
+        kernel: kernel.clone(),
+        block_history: false,
+    });
+    let history = SelectedMontyRecipe {
+        normal_match: None,
+        inspected: Arc::new(
+            InspectedRetainedProgram::inspect(
+                RetainedProgram::Tools(history_program), support::worker(),
+            ).await.unwrap(),
+        ),
+        inputs: None,
+        tools: Some(history_tools),
+    };
     PreparedNamedReply {
         selected,
+        history,
         kernel,
         block_on_selection: std::sync::atomic::AtomicBool::new(block_reply),
     }
@@ -256,6 +282,7 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
             inspected.insert(
                 id,
                 SelectedMontyRecipe {
+                    normal_match: None,
                     inspected: inspected_program,
                     inputs: None,
                     tools: Some(tools),
@@ -263,7 +290,7 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
             );
         }
         let reply = copy_selection(&inspected[&self.reply.inputs().instruction().recipe().uuid]);
-        let selected = match matched {
+        let selected = match &matched {
             IntentResolution::NoMatch => MontyIntentSelection::NoMatch,
             IntentResolution::Disambiguation { .. } => MontyIntentSelection::Disambiguation,
             IntentResolution::Match {
@@ -271,7 +298,7 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
                 input_text,
                 ..
             } => {
-                let mut selection = inspected.remove(&component_id).unwrap();
+                let mut selection = inspected.remove(component_id).unwrap();
                 selection.inputs = Some(
                     selection
                         .inspected
@@ -280,6 +307,14 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
                         .bind_variant_example(&input_text, &input.user_input, &json!({}))
                         .unwrap(),
                 );
+                // This identifies this validator's committed draft snapshot,
+                // not an activated/approved production catalogue generation.
+                selection.normal_match = crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
+                    uuid::Uuid::new_v4(), &input.user_input, &matched,
+                    selection.inspected.program().inputs().instruction(),
+                    selection.inputs.as_ref().unwrap(),
+                ).map(Box::new);
+                assert!(selection.normal_match.is_some());
                 MontyIntentSelection::Match(selection)
             }
         };
@@ -297,6 +332,9 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
 }
 #[async_trait]
 impl MontyTaskCatalogue for Catalogue {
+    // This explicit draft validator never advertises an activated MCP command.
+    async fn refresh_command_qualification(&self) {}
+
     async fn resolve_intent(&self, query: &str) -> Result<MontyIntentSelection, PortFailure> {
         if query != self.query {
             return Err(failure());
@@ -326,6 +364,7 @@ impl MontyTaskCatalogue for Catalogue {
 }
 fn copy_selection(recipe: &SelectedMontyRecipe) -> SelectedMontyRecipe {
     SelectedMontyRecipe {
+        normal_match: recipe.normal_match.clone(),
         inspected: recipe.inspected.clone(),
         inputs: recipe.inputs.clone(),
         tools: recipe.tools.clone(),
@@ -475,6 +514,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -485,6 +525,9 @@ async fn whole_match(block_history: bool, skip_history: bool) {
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 1,
         },
     )
     .await
@@ -493,6 +536,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
     let factory = Arc::new(NativeTaskPortsFactory::with_catalogue(
         database.pool.clone(),
         owner.ownership_check(),
+        owner.client(),
         Arc::new(DraftProvider {
             pool: database.pool.clone(),
             reply,
@@ -507,7 +551,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
         "native-global-host",
     ));
     let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone(), 1)
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
             .unwrap();
     let answer = "Literal 'quotes' Ü {{vars.answer}} host.forbidden()";
     let query = format!("reply {answer}");
@@ -603,7 +647,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
     // observer retained the actual service receipt supplied to settlement.
     let receipt = factory.last_receipt.lock().unwrap().clone().unwrap();
     if block_history {
-        let (actual_host, actual_receipt, control) =
+        let (actual_host, actual_receipt, control, _driver_retention) =
             driver.take_settlement(attempt).unwrap().unwrap();
         assert!(Arc::ptr_eq(&host, &actual_host));
         assert!(Arc::ptr_eq(&receipt, &actual_receipt));
@@ -669,7 +713,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
         );
         assert!(matches!(receipt.outcome, TaskOutcome::Failed { .. }));
         assert_eq!(memory_answer["kind"], "terminal_error");
-        let (retained_host, _, ports, retained_receipt) = factory
+        let (retained_host, _, ports, retained_receipt, _factory_retention) = factory
             .inner
             .take_failed_settlement(attempt)
             .unwrap()
@@ -707,13 +751,12 @@ async fn whole_match(block_history: bool, skip_history: bool) {
             .await
             .unwrap();
         let content = String::from_utf8(stored).unwrap();
-        assert_eq!(
-            content,
-            format!(
-                "User: {query}\nAssistant: {answer}\nReply: {}",
-                reference.as_str()
-            )
-        );
+        assert!(content.ends_with('\n'));
+        assert_eq!(content.lines().count(), 1);
+        assert_eq!(serde_json::from_str::<Value>(&content).unwrap(), json!({
+            "format":"completed-turn/1", "user_input":query,
+            "answer":answer, "reply_ref":reference.as_str(),
+        }));
     }
     drop(client);
     // Retained implementation ownership cannot reopen a completed/failed

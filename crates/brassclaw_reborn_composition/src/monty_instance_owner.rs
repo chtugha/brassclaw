@@ -19,6 +19,10 @@ pub(crate) enum OwnershipError {
     AlreadyOwned,
     #[error("global Monty ownership connection failed")]
     Connection,
+    #[error("global Monty ownership check capacity is occupied")]
+    Busy,
+    #[error("global Monty ownership check expired before execution")]
+    Deadline,
     #[error("global Monty instance ownership was lost")]
     Lost,
 }

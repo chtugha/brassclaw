@@ -20,6 +20,7 @@ pub struct HostCallSite {
     pub attribute: String,
     pub start: u32,
     pub end: u32,
+    pub repeatable: bool,
 }
 
 /// Exact-source observations. All syntax is inspected, including functions and
@@ -28,8 +29,29 @@ pub struct HostCallSite {
 /// behavioral validation must make those decisions separately.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct FunctionScope {
+    pub references: BTreeSet<String>,
+    pub calls: std::collections::BTreeMap<String, usize>,
+    pub value_references: BTreeSet<String>,
+    pub nested_functions: bool,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreloadSource {
+    pub scopes: std::collections::BTreeMap<String, FunctionScope>,
+    pub functions: std::collections::BTreeMap<String, Vec<String>>,
+    pub constants: BTreeSet<String>,
+    pub references: BTreeSet<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceStructure {
     pub source_checksum: String,
+    pub preload: Option<PreloadSource>,
     pub direct_host_calls: Vec<HostCallSite>,
     pub imports: BTreeSet<String>,
     pub relative_imports: bool,
@@ -64,48 +86,34 @@ impl SourceStructure {
     }
 
     fn within_value_bounds(&self, bounds: VmBounds) -> bool {
-        let fields = [
-            "source_checksum",
-            "direct_host_calls",
-            "imports",
-            "relative_imports",
-            "host_value_references",
-            "reserved_name_references",
-            "result_store_sites",
-            "inspected_nodes",
-        ];
-        let mut bytes =
-            fields.iter().map(|name| name.len()).sum::<usize>() + self.source_checksum.len();
-        let Some(mut nodes) = self
-            .direct_host_calls
-            .len()
-            .checked_mul(4)
-            .and_then(|n| n.checked_add(9))
-        else {
+        let Ok(value) = serde_json::to_value(self) else {
             return false;
         };
-        for name in self.imports.iter().chain(&self.reserved_name_references) {
-            let Some(next) = bytes.checked_add(name.len()) else {
+        let mut pending = vec![(&value, 0usize)];
+        let mut nodes = 0usize;
+        let mut bytes = 0usize;
+        while let Some((value, depth)) = pending.pop() {
+            nodes = nodes.saturating_add(1);
+            if depth > bounds.max_value_depth || nodes > bounds.max_value_nodes {
                 return false;
-            };
-            bytes = next;
-            let Some(next) = nodes.checked_add(1) else {
+            }
+            match value {
+                serde_json::Value::String(text) => bytes = bytes.saturating_add(text.len()),
+                serde_json::Value::Array(values) => {
+                    pending.extend(values.iter().map(|v| (v, depth + 1)))
+                }
+                serde_json::Value::Object(values) => {
+                    bytes = bytes.saturating_add(values.keys().map(String::len).sum::<usize>());
+                    nodes = nodes.saturating_add(values.len());
+                    pending.extend(values.values().map(|v| (v, depth + 1)));
+                }
+                _ => {}
+            }
+            if bytes > bounds.max_value_bytes || nodes > bounds.max_value_nodes {
                 return false;
-            };
-            nodes = next;
+            }
         }
-        for site in &self.direct_host_calls {
-            let Some(next) = bytes
-                .checked_add(site.attribute.len())
-                .and_then(|n| n.checked_add("attribute".len() + "start".len() + "end".len()))
-            else {
-                return false;
-            };
-            bytes = next;
-        }
-        nodes <= bounds.max_value_nodes
-            && bytes <= bounds.max_value_bytes
-            && bounds.max_value_depth >= 3
+        true
     }
 }
 
@@ -130,6 +138,8 @@ struct Inspector {
     max_depth: usize,
     max_nodes: usize,
     exhausted: bool,
+    unsafe_definitions: bool,
+    loop_depth: usize,
 }
 impl Inspector {
     fn enter(&mut self) -> bool {
@@ -151,6 +161,10 @@ impl<'a> Visitor<'a> for Inspector {
             return;
         }
         match statement {
+            Stmt::Global(_) | Stmt::Nonlocal(_) => self.unsafe_definitions = true,
+            Stmt::FunctionDef(function) if definition_parameters(function).is_none() => {
+                self.unsafe_definitions = true
+            }
             Stmt::Import(import) => {
                 self.report
                     .imports
@@ -164,13 +178,21 @@ impl<'a> Visitor<'a> for Inspector {
             }
             _ => {}
         }
+        let repeatable = matches!(statement, Stmt::For(_) | Stmt::While(_));
+        self.loop_depth += usize::from(repeatable);
         walk_stmt(self, statement);
+        self.loop_depth -= usize::from(repeatable);
         self.depth -= 1;
     }
     fn visit_expr(&mut self, expression: &'a Expr) {
         if !self.enter() {
             return;
         }
+        let repeatable = matches!(
+            expression,
+            Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_)
+        );
+        self.loop_depth += usize::from(repeatable);
         match expression {
             Expr::Call(call)
                 if matches!(call.func.as_ref(), Expr::Attribute(attr)
@@ -183,6 +205,7 @@ impl<'a> Visitor<'a> for Inspector {
                     attribute: attr.attr.to_string(),
                     start: call.start().to_u32(),
                     end: call.end().to_u32(),
+                    repeatable: self.loop_depth > 0,
                 });
                 // The receiver of a direct call is not a first-class host value.
                 // Inspect all arguments, including nested independent calls.
@@ -203,8 +226,256 @@ impl<'a> Visitor<'a> for Inspector {
             }
             _ => walk_expr(self, expression),
         }
+        self.loop_depth -= usize::from(repeatable);
         self.depth -= 1;
     }
+}
+
+fn definition_parameters(function: &ruff_python_ast::StmtFunctionDef) -> Option<Vec<String>> {
+    if function.is_async
+        || !function.decorator_list.is_empty()
+        || function.type_params.is_some()
+        || function.returns.is_some()
+        || !function.parameters.posonlyargs.is_empty()
+        || function.parameters.vararg.is_some()
+        || function.parameters.kwarg.is_some()
+    {
+        return None;
+    }
+    function
+        .parameters
+        .args
+        .iter()
+        .chain(&function.parameters.kwonlyargs)
+        .map(|parameter| {
+            if parameter.default.is_some() || parameter.parameter.annotation.is_some() {
+                None
+            } else {
+                Some(parameter.name().to_string())
+            }
+        })
+        .collect()
+}
+fn immutable_expression(expression: &Expr) -> bool {
+    match expression {
+        Expr::StringLiteral(_)
+        | Expr::BytesLiteral(_)
+        | Expr::NumberLiteral(_)
+        | Expr::BooleanLiteral(_)
+        | Expr::NoneLiteral(_) => true,
+        Expr::Tuple(tuple) => tuple.elts.iter().all(immutable_expression),
+        Expr::UnaryOp(unary)
+            if matches!(
+                unary.op,
+                ruff_python_ast::UnaryOp::UAdd | ruff_python_ast::UnaryOp::USub
+            ) =>
+        {
+            matches!(unary.operand.as_ref(), Expr::NumberLiteral(_))
+        }
+        _ => false,
+    }
+}
+#[derive(Default)]
+struct FunctionNames {
+    read: BTreeSet<String>,
+    bound: BTreeSet<String>,
+    calls: std::collections::BTreeMap<String, usize>,
+    value_references: BTreeSet<String>,
+    nested_functions: bool,
+    loop_depth: usize,
+}
+impl<'a> Visitor<'a> for FunctionNames {
+    fn visit_stmt(&mut self, statement: &'a Stmt) {
+        match statement {
+            Stmt::Import(import) => {
+                for alias in &import.names {
+                    self.bound.insert(alias.asname.as_ref().map_or_else(
+                        || {
+                            alias
+                                .name
+                                .as_str()
+                                .split('.')
+                                .next()
+                                .unwrap_or_default()
+                                .to_owned()
+                        },
+                        ToString::to_string,
+                    ));
+                }
+            }
+            Stmt::ImportFrom(import) => {
+                for alias in &import.names {
+                    self.bound
+                        .insert(alias.asname.as_ref().unwrap_or(&alias.name).to_string());
+                }
+            }
+            Stmt::FunctionDef(function) => {
+                self.nested_functions = true;
+                self.bound.insert(function.name.to_string());
+                // A nested function has its own local scope. Its free names
+                // may capture this function's locals, but its parameters and
+                // assignments must never hide this function's free names.
+                let mut nested = FunctionNames::default();
+                if let Some(parameters) = definition_parameters(function) {
+                    nested.bound.extend(parameters);
+                }
+                nested.visit_body(&function.body);
+                self.read
+                    .extend(nested.read.difference(&nested.bound).cloned());
+                self.value_references
+                    .extend(nested.value_references.difference(&nested.bound).cloned());
+                for (name, count) in nested.calls {
+                    if !nested.bound.contains(&name) {
+                        let value = self.calls.entry(name).or_default();
+                        *value = value.saturating_add(count).min(2);
+                    }
+                }
+                return;
+            }
+            _ => {}
+        }
+        let repeatable = matches!(statement, Stmt::For(_) | Stmt::While(_));
+        self.loop_depth += usize::from(repeatable);
+        walk_stmt(self, statement);
+        self.loop_depth -= usize::from(repeatable);
+    }
+    fn visit_expr(&mut self, expression: &'a Expr) {
+        let comprehension = match expression {
+            Expr::ListComp(value) => Some((value.generators.as_slice(), vec![value.elt.as_ref()])),
+            Expr::SetComp(value) => Some((value.generators.as_slice(), vec![value.elt.as_ref()])),
+            Expr::Generator(value) => Some((value.generators.as_slice(), vec![value.elt.as_ref()])),
+            Expr::DictComp(value) => Some((
+                value.generators.as_ref(),
+                value
+                    .key
+                    .as_deref()
+                    .into_iter()
+                    .chain(std::iter::once(value.value.as_ref()))
+                    .collect(),
+            )),
+            _ => None,
+        };
+        if let Some((generators, values)) = comprehension {
+            let mut nested = FunctionNames {
+                loop_depth: 1,
+                ..Default::default()
+            };
+            for (index, generator) in generators.iter().enumerate() {
+                if index == 0 {
+                    self.visit_expr(&generator.iter);
+                } else {
+                    nested.visit_expr(&generator.iter);
+                }
+                nested.visit_expr(&generator.target);
+                for predicate in &generator.ifs {
+                    nested.visit_expr(predicate);
+                }
+            }
+            for value in values {
+                nested.visit_expr(value);
+            }
+            self.read
+                .extend(nested.read.difference(&nested.bound).cloned());
+            self.value_references
+                .extend(nested.value_references.difference(&nested.bound).cloned());
+            for (name, count) in nested.calls {
+                if !nested.bound.contains(&name) {
+                    let value = self.calls.entry(name).or_default();
+                    *value = value.saturating_add(count).min(2);
+                }
+            }
+            return;
+        }
+        if let Expr::Call(call) = expression
+            && let Expr::Name(name) = call.func.as_ref()
+        {
+            self.read.insert(name.id.to_string());
+            let count = self.calls.entry(name.id.to_string()).or_default();
+            *count = count
+                .saturating_add(if self.loop_depth > 0 { 2 } else { 1 })
+                .min(2);
+            self.visit_arguments(&call.arguments);
+            return;
+        }
+        if let Expr::Name(name) = expression {
+            match name.ctx {
+                ExprContext::Load => {
+                    self.read.insert(name.id.to_string());
+                    self.value_references.insert(name.id.to_string());
+                }
+                ExprContext::Store | ExprContext::Del => {
+                    self.bound.insert(name.id.to_string());
+                }
+                _ => {}
+            }
+        }
+        walk_expr(self, expression);
+    }
+}
+
+fn preload_structure(body: &[Stmt]) -> Option<PreloadSource> {
+    let mut library = PreloadSource {
+        scopes: Default::default(),
+        functions: Default::default(),
+        constants: Default::default(),
+        references: Default::default(),
+    };
+    for statement in body {
+        match statement {
+            Stmt::FunctionDef(function) => {
+                let name = function.name.to_string();
+                let mut names = FunctionNames::default();
+                names.bound.extend(definition_parameters(function)?);
+                names.visit_body(&function.body);
+                let references: BTreeSet<_> =
+                    names.read.difference(&names.bound).cloned().collect();
+                library.references.extend(references.iter().cloned());
+                library.scopes.insert(
+                    name.clone(),
+                    FunctionScope {
+                        calls: names
+                            .calls
+                            .into_iter()
+                            .filter(|(name, _)| !names.bound.contains(name))
+                            .collect(),
+                        value_references: names
+                            .value_references
+                            .difference(&names.bound)
+                            .cloned()
+                            .collect(),
+                        nested_functions: names.nested_functions,
+                        references,
+                        start: function.start().to_u32(),
+                        end: function.end().to_u32(),
+                    },
+                );
+                if library.constants.contains(&name)
+                    || library
+                        .functions
+                        .insert(name, definition_parameters(function)?)
+                        .is_some()
+                {
+                    return None;
+                }
+            }
+            Stmt::Assign(assign)
+                if assign.targets.len() == 1 && immutable_expression(&assign.value) =>
+            {
+                let Expr::Name(name) = &assign.targets[0] else {
+                    return None;
+                };
+                if library.functions.contains_key(name.id.as_str())
+                    || !library.constants.insert(name.id.to_string())
+                {
+                    return None;
+                }
+            }
+            Stmt::Expr(expression)
+                if matches!(expression.value.as_ref(), Expr::StringLiteral(_)) => {}
+            _ => return None,
+        }
+    }
+    (!library.functions.is_empty() || !library.constants.is_empty()).then_some(library)
 }
 
 /// Only called in the contained utility worker after actual Monty compilation.
@@ -213,9 +484,11 @@ impl<'a> Visitor<'a> for Inspector {
 pub(crate) fn inspect(source: &str, bounds: VmBounds) -> Result<SourceStructure, VmError> {
     let parsed =
         ruff_python_parser::parse_module(source).map_err(|_| VmError::kind(VmFailure::Python))?;
+
     let mut visitor = Inspector {
         report: SourceStructure {
             source_checksum: format!("{:x}", Sha256::digest(source.as_bytes())),
+            preload: None,
             direct_host_calls: Vec::new(),
             imports: BTreeSet::new(),
             relative_imports: false,
@@ -228,9 +501,17 @@ pub(crate) fn inspect(source: &str, bounds: VmBounds) -> Result<SourceStructure,
         max_depth: bounds.max_value_depth.min(128),
         max_nodes: bounds.max_value_nodes,
         exhausted: false,
+        unsafe_definitions: false,
+        loop_depth: 0,
     };
     visitor.visit_body(&parsed.syntax().body);
     if visitor.exhausted || !visitor.report.within_value_bounds(bounds) {
+        return Err(VmError::kind(VmFailure::ResourceLimit));
+    }
+    if !visitor.unsafe_definitions {
+        visitor.report.preload = preload_structure(&parsed.syntax().body);
+    }
+    if !visitor.report.within_value_bounds(bounds) {
         return Err(VmError::kind(VmFailure::ResourceLimit));
     }
     visitor

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b8a77497d5f064b6",
+  "object": "chat.completion",
+  "created": 1791520325,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null\", \"result\": \"trigger: null\"}, {\"guard\": \"steps is empty\", \"result\": \"steps: []\"}, {\"guard\": \"dependency_registry is null\", \"result\": \"dependency_registry: null\"}, {\"guard\": \"one desc_idx=0 with component steps in supplied order\", \"result\": \"stepnumber 1 (rust, include ed366513-fe34-5022-9c90-daa6ab946493, tool_bindings [], dependencies null), stepnumber 2 (orchestrator, include 20ffa6ad-e015-54c6-8f29-ffe72d40f365, tool_bindings [], dependencies null)\"}, {\"guard\": \"one variant step_link 0:1-0:E\", \"result\": \"step_link: '0:1-0:E'\"}, {\"guard\": \"variable_patterns empty\", \"result\": \"variable_patterns: []\"}, {\"guard\": \"at least ten unique matching intents in both intent_examples lists\", \"result\": \"ten distinct natural-language intents describing posting the fixed word 'Sent' once as a reply\"}, {\"guard\": \"prior_knowledge_content retains Q1, human Q2, unapproved dependencies and current sink gap\", \"result\": \"prior_knowledge_content notes unapproved documentation fixture, Q1 and human Q2 required, current live sink gap\"}, {\"guard\": \"no version/approval/runtime claims\", \"result\": \"no version/approval/runtime claims\"}, {\"guard\": \"preserve messages; root compatibility arrays empty\", \"result\": \"adjusted_volatile_messages copies volatile_messages once; bridge_messages, proposed_recipe_updates, proposed_intent_examples, settings_adjustments, proposed_components all empty; composition_summary factual\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"none\"], \"prerequisites\": [\"Q1\", \"human Q2\"], \"notes\": \"The supplied PythonCode posts a fixed reply via host.post_reply(answer='Sent'); the Recipe binds the ToolSkill then invokes the PythonCode. Intents describe the\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114421,
+    "total_tokens": 114886,
+    "completion_tokens": 465,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

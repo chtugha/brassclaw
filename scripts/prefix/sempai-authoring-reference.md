@@ -158,7 +158,11 @@ step-local inputs separately to inputs["local_name"]. Never interpolate runtime
 values into Python source. Defaults apply only to missing consumer inputs; invalid
 or null values and bad outputs are not defaulted. Missing and null differ.
 
-PythonCode assigns result and calls approved host.<tool>(...) through its binding.
+Select the executable artifact before applying a source example. A preloaded Skill
+definition returns typed data when invoked and makes no calls during loading. Its
+invocation boundary captures the return as the step result. A standalone invocation
+body assigns module-level result. Actual Tool calls use approved host.<tool>(...)
+through their prepared binding; pure logic needs no artificial Tool call.
 Prose never executes as Python. Reject retired intrinsics, eval/exec, direct file or
 subprocess imports and unapproved I/O. Do not combine steps to work around current
 fresh-state bugs: task-owned intermediate values and child/wait handoffs are runtime
@@ -275,9 +279,12 @@ Follow this short workflow before reading domain examples as implementation idea
 4. Check the generated code and its contract together before emitting. For class 22,
    content is only executable Python source. Comments are allowed; Markdown headings,
    fences and prose paragraphs are not. All used names must be defined or supplied
-   by the stated runtime contract. At module scope, the program must assign result
-   on every defined outcome. Defining a helper alone does not execute it: when a
-   helper is appropriate, call it and assign its returned value to result.
+   by the stated runtime contract. For a standalone invocation body, assign
+   module-level result on every defined outcome; a helper must return the complete
+   value and the module must call it. For a preload definition, declare the export,
+   return its typed value inside the function and leave invocation to the separate
+   caller. Do not add a module-level call or result merely to imitate a step-body
+   example. Host/session setup examples are embedding reference, never components.
 5. Check representative valid and invalid outcomes against the requested semantics.
    Do not replace a requested invalid-result object with an exception, or return a
    success object merely because a body parses. Never claim these mental checks are
@@ -297,14 +304,44 @@ Follow this short workflow before reading domain examples as implementation idea
    after JSON decoding they must be actual newlines, not literal backslash+n text.
    Quotes inside the decoded Python must be ordinary quotes, not backslash+quote.
    The description explains the program; it does not substitute for code.
-9. Construct the complete payload before writing composition_summary. In a class-22
-   body, find the actual module-level `result =` statement: a comment promising it
+9. Construct the complete payload before writing composition_summary. In a standalone
+   invocation body, find the actual module-level `result =` statement: a comment promising it
    or `return` inside a helper is insufficient. Prefer a direct result assignment
    for a small pure-logic guard. If a helper is used, include its definition AND
    the call that supplies this task's inputs and assigns result. Emit proposed
    components before the final summary where the host schema permits field order;
    describe only what the emitted body actually contains. Do not call a missing
-   helper or claim that a helper-only body is a runnable component.
+   helper or claim that a helper-only body is a runnable invocation. A preload-only
+   artifact instead exposes the declared function without calling it during load.
+   A Recipe constructor contains the workflow metadata and references, not host
+   session creation or embedded source assembled from runtime values.
+
+### Artifact scope and construction-plan boundary
+
+Choose the requested artifact from the trusted current contract, not the packet's
+review-mode label. Class 22 alone does not distinguish a preload definition from an
+invocation body. Keep these contexts separate:
+
+| Context | Required shape |
+| --- | --- |
+| Monty embedding example | Host/session/pool setup outside BrassClaw component execution; reference only |
+| Skill preload definition | Declared export and explicit return contract; no effects or invocation at load |
+| Standalone invocation body | Step-local typed inputs, actual invocation and module-level result |
+| Recipe constructor | Supported persisted fields, exact component references, ordered usages and typed bindings |
+| Prompt review | Only authorized edits to the supplied messages; component drafting requires an explicit request |
+
+The host output envelope is a separate contract from the authored artifact's
+inputs/result, Recipe fields and execution prerequisites. Empty compatibility
+arrays do not require an empty proposed_components array. A live sink limitation
+does not cancel an explicitly supported offline full-constructor export.
+
+An optional construction plan selects exact quotes from the current contract and
+labels their purpose. It is not a second specification or executable branch table.
+Read the entire original contract when writing; selected quotes may be incomplete.
+Missing-only defaults remain valid for raw validation when explicitly requested;
+reject absence only when the current contract requires that outcome. Historical
+validator examples cannot remove a stated default. Never replace a literal host
+requirement with a plan's interpretation, even when the plan is valid JSON.
 
 ### Raw validation data versus already-validated execution inputs
 

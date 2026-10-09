@@ -332,6 +332,341 @@ durable recovery and full authorization/catalogue/prefix cutovers remain open.
 
 ## Phase 0 evidence
 
+### Deferred compilation: settings publication capacity and HTTP repair — 2026-10-09
+
+The current operator instruction is to leave Cargo to the other agent and
+continue implementation. No Cargo command was started in this source batch.
+The previously finished serial batch reported all 18 actual `service_host`
+cases and isolated control-workspace strict lints passing. Its native selectors
+1–7 also passed (component database nullable/concurrent creation, invalidation
+failure, backlog migration, child-context migration, memory migration, settings
+CAS and global Match/No-Match). Selector 8 stopped in the live WebUI test because
+the response helper received a non-JSON body. Logs remain under
+`/private/tmp/brassclaw-child-context-*`; subsequent selectors/lints did not run.
+These are historical results for that batch, not acceptance of the changes below.
+
+Source inspection traced selector 8 to Axum's `JsonDataError`: a value above
+u32 range failed extraction before the facade and returned text/422. The Monty
+settings handler now accepts extractor rejection explicitly and uses
+`WebUiV2HttpError` for the stable, redacted JSON error vocabulary. Invalid typed
+JSON receives 400, matching settings validation; body-limit/content-type
+statuses remain intact. Extractor text and submitted values are never copied
+to the wire error. The actual native WebUI regression retains strict JSON
+decoding and now covers negative/fractional/null/string and overflowing values
+plus private-value redaction. It must pass after the next permitted compile.
+
+The next hosting control is `execution_limits.max_pending_settings`, default
+8, positive u32. V117 materializes only missing values, advances the revision
+once and preserves explicit operator values. It rejects invalid SQL values and
+exhausted revisions transactionally. Ordinary startup supplies the configured
+value; complete worker-acknowledged hosting publication applies its Rust-owned
+capacity before publishing the shared effective revision. Legacy publication
+wrappers preserve it. The fixed physical channel of eight is replaced by a
+private channel protected by atomic ownership credits. Credits include the
+currently executing operation and survive dropped callers, queue movement and
+reductions below usage; further edits fail with explicit backpressure until
+capacity is free. Shutdown rejects queued edits and releases their credits;
+an already executing durable heap transaction remains owned through settlement.
+Count capacity is independent of task backlog; transport frame limits remain
+separate technical checks. Actual pending count, limit and retained excess are
+visible in GET/status and the EN/DE WebUI.
+
+Control processing alternates with ordinary service turns so a continuously
+replenished settings inbox cannot consume every root/cancellation turn. Ready
+owned publications schedule another turn without depending on coalesced Notify
+permits; an idle empty inbox introduces no polling.
+
+Required acceptance is added to the existing real worker/native tests: hold
+actual durable file commits while eight accepted edits queue, drop waiters,
+reduce to two without deleting accepted operations, grow to twenty beyond the
+old channel ceiling, verify stale-CAS outcomes and explicit shutdown rejection,
+and retain the same root identity. Native V117 checks legacy/default/explicit
+values, invalid numbers/missing fields and revision exhaustion. The existing
+live WebUI regression changes the value alongside child/backlog limits and
+checks the actual owner. Source formatting/parsing, changed JavaScript syntax
+and authored whitespace checks pass. Actual worker/native cases and affected
+strict lints remain deferred; do not mark this control or the whole plan accepted.
+
+### Running validation and newly traced retention gap — 2026-10-09
+
+After explicit authorization to compile, the serial detached screen
+`66824.brassclaw-settings-capacity` started the prepared batch. No competing
+Cargo/rustc process existed at launch. Mandatory disk cleanup removed 2.1 GiB
+before compilation. The isolated control workspace compiled and its 19 actual
+`service_host` cases passed (zero ignored, 1.26 seconds), including the new
+settings-capacity ownership/shutdown regression. Its strict all-target Clippy
+also passed. Native composition compilation/acceptance is still running; these
+results do not establish ordinary WebUI/V117 uptake or the full v3 plan.
+
+The same serial batch subsequently passed all 16 selected native composition
+cases, each with one actual test executed. These include V115/V116/V117 upgrades,
+the real WebUI settings/HTTP rejection regression (116.36 seconds), component
+database failure/concurrency cases, global Match/No-Match and the original seven
+composition callers. Native logs and the exact selector script are preserved in
+`/private/tmp/brassclaw-settings-capacity-native-accepted-lint-failed/`.
+The following composition lint stopped on two `collapsible_if` diagnostics in
+the service settings publication block. They were repaired with equivalent
+short-circuit let chains, without suppression. Later host-runtime/HTTP lint
+steps did not execute in that stopped batch.
+
+### Recipe settlement capacity repair and serial follow-up — 2026-10-09
+
+`pg_monty_admission::validate_outcome` no longer applies a second fixed
+eight-Recipe limit. It still requires an array and preserves bounded typed-data,
+outcome/status and actual-completion validation. Live capacity remains checked
+before retaining a new distinct selection. Settlement must retain the original
+execution evidence after a policy reduction; it must neither truncate the report
+nor replay completed effects to satisfy a later capacity value.
+
+The new `model_host::recipe_capacity` regression stages eight distinct pure-logic
+Recipe revisions sharing one typed PythonCode component and the packaged reply
+workflow. One repeatable-read catalogue capture pins all nine roots/references.
+An explicit validation root uses the actual Monty dispatch/worker/accounting code
+to execute these Recipes and pass each typed result to the next. The actual
+owned settlement is held after publication; the selection policy is reduced
+from nine to one before its PostgreSQL acknowledgement. Required assertions are
+all nine completed step reports, their original checked revision, one answered
+reply invocation with attempt count one, exactly one transcript reply, no model
+call and the unchanged global root. This is a candidate settlement regression,
+not catalogue activation or preloadable-Skill migration acceptance.
+
+After the prior screen ended with lint status 101, detached screen
+`80813.brassclaw-recipe-capacity` started the reviewed follow-up serial queue.
+It builds/runs that actual regression, then executes isolated control, composition,
+host-runtime and HTTP strict checks. Process inspection found no other Cargo or
+rustc; mandatory cleanup removed 2.1 GiB before compiling. Logs use the new
+`brassclaw-recipe-capacity-*` and `settings-capacity-composition-lints` names;
+the previous native results remain intact. The follow-up subsequently passed
+isolated control and composition all-target strict Clippy, the actual
+component-database diagnostic regression, host-runtime strict Clippy with
+`postgres,test-support`, and HTTP all-feature/all-target strict Clippy. Its screen
+waited for another live Cargo process before the last two steps; it did not
+start a competing execution.
+
+The new actual nine-Recipe worker/PostgreSQL regression passed: one test ran,
+zero failed/ignored, 3.54 seconds. Its log is
+`/private/tmp/brassclaw-recipe-capacity-case.log`; the isolated control-workspace
+all-target strict Clippy also passed. The original native capacity edit to 16
+ran only reply/history (two selections), so it did not prove this requirement.
+The new result establishes retained execution handoff and settlement after a
+later selection-policy reduction. The subsequent expanded regression also
+passed (one actual test, zero failed/ignored, 3.58 seconds) and its isolated
+all-target strict Clippy passed. It corrupts copies of the actual persisted
+outcome with null/object/missing Recipe arrays and false root/aggregate
+completion flags, verifies classified validation rejection before any private
+address lookup, and confirms the settled outcome and single reply remain
+unchanged. Logs are `/private/tmp/brassclaw-recipe-capacity-negative-{case,lints}.log`;
+screen `99355.brassclaw-recipe-capacity-negative` is now complete. Complete
+catalogue/preload activation remains separate work. Fixed
+factory/driver retention acceptance is still separate work: the new shared
+credit wiring below needs real ownership and live-settings verification.
+
+### Shared attempt retention — implementation and acceptance contract
+
+Source wiring now replaces the separate factory/driver 256-slot checks with
+one instance `execution_limits.max_retained_attempts` (default 256, positive
+u32), V118 persistence and shared ownership accounting. Ordinary startup reads
+the configured value; complete settings publication updates the Rust ledger
+after worker acknowledgement, and WebUI shows actual retention/excess. The
+driver verifies its active private credit after the history await and before
+preparing ports. The corrected local acceptance batch passed on 2026-10-09:
+19 actual model-host tests, 20 service tests, and 13 native composition cases,
+including V118 plus V115–V117 upgrade regressions, ordinary global Match/No-Match,
+live WebUI growth to 257/258, and the original seven composition regressions.
+Both control and composition all-target strict Clippy passed. The service test
+also reserves 257 real credits, reduces capacity to one without deleting any,
+and verifies closure/refund under the original root. Actual driver/factory
+acceptance verifies one shared credit, failed-effect transfer, dropped
+preparation retention, and durable completion refund even with observed receipts.
+Evidence is `/private/tmp/brassclaw-retention-accepted-20261009/`; settings and
+migration source are V118. This is local ownership/settings acceptance, not full
+platform, authored/preload catalogue or crash-recovery acceptance. The separate
+application/worker binary build remains in the background. Existing local-dev
+`InMemoryBackend` warnings remain visible until the persistence cutover. This is infrastructure capacity, not a Tool grant,
+a task execution count, or a new Recipe. Do not implement two settings reads
+that independently permit the full limit: one attempt can be held by both owners
+and must consume one credit in total.
+
+Reserve before the driver's first history/preparation await. Transfer/share the
+same credit with the factory before it retains the private admission address
+and begins database I/O. A factory call used directly by a behavioral validator
+must reserve through that same owner. Identity is the existing private
+`MontyTaskAttempt`, including its lease token; it must never be formatted,
+serialized into settings/status, or handed to Python. Same-attempt sharing must
+not permit replacing another host/address or bypass duplicate/replay fencing.
+Keep registry locks out of async I/O. If weak references are used to deduplicate
+owners, fence expiry/removal so an old destructor cannot remove a newly reserved
+generation under the same key.
+
+Normal completion may release the credit only after the actual service receipt,
+reply verification and durable admission acknowledgement. Observers retaining
+a completed receipt must not keep VM memory or an operational slot allocated.
+Preparation failures after possible reservation commit and failed/uncertain
+effects retain their address, exact selected graph, answers and credit under
+a trusted reconciliation owner. Releasing the driver's map alone does not
+establish release of the factory's evidence. Existing `take_settlement` and
+`take_failed_settlement` seams transfer reconciliation responsibility; changing
+the limit must not turn those transfers into implicit evidence destruction.
+Do not delete reserved/started rows, automatically replay effects or release
+unknown effects merely to regain capacity.
+
+Publish the shared Rust-owned limit in the existing complete settings operation
+after the worker acknowledgement and before the common effective revision is
+visible. Validate/store/migrate via the existing Monty settings path and expose
+actual retained count, limit and excess in WebUI status. A reduction below count
+retains all owners and blocks only new reservations; growth permits new work
+without changing the global root. Keep this ledger separate from serialized
+backlog count/bytes and settings publication credits.
+
+Required acceptance uses actual driver/factory/PostgreSQL/service ownership:
+one admitted attempt held by both owners counts once; a dropped preparation
+waiter with uncertain commit remains counted; completion frees capacity even
+with retained public receipts; failed-effect transfer preserves evidence/count;
+live reductions drain without cancellation/deletion; growth exceeds the old
+256 ceiling; stale attempts and duplicate admission remain fenced. Verify
+shutdown and lost-ack behavior, desired/effective revisions and unchanged root.
+This contract is not implemented by the current fixed arguments.
+
+### Next hosting control: admitted backlog — implementation contract
+
+Expose instance-wide `execution_limits.max_queued_tasks` (default 64, positive
+u32) and `max_queued_bytes` (default 64 MiB, positive native-size representation)
+through the same settings/CAS/control publication. The byte limit counts the
+validated serialized work envelope, including reserved protocol/identity
+overhead; it is not an RSS or actual allocator measurement. Replace the fixed
+bounded work channel and independent 1024 maximum with a logical count/byte
+credit owner. An unbounded transport channel is permitted only behind those
+atomic bounded credits; draining into a local FIFO cannot create fresh capacity.
+Each accepted work item retains its credit through enqueue, queued wait and
+uncertain Admit; release only after actual admission or explicit rejection.
+
+Capacity updates happen after the worker's complete settings acknowledgement
+and before the shared Rust revision/receipt publication. Lowering limits keeps
+existing work and bytes, blocks new reservations while over capacity and never
+forgets debt when a held credit is returned. Growing limits wakes bounded
+admission waiters. Dropped waiters return only their own reservation; instance
+closure wakes waiters and rejects admissions without discarding durable input.
+Memory backpressure and heap reductions remain independent admission gates.
+Counts/bytes and over-capacity state in GET/status come from the credit owner.
+No second durable queue, input/history truncation, rematch or workflow retry.
+
+Verify saturation by both count and serialized bytes, growth above the old
+physical channel capacity, reductions with owned queued inputs, actual release
+after admission/rejection, cancellation without leaks, close/wakeup races and
+unchanged global root/effect identities. Extend existing native WebUI/CAS and
+real service tests. Keep all Cargo checks deferred while the other agent uses
+the toolchain; source implementation precedes compilation.
+
+**Source status (2026-10-09; acceptance pending):** the neutral DTO and V116
+materialize absent queue fields with one revision advance and retain explicit
+values. The service now holds atomic count/serialized-envelope-byte credits
+through channel, FIFO and uncertain admission ownership. Complete hosting
+publication applies the acknowledged queue policy before shared Rust revision
+publication; legacy settings wrappers preserve queue policy. Ordinary startup
+uses configured limits; WebUI forms/status expose both actual owned usage and
+retained excess. The new actual-worker regression saturates count/bytes, raises
+capacity from 2 to 70, checks byte debt, cancellation, closed waiters and original
+root/effect identity. Native migration and WebUI regressions cover missing and
+partial legacy fields, explicit values, invalid SQL/HTTP edits and same-VM uptake.
+Rustfmt parsing, changed JavaScript syntax and authored diff whitespace checks
+pass. Cheap capacity preflight avoids serialization when already full; the atomic
+reservation remains authoritative and envelope preparation moves the payload
+instead of cloning it. No Cargo or new behavioral acceptance was run while the other agent uses
+the toolchain. Await the repaired child/backlog service, native integration and
+strict lint batch before claiming these controls accepted.
+
+### rc.4 CI finding — settings-lock race
+
+Release run `37880720548` succeeded for Linux x86_64 and macOS x86_64/aarch64.
+Tests run `37881536552` reports 734 composition tests passing and one failure:
+`native_webui_monty_task_settings_reach_one_running_instance` expected HTTP 400
+for a 1-byte manual limit, but got 503. Raw job log retained at
+`/private/tmp/brassclaw-rc4-composition-ci.log` (job `113662218348`). Inspection
+shows intrinsic memory validation occurred after an immediate try-lock against
+background reconciliation. The pending source validates the floor/native/i64
+representation before lock acquisition and uses the existing source deadline
+for an owned lock wait. Invalid input cannot become busy solely because the
+controller owns the mutex; valid changes await transient reconciliation while
+preserving bounded wait, CAS, retained operation ownership and worker feasibility.
+The existing native WebUI regression must verify this repair at the next local
+compile window. The rc.4 CI result does not accept uncommitted protocol-7 source.
+
+### Component-cache failure propagation — pending repair
+
+Review found `PgComponentDbBackend::mark_stale` logged database failures and
+returned success. The existing component database usage must acknowledge only
+committed invalidation; its Recipe owns handling the actual failure. Pending
+source now propagates the existing backend error through the existing Tool
+port, removes the unnecessary module-level dead-code suppression and retains
+prefix bytes after rejected writes. No new workflow Tool or Rust sequencing was
+introduced. `ComponentDbError` also retains its internal diagnostic while
+Display/Debug and the runtime safe summary expose only classification; backend
+SQL/pool text must not become a public answer or log payload.
+
+A native PostgreSQL regression invokes the actual backend/first-party Tool,
+uses an actual rejecting database trigger, checks Backend failure without public
+private-row text or changed prefix bytes, then removes the restriction and
+checks committed invalidation. A focused diagnostic-boundary regression covers
+explicit secret-shaped text. Rustfmt and authored whitespace checks pass;
+behavioral tests and affected host-runtime/composition strict lints are queued
+for the later compile window, not run or accepted yet. This repairs an existing
+primitive failure contract, not complete catalogue activation or prefix-v3 work.
+
+The adjacent caller audit also found nullable legacy `content_hash` reads using
+nonnull decoding, racy `is_new` from a preliminary SELECT, and optional metadata
+silently ignored/defaulted when malformed. Pending source represents absent
+hashes explicitly (read_hash None / read_row null), establishes creation from an
+actual transactional INSERT outcome and updates only after a known conflict,
+commits before returning success, and validates nonnil UUID links/string fields
+and complete consumer-tag arrays before effects. Native coverage checks an
+unhashed real row, parallel real creators returning one new/one existing receipt
+for one UUID, last committed content/hash agreement, invalid links without
+mutation and malformed Tool fields without inserted rows. It retains the current
+legacy pending-row authoring behavior; this is **not** immutable authored
+catalogue/override activation acceptance, which remains required by the full
+cutover. No output/hash default or implicit retry was added.
+
+
+### Next hosting control: retained child contexts — implementation contract
+
+Add positive `execution_limits.max_recipe_contexts`, default 64, to the existing
+neutral settings DTO, durable JSON/CAS, form and complete settings publication.
+Legacy JSON without the field decodes to the existing default; explicitly
+materialize it in a migration with one revision advance, retaining explicit
+operator values and all other limits. This is instance-wide context capacity,
+distinct from per-task Recipe selection and root worker concurrency.
+
+The contained worker owns usage. Include actual configured capacity and active
+count in every worker snapshot; transport/service observations must come from
+that reply, not from the desired settings row. Publish capacity and VM bounds
+in the same acknowledged settings generation. Use a new paired worker protocol
+for the new required command/snapshot fields; reject a mismatched older worker.
+Validate positivity/native representation before persistence and publication.
+Reductions never destroy existing contexts or their results/feed/compute state;
+they block only new Open requests while usage is at or above the new capacity.
+Expose excess retained usage separately from acknowledgement of the new limit.
+No fresh root, TaskSettings-only false acknowledgement, Recipe replay or Tier-2
+fallback. CloseTask releases actual usage normally after effect settlement.
+
+Verify real two-task retained contexts across a reduction below usage, rejected
+new opens, original child resumption, growth permitting a later open, and actual
+zero usage after task settlement with unchanged root identity and compute/feed
+accounting. Extend ordinary WebUI/native PostgreSQL acceptance for live capacity
+uptake, invalid requests and old JSON/migration preservation. Implement the
+coherent source/worker/consumer change before serial local compilation.
+
+Source implementation now supplies the field, V115 upgrade, acknowledged worker
+capacity/count snapshots, live service publication and WebUI draining status.
+The first actual protocol-7 worker and isolated service target compile. Sixteen
+existing service cases pass; the new capacity case initially attempted a second
+root context for one task and correctly received WrongBoundary after growth.
+Its fixture now retains the actual parent context and opens a same-task child;
+the production parent/isolation check is unchanged. The repaired queue has been
+stopped at the operator's request while another agent uses Cargo. Its behavioral
+rerun, native migration/WebUI/original-seven acceptance and strict lints remain
+pending; do not treat the child-capacity feature as accepted yet. Resume the
+serial local queue only in an available compilation window.
+
 Run `python3 scripts/simplified_v3_inventory.py --output /tmp/simplified-v3-inventory.json`.
 The JSON contains source locations and symbols, route and placeholder candidates,
 settings-source candidates, test/CI files, and every Cargo feature declaration.
@@ -3884,13 +4219,13 @@ control alone does not establish runtime uptake.
 | IPC frame | `ProcessLimits.max_frame_bytes` and independent `MAX_FRAME_BYTES = 64 MiB` | Remove independent 64 MiB ceiling; validate the configured value against wire integer representation, actual byte reservations and allocator headroom on both ends. |
 | IPC nesting | `MAX_TRANSPORT_DEPTH = 64`, receive decoder recursion bound | Configured common bound including protocol wrappers; explicitly validate against decoder/stack capabilities or implement a tested iterative codec before supporting greater depth. |
 | Active root task slots / pending calls | `GlobalBounds`: 2 workers, 128 pending calls | Adjust admission and actual Monty coroutine capacity together. Do not report a larger Rust semaphore as a larger VM pool. Reductions drain existing work; no per-chat VM or root restart. |
-| Child contexts | `RootBoot.max_recipe_contexts = 64` | Current and desired capacity live; reductions leave owned contexts intact and prevent further opens until usage fits. |
-| Admitted work backlog | Queue 64; `ServiceOwner` separately rejects above 1024 | Adjustable logical capacity with count and aggregate payload-byte accounting. Remove independent 1024 ceiling; admission pressure waits durably instead of losing an accepted message. |
-| Actor ordinary/control lanes | 8 unclaimed requests and 16 frame reservations each | Adjustable count/byte credits checked atomically; retain a bounded available completion/settings/cancellation lane during work saturation and unsafe reductions. |
-| Settings publication lane | `ServiceOwner` fixed channel capacity 8 | Adjustable logical credits or removal in favour of the common bounded control lane; dropped HTTP waiters do not withdraw accepted publications. |
-| Retained admissions/attempts | Factory and driver each start with independent 256 slots | One live instance retention capacity used by both owners; completed durable settlements release slots, unresolved effects keep their evidence and trigger visible backpressure. |
-| Recipes retained per task | V113/settings `max_recipes_per_task`, default 8; both selection paths read the acknowledged revision | Implemented with live WebUI/CAS and actual task acceptance above. Lowering retains selections/results and rejects only further distinct selections; remaining hosting capacities are separate. |
-| Hosting deadlines and VM slice | Startup/response 30 s, slice 5 ms; settings source/uptake 2/5 s | Expose hosting/control parameters with validated relationships. Task compute time remains distinct from IPC, startup, idle and external waits. |
+| Child contexts | V115/settings `max_recipe_contexts`, default 64; actual worker snapshot owns count/capacity | Actual service, migration, native live WebUI and affected strict-lint checks passed locally. Reductions retain existing contexts. Full platform/Phase 3a acceptance remains separate; see Phase 0 evidence above. |
+| Admitted work backlog | V116/settings `max_queued_tasks`/`max_queued_bytes`, defaults 64 / 64 MiB; atomic logical credits replace fixed channel/1024 ceiling | Actual service saturation, reductions/growth, cancellation, native migration/live WebUI and affected strict-lint checks passed locally. Serialized bytes are not allocator/RSS measurements; full platform acceptance remains separate. |
+| Actor ordinary/control lanes | V119/settings `max_actor_requests`, `max_actor_reserved_bytes`, `max_actor_control_requests`, `max_actor_control_reserved_bytes`; defaults 8 / 1 GiB per lane | Shared atomic credits cover queued, executing and completed/uncollected requests. Physical FIFO size no longer limits live growth. Reductions retain debt and separate control capacity; control bytes must fit one full request/response. 39 actual-worker/DB/HTTP cases pass locally, including V119/V120 and live WebUI uptake. Strict host lint passes; strict composition lint remains blocked by unfinished preload code. Full platform/cutover acceptance remains separate. |
+| Settings publication lane | V117/settings `max_pending_settings`, default 8; logical credits include executing edits | Actual worker ownership/shutdown/growth beyond eight, migration/live WebUI and affected strict-lint checks passed locally. The same effective publication revision covers this Rust-owned policy; full platform acceptance remains separate. |
+| Retained admissions/attempts | V118/settings `max_retained_attempts`, default 256; factory and driver share one private credit per attempt | Local real worker/ownership/migration/WebUI acceptance and strict lint passed. Completion refunds only after durable acknowledgement; unresolved evidence and transfers retain the credit. Complete platform/recovery acceptance remains separate. |
+| Recipes retained per task | V113/settings `max_recipes_per_task`, default 8; both selection paths read the acknowledged revision | Live WebUI/CAS and native task acceptance passed. The redundant settlement ceiling is removed; the actual nine-Recipe regression passed after reducing selection capacity, with malformed-outcome rejection and no reply replay. Complete catalogue/preload activation remains separate. |
+| Hosting deadlines and VM slice | V120/settings `startup_timeout_millis` / `response_timeout_millis`, defaults 30 s; slice 5 ms; V121 settings source/uptake defaults 2/5 s | Startup/IPC settings and retained exchange deadlines have local actual-worker, V120 migration/global-startup/live-WebUI acceptance and strict host lint. V121 source/read and uptake controls passed native migration, captured-deadline/revision-guard and live HTTP acceptance locally; see the 2026-10-09 evidence below. Strict composition lint remains blocked by unfinished preload code. Independent singleton ownership/control cadence and other hosting bounds remain to expose. Task compute time remains distinct from IPC, startup, idle and external waits. |
 | Prepared flow limits | Root `_validate_flow*`: depth 16, 512 identifiers, foreach 256, repeat 64, total 4096 executions | Inventory matching IBS/Q1 validators; configurable common contract or removal of redundant runtime maxima. Approved Recipe iteration counts remain explicit workflow inputs, not silent global truncation. |
 
 Reuse `MontyVmSettingsStore`, the existing PUT/GET/status routes and settings
@@ -4017,3 +4352,425 @@ acknowledges only when that addressed future has ended. Its historical substrate
 evidence is explicitly separate from production Monty acceptance. The root-test
 repair awaits the next GitHub run. This introduces no production Rust fallback
 and does not claim full-plan or Windows acceptance.
+
+### Actor transport capacity batch (2026-10-09, partial local acceptance)
+
+Ordinary and control request counts and reserved wire bytes now have independent
+operator settings. V119 fills only missing fields, preserves explicit values and
+advances a partially migrated row's revision once. It constrains positive integer
+counts to u32 and byte budgets to u64. The native host rejects unrepresentable
+values before persistence and requires control capacity for one full bounded
+request plus response. These reservations describe wire retention, not physical
+heap or RSS.
+
+Transport clones use one ledger for policy and credits. Acceptance rechecks the
+current policy under its insertion lock after serialization. Queued, executing,
+abandoned and completed-but-unclaimed requests consume the same credits; only
+collection refunds them. Increasing limits is not constrained by a startup-sized
+FIFO or the previous 1024-request ceiling. Decreases preserve exact retained
+commands/receipts and expose count/byte debt without cancelling existing work.
+Ordinary saturation cannot borrow the control lane. The service publishes this
+Rust-owned policy after the worker settings ACK and before the common effective
+revision; rejected or stale publications leave it unchanged.
+
+Actual actor/service acceptance cases are also available directly from their
+owning host crate, using the same source files and actual worker as the existing
+composition integration workspace. This keeps host-layer verification independent
+of the unfinished preload/export consumers, which the operator explicitly asked
+to leave alone. No preload failure has been suppressed or reclassified. The
+current whole-tree composition build, V119 migration and native live WebUI
+acceptance remain unverified until the affected prerequisite work is ready.
+
+Local command `cargo +1.96.0 test -p brassclaw_monty_host --locked --test
+actor_host --test service_host -- --test-threads=1` passed all seven actor and
+21 service cases with the freshly compiled actual worker (none ignored).
+The actor regression observes both successful and worker-rejected transport
+exchanges; rejection at an unresolved root boundary is explicit evidence, not
+Recipe success or permission to bypass sequencing. Node syntax checks and
+`git diff --check` passed. Strict all-target host Clippy remains failed on
+`source_structure.rs:148` (`iter_kv_map`) in unfinished preload code, left visible
+under the operator's request. No lint suppression was added. Retained evidence
+is `/private/tmp/brassclaw-actor-accepted-lint-preload-pending-20261009`.
+These checks do not establish V119 native migration, live WebUI, full composition,
+Windows/Linux runtime or complete Phase 3a acceptance for this batch.
+
+### Hosting deadlines (2026-10-09, host-layer acceptance)
+
+V120 adds positive u64-millisecond startup and IPC response settings, defaults
+30 seconds each, preserving complete explicit rows and filling partial/missing
+fields with one revision increment. The response bound must cover startup and
+exceed the configured VM slice. Native validation checks the actual host clock
+range, without assuming macOS/Linux/Windows have the same maximum. Ordinary
+startup builds `RootBoot` and `ProcessLimits` from those settings; a startup
+policy edit applies to the next supervised boot, never global VM lifetime.
+
+The parent bounds actual Boot IPC by the smaller startup/response deadline, so
+native compilation cannot defeat the in-worker startup tracker. Failure retains
+the original Boot and acknowledged exit/containment diagnostics; no second VM,
+Recipe replay or Rust-loop fallback is introduced. Startup/IPC bounds are
+independent of the shared task compute account and external Tool effects.
+
+Actor clones share one deadline policy. Every accepted request captures its
+response deadline with its credit and exact command; queued/in-flight commands
+retain that deadline across later edits. The serialized owner uses the captured
+value for the actual exchange. Idle containment, future heap commits and shutdown
+settlement read the current policy. Coordinated publication applies actor/deadline
+policy after worker ACK and before the common Rust effective revision. Stale or
+intrinsically invalid requests leave policy unchanged.
+
+A VM slice increase must fit both the current response deadline and all unfinished
+accepted exchanges. Validation occurs before persistence and again before worker
+mutation; backpressure rejects the unsafe transition without containing a healthy
+instance. Increase the response bound first and let shorter accepted exchanges
+finish before increasing the slice beyond those older deadlines. Completed,
+uncollected results keep credit/evidence but no longer constrain VM execution.
+
+The same nine actor and 22 service cases pass through the actual freshly compiled
+worker, including startup compiler containment and deadline ownership/publication.
+Strict all-target host Clippy, JavaScript syntax and `git diff --check` pass.
+Evidence: `/private/tmp/brassclaw-hosting-deadline-host-accepted-20261009`.
+V119/V120 real PostgreSQL upgrade tests and native live WebUI checks are added and
+queued; no production, full preload/catalogue or cross-platform acceptance is
+claimed from host-only evidence. Settings source/read and uptake bounds remain
+explicit work; this entry does not complete all hosting controls or the v3 plan.
+
+### Native actor/hosting acceptance follow-up (2026-10-09)
+
+The root composition library and actual current worker compiled together with
+`cargo +1.96.0 test -p brassclaw_reborn_composition -p brassclaw_monty_host
+--features brassclaw_reborn_composition/test-support,brassclaw_reborn_composition/libsql,brassclaw_reborn_composition/skills-db
+--locked --lib --test actor_host --test service_host --no-run
+--message-format=json`. The same build produced the actual companion worker;
+no previous worker was restored after target cleanup.
+
+Eight exact native cases passed: V120 hosting deadlines, V119 actor capacities,
+V118 attempt retention, V117 settings publication, V116 backlog, V115 child
+contexts, one-root Match/No-Match runtime, and live WebUI settings uptake. The
+HTTP case applies increased actor count/byte and startup/response settings and
+checks the acknowledged complete limits; it finished in 116.47 seconds. With
+31 actual host cases and passing strict host lint this is local worker, database
+and HTTP evidence, not complete library, provider/profile or platform acceptance.
+
+Strict composition Clippy still fails on `retained_source.rs:355` in unfinished
+preload code. Native compilation also reports unused preload fixture helpers.
+These diagnostics remain visible, without suppression or preload/export changes,
+as explicitly requested by the operator. Historical failed checks above are
+retained evidence; the latest host lint passes, while composition lint does not.
+Evidence is retained in
+`/private/tmp/brassclaw-hosting-native-accepted-lint-preload-pending-20261009`.
+
+The independent ephemeral `/memory` warning is traced to
+`factory.rs::build_local_dev_root_filesystem`, which mounts in-memory backends
+for memory and tenant records. Repair must reuse supported persistent backends
+and trace their callers/mount aliases, avoiding warning removal without actual
+persistence. The existing `PgMemoryDocStore` and Postgres root filesystem are
+starting points, not proof that this path currently uses them. Settings
+source/read and uptake deadlines, remaining frame/allocator/root/flow controls,
+full catalogue/overrides/recovery and the other plan gates remain open.
+
+### Durable hybrid filesystem mounts (2026-10-09)
+
+The production Postgres build previously entered the local project-filesystem
+builder with its database pool but mounted both `/memory` and `/tenants` on
+fresh `InMemoryBackend` instances. The memory Tool's actual
+`FilesystemMemoryDocumentRepository` uses that mount, and trigger conversation
+services use scoped `/conversations` aliases under `/tenants`; neither was
+made durable merely by the presence of a pool elsewhere in the runtime.
+
+The builder now receives the existing pool and initializes the existing
+`PostgresRootFilesystem` schema through its migration owner. Both structured
+mounts use that backend. Project/workspace/extension file routing remains local.
+Domain repositories still own record schemas, scope paths, identity checks,
+CAS and encryption; no workflow or authority moves into the storage backend.
+Backend failure aborts attachment without an ephemeral fallback. Pure local-dev
+fixtures still use isolated in-memory mounts and retain their explicit warning.
+
+The focused native regression writes through the registered memory Tool,
+destroys all composed services and cached repositories, rebuilds, and reads and
+searches the persisted document/chunks. A CAS patch survives a further rebuild.
+The same case persists a trusted actor pairing and conversation binding through
+the trigger conversation service, then verifies the exact binding after rebuild.
+Finally a closed production pool must fail mount attachment. This acceptance
+does not certify all durable task/effect recovery, audit logs or other stores.
+
+The current root library and companion worker compiled together in one serial
+Cargo test build. Three exact cases passed, none ignored: native memory and
+conversation persistence (32.51 seconds), the isolated local-dev memory Tool
+case (9.81 seconds), and one global-root Match/No-Match runtime (27.72 seconds).
+The production cases emit no ephemeral-memory warning; the isolated fixture
+retains its accurate warning. `git diff --check` passed. Strict composition
+Clippy remains failed at unchanged unfinished preload `retained_source.rs:355`;
+two unused preload fixture helpers remain visible in compilation output. The
+lint attempt preceded the adjacent tenant mount extension, so no successful
+final composition lint is claimed. No preload/export fixes or suppressions were
+added. Evidence is retained at
+`/private/tmp/brassclaw-durable-mounts-accepted-lint-preload-pending-20261009`.
+
+Source inspection also found an independent disconnected legacy WebUI adapter:
+`RebornServices::pg_memory_doc_store` is never populated, so the conditional
+`StoreBackedReductionRuleStore` attachment in `webui.rs` does not occur.
+Do not enable that adapter blindly: `PgMemoryDocStore` uses deprecated
+`MemoryDoc` storage, derives a new project UUID from an already persisted UUID,
+and parses PostgreSQL timestamp text as RFC3339. The operator-settings cutover
+must use the supported `ReductionRuleStore` port with modern durable storage,
+preserve any existing rules, reject corrupt records explicitly, wire the actual
+production facade, and prove replacement/listing after restart. This remains
+required implementation work; it is not repaired by changing filesystem mounts.
+
+Remaining settings-control work must capture the effective source/read and
+uptake deadlines when an operation is accepted. Later edits must not shorten
+an already accepted persistence/readback/publication operation or claim the new
+deadline effective before its acknowledged revision. Cover memory probes,
+edit-lock acquisition, uncertain-commit readback, effective retrieval/Recipe
+snapshot waits and singleton-ownership checks, not just the HTTP waiter.
+The full five-plan objective remains open.
+
+
+### Settings coordination deadlines — native acceptance (2026-10-09)
+
+V121 adds `settings_source_timeout_millis` and `settings_uptake_timeout_millis`
+to the existing execution-limit DTO, database default/check, WebUI form and
+actual runtime observation. Defaults preserve the previous 2 s source and 5 s
+acknowledgement timings. Missing/partial upgrades fill only absent keys with one
+revision increment; explicit values remain. SQL checks positive integral u64
+values without unsafe casts; runtime validation checks the real native clock.
+The two deadlines are independent of one another, task compute, worker startup
+and IPC containment.
+
+Every accepted edit, reconciliation and effective-snapshot waiter captures the
+acknowledged policy before its first await. This captured policy covers edit-lock
+acquisition, durable reads/writes and uncertain-commit readback, startup-policy
+edit probes, optional automatic probes and heap/admission/settings publication
+waits. A timed-out automatic probe remains owned; no parallel replacement probe
+is spawned. A timed-out publication waiter does not cancel the service-owned
+request or turn an unknown effect into rejection/replay. The successor deadlines
+become visible to future operations only through the full snapshot published
+after worker acknowledgement. The HTTP waiter checks all relevant pending budget
+observations rather than treating task-time acknowledgement alone as full uptake.
+
+Reconciliation now validates the complete desired revision and actual host
+feasibility before heap or worker effects. An unchanged revision with any changed
+snapshot field is rejected; a regressed owner or worker revision is rejected.
+An acknowledged worker revision with a lagging owner snapshot can still settle
+its exact desired successor after a waiter timeout. This preserves recovery of
+accepted publication without applying same-revision corruption.
+
+The added native case holds a real PostgreSQL row lock for 400 ms while requesting
+a 200 ms successor source deadline. The accepted edit must retain its old 2 s
+policy, finish and acknowledge the exact new limits. It restores normal settings
+through the operator port, attempts a same-revision source/heap mutation, and
+verifies the existing database revision guard rejects it with unchanged durable
+snapshot and actual heap/limits. No database guard is disabled and no VM is
+replaced. The additional full-snapshot runtime check is defensive validation;
+this test does not claim to bypass the database and exercise corruption that
+the supported writer cannot create. It uses the actual global
+worker and asserts no model calls. Native migration cases cover defaults,
+partial/explicit preservation, invalid/missing fields, platform clock bounds and
+revision-exhaustion rollback. The real HTTP regression edits both deadlines
+alongside duration/token/actor/hosting limits and checks the complete acknowledged
+limits for one retained root.
+
+The serial `brassclaw-coordination-native` batch passed nine native cases:
+V121 migration, actual captured-deadline/revision-guard edit, V115–V120 upgrade
+regressions and one-root Match/No-Match. Its tenth case failed before settings at
+native image verification, and the test executable subsequently no longer existed
+in the shared target. Those results are preserved in
+`/private/tmp/brassclaw-coordination-nine-accepted-webui-identity-failed-20261009`.
+A rebuild initially encountered a concurrent MCP qualification module that was not
+yet present; that compile failure is retained separately. No source gate was
+relaxed for either failure. After the qualification module existed, a fresh actual
+root test/worker build retained verified copies outside the shared Cargo target.
+The live WebUI settings case then passed in 136.87 s, with complete actual limits,
+one root, live duration/token edits and the optional real 60 s memory cadence
+(`brassclaw-rulesets-native-case-4.log`). Singleton ownership requests/checks/releases still
+use their independent 2 s policy and heartbeat cadence, and the reconcile/status
+poll cadences remain separate inventory work. Remaining frame/allocator/root/flow,
+immutable catalogue/recovery, reduction-rule storage and full plan gates remain
+open. Preload/export diagnostics are intentionally untouched under operator
+steering; no warning suppression was added.
+
+
+### Reduction-rule persistence repair — native storage/facade acceptance (2026-10-09)
+
+This is operator-settings infrastructure, not a new task workflow or Rust Tool.
+Replace the disconnected `MemoryDoc` bridge with a PostgreSQL implementation of
+the existing `ReductionRuleStore` port and attach it from the production pool in
+`build_webui_services`. V124 supplies a dedicated JSONB ruleset table keyed by
+existing tenant/user/project data relationships; these keys grant no authority.
+
+For a ruleset not yet present, serialize its first access with a transaction-local
+advisory lock, recheck the destination and import the exact legacy title/tag/project
+selection from V016. Derive the legacy project UUID once from the original slug;
+never derive another UUID from a persisted UUID. Decode and validate every selected
+record and reject corrupt JSON, invalid rules and duplicate IDs before publication.
+Preserve legacy rows; a modern ruleset, including an explicitly empty one, becomes
+authoritative so later reads cannot resurrect deleted rules from legacy storage.
+An atomic explicit full replacement validates the complete incoming ruleset before
+I/O and writes JSONB through typed parameters. It also provides the operator repair
+path for corrupt rulesets; read failures remain errors until that replacement.
+Do not use deprecated MemoryDoc or textual timestamp conversions. Database failures remain errors, with no in-memory fallback.
+
+Acceptance must use native PostgreSQL: legacy import and preservation, sorted
+replacement after reopening, explicit empty replacement, malformed/invalid/duplicate
+legacy rules, corruption in modern storage and isolation of unrelated data keys.
+A separate ordinary runtime/WebUI-facade test must prove attachment and persistence
+after shutdown and rebuilding against the same database. The removed engine loader
+is not reinstated, and this work does not claim hot-path rule application.
+
+
+Native storage/facade evidence (2026-10-09): the three V124 regressions passed
+through the newly compiled ordinary composition library with `test-support`,
+`libsql` and `skills-db`, Rust 1.96.0 and debug/incremental disabled. The cold-read
+case concurrently imports one exact legacy selection, reopens the durable adapter,
+replaces/sorts, preserves legacy content, isolates unrelated keys and proves an
+empty replacement does not resurrect old rules. The corruption case rejects
+malformed/invalid/duplicate legacy data without publishing a destination row,
+rejects invalid modern data and wrong JSONB shape, proves explicit replacement
+repairs those failures, and reports a closed pool as unavailable. The facade case
+builds the real global runtime, uses its ordinary `build_webui_services` attachment,
+shuts down, rebuilds against the same native PostgreSQL database and reads the
+replacement back; no task or model call is fabricated. This is settings CRUD
+persistence/attachment evidence, not renewed engine rule execution.
+
+Exact logs: `/private/tmp/brassclaw-rulesets-native-case-{1,2,3}.log`, durations
+2.79 s / 1.83 s / 52.21 s. The actual newly built root test image and protocol-7
+companion were retained together outside the shared Cargo target with SHA-256
+verification (`/private/tmp/brassclaw-rulesets-native-artifacts.json`) before
+running native cases. Production native executable verification remains enabled.
+This prevents shared target cleanup from removing a running test's signed image.
+The WebUI live-budget regression also passed (case 4, 136.87 s). Strict composition
+lint stopped at the existing `brassclaw_engine/src/executor/retained_source.rs:355`
+preload/export `collapsible_if` diagnostic. No preload source or warning suppression
+was added. Accepted native logs, actual executable checksums, validation commands
+and the lint failure are retained under
+`/private/tmp/brassclaw-rulesets-native-accepted-preload-lint-blocked-20261009`.
+This closes the disconnected operator-store finding locally, while full plan
+acceptance, remaining hosting controls and platform gates remain open.
+
+
+### Singleton ownership controls — local native acceptance (2026-10-09)
+
+This repairs global-hosting infrastructure; it does not add a Recipe workflow or
+Tool. V125 extends the existing execution-limit snapshot with
+`ownership_check_timeout_millis` / `ownership_heartbeat_interval_millis` (both
+default 2000) and `max_pending_ownership_checks` (default 8). Validate positive
+integral/native-clock values; fill missing keys once, preserve explicit values
+and roll back an exhausted revision. Acquisition, actual PostgreSQL ownership
+checks and quiescent release use the acknowledged ownership timeout.
+
+Each admitted request captures an absolute deadline and owns one logical credit
+through queueing and actual completion, including an abandoned/timed-out caller.
+Replace the fixed channel capacity with credits covering queued and executing
+requests. Live increases allow more than eight requests; reductions retain debt
+and reject new admissions until real settlement. An edit never retimes an already
+accepted request. Report actual capacity/count/debt in the existing status view.
+Heartbeat rescheduling uses the last successful real ownership roundtrip; changes
+to unrelated settings must not postpone it indefinitely. Ownership loss still
+fences work and stops the same global VM; no fallback or unreconciled replacement.
+
+Publish the full validated ownership policy only after actual worker settings ACK
+and before publishing the owner's complete effective snapshot. Handle a previously
+ACKed worker with lagging owner policy through exact revision reconciliation;
+never claim Applied from the durable desired row alone. Boot validation and live
+HTTP acceptance must compare the actual policy, capacity and common revision.
+Remove the arbitrary 32-owner diagnostic registry maximum: retained/quarantined
+ownership remains enforced per actual database, with fallible registry allocation
+before worker spawn and removal only after verified quiescence. Never drop unknown
+ownership to reclaim diagnostic space.
+
+Acceptance: pure request-credit/deadline accounting covers abandoned callers,
+reductions and growth beyond eight without pretending database behavior. Native
+PostgreSQL exercises exact ownership/exclusion/loss/quarantine, V125 defaults and
+partial/explicit preservation plus invalid values and revision rollback. The
+ordinary running-global-VM HTTP regression edits all three controls with duration/
+token/transport settings, checks actual uptake and retains VM identity.
+
+All fifteen focused cases passed through the compiled ordinary composition
+library with `test-support`, `libsql`, `skills-db`, Rust 1.96.0 and disabled debug/
+incremental artifacts. This includes real PostgreSQL ownership-session termination
+(37.16 s), exclusive/quarantined ownership, V115–V121/V125 upgrade regressions,
+deadline/credit accounting, one global root across Match/No-Match and live HTTP
+settings uptake (121.58 s). Strict shared-contract lint passed. Strict composition
+lint still stops at the untouched unfinished preload `retained_source.rs:355`
+diagnostic; no suppression or preload edit was made. Native logs, commands,
+compiled-source hashes and SHA-256-verified host/worker images are retained under
+`/private/tmp/brassclaw-ownership-native-accepted-preload-lint-blocked-20261009`.
+The validation runner now retains each finalized artifact on Cargo's compiler
+event, before Cargo exits: the earlier post-exit staging attempt lost the shared
+root test image and ran no cases. Native image verification remains enabled.
+
+This establishes local owner-control behavior, not cross-process fatal recovery:
+a database connection loss can release its advisory lock before the old worker
+fully settles. Durable generation fencing and reconciled replacement remain
+separate acceptance requirements. Remaining cancellation/cadence/frame/allocator/
+root/flow controls and platform/full-plan acceptance are also open.
+
+### Complete execution-limit API replacements — local native acceptance (2026-10-09)
+
+Legacy deserialization defaults are needed for old database snapshots, but an
+incomplete HTTP replacement must not reset newly introduced operator limits.
+`UpdateMontyVmSettingsRequest.execution_limits` now requires every field of the
+current canonical DTO when an object is supplied. Derive required names from that
+DTO's serialized shape; never use its values as request defaults or maintain a
+second field catalogue. Preserve missing/null top-level patch semantics. Reject
+missing, unknown, duplicate, wrongly typed and null nested fields before invoking
+the settings facade. Preserve direct stored-DTO compatibility decoding. The
+existing WebUI already sends the complete GET snapshot and CAS revision.
+
+Two focused parser cases cover every omitted field, exact full replacement,
+stored legacy defaults, top-level patch semantics and raw duplicate-key rejection.
+A native ordinary WebUI regression starts with a custom ownership capacity,
+sends actual invalid HTTP bodies, checks 400 responses with unchanged durable
+settings/runtime revision/ownership policy/global VM identity, then verifies a
+valid duration-only patch retains those limits and reaches the same VM. These
+new cases passed after fresh compilation: both focused DTO parser cases cover
+Value and raw JSON decoding, and the actual native HTTP regression passed in
+27.38 s with the ordinary global VM and real PostgreSQL. The earlier HTTP failure
+was a fixture error: naming the Rust value `null` inside `json!` generated a valid
+whole-object null patch instead of the intended invalid nested null. Rename that
+fixture value; preserve the actual HTTP 400, unchanged-durable-state, live-policy
+and VM identity assertions. Both failed runs and their exact artifacts remain
+retained as failure evidence. Do not treat their 200 response as a production
+decoder error or change the whole-object patch contract.
+
+The expanded product-workflow `--lib --tests` strict lint stops in its unchanged
+preload dependency at `retained_source.rs:355`. No baseline suppression or preload
+edit was made. Production-only DTO strict lint passed separately (22.64 s);
+`git diff --check` and the WebUI field-list consistency check also passed.
+The accepted commands, logs, exact unchanged source snapshot and verified native
+host/worker images are retained under
+`/private/tmp/brassclaw-replacement-native-accepted-preload-test-lint-blocked-20261009`.
+Platform/full-plan acceptance and the unfinished preload cutover remain
+independent; this does not claim a passing expanded dependency/test lint.
+
+### Configurable cancellation acknowledgement — implementation pending acceptance (2026-10-09)
+
+V126 adds `cancellation_ack_timeout_millis` (default 5000) to the existing complete
+execution-limit policy, preserving explicit values and migrating only missing
+fields with one revision increment. Positive integral/native-clock validation
+runs before persistence/publication. The WebUI edits/displays this real limit;
+whole-snapshot acknowledgement and status include it.
+
+`GlobalMontyDriver.stop_attempt` fences the exact host, marks cancellation and
+signals an already submitted control before policy lookup or any await. The
+factory reads a private observation-only source containing the last complete
+acknowledged revision/deadline. Its receiver does not retain the service owner;
+its last acknowledged value remains usable for settling a failed service. This
+is infrastructure/control policy, not Recipe sequencing or a new Rust Tool.
+An accepted wait captures its original deadline; successor edits do not shorten
+it. Timeout still retains the exact attempt and pending real receipt/effect
+state, rather than reporting success or releasing recovery capacity.
+
+New native coverage checks V126 default/explicit preservation, invalid/null/
+overflow values and atomic revision exhaustion. Older migration fixtures drop
+only the future V126 constraint in their private historical schema; production
+constraints stay enabled. The existing ordinary running-VM HTTP regression edits
+the new field with all other settings. A separate native running-global-VM case
+holds an actual provider call, accepts cancellation under the five-second policy,
+changes the policy to 250 ms through ordinary HTTP, verifies that the old wait
+keeps five seconds and retains durable admission/capacity, then releases the real
+provider and transfers the exact settled receipts/evidence without a late reply.
+The contained-worker fixture explicitly supplies a settings source; it does not
+substitute its own claims, persistence or effect settlement. These new acceptance
+cases have not yet run. Remaining control cadences, frame/allocator/root/flow,
+durable recovery and platform/full-plan acceptance remain open.

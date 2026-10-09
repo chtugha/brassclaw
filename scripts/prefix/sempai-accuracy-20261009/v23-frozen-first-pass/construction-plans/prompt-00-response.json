@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a8130d7b4c3fb954",
+  "object": "chat.completion",
+  "created": 1791519618,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"system content contains the exact authorized replacement\", \"result\": \"system: Answer accurately.\"}, {\"guard\": \"system content does not contain the exact authorized replacement\", \"result\": \"system: <original system content unchanged>\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [\"Replace system content with exactly 'Answer accurately.'\"], \"prerequisites\": [\"Target provider metadata is null; catalogue_revision and protocol_capabilities are unknown; no provider-specific rewrite is permitted.\"], \"notes\": \"The instruction permits only the single authorized edit: replace system content with exactly 'Answer accurately.'. The user message must be preserved byte-for-1\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114828,
+    "total_tokens": 114984,
+    "completion_tokens": 156,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

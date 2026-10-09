@@ -33,6 +33,16 @@ use crate::memory::{
     retained_tools::{RetainedToolBinding, RetainedToolError, RetainedToolProgram},
 };
 
+// Loading definitions has no Tool binding/port. Invocation supplies the exact
+// retained usage together; the two modes cannot be confused by boolean arguments.
+enum StepFeedMode<'a> {
+    Preload,
+    Execute {
+        binding: Option<&'a RetainedToolBinding>,
+        tools: Option<&'a dyn RetainedToolPort>,
+    },
+}
+
 #[derive(Clone)]
 pub enum RetainedProgram {
     Unbound(Arc<RetainedUnboundProgram>),
@@ -359,6 +369,7 @@ pub struct RetainedRecipeExecution {
     observations: BTreeMap<String, RetainedStepObservation>,
     observation_order: Vec<String>,
     observe_behavior: bool,
+    loaded_exports: BTreeMap<String, uuid::Uuid>,
     transport_failure: Option<RetainedTransportEvidence>,
 }
 impl RetainedRecipeExecution {
@@ -422,6 +433,7 @@ impl RetainedRecipeExecution {
             observations: BTreeMap::new(),
             observation_order: Vec::new(),
             observe_behavior,
+            loaded_exports: BTreeMap::new(),
             transport_failure: None,
         })
     }
@@ -595,9 +607,13 @@ impl RetainedRecipeExecution {
                 BTreeSet::from([b.association().callable()[5..].to_owned()])
             })
             .unwrap_or_default();
+        let source = self
+            .source_checks
+            .invocation(step_id)
+            .unwrap_or(&step.executable_code);
         let python = SelectedPython {
-            source: step.executable_code.clone(),
-            checksum: Sha256::digest(step.executable_code.as_bytes()).into(),
+            source: source.to_owned(),
+            checksum: Sha256::digest(source.as_bytes()).into(),
             aliases,
         };
         let input_checksum = self
@@ -622,9 +638,45 @@ impl RetainedRecipeExecution {
                 },
             );
         }
-        let result = self
-            .feed(transport, step_id, inputs, python, binding, tools)
-            .await;
+        let result = async {
+            let order = self.source_checks.preload_order().to_vec();
+            for id in order {
+                if self.loaded_exports.values().any(|loaded| *loaded == id) {
+                    continue;
+                }
+                let source = selected.inputs().instruction().snapshot().revisions()[&id]
+                    .draft()
+                    .document()["content"]
+                    .as_str()
+                    .ok_or(RetainedExecutionError::Invalid(
+                        "qualified preload source missing",
+                    ))?;
+                let source = format!("{source}\nresult = None");
+                let preload = SelectedPython {
+                    checksum: Sha256::digest(source.as_bytes()).into(),
+                    source,
+                    aliases: BTreeSet::new(),
+                };
+                self.feed(
+                    transport,
+                    step_id,
+                    serde_json::json!({}),
+                    preload,
+                    StepFeedMode::Preload,
+                )
+                .await?;
+                self.loaded_exports.insert(id.to_string(), id);
+            }
+            self.feed(
+                transport,
+                step_id,
+                inputs,
+                python,
+                StepFeedMode::Execute { binding, tools },
+            )
+            .await
+        }
+        .await;
         if let Some(observation) = self.observations.get_mut(step_id) {
             observation.settled = true;
             match &result {
@@ -658,9 +710,12 @@ impl RetainedRecipeExecution {
         step_id: &str,
         inputs: Value,
         python: SelectedPython,
-        binding: Option<&RetainedToolBinding>,
-        tools: Option<&dyn RetainedToolPort>,
+        mode: StepFeedMode<'_>,
     ) -> Result<Value, RetainedExecutionError> {
+        let (binding, tools, preloading) = match mode {
+            StepFeedMode::Preload => (None, None, true),
+            StepFeedMode::Execute { binding, tools } => (binding, tools, false),
+        };
         if self.context.is_none() {
             self.exchange(
                 transport,
@@ -727,9 +782,17 @@ impl RetainedRecipeExecution {
                                     "selected Tool usage did not invoke its binding",
                                 ));
                             }
-                            self.program
-                                .inputs()
-                                .validate_step_result(step_id, &value)?;
+                            if preloading {
+                                if !value.is_null() {
+                                    return Err(RetainedExecutionError::Invalid(
+                                        "preload returned data",
+                                    ));
+                                }
+                            } else {
+                                self.program
+                                    .inputs()
+                                    .validate_step_result(step_id, &value)?;
+                            }
                             return Ok(value);
                         }
                         RecipeBoundary::ControlYield { key } => {

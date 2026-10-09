@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-8fe187cde2af8ab6",
+  "object": "chat.completion",
+  "created": 1791519424,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger is null and steps is empty\", \"result\": \"recipe-transfer-04 is an offline unapproved data-return subworkflow with no executable steps; it returns state DATA only and never posts a user message.\"}, {\"guard\": \"no runtime/approval claims\", \"result\": \"State unapproved dependencies, Q1 and human Q2 required; current sink cannot preserve full v3 fields.\"}, {\"guard\": \"preserve original conversation\", \"result\": \"Root compatibility arrays empty under test persona; volatile_messages copied once.\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"offline full-v3 export only\", \"unapproved draft PythonCode d4808be6-83e3-5831-b710-c7f2ce88c711\", \"Q1 and human Q2 required\", \"current sink cannot preserve full v3 fields\"], \"notes\": \"Single desc_idx=0 step with knowledge/stepnumber/type=component/include schema; one variant with step_link=0:1-0:E and ten distinct intents; subworkflow returns\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115177,
+    "total_tokens": 115436,
+    "completion_tokens": 259,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

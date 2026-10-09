@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-896790d8cb82b514",
+  "object": "chat.completion",
+  "created": 1791519101,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"slots not in inputs\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"type(slots) is not list\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"len(slots) not in 0..2\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"any item not exact int 0..4\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"all items exact int 0..4\", \"result\": \"{'ok': True, 'slots': slots}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected-runner support for inputs mapping\", \"Q1\", \"human Q2\"], \"notes\": \"Contract is empty-allowed (0..2), so no presence guard is needed; inputs.get('slots') is correct. Exact int 0..4 with no coercion. Conversation preserved ver; 0\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114915,
+    "total_tokens": 115156,
+    "completion_tokens": 241,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

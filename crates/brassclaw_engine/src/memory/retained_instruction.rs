@@ -84,7 +84,8 @@ impl RetainedRecipeInstruction {
                 WorkflowClass::Deterministic => "deterministic",
                 WorkflowClass::RequiresModel => "requires_model",
             },
-            "input_layout":layout, "step_order":self.ordered.step_order(),
+            "input_layout":layout, "invocation_layout":recipe.draft().document().get("invocations"),
+            "step_order":self.ordered.step_order(),
             "components":references,
         });
         validate_data_bounds(&selection, REVISION_LIMITS)

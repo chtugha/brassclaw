@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a83a44d39dce876d",
+  "object": "chat.completion",
+  "created": 1791520272,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare an unapproved reusable draft; no execution.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 component per the current contract. It distinguishes absent key, explicit null, exact string 'watch'/'pause' and other values, always returning {valid, mode}. No execution, Tool call, host.post_reply, imports or exceptions. No submission, Q1/Q2 or activation occurred.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-fresh-missing-default\", \"description\": \"Raw mode: absent key -> valid False, mode None (no default applied). Explicit null -> valid False, mode None. Exact string 'watch' or 'pause' -> valid True, mode original. Any other string, bool or other type -> valid False, mode None. Always result={valid:boolean, mode:original if valid else None}. No imports/host/exceptions; unapproved target inputs draft; selected class22 constructor supports name/description/content only; target inputs interface requires selected-runner support; Q1 and human Q2 before activation.\", \"content\": \"mode = inputs.get('mode')\\nif mode is None:\\n    result = {'valid': False, 'mode': None}\\nelif type(mode) is str and mode in ('watch', 'pause'):\\n    result = {'valid': True, 'mode': mode}\\nelse:\\n    result = {'valid': False, 'mode': None}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114398,
+    "total_tokens": 114745,
+    "completion_tokens": 347,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

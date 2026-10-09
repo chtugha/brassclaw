@@ -1,6 +1,6 @@
 # Monty resumable control gate
 
-Current extension: control.7 / dump ABI 0xBC05, private root-worker protocol 6.
+Current extension: control.7 / dump ABI 0xBC05, private root-worker protocol 7.
 
 `flow_host.rs` runs the actual class-10 pure prepared-flow helpers in the contained
 utility worker. Four cases cover whole-tree preflight failures, branch dominance,

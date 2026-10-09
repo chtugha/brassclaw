@@ -1,0 +1,24 @@
+{
+  "comparison": "same v22 sources and selected units; v23 display/navigation/audit design",
+  "source_manifest_identical": true,
+  "evidence_cards_identical": true,
+  "selection_identical": true,
+  "old": {
+    "generation": "6bacc3a0259e54f581f547823943abc4a699459cff7ef31dcfba5b8d4d592804",
+    "text_tokens": 113903,
+    "rendered_probe_tokens": 114171,
+    "cacheable_shared_tokens": 112992
+  },
+  "new": {
+    "generation": "a8f7820e08c2b1f5ab86d4b30bd29baa4a1a96fd3b42962fa5c155cb701cde56",
+    "text_tokens": 114358,
+    "rendered_probe_tokens": 114626,
+    "cacheable_shared_tokens": 114048
+  },
+  "capacity_rejected_prototype": {
+    "rendered_tokens": 116273,
+    "budget": 114688,
+    "change": "Removed redundant source coordinates from navigation; originals retained"
+  },
+  "model_accuracy": "pending"
+}

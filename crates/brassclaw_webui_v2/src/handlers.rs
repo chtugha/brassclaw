@@ -1721,8 +1721,9 @@ pub async fn get_settings_monty_vm(
 pub async fn put_settings_monty_vm(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(body): Json<UpdateMontyVmSettingsRequest>,
+    body: Result<Json<UpdateMontyVmSettingsRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<MontyVmSettingsResponse>, WebUiV2HttpError> {
+    let Json(body) = body.map_err(WebUiV2HttpError::from)?;
     let response = state
         .services()
         .update_monty_vm_settings(caller, body)

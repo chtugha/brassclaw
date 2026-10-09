@@ -1,5 +1,35 @@
 # monty.composition — Recipe execution coverage audit
 
+## Reply/history migration review gate
+
+The existing packaged `host-post-reply` and `host-save-history` Recipes, their
+associated Skills and PythonCode are migration inputs, **not qualified current-v3
+implementations to reuse unchanged**. Updating these exact workflows is the parent
+task; implementing the qualified preload/export adapter is its prerequisite.
+
+Before selecting a successor, independently review the actual retained definitions,
+interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
+callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
+Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
+pinned export invocation, isolated mutable state and current kernel enforcement.
+Complete the applicable exact-combination bootstrap/approval and behavioral evidence
+before activation. Names, existing package status, old acceptance receipts and the
+word “canonical” do not qualify the unchanged implementation.
+
+Preserve compatible stable UUIDs and old task selections when that reviewed migration
+supports them; do not copy deprecated source substitution, ambient step state,
+module-level Tool execution or unsafe retry guidance into the new adapter. Review
+reply/history ownership, both routing branches, history framing, finalization and
+no-replay behavior together after the adapter is qualified. Keep these internal
+usages out of public MCP discovery unless a separately qualified public contract
+explicitly permits exposure. The commented instructions below are historical only.
+
+
+**MCP source status (2026-10-09):** the raw-Skill/composer serving stub has been retired and legacy outbound MCP activation/attachment has been suspended. Earlier source observations of that stub are historical. See [section 26](#26-inbound-mcp-source-review-and-transport-retirement-2026-10-09) for the repairs and the still-required Recipe/chat/Kohai implementation. The new inbound service is not yet runtime-qualified.
+
+**Updated v3 Skill definition:** a Skill is one Tool usage exposed through a preloadable Python function interface, with prose, explicit associated code, public exported names/signatures and private helper/constant dependencies. Resolve and pin its exact interface/code/association/Tool graph, load definitions in dependency-first order without effects, and invoke the selected export on demand. Loading enables no Tool; matching ToolSkill binding and live kernel checks remain required. Code/immutable constants can be shared; mutable arrays/defaults/closures/results are isolated per invocation/task/attempt. See [the binding function-interface contract](../../skills.md#preloadable-function-interface-binding-v3-target). All legacy and new Skill rows require the per-usage function migration in the implementation appendix; pure wrappers remain PythonCode documentation. This is a target and plan update, not runtime support.
+
+
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
 **Updated v3 Skill definition:** a Skill is one Tool usage exposed through a preloadable Python function interface, with prose, explicit associated code, public exported names/signatures and private helper/constant dependencies. Resolve and pin its exact interface/code/association/Tool graph, load definitions in dependency-first order without effects, and invoke the selected export on demand. Loading enables no Tool; matching ToolSkill binding and live kernel checks remain required. Code/immutable constants can be shared; mutable arrays/defaults/closures/results are isolated per invocation/task/attempt. See [the binding function-interface contract](../../skills.md#preloadable-function-interface-binding-v3-target). All legacy and new Skill rows require the per-usage function migration in the implementation appendix; pure wrappers remain PythonCode documentation. This is a target and plan update, not runtime support.
@@ -249,7 +279,7 @@ The intended MCP transport is now a normal-chat client: list approved Skill exec
 
 This second ledger answers the operator's new question without treating known composer/doc-convert/json-parse bugs as missing PythonCode. **H** means functionality supplied by the hypothesis. **Reuse** means existing code or an already detailed planned component covers the role, not that the current Recipe or its associations are already qualified. A correct composer resolves what the Recipe explicitly declares; it does not invent steps from prose. Treat explicit model work generously as available through the existing model usage, while still requiring its exact executable/binding/Skill closure.
 
-For every row, assembly still needs the common exact UUID/revision/association and typed-edge rules above. An existing Tool-calling body alone is not a complete approved Skill. Canonical companion drafts/qualified binding profiles must match the selected usage. These common wiring/approval obligations are not newly missing executables. Output publication/history follow one explicit owner, reusing N01/N02/N03; MCP requests use a fresh ordinary chat: its existing Recipe reply/history ownership applies, and MCP forwards the correlated terminal response before closing the chat.
+For every row, assembly still needs the common exact UUID/revision/association and typed-edge rules above. An existing Tool-calling body alone is not a complete approved Skill. Canonical companion drafts/qualified binding profiles must match the selected usage. These common wiring/approval obligations are not newly missing executables. <!-- Withdrawn: Output publication/history follow one explicit owner, reusing N01/N02/N03; --> Output publication/history follow one explicit owner using independently reviewed, migrated and qualified N01/N02/N03 successors; MCP requests use a fresh ordinary chat: its existing Recipe reply/history ownership applies, and MCP forwards the correlated terminal response before closing the chat.
 
 | Recipe | Counterfactual executable/Skill coverage and additions |
 | --- | --- |
@@ -391,8 +421,8 @@ For every row, assembly still needs the common exact UUID/revision/association a
 | `doc-convert` | H: both extract and LLM-compress variants include their promised executable conversion closure. Do not re-count missing read/render/store/compression as fresh gaps. R06/R08 belong only to a separate refresh consumer when required. |
 | `host-resolve-intent` | Existing planned protected N04 routing. A healthy legacy composer does not justify a second routing/VM component. |
 | `host-compose-and-run-orchestrator` | Existing planned N04 retained task assembly/execution contract, not a new child VM or duplicate composer usage. |
-| `host-post-reply` | Newer packaged N01 supersedes this role; reuse complete associated usage and one reply owner. |
-| `host-save-history` | Newer packaged N03 -> N02 supersedes this role; reuse complete associated usage and one history owner. |
+| `host-post-reply` | <!-- Withdrawn: Newer packaged N01 supersedes this role; reuse complete associated usage and one reply owner. --> Review and migrate this exact Recipe and N01 usage under the reply/history migration review gate; qualify the adapter and one reply owner before reuse. |
+| `host-save-history` | <!-- Withdrawn: Newer packaged N03 -> N02 supersedes this role; reuse complete associated usage and one history owner. --> Review and migrate this exact Recipe and N03 -> N02 usages under the reply/history migration review gate; qualify the adapter and one history owner before reuse. |
 | `host-assemble-prior-knowledge` | N04 selected full-prefix contract and planned N17–N20 cover this role. Complete compiler/export adapters remain prerequisites, not composer fixes. |
 | `host-non-match-llm-answer` | N04 root actual-No-Match model path; reuse qualified existing model usage for separate Tier1 consumers. No second fallback or new model executor. |
 | `validator-class-0` | Existing planned N08–N15 cover final-v3 checking; trusted review-owner persistence records Q1, while N16 separately admits proposals; legacy narrow N07 alone does not. Actual trusted fact/behavior producer usage profiles remain required under validator_v3. No additional parser/checker is inferred from the three hypothetical fixes. |

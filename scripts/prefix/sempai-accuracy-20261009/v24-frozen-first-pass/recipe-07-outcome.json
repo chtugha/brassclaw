@@ -1,0 +1,91 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable stable reply workflow."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline full-v3 export only. Created one unapproved class-21 Recipe 'recipe-transfer-07' that posts the fixed word 'Stable' as a user reply via the bound existing host.post_reply ToolSkill 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a followed by its PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502. Payload uses the exact persisted IBS schema: one desc_idx=0 with stepnumber 1 (knowledge rust, type component, include ToolSkill 8002e1ff-f3d9-57f7-8a1c-62b33b0da73a, tool_bindings empty, dependencies null) immediately followed by stepnumber 2 (knowledge orchestrator, type component, include PythonCode 249e49eb-fc44-5605-aa6d-6b7299216502). step_link 0:1-0:E, one variant, variable_patterns empty, ten distinct command and natural-language intents in matching payload and variant arrays. trigger null, steps empty, dependency_registry null, no version numbers or approval. This is an unapproved draft; Q1 structural/contract/injection checks and human Q2 approval are required, and the current live sink cannot preserve full v3 fields (step_descriptions/variants/dependency_registry are export-only). No execution, submission, Q1/Q2 or activation was performed.",
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-transfer-07",
+        "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved documentation fixture dependencies; Q1 and human Q2 required. Current live sink cannot preserve full v3 step_descriptions/variants/dependency_registry. Export only, no submission or activation. Posting a reply is an effect, not merely returned data; actual dispatch requires current global Tool policy and technical checks.",
+        "intent_examples": [
+          "reply stable",
+          "post stable",
+          "say stable",
+          "send the stable reply",
+          "respond with stable",
+          "tell me stable",
+          "please say stable",
+          "please reply stable",
+          "post the fixed stable message",
+          "send the fixed stable message"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "yaml_source": "Documentation of supplied offline fixture steps",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "rust",
+                "goal": "Bind reply Tool",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "8002e1ff-f3d9-57f7-8a1c-62b33b0da73a"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              },
+              {
+                "stepnumber": 2,
+                "knowledge": "orchestrator",
+                "goal": "Post fixed reply",
+                "content": "Use the supplied offline fixture",
+                "type": "component",
+                "include": [
+                  "249e49eb-fc44-5605-aa6d-6b7299216502"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "stable-reply",
+            "description": "Offline unapproved fixed-reply subworkflow; binding then Python calls existing host.post_reply",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "reply stable",
+              "post stable",
+              "say stable",
+              "send the stable reply",
+              "respond with stable",
+              "tell me stable",
+              "please say stable",
+              "please reply stable",
+              "post the fixed stable message",
+              "send the fixed stable message"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

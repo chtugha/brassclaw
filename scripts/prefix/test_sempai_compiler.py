@@ -9,6 +9,28 @@ from unittest.mock import patch
 
 
 class SempaiCompilerTests(unittest.TestCase):
+    def test_json_display_preserves_real_teaching_artifacts_and_executable_strings(self):
+        path = Path(__file__).with_name('sempai-compiler.py')
+        spec = importlib.util.spec_from_file_location('sempai_projection_test', path)
+        compiler = importlib.util.module_from_spec(spec); spec.loader.exec_module(compiler)
+        import re
+        source = path.with_name('sempai-worked-examples.md').read_text()
+        projected = compiler.compact_json_view(source)
+        original_blocks = re.findall(r'```json\n(.*?)\n```', source, re.S)
+        projected_blocks = re.findall(r'```json\n(.*?)\n```', projected, re.S)
+        self.assertEqual(len(original_blocks), len(projected_blocks))
+        for original, view in zip(original_blocks, projected_blocks, strict=True):
+            self.assertEqual(json.loads(original), json.loads(view))
+        self.assertEqual(re.findall(r'```python\n(.*?)\n```', source, re.S),
+                         re.findall(r'```python\n(.*?)\n```', projected, re.S))
+        self.assertLess(len(projected), len(source))
+        # Ambiguous values and code quoted inside a larger fence stay untouched.
+        for text in ['```json\n{"a":1,"a":2}\n```\n',
+                     '```json\n{"a":1.234567890123456789}\n```\n',
+                     '````text\n```json\n{ "a": 1 }\n```\n````\n',
+                     '```yaml\na: true\n  b: false\n```\n']:
+            self.assertEqual(compiler.compact_json_view(text), text)
+
     def test_complete_sources_and_failed_recollection_preserve_evidence(self):
         path = Path(__file__).with_name('sempai-compiler.py')
         spec = importlib.util.spec_from_file_location('sempai_compiler_test', path)

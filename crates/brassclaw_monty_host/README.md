@@ -378,6 +378,54 @@ There is no PATH search or in-process utility fallback. Library tests require
 `cargo build -p brassclaw_monty_host --bin monty_worker` first in the same profile
 and target directory. These serial commands belong in the validation queue.
 
+### Retained preload/export adapter
+
+The retained engine adapter reads `python-preload/2` from immutable class-22
+revision documents. It contains `exports` (public name -> implementation
+`symbol`, ordered `parameters`, `mapping`), `private_functions` (symbol ->
+parameters), `constants`, `imports`, exact UUID `dependencies` and an optional
+`default_export`. Helper-only and immutable-constant-only dependencies need no
+public export. A selected executable entry must resolve an export. Explicit
+Recipe selection is retained document metadata at
+`invocations[variant_key][step_id]`; it adds no fields to persisted IBS steps.
+Invalid explicit selections never fall back to defaults. The Recipe and this
+layout are pinned with the complete task selection.
+
+A Tool usage's checksummed Skill document carries `skill-interface/1` with
+`python_code_uuid`, matching exports, recursive `inputs`/`result`, `failure`,
+dependencies and sorted private symbols. Its unchanged `skill-association/1`
+record supplies the Tool/ToolSkill identity, fixed/computed arguments and failure
+contract. Each public entry must implement that same one-Tool usage. Neither
+the declaration nor successful inspection establishes exact-combination approval.
+
+The contained parser checks effect-free top-level definitions, immutable literal
+constants, exact signatures/imports and lexical references. Assembly rejects
+missing dependencies, cycles and symbol collisions, orders dependencies by stable
+UUID, and inspects the selected export's transitive call graph. The current
+stop-only execution profile permits one actual Tool call: multiple/repeated
+call sites, Tool-calling aliases/closures and recursive function graphs are
+rejected before execution. Dependent-chain and recursive-call qualification need
+additional supported occurrence/binding contracts; they are not inferred here.
+Decorators, defaults, variadic/positional-only parameters, async definitions,
+module-level imports/effects, `global`/`nonlocal` state and mutable global
+initializers are also outside this profile. Imports inside functions use only
+the qualified interpreter stdlib surface.
+
+Each Recipe child loads its selected definitions once with no Tool aliases or
+runtime inputs, then executes fixed compiler-produced keyword calls with fresh
+typed inputs and result validation. Function locals/closures created during an
+invocation are not reused across invocations. Task child namespaces remain
+isolated; no process-wide mutable Python export namespace is introduced. Tools
+are bound only for invocation and retain kernel policy/cancellation/intent
+checks. Failed loads or invocations fence the begun execution; they do not replay
+it. Legacy step bodies cannot share a namespace with preloaded libraries.
+
+This adapter is separate from catalogue activation: the installed narrow
+reply/history catalogue still needs its distinct trusted bootstrap approval
+producer and evidence retention. General authored catalogue selection and MCP
+eligibility must not be inferred from source inspection or this metadata.
+
+
 Source inspection uses `UtilityRequest::InspectSource` in that same contained
 worker, after Monty compilation and without executing any opcode. It returns
 exact-source SHA-256, direct syntactic host-call sites and byte ranges, imports,
@@ -387,7 +435,7 @@ not become code. Traversal and output capacity fail explicitly rather than
 returning partial observations. The report is private diagnostic data, not
 trusted approval, proof of reachability/dependent chains or a Tool grant.
 The ordinary catalogue/review owner must apply its supported Q1 and semantic
-review contract separately. Protocol 2 requires the matching packaged worker.
+review contract separately. Protocol 3 includes preload scopes/call cardinality and requires the matching packaged worker.
 
 
 The control.7 worker resizes its logical heap limit and finite physical backstop

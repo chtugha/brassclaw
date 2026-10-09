@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b98e5f301f6980cc",
+  "object": "chat.completion",
+  "created": 1791519593,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"absent\", \"result\": \"None\"}, {\"guard\": \"null\", \"result\": \"None\"}, {\"guard\": \"wrong_type\", \"result\": \"None\"}, {\"guard\": \"valid\", \"result\": \"host.post_reply(answer='Prepared')\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"unapproved draft\", \"current sink cannot preserve full v3 fields\"], \"notes\": \"Fixed-word reply effect; posts exactly 'Prepared' via bound existing host.post_reply. No inputs/dependencies. One class21 recipe-transfer-11 with supplied UUIDs\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115273,
+    "total_tokens": 115433,
+    "completion_tokens": 160,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

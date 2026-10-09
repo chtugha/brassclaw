@@ -21,9 +21,12 @@ use futures::{FutureExt, StreamExt, future::BoxFuture, stream::FuturesUnordered}
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
-    sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc, watch},
+    sync::{Notify, mpsc, watch},
     task::JoinHandle,
 };
+
+use crate::admission_capacity::{AdmissionCapacity, AdmissionCredit};
+pub use crate::admission_capacity::{AdmissionLimits, AdmissionObservation};
 
 use crate::{
     ContinuationKey,
@@ -34,7 +37,8 @@ use crate::{
         RecipeEvent, RootBoot, TaskHandle, TaskSettings, WorkerCommand,
     },
     transport_actor::{
-        ActorExit, ActorLimits, StartError, TransportClient, TransportOwner, TransportReceipt,
+        ActorExit, ActorLimits, HostingDeadlines, StartError, TransportClient, TransportOwner,
+        TransportReceipt,
     },
 };
 
@@ -123,7 +127,21 @@ struct TaskSettingsPublication {
     expected: u64,
     settings: TaskSettings,
     values: Option<crate::VmBounds>,
+    max_recipe_contexts: Option<u32>,
+    admission_limits: Option<AdmissionLimits>,
+    max_pending_settings: Option<u32>,
+    max_retained_attempts: Option<u32>,
+    actor_limits: Option<ActorLimits>,
+    hosting_deadlines: Option<HostingDeadlines>,
     result: watch::Sender<Option<Result<Arc<SettingsReceipt>, ServiceFailure>>>,
+}
+#[derive(Default)]
+struct HostingPolicyPatch {
+    admission: Option<AdmissionLimits>,
+    pending_settings: Option<u32>,
+    retained_attempts: Option<u32>,
+    actor: Option<ActorLimits>,
+    deadlines: Option<HostingDeadlines>,
 }
 struct HeapPublication {
     expected: u64,
@@ -149,6 +167,49 @@ enum SettingsPublication {
     Heap(HeapPublication),
     HeapTransaction(HeapTransaction),
     MemoryAdmission(MemoryAdmissionPublication),
+}
+struct CreditedPublication {
+    publication: SettingsPublication,
+    // Retain ownership through execution, including a durable heap transaction.
+    _credit: AdmissionCredit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettingsCapacityObservation {
+    pub limit: u32,
+    pub pending: u32,
+}
+impl SettingsCapacityObservation {
+    pub fn over_capacity(self) -> bool {
+        self.pending > self.limit
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServiceHostingLimits {
+    pub admission: AdmissionLimits,
+    pub max_pending_settings: u32,
+    pub max_retained_attempts: u32,
+    /// None preserves the current actor policy for legacy hosting callers.
+    pub actor: Option<ActorLimits>,
+    pub deadlines: Option<HostingDeadlines>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetainedAttemptObservation {
+    pub limit: u32,
+    pub retained: u32,
+}
+impl RetainedAttemptObservation {
+    pub fn over_capacity(self) -> bool {
+        self.retained > self.limit
+    }
+}
+
+/// Resource ownership only. The trusted attempt owner shares one credit across
+/// preparation/driver/reconciliation; it supplies no claim or Tool permission.
+pub struct RetainedAttemptCredit {
+    _credit: AdmissionCredit,
 }
 impl SettingsPublication {
     fn reject(self, failure: ServiceFailure) {
@@ -194,10 +255,17 @@ impl From<&ProcessSnapshot> for HeapObservation {
 }
 pub struct SettingsReceipt {
     pub effective_settings: TaskSettings,
+    pub recipe_context_capacity: crate::process::RecipeContextCapacity,
+    pub admission: AdmissionObservation,
+    pub settings_capacity: SettingsCapacityObservation,
+    pub retained_attempts: RetainedAttemptObservation,
+    pub actor_capacity: crate::transport_actor::ActorCapacityObservation,
+    pub hosting_deadlines: HostingDeadlines,
     pub accounting: Vec<crate::process::TaskAccounting>,
 }
 struct SettingsInbox {
-    requests: mpsc::Receiver<SettingsPublication>,
+    requests: mpsc::UnboundedReceiver<CreditedPublication>,
+    credits: Arc<AdmissionCapacity>,
     live: LiveMontyTaskSettings,
     heap: watch::Sender<HeapObservation>,
     memory_admission: watch::Sender<MemoryAdmissionPolicy>,
@@ -279,22 +347,25 @@ struct Admission {
     control: TaskControl,
     // Covers the channel, the local FIFO and an uncertain Admit exchange.
     // Draining the channel must not increase the configured queue capacity.
-    _credit: OwnedSemaphorePermit,
+    _credit: AdmissionCredit,
 }
 #[derive(Clone)]
 pub struct ServiceClient {
-    admissions: mpsc::Sender<Admission>,
-    admission_credits: Arc<Semaphore>,
+    transport: TransportClient,
+    admissions: mpsc::UnboundedSender<Admission>,
+    admission_credits: Arc<AdmissionCapacity>,
+    retained_credits: Arc<AdmissionCapacity>,
     changed: Arc<Notify>,
     closed: Arc<AtomicBool>,
     closed_wake: Arc<Notify>,
     values: watch::Receiver<crate::VmBounds>,
-    response_timeout: Duration,
+    recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
     root_source_bytes: usize,
     root: RootExecutionIdentity,
     frame: usize,
     worker_process_id: Option<u32>,
-    settings: mpsc::Sender<SettingsPublication>,
+    settings: mpsc::UnboundedSender<CreditedPublication>,
+    settings_credits: Arc<AdmissionCapacity>,
     effective_settings: LiveMontyTaskSettings,
     observed_heap: watch::Receiver<HeapObservation>,
     memory_admission: watch::Receiver<MemoryAdmissionPolicy>,
@@ -306,6 +377,8 @@ impl ServiceClient {
         self.closed.store(true, Ordering::Release);
         self.closed_wake.notify_waiters();
         self.admission_credits.close();
+        self.retained_credits.close();
+        self.settings_credits.close();
         self.changed.notify_one();
     }
 
@@ -323,7 +396,14 @@ impl ServiceClient {
         expected: u64,
         settings: TaskSettings,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
-        self.publish_runtime(expected, settings, None).await
+        self.publish_runtime(
+            expected,
+            settings,
+            None,
+            None,
+            HostingPolicyPatch::default(),
+        )
+        .await
     }
 
     pub fn root_identity(&self) -> RootExecutionIdentity {
@@ -334,13 +414,36 @@ impl ServiceClient {
         *self.values.borrow()
     }
 
+    pub fn recipe_context_capacity(&self) -> crate::process::RecipeContextCapacity {
+        *self.recipe_contexts.borrow()
+    }
+
+    pub fn hosting_deadlines(&self) -> Result<HostingDeadlines, ServiceFailure> {
+        self.transport
+            .hosting_deadlines()
+            .map_err(|_| ServiceFailure::Transport)
+    }
     pub fn validate_vm_bounds(&self, values: crate::VmBounds) -> Result<(), ServiceFailure> {
+        self.validate_runtime_bounds(values, self.hosting_deadlines()?.response_timeout)
+    }
+    pub fn validate_runtime_bounds(
+        &self,
+        values: crate::VmBounds,
+        response_timeout: Duration,
+    ) -> Result<(), ServiceFailure> {
         if !crate::process::runtime_bounds_supported(values, self.frame)
-            || values.execution_slice >= self.response_timeout
+            || response_timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(response_timeout)
+                .is_none()
+            || values.execution_slice >= response_timeout
             || values.max_source_bytes < self.root_source_bytes
         {
             return Err(ServiceFailure::InvalidLimits);
         }
+        self.transport
+            .validate_execution_slice(values.execution_slice)
+            .map_err(|_| ServiceFailure::Backpressure)?;
         Ok(())
     }
 
@@ -351,7 +454,173 @@ impl ServiceClient {
         values: crate::VmBounds,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
         self.validate_vm_bounds(values)?;
-        self.publish_runtime(expected, settings, Some(values)).await
+        self.publish_runtime(
+            expected,
+            settings,
+            Some(values),
+            None,
+            HostingPolicyPatch::default(),
+        )
+        .await
+    }
+
+    /// Publish child capacity and VM bounds under the same worker-acknowledged
+    /// settings generation. Reductions retain owned contexts and their state.
+    pub async fn publish_execution_settings(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: crate::VmBounds,
+        max_recipe_contexts: u32,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        self.validate_vm_bounds(values)?;
+        if max_recipe_contexts == 0 {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        self.publish_runtime(
+            expected,
+            settings,
+            Some(values),
+            Some(max_recipe_contexts),
+            HostingPolicyPatch::default(),
+        )
+        .await
+    }
+
+    /// Queue policy is Rust-owned, but becomes effective in the same serialized
+    /// slot as the worker acknowledgement. Existing work keeps its credits.
+    pub async fn publish_hosting_settings(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: crate::VmBounds,
+        max_recipe_contexts: u32,
+        admission_limits: AdmissionLimits,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        self.validate_vm_bounds(values)?;
+        if max_recipe_contexts == 0 || !admission_limits.valid() {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        self.publish_runtime(
+            expected,
+            settings,
+            Some(values),
+            Some(max_recipe_contexts),
+            HostingPolicyPatch {
+                admission: Some(admission_limits),
+                ..HostingPolicyPatch::default()
+            },
+        )
+        .await
+    }
+
+    /// Publish all hosting controls in one acknowledged settings generation.
+    pub async fn publish_control_settings(
+        &self,
+        expected: u64,
+        settings: TaskSettings,
+        values: crate::VmBounds,
+        max_recipe_contexts: u32,
+        hosting: ServiceHostingLimits,
+    ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        if hosting
+            .deadlines
+            .is_some_and(|deadlines| !deadlines.valid())
+        {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        self.validate_runtime_bounds(
+            values,
+            hosting
+                .deadlines
+                .unwrap_or(self.hosting_deadlines()?)
+                .response_timeout,
+        )?;
+        if let Some(actor) = hosting.actor {
+            self.validate_actor_limits(actor)?;
+        }
+        if max_recipe_contexts == 0
+            || !hosting.admission.valid()
+            || hosting.max_pending_settings == 0
+            || hosting.max_retained_attempts == 0
+        {
+            return Err(ServiceFailure::InvalidLimits);
+        }
+        self.publish_runtime(
+            expected,
+            settings,
+            Some(values),
+            Some(max_recipe_contexts),
+            HostingPolicyPatch {
+                admission: Some(hosting.admission),
+                pending_settings: Some(hosting.max_pending_settings),
+                retained_attempts: Some(hosting.max_retained_attempts),
+                actor: hosting.actor,
+                deadlines: hosting.deadlines,
+            },
+        )
+        .await
+    }
+
+    pub fn validate_actor_limits(&self, limits: ActorLimits) -> Result<(), ServiceFailure> {
+        self.transport
+            .validate_limits(limits)
+            .map_err(|_| ServiceFailure::InvalidLimits)
+    }
+    pub fn actor_capacity(
+        &self,
+    ) -> Result<crate::transport_actor::ActorCapacityObservation, ServiceFailure> {
+        self.transport
+            .capacity()
+            .map_err(|_| ServiceFailure::Transport)
+    }
+
+    pub fn settings_capacity(&self) -> SettingsCapacityObservation {
+        let observed = self.settings_credits.observation();
+        SettingsCapacityObservation {
+            limit: observed.limits.max_tasks,
+            pending: observed.tasks,
+        }
+    }
+
+    pub fn retained_attempts(&self) -> RetainedAttemptObservation {
+        let observed = self.retained_credits.observation();
+        RetainedAttemptObservation {
+            limit: observed.limits.max_tasks,
+            retained: observed.tasks,
+        }
+    }
+
+    /// Reserve before asynchronous task preparation. Sharing/deduplicating this
+    /// credit belongs to the private Rust attempt owner, never a Python token.
+    pub fn try_retain_attempt(&self) -> Result<RetainedAttemptCredit, ServiceFailure> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(ServiceFailure::Closed);
+        }
+        Ok(RetainedAttemptCredit {
+            _credit: self.retained_credits.try_reserve(0)?,
+        })
+    }
+
+    fn enqueue_settings(&self, publication: SettingsPublication) -> Result<(), ServiceFailure> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(ServiceFailure::Closed);
+        }
+        // The control lane has no additional byte-budget policy. Its payloads
+        // remain subject to the worker transport's validated frame bounds.
+        let credit = self.settings_credits.try_reserve(0)?;
+        self.settings
+            .send(CreditedPublication {
+                publication,
+                _credit: credit,
+            })
+            .map_err(|_| ServiceFailure::Closed)?;
+        self.changed.notify_one();
+        Ok(())
+    }
+
+    pub fn admission_observation(&self) -> AdmissionObservation {
+        self.admission_credits.observation()
     }
 
     async fn publish_runtime(
@@ -359,23 +628,25 @@ impl ServiceClient {
         expected: u64,
         settings: TaskSettings,
         values: Option<crate::VmBounds>,
+        max_recipe_contexts: Option<u32>,
+        hosting: HostingPolicyPatch,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
         if self.closed.load(Ordering::Acquire) {
             return Err(ServiceFailure::Closed);
         }
         let (result, mut receipt) = watch::channel(None);
-        self.settings
-            .try_send(SettingsPublication::Task(TaskSettingsPublication {
-                expected,
-                settings,
-                values,
-                result,
-            }))
-            .map_err(|error| match error {
-                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
-                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
-            })?;
-        self.changed.notify_one();
+        self.enqueue_settings(SettingsPublication::Task(TaskSettingsPublication {
+            expected,
+            settings,
+            values,
+            max_recipe_contexts,
+            admission_limits: hosting.admission,
+            max_pending_settings: hosting.pending_settings,
+            max_retained_attempts: hosting.retained_attempts,
+            actor_limits: hosting.actor,
+            hosting_deadlines: hosting.deadlines,
+            result,
+        }))?;
         loop {
             if let Some(result) = receipt.borrow_and_update().clone() {
                 return result;
@@ -406,19 +677,13 @@ impl ServiceClient {
             return Err(ServiceFailure::Closed);
         }
         let (result, mut receipt) = watch::channel(None);
-        self.settings
-            .try_send(SettingsPublication::HeapTransaction(HeapTransaction {
-                expected,
-                settings,
-                commit,
-                commit_timeout: self.response_timeout,
-                result,
-            }))
-            .map_err(|error| match error {
-                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
-                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
-            })?;
-        self.changed.notify_one();
+        self.enqueue_settings(SettingsPublication::HeapTransaction(HeapTransaction {
+            expected,
+            settings,
+            commit,
+            commit_timeout: self.hosting_deadlines()?.response_timeout,
+            result,
+        }))?;
         loop {
             if let Some(result) = *receipt.borrow_and_update() {
                 return result;
@@ -450,19 +715,13 @@ impl ServiceClient {
             return Err(ServiceFailure::Closed);
         }
         let (result, mut receipt) = watch::channel(None);
-        self.settings
-            .try_send(SettingsPublication::MemoryAdmission(
-                MemoryAdmissionPublication {
-                    expected,
-                    backpressure,
-                    result,
-                },
-            ))
-            .map_err(|error| match error {
-                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
-                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
-            })?;
-        self.changed.notify_one();
+        self.enqueue_settings(SettingsPublication::MemoryAdmission(
+            MemoryAdmissionPublication {
+                expected,
+                backpressure,
+                result,
+            },
+        ))?;
         loop {
             if let Some(result) = *receipt.borrow_and_update() {
                 return result;
@@ -475,19 +734,17 @@ impl ServiceClient {
     }
 
     /// Wait for bounded queue capacity and safe memory admission without a work
-    /// polling loop or input/history cloning. Cancellation before enqueue owns
-    /// no VM task, and dropping the future returns its queue credit.
+    /// polling loop or repeated input/history cloning. Caller-held inputs
+    /// awaiting capacity are not admitted work. Cancellation before enqueue
+    /// owns no VM task and returns any acquired queue credit.
     pub async fn submit_when_available(
         &self,
         input: TaskInput,
         ports: Arc<dyn TaskPorts>,
     ) -> Result<TaskTicket, ServiceFailure> {
-        let credit = self
-            .admission_credits
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| ServiceFailure::Closed)?;
+        self.admission_credits.wait_available().await?;
+        let (input, bytes) = self.prepare_input(input)?;
+        let credit = self.admission_credits.reserve(bytes).await?;
         let mut memory = self.memory_admission.clone();
         let mut heap = self.observed_heap.clone();
         loop {
@@ -523,18 +780,12 @@ impl ServiceClient {
             return Err(ServiceFailure::Closed);
         }
         let (result, mut receipt) = watch::channel(None);
-        self.settings
-            .try_send(SettingsPublication::Heap(HeapPublication {
-                expected,
-                settings,
-                automatic,
-                result,
-            }))
-            .map_err(|error| match error {
-                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
-                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
-            })?;
-        self.changed.notify_one();
+        self.enqueue_settings(SettingsPublication::Heap(HeapPublication {
+            expected,
+            settings,
+            automatic,
+            result,
+        }))?;
         loop {
             if let Some(result) = *receipt.borrow_and_update() {
                 return result;
@@ -559,23 +810,13 @@ impl ServiceClient {
         {
             return Err(ServiceFailure::Backpressure);
         }
-        let credit =
-            self.admission_credits
-                .clone()
-                .try_acquire_owned()
-                .map_err(|error| match error {
-                    tokio::sync::TryAcquireError::Closed => ServiceFailure::Closed,
-                    tokio::sync::TryAcquireError::NoPermits => ServiceFailure::Backpressure,
-                })?;
+        self.admission_credits.available()?;
+        let (input, bytes) = self.prepare_input(input)?;
+        let credit = self.admission_credits.try_reserve(bytes)?;
         self.submit_with_credit(input, ports, credit)
     }
 
-    fn submit_with_credit(
-        &self,
-        input: TaskInput,
-        ports: Arc<dyn TaskPorts>,
-        credit: OwnedSemaphorePermit,
-    ) -> Result<TaskTicket, ServiceFailure> {
+    fn prepare_input(&self, input: TaskInput) -> Result<(Value, usize), ServiceFailure> {
         if [
             &input.conversation_id,
             &input.message_id,
@@ -616,10 +857,26 @@ impl ServiceClient {
                 vm_id: uuid::Uuid::nil(),
                 ordinal: u64::MAX,
             },
-            task: input.clone(),
+            task: input,
         };
-        crate::process::retain_command(&probe, values, self.frame)
-            .map_err(|_| ServiceFailure::InvalidInput)?;
+        let bytes = crate::process::retain_command(&probe, values, self.frame)
+            .map_err(|_| ServiceFailure::InvalidInput)?
+            .len();
+        let WorkerCommand::Admit { task, .. } = probe else {
+            return Err(ServiceFailure::InvalidInput);
+        };
+        Ok((task, bytes))
+    }
+
+    fn submit_with_credit(
+        &self,
+        input: Value,
+        ports: Arc<dyn TaskPorts>,
+        credit: AdmissionCredit,
+    ) -> Result<TaskTicket, ServiceFailure> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(ServiceFailure::Closed);
+        }
         let (result, _) = watch::channel(None);
         let control = TaskControl(Arc::new(Control {
             cancelled: AtomicBool::new(false),
@@ -628,15 +885,12 @@ impl ServiceClient {
             result,
         }));
         self.admissions
-            .try_send(Admission {
+            .send(Admission {
                 input,
                 control: control.clone(),
                 _credit: credit,
             })
-            .map_err(|error| match error {
-                mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
-                mpsc::error::TrySendError::Closed(_) => ServiceFailure::Closed,
-            })?;
+            .map_err(|_| ServiceFailure::Closed)?;
         Ok(TaskTicket { control })
     }
 }
@@ -696,6 +950,55 @@ impl ServiceOwner {
         queue_capacity: usize,
         live: LiveMontyTaskSettings,
     ) -> Result<Self, StartError> {
+        let max_tasks = u32::try_from(queue_capacity)
+            .map_err(|_| StartError::Actor(crate::transport_actor::ActorFailure::InvalidLimits))?;
+        Self::start_with_admission_limits(
+            executable,
+            boot,
+            process,
+            actor,
+            AdmissionLimits {
+                max_tasks,
+                max_bytes: 64 * 1024 * 1024,
+            },
+            live,
+        )
+        .await
+    }
+
+    pub async fn start_with_admission_limits(
+        executable: &Path,
+        boot: RootBoot,
+        process: ProcessLimits,
+        actor: ActorLimits,
+        admission_limits: AdmissionLimits,
+        live: LiveMontyTaskSettings,
+    ) -> Result<Self, StartError> {
+        Self::start_with_hosting_limits(
+            executable,
+            boot,
+            process,
+            actor,
+            ServiceHostingLimits {
+                admission: admission_limits,
+                max_pending_settings: 8,
+                max_retained_attempts: 256,
+                actor: None,
+                deadlines: None,
+            },
+            live,
+        )
+        .await
+    }
+
+    pub async fn start_with_hosting_limits(
+        executable: &Path,
+        boot: RootBoot,
+        process: ProcessLimits,
+        actor: ActorLimits,
+        hosting: ServiceHostingLimits,
+        live: LiveMontyTaskSettings,
+    ) -> Result<Self, StartError> {
         if TaskSettings::from(live.current()) != boot.task_settings {
             return Err(StartError::Actor(
                 crate::transport_actor::ActorFailure::InvalidLimits,
@@ -704,7 +1007,10 @@ impl ServiceOwner {
         boot.heap_settings.ok_or(StartError::Actor(
             crate::transport_actor::ActorFailure::InvalidLimits,
         ))?;
-        if !(1..=1024).contains(&queue_capacity) {
+        if !hosting.admission.valid()
+            || hosting.max_pending_settings == 0
+            || hosting.max_retained_attempts == 0
+        {
             return Err(StartError::Actor(
                 crate::transport_actor::ActorFailure::InvalidLimits,
             ));
@@ -716,16 +1022,45 @@ impl ServiceOwner {
                 crate::transport_actor::ActorFailure::InvalidLimits,
             ));
         }
+        if hosting.deadlines.is_some_and(|configured| {
+            !configured.valid()
+                || configured.startup_timeout != boot.startup_timeout
+                || configured.response_timeout != process.response_timeout
+        }) {
+            return Err(StartError::Actor(
+                crate::transport_actor::ActorFailure::InvalidLimits,
+            ));
+        }
+        if hosting.actor.is_some_and(|configured| configured != actor) {
+            return Err(StartError::Actor(
+                crate::transport_actor::ActorFailure::InvalidLimits,
+            ));
+        }
         let root_source_bytes = boot.source.len();
         let workers = boot.bounds.workers;
         let (owner, ready) = TransportOwner::start(executable, boot, process, actor).await?;
         let worker_process_id = owner.worker_process_id();
         let root = ready.root.expect("transport verified root identity");
         // start_ready proves every live worker is parked before returning.
-        let (admissions, rx) = mpsc::channel(queue_capacity);
-        let admission_credits = Arc::new(Semaphore::new(queue_capacity));
-        let (settings, settings_rx) = mpsc::channel(8);
+        // Only validated, count-and-byte-reserved work may enter this channel.
+        // Physical channel size does not impose an additional live-update cap.
+        let (admissions, rx) = mpsc::unbounded_channel();
+        let admission_credits = AdmissionCapacity::new(hosting.admission)
+            .map_err(|_| StartError::Actor(crate::transport_actor::ActorFailure::InvalidLimits))?;
+        // Logical credits cover both queued and executing publications. A live
+        // increase must not be constrained by an old physical channel size.
+        let (settings, settings_rx) = mpsc::unbounded_channel();
+        let settings_credits = AdmissionCapacity::new(AdmissionLimits {
+            max_tasks: hosting.max_pending_settings,
+            max_bytes: 1,
+        })
+        .map_err(|_| StartError::Actor(crate::transport_actor::ActorFailure::InvalidLimits))?;
         let (heap, observed_heap) = watch::channel(HeapObservation::from(&ready));
+        let retained_credits = AdmissionCapacity::new(AdmissionLimits {
+            max_tasks: hosting.max_retained_attempts,
+            max_bytes: 1,
+        })
+        .map_err(|_| StartError::Actor(crate::transport_actor::ActorFailure::InvalidLimits))?;
         let (memory_admission, observed_memory_admission) = watch::channel(MemoryAdmissionPolicy {
             revision: 0,
             backpressure: false,
@@ -735,18 +1070,21 @@ impl ServiceOwner {
         let closed = Arc::new(AtomicBool::new(false));
         let closed_wake = Arc::new(Notify::new());
         let client = ServiceClient {
+            transport: owner.client(),
             admissions,
             admission_credits: admission_credits.clone(),
+            retained_credits: retained_credits.clone(),
             changed: changed.clone(),
             closed: closed.clone(),
             closed_wake: closed_wake.clone(),
             values: owner.client().live_vm_bounds(),
-            response_timeout: process.response_timeout,
+            recipe_contexts: owner.client().live_recipe_contexts(),
             root_source_bytes,
             root,
             frame: process.max_frame_bytes,
             worker_process_id,
             settings,
+            settings_credits: settings_credits.clone(),
             effective_settings: live.clone(),
             observed_heap,
             memory_admission: observed_memory_admission,
@@ -761,11 +1099,12 @@ impl ServiceOwner {
             ShutdownBounds {
                 root,
                 admission_credits,
+                retained_credits,
                 closed_wake,
                 workers,
-                boundary_timeout: process.response_timeout,
                 settings: SettingsInbox {
                     requests: settings_rx,
+                    credits: settings_credits,
                     live,
                     heap,
                     memory_admission,
@@ -821,10 +1160,10 @@ struct PortResult {
 type Calls = FuturesUnordered<BoxFuture<'static, PortResult>>;
 struct ShutdownBounds {
     root: RootExecutionIdentity,
-    admission_credits: Arc<Semaphore>,
+    admission_credits: Arc<AdmissionCapacity>,
+    retained_credits: Arc<AdmissionCapacity>,
     closed_wake: Arc<Notify>,
     workers: u32,
-    boundary_timeout: Duration,
     settings: SettingsInbox,
 }
 
@@ -928,7 +1267,7 @@ async fn update_heap(
 async fn run(
     mut owner: TransportOwner,
     mut snapshot: ProcessSnapshot,
-    mut admissions: mpsc::Receiver<Admission>,
+    mut admissions: mpsc::UnboundedReceiver<Admission>,
     mut stop: watch::Receiver<bool>,
     changed: Arc<Notify>,
     closed: Arc<AtomicBool>,
@@ -943,6 +1282,7 @@ async fn run(
     let mut queued = VecDeque::<Admission>::new();
     let mut queued_evidence = Vec::new();
     let mut heap_inspection: Option<tokio::time::Instant> = None;
+    let mut settings_turn = true;
     let result = async {
         loop {
             // These inputs have never entered the VM. Cancellation can therefore
@@ -966,6 +1306,7 @@ async fn run(
                 closed.store(true, Ordering::Release);
                 shutdown.closed_wake.notify_waiters();
                 shutdown.admission_credits.close();
+                shutdown.retained_credits.close();
                 admissions.close();
                 for task in tasks.values() { task.control.cancel(); }
             }
@@ -996,7 +1337,8 @@ async fn run(
             // yielding CPU slices. No host dispatch/admission occurs between
             // the worker's acknowledgement and publication to Rust consumers.
             shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
-            if let Ok(publication) = shutdown.settings.requests.try_recv() {
+            if settings_turn && let Ok(CreditedPublication { publication, _credit }) = shutdown.settings.requests.try_recv() {
+                settings_turn = false;
                 if shutting_down {
                     publication.reject(ServiceFailure::Closed);
                     continue;
@@ -1008,11 +1350,17 @@ async fn run(
                             publication.result.send_replace(Some(Err(ServiceFailure::SettingsConflict)));
                         } else if LiveMontyTaskSettings::new(publication.settings.into()).is_err() {
                             publication.result.send_replace(Some(Err(ServiceFailure::InvalidLimits)));
+                        } else if publication.values.is_some_and(|values|
+                            transport.validate_execution_slice(values.execution_slice).is_err()) {
+                            // Older accepted commands retain their own deadlines.
+                            // Do not mutate the worker or contain a healthy service.
+                            publication.result.send_replace(Some(Err(ServiceFailure::Backpressure)));
                         } else {
                             let update = exchange(&transport, &mut exchanges, WorkerCommand::Recipe {
                                 command: match publication.values {
                                     Some(values) => RecipeCommand::UpdateRuntimeSettings {
                                         expected_revision: publication.expected, settings: publication.settings, values,
+                                        max_recipe_contexts: publication.max_recipe_contexts,
                                     },
                                     None => RecipeCommand::UpdateSettings {
                                         expected_revision: publication.expected, settings: publication.settings,
@@ -1029,6 +1377,8 @@ async fn run(
                             if !matches!(receipt.recipe, Some(RecipeEvent::SettingsUpdated))
                                 || receipt.effective_task_settings != Some(publication.settings)
                                 || publication.values.is_some_and(|values| receipt.vm_bounds != Some(values))
+                                || receipt.recipe_context_capacity.is_none()
+                                || publication.max_recipe_contexts.is_some_and(|limit| receipt.recipe_context_capacity.is_none_or(|capacity| capacity.limit != limit))
                                 || receipt.boundary.is_some() {
                                 snapshot = receipt;
                                 publication.result.send_replace(Some(Err(ServiceFailure::Protocol)));
@@ -1039,12 +1389,44 @@ async fn run(
                             // with the side-command's None would strand execution.
                             receipt.boundary = snapshot.boundary.take();
                             snapshot = receipt;
+                            if let Some(limits) = publication.admission_limits
+                                && let Err(error) = shutdown.admission_credits.publish(limits) {
+                                publication.result.send_replace(Some(Err(error)));
+                                return Err(error);
+                            }
+                            if let Some(limit) = publication.max_pending_settings
+                                && let Err(error) = shutdown.settings.credits.publish(AdmissionLimits { max_tasks: limit, max_bytes: 1 }) {
+                                publication.result.send_replace(Some(Err(error)));
+                                return Err(error);
+                            }
+                            if let Some(limit) = publication.max_retained_attempts
+                                && let Err(error) = shutdown.retained_credits.publish(AdmissionLimits { max_tasks: limit, max_bytes: 1 }) {
+                                publication.result.send_replace(Some(Err(error)));
+                                return Err(error);
+                            }
+                            if transport.publish_hosting_policy(publication.actor_limits,
+                                publication.hosting_deadlines).is_err() {
+                                publication.result.send_replace(Some(Err(ServiceFailure::Transport)));
+                                return Err(ServiceFailure::Transport);
+                            }
                             if shutdown.settings.live.publish(publication.expected, publication.settings.into()).is_err() {
                                 publication.result.send_replace(Some(Err(ServiceFailure::SettingsConflict)));
                                 return Err(ServiceFailure::SettingsConflict);
                             }
                             publication.result.send_replace(Some(Ok(Arc::new(SettingsReceipt {
                                 effective_settings: publication.settings,
+                                recipe_context_capacity: snapshot.recipe_context_capacity.ok_or(ServiceFailure::Protocol)?,
+                                admission: shutdown.admission_credits.observation(),
+                                settings_capacity: {
+                                    let observed = shutdown.settings.credits.observation();
+                                    SettingsCapacityObservation { limit: observed.limits.max_tasks, pending: observed.tasks }
+                                },
+                                retained_attempts: {
+                                    let observed = shutdown.retained_credits.observation();
+                                    RetainedAttemptObservation { limit: observed.limits.max_tasks, retained: observed.tasks }
+                                },
+                                actor_capacity: transport.capacity().map_err(|_| ServiceFailure::Transport)?,
+                                hosting_deadlines: transport.hosting_deadlines().map_err(|_| ServiceFailure::Transport)?,
                                 accounting: snapshot.task_accounting.clone(),
                             }))));
                         }
@@ -1101,6 +1483,10 @@ async fn run(
                 }
                 continue;
             }
+            // A continuously replenished settings inbox cannot monopolize
+            // cancellation, root slices or completion handling. Alternate a
+            // control operation with an ordinary service turn.
+            settings_turn = true;
             // A turn cancellation cannot cancel an IPC exchange or drop an
             // already-started host future. The root gets its addressed signal.
             for (id, task) in &mut tasks {
@@ -1215,12 +1601,12 @@ async fn run(
                 snapshot = exchange(&transport, &mut exchanges, WorkerCommand::BeginShutdown).await?;
                 for _ in 0..shutdown.workers {
                     settle_shutdown_boundary(&transport, &mut exchanges, &mut snapshot,
-                        shutdown.boundary_timeout).await?;
+                        transport.hosting_deadlines().map_err(|_| ServiceFailure::Transport)?.response_timeout).await?;
                     let key = snapshot.work_waits.first().ok_or(ServiceFailure::Protocol)?.1;
                     snapshot = exchange(&transport, &mut exchanges, WorkerCommand::CloseWorker { key }).await?;
                 }
                 settle_shutdown_boundary(&transport, &mut exchanges, &mut snapshot,
-                    shutdown.boundary_timeout).await?;
+                    transport.hosting_deadlines().map_err(|_| ServiceFailure::Transport)?.response_timeout).await?;
                 if snapshot.lifecycle != Lifecycle::Stopped { return Err(ServiceFailure::Protocol); }
                 return Ok(());
             }
@@ -1254,6 +1640,10 @@ async fn run(
                 continue;
             }
             tokio::select! {
+                // Notify permits coalesce. Remaining owned publications are
+                // already ready work; yield once and revisit without polling
+                // an idle instance or awaiting a new producer notification.
+                _ = tokio::task::yield_now(), if !shutdown.settings.requests.is_empty() => {}
                 _ = transport.stopped(), if !shutting_down => {
                     return Err(ServiceFailure::Transport);
                 }
@@ -1269,6 +1659,7 @@ async fn run(
                         closed.store(true, Ordering::Release);
                         shutdown.closed_wake.notify_waiters();
                         shutdown.admission_credits.close();
+                        shutdown.retained_credits.close();
                         for task in tasks.values() { task.control.cancel(); }
                         continue;
                     };
@@ -1318,9 +1709,11 @@ async fn run(
     closed.store(true, Ordering::Release);
     shutdown.closed_wake.notify_waiters();
     shutdown.admission_credits.close();
+    shutdown.retained_credits.close();
+    shutdown.settings.credits.close();
     shutdown.settings.requests.close();
     while let Ok(publication) = shutdown.settings.requests.try_recv() {
-        publication.reject(ServiceFailure::Closed);
+        publication.publication.reject(ServiceFailure::Closed);
     }
     admissions.close();
     while let Ok(admission) = admissions.try_recv() {

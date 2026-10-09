@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-ac0dcfac618c7e8b",
+  "object": "chat.completion",
+  "created": 1791520643,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"if 'slots' not in inputs\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"slots = inputs['slots']; if slots is None\", \"result\": \"{'ok': False, 'slots': None}\"}, {\"guard\": \"type(slots) is not list\", \"result\": \"{'ok': False, 'slots': None}\"}, {\"guard\": \"len(slots) < 0 or len(slots) > 4\", \"result\": \"{'ok': False, 'slots': []}\"}, {\"guard\": \"for slot in slots: type(slot) is not int or not 2 <= slot <= 6\", \"result\": \"{'ok': False, 'slots': []}\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"selected Monty runner supports inputs mapping and exact type checks\", \"Q1 and human Q2 approval before activation\"], \"notes\": \"Contract is empty-list-valid with integer items 2..6; empty is valid so no nonempty guard. Missing key -> ok False, slots []. Explicit null -> ok False, slots [\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114123,
+    "total_tokens": 114389,
+    "completion_tokens": 266,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

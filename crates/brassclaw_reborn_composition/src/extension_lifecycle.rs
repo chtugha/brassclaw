@@ -120,6 +120,12 @@ pub(crate) async fn restore_extension_lifecycle_state(
             .await?;
         }
         materialize_available_extension(filesystem.as_ref(), available).await?;
+        // Preserve installed assets and durable operator intent, but never
+        // resurrect a suspended outbound client after restart.
+        let outbound_mcp = matches!(
+            available.package.manifest.runtime,
+            brassclaw_extensions::ExtensionRuntime::Mcp { .. }
+        );
         {
             let mut lifecycle = lifecycle_service.lock().await;
             lifecycle
@@ -127,13 +133,13 @@ pub(crate) async fn restore_extension_lifecycle_state(
                 .await
                 .map_err(map_extension_error)?;
             match installation.activation_state() {
-                ExtensionActivationState::Enabled => {
+                ExtensionActivationState::Enabled if !outbound_mcp => {
                     lifecycle
                         .enable(&available.package.id)
                         .await
                         .map_err(map_extension_error)?;
                 }
-                ExtensionActivationState::Installed | ExtensionActivationState::Disabled => {
+                _ => {
                     lifecycle
                         .disable(&available.package.id)
                         .await
@@ -141,7 +147,7 @@ pub(crate) async fn restore_extension_lifecycle_state(
                 }
             }
         }
-        if installation.activation_state() == ExtensionActivationState::Enabled {
+        if installation.activation_state() == ExtensionActivationState::Enabled && !outbound_mcp {
             active_extensions.publish(&available.package)?;
         }
     }
@@ -239,6 +245,7 @@ impl RebornLocalExtensionManagementPort {
         Ok(registry
             .capabilities()
             .filter(|descriptor| enabled_extension_ids.contains(&descriptor.provider))
+            .filter(|descriptor| descriptor.runtime != brassclaw_host_api::RuntimeKind::Mcp)
             .filter(|descriptor| {
                 registry
                     .capability_visibility(&descriptor.id)
@@ -342,6 +349,14 @@ impl RebornLocalExtensionManagementPort {
                 .load_installation(&extension_id, &installation_id)
                 .await?;
             let package = self.lifecycle_package(&extension_id).await?;
+            if matches!(
+                package.manifest.runtime,
+                brassclaw_extensions::ExtensionRuntime::Mcp { .. }
+            ) {
+                return Err(ProductWorkflowError::InvalidBindingRequest {
+                    reason: "legacy outbound MCP client capability is disabled".into(),
+                });
+            }
             match mode {
                 ExtensionActivationMode::HostedMcpDiscovery {
                     scope,
@@ -1123,8 +1138,7 @@ mod tests {
     };
     use brassclaw_host_api::{
         CapabilityId, ExtensionLifecycleOperation, HostPath, HostPortCatalog, InvocationId,
-        NetworkMethod, ResourceScope, RuntimeHttpEgress, RuntimeHttpEgressError,
-        RuntimeHttpEgressRequest, RuntimeHttpEgressResponse, TenantId, TrustClass, UserId,
+        ResourceScope, TenantId, TrustClass, UserId,
     };
     use brassclaw_host_runtime::{SPAWN_SUBAGENT_CAPABILITY_ID, builtin_first_party_package};
     use brassclaw_product_workflow::{
@@ -1277,147 +1291,101 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hosted_mcp_activation_publishes_discovered_tool_schemas() {
-        let catalog =
-            AvailableExtensionCatalog::from_first_party_assets().expect("first-party assets");
-        let (_dir, _storage_root, port, active_registry, _installation_store) =
+    async fn legacy_outbound_mcp_activation_is_disabled_before_network_or_publication() {
+        let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
+        let (_dir, _storage_root, port, registry, _installation_store) =
+            extension_management_port_fixture_with_catalog_and_service(
+                catalog,
+                ExtensionLifecycleService::new(ExtensionRegistry::new()),
+            );
+        let egress = Arc::new(HostedMcpDiscoveryEgress::default());
+        for name in ["notion", "nearai"] {
+            let package_ref =
+                LifecyclePackageRef::new(LifecyclePackageKind::Extension, name).unwrap();
+            port.install(package_ref.clone()).await.unwrap();
+            for mode in [
+                ExtensionActivationMode::Static,
+                ExtensionActivationMode::HostedMcpDiscovery {
+                    scope: ResourceScope::local_default(
+                        UserId::new("mcp-disabled-test").unwrap(),
+                        InvocationId::new(),
+                    )
+                    .unwrap(),
+                    runtime_http_egress: egress.clone(),
+                },
+            ] {
+                let error = port
+                    .activate(package_ref.clone(), mode)
+                    .await
+                    .expect_err("legacy client is suspended");
+                assert!(matches!(
+                    error,
+                    ProductWorkflowError::InvalidBindingRequest { .. }
+                ));
+                assert!(
+                    error
+                        .to_string()
+                        .contains("outbound MCP client capability is disabled")
+                );
+                assert!(
+                    registry
+                        .snapshot()
+                        .get_extension(&ExtensionId::new(name).unwrap())
+                        .is_none()
+                );
+            }
+        }
+        assert!(egress.methods().is_empty(), "no external MCP connection");
+        assert!(egress.credential_counts().is_empty());
+    }
+
+    #[tokio::test]
+    async fn legacy_outbound_mcp_restart_keeps_enabled_installations_suspended() {
+        let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
+        let (_dir, _storage_root, port, _registry, store) =
             extension_management_port_fixture_with_catalog_and_service(
                 catalog,
                 ExtensionLifecycleService::new(ExtensionRegistry::new()),
             );
         let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").expect("valid ref");
-        let egress = Arc::new(HostedMcpDiscoveryEgress::default());
-
-        port.install(package_ref.clone())
+            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").unwrap();
+        port.install(package_ref).await.unwrap();
+        let id = ExtensionInstallationId::new("notion").unwrap();
+        store
+            .set_activation_state(&id, ExtensionActivationState::Enabled)
             .await
-            .expect("install Notion MCP");
-        port.activate(
-            package_ref,
-            ExtensionActivationMode::HostedMcpDiscovery {
-                scope: ResourceScope::local_default(
-                    UserId::new("hosted-mcp-user").unwrap(),
-                    InvocationId::new(),
-                )
-                .unwrap(),
-                runtime_http_egress: egress.clone(),
-            },
+            .unwrap();
+        let store: Arc<dyn ExtensionInstallationStore> = store;
+        let lifecycle = Arc::new(Mutex::new(ExtensionLifecycleService::new(
+            ExtensionRegistry::new(),
+        )));
+        let registry = Arc::new(SharedExtensionRegistry::new(ExtensionRegistry::new()));
+        let publisher =
+            test_active_extension_publisher(registry.clone(), test_extension_trust_policy());
+        restore_extension_lifecycle_state(
+            &port.catalog,
+            &port.filesystem,
+            &store,
+            &lifecycle,
+            &publisher,
         )
         .await
-        .expect("activate with discovery");
-
-        let snapshot = active_registry.snapshot();
+        .unwrap();
         assert!(
-            snapshot
-                .get_capability(&CapabilityId::new("notion.notion-fetch").unwrap())
+            registry
+                .snapshot()
+                .get_extension(&ExtensionId::new("notion").unwrap())
                 .is_none()
         );
-        let search = snapshot
-            .get_capability(&CapabilityId::new("notion.live-search").unwrap())
-            .expect("discovered capability");
         assert_eq!(
-            search.parameters_schema,
-            serde_json::json!({
-                "type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"]
-            })
-        );
-        assert_eq!(
-            egress.methods(),
-            vec![
-                "initialize".to_string(),
-                "notifications/initialized".to_string(),
-                "tools/list".to_string(),
-            ]
-        );
-        assert_eq!(egress.credential_counts(), vec![1, 1, 1]);
-    }
-
-    #[tokio::test]
-    async fn hosted_mcp_activation_falls_back_to_bundled_manifest_when_discovery_returns_no_tools()
-    {
-        let catalog =
-            AvailableExtensionCatalog::from_first_party_assets().expect("first-party assets");
-        let (_dir, _storage_root, port, active_registry, _installation_store) =
-            extension_management_port_fixture_with_catalog_and_service(
-                catalog,
-                ExtensionLifecycleService::new(ExtensionRegistry::new()),
-            );
-        let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").expect("valid ref");
-
-        port.install(package_ref.clone())
-            .await
-            .expect("install Notion MCP");
-        let activate = port
-            .activate(
-                package_ref,
-                ExtensionActivationMode::HostedMcpDiscovery {
-                    scope: hosted_mcp_scope("hosted-mcp-empty-tools"),
-                    runtime_http_egress: Arc::new(EmptyToolsHostedMcpEgress),
-                },
-            )
-            .await
-            .expect("transient discovery failure should fall back to bundled manifest");
-
-        assert_eq!(activate.phase, LifecyclePhase::Active);
-        assert!(
-            active_registry
-                .snapshot()
-                .get_capability(&CapabilityId::new("notion.notion-search").unwrap())
-                .is_some(),
-            "fallback activation must publish bundled Notion capabilities"
-        );
-    }
-
-    #[tokio::test]
-    async fn hosted_mcp_activation_returns_transient_when_package_removed_during_discovery() {
-        let catalog =
-            AvailableExtensionCatalog::from_first_party_assets().expect("first-party assets");
-        let (_dir, _storage_root, port, _active_registry, _installation_store) =
-            extension_management_port_fixture_with_catalog_and_service(
-                catalog,
-                ExtensionLifecycleService::new(ExtensionRegistry::new()),
-            );
-        let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").expect("valid ref");
-        let (egress, tools_list_started, release_tools_list) =
-            BlockingToolsListHostedMcpEgress::new();
-
-        port.install(package_ref.clone())
-            .await
-            .expect("install Notion MCP");
-        let activation = tokio::spawn({
-            let port = Arc::clone(&port);
-            let package_ref = package_ref.clone();
-            async move {
-                port.activate(
-                    package_ref,
-                    ExtensionActivationMode::HostedMcpDiscovery {
-                        scope: hosted_mcp_scope("hosted-mcp-remove-race"),
-                        runtime_http_egress: egress,
-                    },
-                )
+            store
+                .get_installation(&id)
                 .await
-            }
-        });
-        tools_list_started
-            .await
-            .expect("tools/list request should start");
-
-        port.remove(package_ref)
-            .await
-            .expect("remove can proceed while discovery is in flight");
-        release_tools_list
-            .send(())
-            .expect("release blocked tools/list response");
-        let error = activation
-            .await
-            .expect("activation task joins")
-            .expect_err("remove during discovery should be retryable");
-
-        assert!(matches!(error, ProductWorkflowError::Transient { .. }));
+                .unwrap()
+                .unwrap()
+                .activation_state(),
+            ExtensionActivationState::Enabled
+        );
     }
 
     #[tokio::test]
@@ -2027,16 +1995,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lifecycle_facade_activates_hosted_mcp_with_runtime_egress() {
-        let (_dir, _storage_root, facade, active_registry, _installation_store) =
+    async fn lifecycle_facade_keeps_legacy_outbound_mcp_disabled_with_egress() {
+        let (_dir, _storage_root, facade, registry, _installation_store) =
             extension_lifecycle_fixture_with_catalog_and_service(
-                AvailableExtensionCatalog::from_first_party_assets().expect("first-party assets"),
+                AvailableExtensionCatalog::from_first_party_assets().unwrap(),
                 ExtensionLifecycleService::new(ExtensionRegistry::new()),
             );
-        let facade = facade.with_runtime_http_egress(Arc::new(HostedMcpDiscoveryEgress::default()));
+        let egress = Arc::new(HostedMcpDiscoveryEgress::default());
+        let facade = facade.with_runtime_http_egress(egress.clone());
         let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").expect("valid ref");
-
+            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").unwrap();
         facade
             .execute(
                 lifecycle_surface_context(),
@@ -2045,21 +2013,24 @@ mod tests {
                 },
             )
             .await
-            .expect("install Notion MCP");
-        let activate = facade
+            .unwrap();
+        let error = facade
             .execute(
                 lifecycle_surface_context(),
                 LifecycleProductAction::ExtensionActivate { package_ref },
             )
             .await
-            .expect("hosted MCP activation should use discovery egress");
-
-        assert_eq!(activate.phase, LifecyclePhase::Active);
+            .expect_err("legacy client remains suspended");
+        assert!(matches!(
+            error,
+            ProductWorkflowError::InvalidBindingRequest { .. }
+        ));
+        assert!(egress.methods().is_empty());
         assert!(
-            active_registry
+            registry
                 .snapshot()
-                .get_capability(&CapabilityId::new("notion.live-search").unwrap())
-                .is_some()
+                .get_extension(&ExtensionId::new("notion").unwrap())
+                .is_none()
         );
     }
 
@@ -3212,180 +3183,6 @@ mod tests {
         );
     }
 
-    fn hosted_mcp_scope(user_id: &str) -> ResourceScope {
-        ResourceScope::local_default(
-            UserId::new(user_id).expect("valid user"),
-            InvocationId::new(),
-        )
-        .expect("valid local scope")
-    }
-
-    struct EmptyToolsHostedMcpEgress;
-
-    #[async_trait]
-    impl RuntimeHttpEgress for EmptyToolsHostedMcpEgress {
-        async fn execute(
-            &self,
-            request: RuntimeHttpEgressRequest,
-        ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
-            hosted_mcp_response_for_request(request, serde_json::json!({ "tools": [] })).await
-        }
-    }
-
-    struct BlockingToolsListHostedMcpEgress {
-        started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-        release: tokio::sync::Mutex<tokio::sync::oneshot::Receiver<()>>,
-    }
-
-    impl BlockingToolsListHostedMcpEgress {
-        fn new() -> (
-            Arc<Self>,
-            tokio::sync::oneshot::Receiver<()>,
-            tokio::sync::oneshot::Sender<()>,
-        ) {
-            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-            let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-            (
-                Arc::new(Self {
-                    started: std::sync::Mutex::new(Some(started_tx)),
-                    release: tokio::sync::Mutex::new(release_rx),
-                }),
-                started_rx,
-                release_tx,
-            )
-        }
-    }
-
-    #[async_trait]
-    impl RuntimeHttpEgress for BlockingToolsListHostedMcpEgress {
-        async fn execute(
-            &self,
-            request: RuntimeHttpEgressRequest,
-        ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
-            let body = parse_test_json_rpc_body(&request)?;
-            if body.get("method").and_then(serde_json::Value::as_str) == Some("tools/list") {
-                if let Some(started) = self
-                    .started
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .take()
-                {
-                    let _ = started.send(());
-                }
-                let mut release = self.release.lock().await;
-                let _ = (&mut *release).await;
-            }
-            hosted_mcp_response_for_body(
-                body,
-                request.body.len() as u64,
-                discovered_tools_payload(),
-            )
-        }
-    }
-
-    async fn hosted_mcp_response_for_request(
-        request: RuntimeHttpEgressRequest,
-        tools_list_result: serde_json::Value,
-    ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
-        let request_bytes = request.body.len() as u64;
-        let body = parse_test_json_rpc_body(&request)?;
-        hosted_mcp_response_for_body(body, request_bytes, tools_list_result)
-    }
-
-    fn parse_test_json_rpc_body(
-        request: &RuntimeHttpEgressRequest,
-    ) -> Result<serde_json::Value, RuntimeHttpEgressError> {
-        if request.method != NetworkMethod::Post {
-            return Err(RuntimeHttpEgressError::Request {
-                reason: "unexpected_method".to_string(),
-                request_bytes: request.body.len() as u64,
-                response_bytes: 0,
-            });
-        }
-        serde_json::from_slice(&request.body).map_err(|_| RuntimeHttpEgressError::Request {
-            reason: "invalid_json_rpc_body".to_string(),
-            request_bytes: request.body.len() as u64,
-            response_bytes: 0,
-        })
-    }
-
-    fn hosted_mcp_response_for_body(
-        body: serde_json::Value,
-        request_bytes: u64,
-        tools_list_result: serde_json::Value,
-    ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
-        let method = body
-            .get("method")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| RuntimeHttpEgressError::Request {
-                reason: "missing_json_rpc_method".to_string(),
-                request_bytes,
-                response_bytes: 0,
-            })?;
-        match method {
-            "initialize" => test_runtime_json_response(
-                body["id"].as_u64(),
-                serde_json::json!({
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "notion-test", "version": "1.0.0"}
-                }),
-                vec![("Mcp-Session-Id".to_string(), "session-1".to_string())],
-            ),
-            "notifications/initialized" => {
-                test_runtime_json_response(None, serde_json::json!({}), Vec::new())
-            }
-            "tools/list" => {
-                test_runtime_json_response(body["id"].as_u64(), tools_list_result, Vec::new())
-            }
-            _ => Err(RuntimeHttpEgressError::Request {
-                reason: "unexpected_method".to_string(),
-                request_bytes,
-                response_bytes: 0,
-            }),
-        }
-    }
-
-    fn discovered_tools_payload() -> serde_json::Value {
-        serde_json::json!({
-            "tools": [
-                {
-                    "name": "live-search",
-                    "description": "Search live Notion content",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {"query": {"type": "string"}},
-                        "required": ["query"]
-                    }
-                }
-            ]
-        })
-    }
-
-    fn test_runtime_json_response(
-        id: Option<u64>,
-        result: serde_json::Value,
-        extra_headers: Vec<(String, String)>,
-    ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
-        let mut headers = vec![("content-type".to_string(), "application/json".to_string())];
-        headers.extend(extra_headers);
-        let body = serde_json::to_vec(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": result,
-        }))
-        .expect("serialize test JSON-RPC response");
-        Ok(RuntimeHttpEgressResponse {
-            status: 200,
-            headers,
-            response_bytes: body.len() as u64,
-            body,
-            saved_body: None,
-            request_bytes: 0,
-            redaction_applied: false,
-        })
-    }
-
     fn lifecycle_surface_context() -> LifecycleProductContext {
         LifecycleProductContext::Surface(LifecycleProductSurfaceContext {
             tenant_id: TenantId::new("lifecycle-tenant").expect("valid tenant"),
@@ -3435,9 +3232,8 @@ description = "Lifecycle fixture extension"
 trust = "first_party_requested"
 
 [runtime]
-kind = "mcp"
-transport = "stdio"
-command = "fixture-load"
+kind = "first_party"
+service = "fixture"
 
 [[capabilities]]
 id = "fixture.search"

@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Keep it concise concise."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edits authorized, even for the repeated word concise. Echoed both messages verbatim. Target provider metadata is null (catalogue_revision null, no protocol/roles/tool/reasoning capabilities), so no provider-specific rewrite was attempted. No components, intents, settings, bridge or recipe updates were proposed.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

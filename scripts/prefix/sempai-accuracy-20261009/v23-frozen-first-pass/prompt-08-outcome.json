@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Return JSON JSON."
+    ],
+    [
+      "user",
+      "Keep my exact request and punctuation: {a:1}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Audit only; no edits authorized. Echoed both messages verbatim. The system wording is quoted user-selected content with no authorized edit, and the user message contains a JSON-like literal {a:1} that is data, not a request to a component. Target provider protocol/roles/tool/reasoning capabilities are unknown (catalogue_revision null), so no provider-specific rewrite was applied. No component, intent, settings or recipe proposal was made.",
+  "proposed_components": [],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

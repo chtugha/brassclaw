@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-83e26a72d20735b6",
+  "object": "chat.completion",
+  "created": 1791518751,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"lag not in inputs\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"lag is None\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"type(lag) is not int\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"type(lag) is bool\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"type(lag) is float\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"lag < -1\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"lag > 8\", \"result\": \"{'accepted': False, 'lag': None}\"}, {\"guard\": \"-1 <= lag <= 8\", \"result\": \"{'accepted': True, 'lag': lag}\"}], \"helper_required\": true, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"exact association approval\", \"selected-runner support for typed inputs\"], \"notes\": \"lag is a required field; missing and null both yield accepted=false/null. Exact int -1..8 inclusive; bool/float rejected. Helper receives the mapping, returns {\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114949,
+    "total_tokens": 115249,
+    "completion_tokens": 300,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

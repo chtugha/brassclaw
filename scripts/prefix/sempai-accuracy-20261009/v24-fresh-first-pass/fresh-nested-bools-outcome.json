@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. frames is a raw list of length 0..2; each frame is an object with exactly the key toggles, whose value is a list of length 0..2 of exact bools including False. Missing/null/wrong shapes/extra fields/numeric bools are invalid. result={ok:boolean, frames:original if valid else []}. No imports, host calls, exceptions or coercion; original messages preserved. Unapproved target-input draft; Q1 and human Q2 remain prerequisites.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-nested-bools",
+        "description": "frames raw list length 0..2; each object has exactly toggles, itself list length 0..2 of exact bools, including False. Missing/null/wrong shapes/extra fields/numeric bools invalid. result={ok:boolean, frames:original if valid else []}. No imports/host/exceptions/coercion; preserve messages; unapproved target-input draft.",
+        "content": "frames = inputs.get('frames')\nok = type(frames) is list and 0 <= len(frames) <= 2\nif ok:\n    for frame in frames:\n        if type(frame) is not dict or set(frame) != {'toggles'}:\n            ok = False\n            break\n        toggles = frame['toggles']\n        if not (type(toggles) is list and 0 <= len(toggles) <= 2):\n            ok = False\n            break\n        for toggle in toggles:\n            if not (type(toggle) is bool):\n                ok = False\n                break\nresult = {'ok': ok, 'frames': frames if ok else []}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

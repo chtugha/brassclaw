@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-b047cbc5e5b54e13",
+  "object": "chat.completion",
+  "created": 1791519241,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"records is not a list\", \"result\": \"ok: false, records: []\"}, {\"guard\": \"len(records) > 4\", \"result\": \"ok: false, records: []\"}, {\"guard\": \"any item is not a dict\", \"result\": \"ok: false, records: []\"}, {\"guard\": \"any item has keys other than exactly {code, enabled}\", \"result\": \"ok: false, records: []\"}, {\"guard\": \"any item code is not a str with 2 <= len <= 5\", \"result\": \"ok: false, records: []\"}, {\"guard\": \"any item enabled is not an exact bool\", \"result\": \"ok: false, records: []\"}, {\"guard\": \"all checks pass\", \"result\": \"ok: true, records: original\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 and human Q2 required; target-input unapproved draft only; no tests or approval claims\"], \"notes\": \"Empty list is valid. Missing/null/wrong types/extra fields invalid without exceptions or coercion. No I/O, imports, host calls, or upstream validation. Preserve\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114951,
+    "total_tokens": 115223,
+    "completion_tokens": 272,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

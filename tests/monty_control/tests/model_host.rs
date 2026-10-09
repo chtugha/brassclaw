@@ -61,12 +61,18 @@ mod global_recipe_ports;
 mod global_root_seed;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_task_factory.rs"]
 mod global_task_factory;
+#[path = "../../../crates/brassclaw_reborn_composition/src/monty_attempt_retention.rs"]
+mod monty_attempt_retention;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_instance_owner.rs"]
 mod monty_instance_owner;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_task_input.rs"]
 mod monty_task_input;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 pub(crate) mod native_pg;
+#[path = "../../../crates/brassclaw_reborn_composition/src/normal_match_evidence.rs"]
+mod normal_match_evidence;
+#[path = "support/recipe_capacity.rs"]
+mod recipe_capacity;
 #[path = "support/reply_workflows.rs"]
 mod reply_workflows;
 #[path = "support/task_catalogue.rs"]
@@ -237,10 +243,40 @@ impl SystemBundleSource for SelectedPrefix {
 }
 
 struct NativeTaskPortsFactory {
+    cancellation: Arc<FixtureCancellationPolicy>,
     last_host: Mutex<Option<Arc<MontyTaskHost>>>,
     last_receipt: Mutex<Option<Arc<brassclaw_monty_host::service::TaskReceipt>>>,
     settlement_hold: Mutex<Option<Arc<ProviderHold>>>,
     inner: global_task_factory::OwnedGlobalTaskFactory,
+}
+
+// An explicit settings fixture only; claims, worker settlement, provider waits
+// and PostgreSQL persistence below remain their actual implementations.
+struct FixtureCancellationPolicy(
+    tokio::sync::watch::Sender<global_monty_driver::CancellationAckSettings>,
+);
+impl FixtureCancellationPolicy {
+    fn new(service: &brassclaw_monty_host::service::ServiceClient) -> Arc<Self> {
+        let (settings, _) =
+            tokio::sync::watch::channel(global_monty_driver::CancellationAckSettings {
+                revision: service.live_task_settings().current().revision,
+                timeout: Duration::from_millis(
+                    brassclaw_host_api::MontyExecutionLimits::default()
+                        .cancellation_ack_timeout_millis,
+                ),
+            });
+        Arc::new(Self(settings))
+    }
+}
+impl global_monty_driver::CancellationAckSource for FixtureCancellationPolicy {
+    fn current(
+        &self,
+    ) -> Result<
+        global_monty_driver::CancellationAckSettings,
+        brassclaw_turns::run_profile::AgentLoopDriverError,
+    > {
+        (*self.0.borrow()).validate()
+    }
 }
 struct DraftCatalogueProvider {
     pool: Arc<PgPool>,
@@ -276,12 +312,14 @@ impl NativeTaskPortsFactory {
     async fn new(
         pool: Arc<PgPool>,
         ownership: global_monty_owner::GlobalOwnerCheck,
+        service: brassclaw_monty_host::service::ServiceClient,
         draft: Option<Arc<brassclaw_engine::memory::retained_tools::RetainedToolProgram>>,
     ) -> Self {
         let reply = reply_workflows::reply_program(pool.clone()).await;
         Self::with_catalogue(
             pool.clone(),
             ownership,
+            service,
             Arc::new(DraftCatalogueProvider {
                 pool,
                 draft,
@@ -294,9 +332,28 @@ impl NativeTaskPortsFactory {
     fn with_catalogue(
         pool: Arc<PgPool>,
         ownership: global_monty_owner::GlobalOwnerCheck,
+        service: brassclaw_monty_host::service::ServiceClient,
         catalogue: Arc<dyn global_task_factory::MontyCatalogueProvider>,
     ) -> Self {
+        Self::with_catalogue_capacity(
+            pool,
+            ownership,
+            service,
+            catalogue,
+            Arc::new(FixtureRecipeCapacity),
+        )
+    }
+
+    fn with_catalogue_capacity(
+        pool: Arc<PgPool>,
+        ownership: global_monty_owner::GlobalOwnerCheck,
+        service: brassclaw_monty_host::service::ServiceClient,
+        catalogue: Arc<dyn global_task_factory::MontyCatalogueProvider>,
+        capacity: Arc<dyn global_recipe_ports::RecipeCapacitySource>,
+    ) -> Self {
+        let cancellation = FixtureCancellationPolicy::new(&service);
         Self {
+            cancellation: cancellation.clone(),
             last_host: Mutex::new(None),
             last_receipt: Mutex::new(None),
             settlement_hold: Mutex::new(None),
@@ -304,8 +361,9 @@ impl NativeTaskPortsFactory {
                 pool.clone(),
                 ownership,
                 catalogue,
-                8,
-                Arc::new(FixtureRecipeCapacity),
+                service,
+                capacity,
+                cancellation,
             )
             .unwrap(),
         }
@@ -313,6 +371,17 @@ impl NativeTaskPortsFactory {
 }
 #[async_trait]
 impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
+    fn retention_registry(&self) -> Arc<monty_attempt_retention::AttemptRetentionRegistry> {
+        global_monty_driver::GlobalTaskPortsFactory::retention_registry(&self.inner)
+    }
+    fn cancellation_acknowledgement(
+        &self,
+    ) -> Result<
+        global_monty_driver::CancellationAckSettings,
+        brassclaw_turns::run_profile::AgentLoopDriverError,
+    > {
+        global_monty_driver::GlobalTaskPortsFactory::cancellation_acknowledgement(&self.inner)
+    }
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
@@ -597,6 +666,7 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot: support::boot(SOURCE),
             process: support::limits(),
             live: live.clone(),
@@ -607,12 +677,20 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
                 max_control_reserved_frame_bytes: support::limits().max_frame_bytes * 16,
             },
             queue_capacity: 4,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
     .unwrap();
-    let factory =
-        NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await;
+    let factory = NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        owner.client(),
+        None,
+    )
+    .await;
     for name in ["A", "B"] {
         let history_count = if name == "A" { 140 } else { 0 };
         let (input, handoff, threads, scope, packets) = admitted(
@@ -689,6 +767,47 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
         global_monty_driver::GlobalTaskPortsFactory::settle(&factory, task_host, receipt.clone())
             .await
             .unwrap();
+        let client = database.pool.get().await.unwrap();
+        let event_row = client
+            .query_one(
+                "SELECT event_bytes FROM brassclaw_monty_review_events WHERE run_id=$1",
+                &[&uuid::Uuid::parse_str(&run_id).unwrap()],
+            )
+            .await
+            .unwrap();
+        let event: Value = serde_json::from_str(event_row.get(0)).unwrap();
+        assert_eq!(event["outcome"]["status"], "completed");
+        assert_eq!(
+            event["outcome"]["execution"]["recipes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(event["tool_invocations"].as_array().unwrap().len(), 2);
+        assert_eq!(event["model_packets"].as_array().unwrap().len(), 1);
+        let writes = client.query(
+            "SELECT arguments_bytes,phase,attempt_count FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+            &[&uuid::Uuid::parse_str(&run_id).unwrap()],
+        ).await.unwrap();
+        assert_eq!(writes.len(), 2);
+        let mut history_records = 0;
+        for write in writes {
+            assert_eq!(write.get::<_, &str>(1), "answered");
+            assert_eq!(write.get::<_, i16>(2), 1);
+            let arguments: Value = serde_json::from_str(write.get(0)).unwrap();
+            if let Some(content) = arguments.get("content").and_then(Value::as_str) {
+                assert!(content.ends_with('\n'));
+                assert_eq!(content.lines().count(), 1);
+                let record: Value = serde_json::from_str(content).unwrap();
+                assert_eq!(record["format"], "completed-turn/1");
+                assert_eq!(record["answer"], "actual scoped reply");
+                assert_eq!(record["user_input"], "'quoted' Ü {{vars.literal}}");
+                history_records += 1;
+            }
+        }
+        assert_eq!(history_records, 1);
+        drop(client);
         let history = threads
             .list_thread_history(ThreadHistoryRequest {
                 scope,
@@ -802,6 +921,7 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot: support::boot(SOURCE),
             process: support::limits(),
             live: settings,
@@ -812,12 +932,20 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
                 max_control_reserved_frame_bytes: 2 * 256 * 1024,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
     .unwrap();
-    let factory =
-        NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await;
+    let factory = NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        owner.client(),
+        None,
+    )
+    .await;
     let ports =
         global_monty_driver::GlobalTaskPortsFactory::build(&factory, task_host.clone(), &input)
             .await
@@ -1037,6 +1165,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -1047,6 +1176,9 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 1,
         },
     )
     .await
@@ -1193,7 +1325,13 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     );
     assert!(!owner.ownership_check().is_closed());
     let factory = Arc::new(
-        NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
     );
     owner.ownership_check().check().await.unwrap();
     assert!(matches!(
@@ -1207,7 +1345,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         "native-global-host",
     ));
     let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone(), 1)
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
             .unwrap();
     let mut observed_root = None;
     for name in ["driver-first", "driver-second"] {
@@ -1237,6 +1375,8 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         let attempt = actual_host.attempt();
         driver.stop_attempt(attempt).await.unwrap();
         assert!(driver.take_settlement(attempt).unwrap().is_none());
+        assert_eq!(owner.client().retained_attempts().retained, 0);
+        assert!(factory.last_receipt.lock().unwrap().is_some());
         assert!(
             driver
                 .retained_host_for_run(attempt.run_id)
@@ -1352,6 +1492,7 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -1362,6 +1503,9 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
@@ -1370,6 +1514,7 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
     let factory = Arc::new(NativeTaskPortsFactory::with_catalogue(
         database.pool.clone(),
         owner.ownership_check(),
+        owner.client(),
         Arc::new(DraftCatalogueProvider {
             pool: database.pool.clone(),
             draft: None,
@@ -1384,7 +1529,6 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
             "native-global-host",
         )),
         factory.clone(),
-        1,
     )
     .unwrap();
     let (_, handoff, threads, scope, _) = admitted(
@@ -1409,7 +1553,8 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
         brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }
         if reason_kind == "recipe_execution_failed"));
     assert_eq!(provider.requests.lock().unwrap().len(), 1);
-    let (host, receipt, control) = driver.take_settlement(attempt).unwrap().unwrap();
+    let (host, receipt, control, _driver_retention) =
+        driver.take_settlement(attempt).unwrap().unwrap();
     assert!(control.receipt().unwrap().is_ok());
     assert!(receipt.withheld.is_empty());
     assert!(receipt.accounting.is_some());
@@ -1439,6 +1584,17 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
     assert_eq!(report["recipes"].as_array().unwrap().len(), 1);
     assert_eq!(report["recipes"][0]["failed_step"], "0:2");
     assert_eq!(report["recipes"][0]["completed_steps"], json!([]));
+    let event_row = client
+        .query_one(
+            "SELECT event_bytes FROM brassclaw_monty_review_events WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    let event: Value = serde_json::from_str(event_row.get(0)).unwrap();
+    assert_eq!(event["outcome"]["status"], "failed");
+    assert_eq!(event["outcome"]["execution"], report);
+    assert_eq!(event["evidence_complete"], false);
     let rows = client.query(
         "SELECT phase,attempt_count,answer_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
         &[&attempt.run_id.as_uuid()],
@@ -1452,7 +1608,7 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
         json!({"kind":"terminal_error","reason_kind":"retained_tool_authorization"})
     );
     drop(client);
-    let (retained_host, admission, ports, retained_receipt) = factory
+    let (retained_host, admission, ports, retained_receipt, _factory_retention) = factory
         .inner
         .take_failed_settlement(attempt)
         .unwrap()
@@ -1506,6 +1662,7 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -1516,6 +1673,9 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 1,
         },
     )
     .await
@@ -1524,8 +1684,9 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
         database.pool.clone(),
         owner.ownership_check(),
         Arc::new(FailedCapture),
-        1,
+        owner.client(),
         Arc::new(FixtureRecipeCapacity),
+        FixtureCancellationPolicy::new(&owner.client()),
     )
     .unwrap();
     let provider = Arc::new(RecordingProvider::default());
@@ -1559,6 +1720,7 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
     input.conversation_id = original_conversation;
     assert!(matches!(factory.build(host.clone(), &input).await,
         Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "catalogue_capture_failed"));
+    assert_eq!(owner.client().retained_attempts().retained, 1);
     let original = client.query_one("SELECT phase,admission_key,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&host.attempt().run_id.as_uuid()]).await.unwrap();
     assert_eq!(original.get::<_, &str>(0), "reserved");
     admission_integrity::reject_reserved_rewrite(&database.pool, host.attempt().run_id).await;
@@ -1634,6 +1796,7 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -1644,6 +1807,9 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 1,
         },
     )
     .await
@@ -1653,8 +1819,9 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
         database.pool.clone(),
         owner.ownership_check(),
         Arc::new(WaitingCapture(entered.clone())),
-        1,
+        owner.client(),
         Arc::new(FixtureRecipeCapacity),
+        FixtureCancellationPolicy::new(&owner.client()),
     )
     .unwrap();
     let provider = Arc::new(RecordingProvider::default());
@@ -1678,6 +1845,7 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
     })
     .await
     .unwrap();
+    assert_eq!(owner.client().retained_attempts().retained, 1);
     // This is a real dropped preparation future, not a fabricated service
     // cancellation receipt. No Python task or external work was submitted.
     drop(preparation);
@@ -1710,6 +1878,7 @@ async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch()
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -1720,6 +1889,9 @@ async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch()
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
@@ -1755,10 +1927,16 @@ async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch()
     )
     .await;
     let factory = Arc::new(
-        NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
     );
     let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory, 1).unwrap();
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory).unwrap();
     assert!(matches!(driver.drive_turn(handoff).await,
         Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_instance_ownership_failed"));
     assert!(provider.requests.lock().unwrap().is_empty());
@@ -1801,6 +1979,7 @@ async fn cancelled_boot_retains_instance_ownership_until_actual_worker_settlemen
             &pool,
             support::worker(),
             global_monty_owner::GlobalServiceConfig {
+                ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
                 boot,
                 process: support::limits(),
                 live,
@@ -1811,6 +1990,9 @@ async fn cancelled_boot_retains_instance_ownership_until_actual_worker_settlemen
                     max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
                 },
                 queue_capacity: 8,
+                queue_bytes: 64 * 1024 * 1024,
+                max_pending_settings: 8,
+                max_retained_attempts: 2,
             },
         )
         .await
@@ -2201,6 +2383,7 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -2211,6 +2394,9 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
@@ -2219,6 +2405,7 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
         NativeTaskPortsFactory::new(
             database.pool.clone(),
             owner.ownership_check(),
+            owner.client(),
             Some(program.clone()),
         )
         .await,
@@ -2228,7 +2415,7 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
         "native-global-host",
     ));
     let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone(), 1)
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
             .unwrap();
     let data = json!({"text":"'quotes'\n Ü {{vars.data}} host.forbidden()"});
     let query = format!("parse {data}");
@@ -2274,19 +2461,22 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
     );
     drop(client);
     assert!(provider.requests.lock().unwrap().is_empty());
-    let (actual_host, receipt, retained_control) =
+    let (actual_host, receipt, retained_control, driver_retention) =
         driver.take_settlement(attempt).unwrap().unwrap();
     assert!(
         matches!(receipt.outcome, TaskOutcome::Failed { ref reason_kind } if reason_kind == "recipe_reply_invalid")
     );
     assert!(retained_control.receipt().unwrap().is_ok());
-    let (factory_host, retained_admission, retained_ports, factory_receipt) = factory
-        .inner
-        .take_failed_settlement(attempt)
-        .unwrap()
-        .unwrap();
+    let (factory_host, retained_admission, retained_ports, factory_receipt, factory_retention) =
+        factory
+            .inner
+            .take_failed_settlement(attempt)
+            .unwrap()
+            .unwrap();
     assert!(Arc::ptr_eq(&factory_host, &actual_host));
     assert!(Arc::ptr_eq(&factory_receipt, &receipt));
+    assert!(Arc::ptr_eq(&driver_retention, &factory_retention));
+    assert_eq!(owner.client().retained_attempts().retained, 1);
     // The caller now owns both the actual child/Tool state and its durable
     // admission address. Taking settlement cannot grant another dispatch.
     retained_ports.fence();
@@ -2314,6 +2504,7 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
         brassclaw_turns::LoopExit::Completed(_)
     ));
     assert_eq!(provider.requests.lock().unwrap().len(), 1);
+    assert_eq!(owner.client().retained_attempts().retained, 1);
     owner.request_shutdown();
     let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
         .await
@@ -2352,6 +2543,7 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -2362,12 +2554,21 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
     .unwrap();
     let factory = Arc::new(
-        NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
     );
     let prefix = Arc::new(SelectedPrefix("cancellation validation prefix".into()));
     let (_, handoff, threads, scope, _) = admitted(
@@ -2387,7 +2588,6 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
         owner.client(),
         threads.clone(),
         factory.clone(),
-        1,
     )
     .unwrap();
     let mut drive = Box::pin(driver.drive_turn(handoff));
@@ -2400,6 +2600,12 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
     .await
     .unwrap();
     drop(drive);
+    // Use the explicit five-second fixture policy. Real ordinary runtime
+    // settings publication is covered independently through the native WebUI.
+    assert_eq!(
+        factory.cancellation.0.borrow().timeout,
+        Duration::from_secs(5)
+    );
     assert!(matches!(
         driver.stop_attempt(attempt).await,
         Err(AgentLoopDriverError::Unavailable { .. })
@@ -2483,13 +2689,14 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
     let (first, second) = tokio::join!(driver.stop_attempt(attempt), driver.stop_attempt(attempt));
     first.unwrap();
     second.unwrap();
-    let (actual_host, receipt, control) = driver.take_settlement(attempt).unwrap().unwrap();
+    let (actual_host, receipt, control, _driver_retention) =
+        driver.take_settlement(attempt).unwrap().unwrap();
     assert!(
         matches!(receipt.outcome, TaskOutcome::Failed { ref reason_kind } if reason_kind == "task_cancelled")
     );
     assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
     assert!(driver.take_settlement(attempt).unwrap().is_none());
-    let (factory_host, admission, ports, factory_receipt) = factory
+    let (factory_host, admission, ports, factory_receipt, _factory_retention) = factory
         .inner
         .take_failed_settlement(attempt)
         .unwrap()
@@ -2568,6 +2775,7 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
         &database.pool,
         support::worker(),
         global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
             boot,
             process: support::limits(),
             live,
@@ -2578,12 +2786,21 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
                 max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
             },
             queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 2,
         },
     )
     .await
     .unwrap();
     let factory = Arc::new(
-        NativeTaskPortsFactory::new(database.pool.clone(), owner.ownership_check(), None).await,
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
     );
     let hold = Arc::new(ProviderHold::default());
     *factory.settlement_hold.lock().unwrap() = Some(hold.clone());
@@ -2604,7 +2821,6 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
         owner.client(),
         threads.clone(),
         factory.clone(),
-        1,
     )
     .unwrap();
     let mut drive = Box::pin(driver.drive_turn(handoff));
@@ -2640,7 +2856,8 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
     assert!(driver.take_settlement(attempt).is_err());
     hold.released.notify_one();
     driver.stop_attempt(attempt).await.unwrap();
-    let (settled_host, receipt, control) = driver.take_settlement(attempt).unwrap().unwrap();
+    let (settled_host, receipt, control, _driver_retention) =
+        driver.take_settlement(attempt).unwrap().unwrap();
     assert!(Arc::ptr_eq(&host, &settled_host));
     assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
     assert_eq!(

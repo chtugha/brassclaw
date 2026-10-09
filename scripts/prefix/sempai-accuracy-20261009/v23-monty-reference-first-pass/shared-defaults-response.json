@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-abccae9f8e393656",
+  "object": "chat.completion",
+  "created": 1791519020,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"answer\": false,\n  \"reason\": \"skills.md \u00a73 (card 3d36e5155aa4) forbids shared mutable function defaults, captured task objects, caches and closures over another task's inputs; each invocation/task owns its mutable state. recipe.md \u00a76 (card 64f362dc5042) likewise warns against undefined previous_result and combining independent calls to conceal fresh-state gaps.\",\n  \"citations\": [\"3d36e5155aa4\", \"64f362dc5042\"]\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114444,
+    "total_tokens": 114575,
+    "completion_tokens": 131,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

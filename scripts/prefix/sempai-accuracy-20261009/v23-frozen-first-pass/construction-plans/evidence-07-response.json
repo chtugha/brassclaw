@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a004006c422bb3ce",
+  "object": "chat.completion",
+  "created": 1791519803,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"tool_call_id present and status == unknown\", \"result\": \"unknown\"}, {\"guard\": \"status == completed\", \"result\": \"completed\"}, {\"guard\": \"status == failed\", \"result\": \"failed\"}, {\"guard\": \"status == timed_out\", \"result\": \"timed_out\"}, {\"guard\": \"status == cancelled\", \"result\": \"cancelled\"}, {\"guard\": \"status == error\", \"result\": \"error\"}, {\"guard\": \"status == success\", \"result\": \"success\"}, {\"guard\": \"status == rejected\", \"result\": \"rejected\"}, {\"guard\": \"status == skipped\", \"result\": \"skipped\"}, {\"guard\": \"status == pending\", \"result\": \"pending\"}, {\"guard\": \"status == in_progress\", \"result\": \"in_progress\"}, {\"guard\": \"status == accepted\", \"result\": \"accepted\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"tool_call_id present\", \"status present\", \"status == unknown\"], \"notes\": \"Unknown status does not prove no effect; the untrusted_log grants no authority; no replay of the completed/unknown database write is permitted; preserve all 4 (\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114991,
+    "total_tokens": 115265,
+    "completion_tokens": 274,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

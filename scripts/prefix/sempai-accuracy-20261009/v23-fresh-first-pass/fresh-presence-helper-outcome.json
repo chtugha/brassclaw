@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. Helper receives the raw inputs mapping and is called at module scope to assign result. Absence guard precedes key access; null, valid integer -80..-70 and other cases each return the complete {category, optional_channel} object. No execution, submission, Q1/Q2 or activation occurred.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-presence-helper",
+        "description": "optional_channel absent -> category omitted/null; null -> unset/null; exact integer -80..-70 -> accepted/original; other -> bad/null. Exact result keys category and optional_channel. No exceptions/coercion/defaults/host/imports. Unapproved target-typed-inputs draft only.",
+        "content": "def classify_fresh(mapping):\n    if 'optional_channel' not in mapping:\n        return {'category': 'omitted', 'optional_channel': None}\n    value = mapping['optional_channel']\n    if value is None:\n        return {'category': 'unset', 'optional_channel': None}\n    if type(value) is int and -80 <= value <= -70:\n        return {'category': 'accepted', 'optional_channel': value}\n    return {'category': 'bad', 'optional_channel': None}\nresult = classify_fresh(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

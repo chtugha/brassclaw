@@ -74,7 +74,7 @@ pub struct ComponentDbRow {
     pub id: String,
     pub name: String,
     pub content: String,
-    pub content_hash: String,
+    pub content_hash: Option<String>,
     pub validation_status: String,
 }
 
@@ -102,14 +102,21 @@ pub struct ComponentDbUpsertResult {
 }
 
 /// Errors returned by backend operations.
-#[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
 pub enum ComponentDbError {
-    #[error(
-        "component_db backend not wired — inject via BuiltinFirstPartyTools::with_component_db"
-    )]
+    #[error("component database backend unavailable")]
     NotWired,
-    #[error("database error: {0}")]
+    #[error("invalid component database input: {0}")]
+    InvalidInput(&'static str),
+    /// Retained backend diagnostic for trusted internal inspection. Never
+    /// promote SQL/provider text into a runtime-visible safe summary or log.
+    #[error("component database operation failed")]
     Db(String),
+}
+impl std::fmt::Debug for ComponentDbError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, formatter)
+    }
 }
 
 /// The backend trait — implemented by `PgComponentDbBackend` in
@@ -154,8 +161,8 @@ pub trait ComponentDbBackend: Send + Sync {
     ) -> Result<ComponentDbUpsertResult, ComponentDbError>;
 
     /// Mark the base-prompt prefix stale for `(scope.user_id, scope.project_id)`.
-    /// Wraps `PgBasicPromptStore::mark_stale`. Best-effort — errors logged but
-    /// not fatal.
+    /// Acknowledge committed invalidation; return a classified error when it
+    /// fails. Failure handling belongs to the Recipe, never a false success.
     async fn mark_stale(&self, scope: &ComponentDbScope) -> Result<(), ComponentDbError>;
 }
 
@@ -319,29 +326,24 @@ pub(super) async fn dispatch(
                 content: require_str_from(fields, "content", "upsert.fields")?.to_string(),
                 content_hash: require_str_from(fields, "content_hash", "upsert.fields")?
                     .to_string(),
-                source: fields
-                    .get("source")
-                    .and_then(Value::as_str)
+                source: optional_str(fields, "source")?
                     .unwrap_or("system")
                     .to_string(),
-                similarity_parent_id: fields
-                    .get("similarity_parent_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                replaces_id: fields
-                    .get("replaces_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                consumer_tags: fields
-                    .get("consumer_tags")
-                    .and_then(Value::as_array)
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_string)
-                            .collect()
-                    })
-                    .unwrap_or_else(|| vec!["03:llm".to_string()]),
+                similarity_parent_id: optional_uuid(fields, "similarity_parent_id")?,
+                replaces_id: optional_uuid(fields, "replaces_id")?,
+                consumer_tags: match fields.get("consumer_tags") {
+                    None => vec!["03:llm".to_string()],
+                    Some(value) => value
+                        .as_array()
+                        .ok_or_else(|| input_error("consumer_tags must be an array of strings"))?
+                        .iter()
+                        .map(|value| {
+                            value.as_str().map(str::to_string).ok_or_else(|| {
+                                input_error("consumer_tags must contain only strings")
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                },
             };
             let result = backend.upsert(&scope, upsert_row).await.map_err(db_error)?;
             Ok(json!({
@@ -372,6 +374,35 @@ fn parse_scope(input: &Value) -> Result<ComponentDbScope, FirstPartyCapabilityEr
     })
 }
 
+fn optional_str<'a>(
+    fields: &'a Value,
+    key: &'static str,
+) -> Result<Option<&'a str>, FirstPartyCapabilityError> {
+    fields
+        .get(key)
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| input_error(format!("{key} must be a string")))
+        })
+        .transpose()
+}
+
+fn optional_uuid(
+    fields: &Value,
+    key: &'static str,
+) -> Result<Option<String>, FirstPartyCapabilityError> {
+    optional_str(fields, key)?
+        .map(|value| {
+            let parsed = uuid::Uuid::parse_str(value)
+                .ok()
+                .filter(|id| !id.is_nil())
+                .ok_or_else(|| input_error(format!("{key} must be a nonnil UUID")))?;
+            Ok(parsed.to_string())
+        })
+        .transpose()
+}
+
 fn require_str<'a>(
     input: &'a Value,
     field: &'static str,
@@ -400,7 +431,11 @@ fn input_error(msg: impl Into<String>) -> FirstPartyCapabilityError {
 
 fn db_error(e: ComponentDbError) -> FirstPartyCapabilityError {
     use brassclaw_host_api::RuntimeDispatchErrorKind;
-    FirstPartyCapabilityError::with_safe_summary(RuntimeDispatchErrorKind::Backend, e.to_string())
+    let kind = match &e {
+        ComponentDbError::InvalidInput(_) => RuntimeDispatchErrorKind::Client,
+        ComponentDbError::NotWired | ComponentDbError::Db(_) => RuntimeDispatchErrorKind::Backend,
+    };
+    FirstPartyCapabilityError::with_safe_summary(kind, e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +445,25 @@ fn db_error(e: ComponentDbError) -> FirstPartyCapabilityError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_diagnostics_never_become_public_error_text() {
+        let private = "password=secret-token SQL row contains private chat text";
+        let error = ComponentDbError::Db(private.into());
+        assert!(!format!("{error}").contains(private));
+        assert!(!format!("{error:?}").contains(private));
+        if let ComponentDbError::Db(diagnostic) = &error {
+            assert_eq!(diagnostic, private);
+        } else {
+            panic!("trusted backend diagnostic remains available");
+        }
+        let public = db_error(error);
+        assert_eq!(
+            public.safe_summary(),
+            Some("component database operation failed")
+        );
+        assert!(!format!("{public:?}").contains("secret-token"));
+    }
 
     #[test]
     fn sha256_known_vector() {

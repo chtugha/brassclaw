@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare an unapproved reusable draft; no execution."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component per the current contract. It distinguishes absent key, explicit null, exact string 'watch'/'pause' and other values, always returning {valid, mode}. No execution, Tool call, host.post_reply, imports or exceptions. No submission, Q1/Q2 or activation occurred.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-fresh-missing-default",
+        "description": "Raw mode: absent key -> valid False, mode None (no default applied). Explicit null -> valid False, mode None. Exact string 'watch' or 'pause' -> valid True, mode original. Any other string, bool or other type -> valid False, mode None. Always result={valid:boolean, mode:original if valid else None}. No imports/host/exceptions; unapproved target inputs draft; selected class22 constructor supports name/description/content only; target inputs interface requires selected-runner support; Q1 and human Q2 before activation.",
+        "content": "mode = inputs.get('mode')\nif mode is None:\n    result = {'valid': False, 'mode': None}\nelif type(mode) is str and mode in ('watch', 'pause'):\n    result = {'valid': True, 'mode': mode}\nelse:\n    result = {'valid': False, 'mode': None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

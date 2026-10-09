@@ -1,0 +1,240 @@
+{
+  "original_receipt_sha256": "e87a02f13aa7c25f44c5f893baae41a18a98f677ed286ed478e117d5ffd15be1",
+  "original_passed": 18,
+  "completed_answers": 27,
+  "correct_completed_answers": 27,
+  "cases": 28,
+  "audited_passed": 21,
+  "false_negative_corrections": [
+    "host-inputs",
+    "preload-not-invoke",
+    "mcp-source"
+  ],
+  "manual_review": "Three cited original passages directly support the claims, but old narrow regexes missed equivalent wording/newlines. Six other cases reference non-supporting passages. seed-q2 truncated to invalid JSON and remains a failed case; no salvage or inference of an answer. Topic checks are not a general semantic entailment verifier.",
+  "results": [
+    {
+      "id": "eval-policy",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "snapshot-effects",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "snapshot-trust",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    },
+    {
+      "id": "generator-function",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "match-language",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "inheritance",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "typed-proof",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "private-frame",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "task-clock",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "global-lifecycle",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "seed-q2",
+      "parsed": false,
+      "correct_boolean": false,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    },
+    {
+      "id": "binding-policy",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "upstream-eval",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "eager-generator",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "host-inputs",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "snapshot-ledger",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "preload-effects",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "preload-not-invoke",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "mcp-source",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "shared-defaults",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "export-api",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "exports-live-policy",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    },
+    {
+      "id": "mcp-listing",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "mcp-connect-order",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    },
+    {
+      "id": "mcp-server-lifetime",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    },
+    {
+      "id": "mcp-refresh-pins",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": true,
+      "topic_support": true,
+      "audited_passed": true
+    },
+    {
+      "id": "monty-memory-ceiling",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    },
+    {
+      "id": "monty-upgrade-floor",
+      "parsed": true,
+      "correct_boolean": true,
+      "original_passed": false,
+      "topic_support": false,
+      "audited_passed": false
+    }
+  ]
+}

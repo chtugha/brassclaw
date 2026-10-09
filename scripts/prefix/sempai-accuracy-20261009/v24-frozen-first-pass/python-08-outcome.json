@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. Raw quota is classified with four distinct outcomes: key absent -> missing, explicit null -> null, exact integer 4..13 -> integer, everything else -> invalid. Missing and null are distinguished by key membership before reading the value. No bool/float/coercion/defaults/imports/I/O/host calls. Preserved the conversation unchanged. No execution, submission, Q1/Q2 or activation was performed by this reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-08",
+        "description": "Classify raw quota: missing -> {kind:\"missing\",quota:null}; explicit null -> {kind:\"null\",quota:null}; exact integer 4..13 -> {kind:\"integer\",quota:original}; other -> {kind:\"invalid\",quota:null}. No bool/float/coercion/defaults/exceptions. No imports/I/O/host calls. Target typed inputs needs selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "if 'quota' not in inputs:\n    result = {'kind': 'missing', 'quota': None}\nelif inputs['quota'] is None:\n    result = {'kind': 'null', 'quota': None}\nelif type(inputs['quota']) is int and 4 <= inputs['quota'] <= 13:\n    result = {'kind': 'integer', 'quota': inputs['quota']}\nelse:\n    result = {'kind': 'invalid', 'quota': None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

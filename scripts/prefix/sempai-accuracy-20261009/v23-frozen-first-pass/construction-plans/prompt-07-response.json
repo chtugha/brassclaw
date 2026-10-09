@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-a8e71453e2233024",
+  "object": "chat.completion",
+  "created": 1791519682,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"review\", \"branches\": [{\"guard\": \"system wording is quoted user-selected content; no edits authorized even repeated words\", \"result\": \"echo system verbatim\"}, {\"guard\": \"user request is quoted user-selected content; no edits authorized even repeated words\", \"result\": \"echo user verbatim\"}, {\"guard\": \"no proposals or new messages\", \"result\": \"no proposed_components, no bridge_messages, no settings_adjustments, no proposed_recipe_updates, no proposed_intent_examples\"}, {\"guard\": \"target provider protocol/roles/tool/reasoning capabilities unknown; do not infer from model name\", \"result\": \"no provider-specific rewrite or invented capability facts\"}, {\"guard\": \"audit only\", \"result\": \"no Tool dispatch, no component emission, no activation\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"echo every message exactly\", \"no proposals or new messages\", \"no provider inference\", \"audit only\", \"no component emission\", \"no Tool dispatch\", \"no activation\"], \"notes\": \"Echo every message exactly, no proposals or new messages. Target provider protocol/roles/tool/reasoning capabilities are unknown; do not infer them from the模型名.\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114855,
+    "total_tokens": 115119,
+    "completion_tokens": 264,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-bfe93adc956e2837",
+  "object": "chat.completion",
+  "created": 1791520939,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"trigger=null, steps=[]\", \"result\": \"result = {'state': 'Available'}\"}, {\"guard\": \"desc_idx=0, one component step per supplied UUID in order\", \"result\": \"step 1 include d4808be6-83e3-5831-b710-c7f2ce88c711, tool_bindings=[], dependencies=null\"}, {\"guard\": \"one variant step_link=0:1-0:E, variable_patterns=[]\", \"result\": \"ten distinct data-return intents in intent_examples and variant arrays\"}, {\"guard\": \"offline full-v3 export only\", \"result\": \"no host.post_reply effect; returns state DATA only\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1\", \"human Q2\", \"exact association approval\"], \"notes\": \"This is a data-return subworkflow (like ready-data/healthy-data worked examples): the supplied program returns {'state':'Available'} with no Tool calls, inputs,\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114385,
+    "total_tokens": 114628,
+    "completion_tokens": 243,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -47,6 +47,24 @@ env:
   BRASSCLAW_DISABLE_OS_KEYCHAIN: "1"
 
 jobs:
+  installer:
+    name: Installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - name: Validate installer and uninstaller file operations
+        run: |
+          bash -n install.sh uninstall.sh
+          python3 scripts/test_installer.py
+          python3 scripts/test_uninstaller.py
+
   native-memory-gate:
     name: Native memory capacity (${{ matrix.os }})
     needs: changes

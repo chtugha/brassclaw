@@ -983,17 +983,17 @@ ignoring them. Rust and Monty must share the effective duration revision and
 one task compute account; a persisted WebUI edit alone is not runtime uptake.
 
 
-`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` bounds one task's execution, never the global orchestrator's uptime or idle wait. Memory, allocations, stdout and token accounting must distinguish task budgets from bounded global-service storage. The current `LimitedTracker` lifetime must be audited before reusing it in a global VM; do not assume its counters reset on resume. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
+`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (originally V034). `max_duration_secs` bounds one task's executing VM time, never global orchestrator uptime or idle wait. The supervised Monty 1.0 worker and Rust share the effective task-settings revision and retained compute account. V100 preserves removed allocation-count settings as retired evidence; it does not substitute an ineffective allocation limit. Shared heap, task compute, stdout/value limits and token accounting have distinct meanings. Production startup and live publication use the persisted instance settings, not a DB-less duration fallback. Remaining control limits and acceptance are recorded in `docs/plans/simplified-v3-implementation.md`.
 
 ### Orchestrator Code Load Path
 
-The orchestrator code body (`basic_mode.py`) must be loaded at global-service startup, after integrity verification, via `OrchestratorCodePort` (engine-side port, `orchestrator_code_port.rs`), implemented by `PgOrchestratorCodePort` (`brassclaw_reborn_composition`, gated `postgres+skills-db`). The body is stored as a class-10 `reborn_skills` row with `name='orchestrator:main'`, `source='system'`, seeded by `seed_orchestrator()` in `builtin_bootstrap.rs`. There is no compiled-in fallback — a missing DB row produces `OrchestratorCodeError::NotFound` (run `brassclaw repair` to restore) and must prevent readiness. A live service pins its verified code version; code replacement requires a controlled restart with task reconciliation. Fatal VM failure is a service failure, not a Tier-2 fallback or permission to replay external effects. Current per-conversation loading is an implementation gap addressed in `simplified_v3.md` Phase 3a.
+Ordinary `postgres+skills-db` startup enters `global_monty_startup::start` after component boot. It retains the exact packaged `global_mode.py` revision through `global_root_seed::retain_packaged_global_root`, then verifies the installation catalogue, exact component selections and actual native artifacts before starting `GlobalMontyOwner` and its single supervised worker. Retaining a packaged draft alone is not approval or readiness. The legacy `basic_mode.py` / class-10 `orchestrator:main` / `PgOrchestratorCodePort` path is not the production per-chat execution path. `GlobalMontyDriver` delivers admitted work to the already-running service without creating a VM or falling back to a Rust loop. A live service pins its verified root revision; replacement requires supervised reconciliation. Fatal failure is a service failure, never permission to replay external effects or enter Tier 2. Complete authored-catalogue activation and durable fatal recovery remain Phase 3a work.
 
 The preamble/postamble (`codeact_preamble`, `codeact_postamble`) are also class-10 rows seeded by `seed_orchestrator()`. They reach the LLM via the Kohai prefix bundle assembled by `do_assemble_bundle` in `interceptor_config_service.rs` — not per-turn by the executor. No `OnceLock` or `init_*` call is needed for them; the bundle assembler queries `reborn_skills` directly.
 
 ### Boot Sequence (seeding + integrity)
 
-The seeding boot chain now lives in `crates/brassclaw_reborn_composition/src/component_boot.rs`, called by `runtime.rs` after migrations and before turn workers and trigger producers. Required seed/recovery failures abort runtime construction. Every required prompt is loaded before initializing process-wide prompt stores. WebUI construction only attaches its facade and UI services. Global Monty ownership, its startup handshake and durable task continuation remain to be implemented. Required target order (see `simplified_v3.md` Phase 3a):
+The seeding boot chain lives in `crates/brassclaw_reborn_composition/src/component_boot.rs`, called by `runtime.rs` after migrations and before turn workers and trigger producers. Required seed/recovery failures abort runtime construction. Every required prompt is loaded before initializing process-wide prompt stores. WebUI construction only attaches its facade and UI services. The ordinary `skills-db` path now starts the singleton owner, completes the actual work-wait handshake and attaches the live settings owner before work producers. Durable fatal continuation/replacement and full catalogue acceptance remain incomplete. Required startup order (see `simplified_v3.md` Phase 3a):
 
 ```
 BootedDb::from_migrated_pool(pool)   ← type-level proof migrations completed
@@ -1007,7 +1007,7 @@ BootedDb::from_migrated_pool(pool)   ← type-level proof migrations completed
   → init_sempai_persona(body)  [root-llm-provider]  ← OnceLock: sempai_audit
   → init_directions(general, researcher, explorer, coder)  ← OnceLock: direction prompts
   → wire host/component/Kohai ports without starting work producers
-  → load verified orchestrator:main via OrchestratorCodePort
+  → retain exact packaged global root and verify installation catalogue/artifacts
   → start exactly one global Monty; await its initial work-wait handshake
   → enable turn workers and configured trigger/channel producers
   → expose ready ingress / attach RebornWebuiBundle

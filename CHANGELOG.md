@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+This development checkpoint collects the parallel v3 implementation work. Full
+v3 acceptance, public Recipe population, MCP chat/provider integration and
+completed-turn review delivery remain in progress.
+
+### Added
+
+- Retained Skill function preloading with pinned exports and dependency graphs,
+  typed invocation data, structural validation and task-local mutable state.
+- MCP Recipe discovery and immutable command qualification against real settled
+  ordinary-chat executions, expected replies, classified failures and routing
+  integrity. Shipped internal Recipes remain private; public discovery is empty
+  until eligible commands have their required qualification evidence.
+- Live Monty hosting controls for child contexts, admitted backlog, settings
+  publication, retained attempts, actor transport, hosting/coordination deadlines,
+  singleton ownership and cancellation acknowledgement. Migrations V115–V121
+  and V125–V126 preserve explicit settings and expose controls through the
+  settings API and WebUI.
+- Durable completed-turn Sempai review events for settled No-Match admissions
+  (V122), retaining correlated forensic evidence without replaying task effects.
+  Event consumption and the qualified post-turn review Recipe remain pending.
+- Versioned MCP command qualification (V123) and reduction rulesets (V124), with
+  native PostgreSQL regression coverage and retained validation evidence.
+- Prefix compiler/protocol checks, v23/v24 comparison and cache evidence, and
+  v25 grammar ordering and contract corrections. Archived trials retain their
+  original source and score receipts; v25 has no new inference/deployment claim.
+- Installer/uninstaller regression checks in Reborn and release CI.
+
+### Changed
+
+- Inbound MCP discovery follows the retained Recipe catalogue and normal-chat
+  command contract. Remove the former direct execution path and document the
+  remaining listener/provider and public population integration work.
+- Installation selects a complete published application/worker pair, verifies
+  checksums, preserves operator service configuration and executable backups,
+  and checks authenticated Monty readiness. Fresh systemd services use a
+  loopback listener and the compatible local development profile.
+- Uninstallation inventories owned resources and supports explicit full-wipe,
+  keep-data and dry-run choices, including paired binaries, backups, embedded
+  database and qualified temporary files. Reject unsafe ownership/symlink
+  changes and report unresolved shared or external resources.
+- Update architecture, Recipe/Skill authoring, validator and implementation
+  guidance to distinguish binding targets, local evidence and production
+  acceptance.
+
+### Fixed
+
+- Preserve durable admission/effect evidence until actual task settlement and
+  release completed-task resources through acknowledged Monty cleanup.
+- Keep accepted cancellation waits on their captured deadline; a timeout retains
+  pending settlement and exact attempt evidence rather than reporting success.
+- Reject incomplete or malformed execution-limit API replacements before
+  persistence, preventing silent resets of operator limits while retaining
+  compatibility decoding for historical stored settings.
+- Repair reduction-rule persistence and extension wiring to use the canonical
+  versioned store and preserve explicit ordering and rollback behavior.
+- Strengthen retained routing metadata, export/capture validation and catalogue
+  qualification so malformed or stale public commands fail closed.
+
 ## [1.7.0-rc.4] - 2026-10-09
 
 This checkpoint makes task Recipe capacity configurable and repairs the rc.3

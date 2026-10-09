@@ -35,11 +35,11 @@ use crate::{
 use crate::heap::{HeapSettings, HeapStatus, WorkerHeap};
 use crate::process_recipe::WorkerRecipes;
 pub use crate::process_recipe::{
-    RecipeBoundary, RecipeCommand, RecipeContextId, RecipeEvent, ReleasedContext, SelectedPython,
-    TaskAccounting, TaskHandle, TaskSettings,
+    RecipeBoundary, RecipeCommand, RecipeContextCapacity, RecipeContextId, RecipeEvent,
+    ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 6;
+const PROTOCOL: u32 = 7;
 const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
@@ -234,6 +234,7 @@ pub struct ProcessSnapshot {
     pub recipe: Option<RecipeEvent>,
     pub effective_task_settings: Option<TaskSettings>,
     pub vm_bounds: Option<VmBounds>,
+    pub recipe_context_capacity: Option<RecipeContextCapacity>,
     pub task_accounting: Vec<TaskAccounting>,
     pub withheld_answers: Vec<WithheldHostAnswer>,
 }
@@ -337,7 +338,12 @@ impl GlobalProcess {
         boot: RootBoot,
         limits: ProcessLimits,
     ) -> Result<(Self, ProcessSnapshot), ProcessError> {
-        if !limits.valid() {
+        if !limits.valid()
+            || boot.startup_timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(boot.startup_timeout)
+                .is_none()
+        {
             return Err(ProcessError::new(ProcessFailure::InvalidLimits));
         }
         if !executable.is_absolute() {
@@ -445,6 +451,12 @@ impl GlobalProcess {
         self.reap_error.take()
     }
 
+    /// Called only by the serialized owner before an accepted exchange starts.
+    /// The active exchange never samples a later live policy revision.
+    pub(crate) fn set_response_timeout(&mut self, timeout: Duration) {
+        self.limits.response_timeout = timeout;
+    }
+
     pub async fn exchange(
         &mut self,
         command: WorkerCommand,
@@ -480,7 +492,13 @@ impl GlobalProcess {
             }
         };
         let limit = self.limits.max_frame_bytes;
-        let timeout = self.limits.response_timeout;
+        // Boot compilation/native execution cannot defeat its own deadline by
+        // blocking the in-worker startup tracker. Parent containment uses the
+        // smaller startup/IPC bound; ordinary exchanges retain the IPC bound.
+        let timeout = match &request.command {
+            WorkerCommand::Boot { boot } => self.limits.response_timeout.min(boot.startup_timeout),
+            _ => self.limits.response_timeout,
+        };
         // Dropping this future after writing any bytes kills the worker. Its
         // partially advanced VM cannot accept a later request as a fresh call.
         let mut guard = ExchangeGuard {
@@ -544,7 +562,13 @@ impl GlobalProcess {
         // including errors, child operations and shutdown. Preserve a conflicting
         // real reply for reconciliation and contain the worker before more work.
         if (guard.owner.root.is_some()
-            && (reply.snapshot.root != guard.owner.root || reply.snapshot.vm_bounds.is_none()))
+            && (reply.snapshot.root != guard.owner.root
+                || reply.snapshot.vm_bounds.is_none()
+                || reply.snapshot.recipe_context_capacity.is_none()))
+            || reply
+                .snapshot
+                .recipe_context_capacity
+                .is_some_and(|capacity| capacity.limit == 0)
             || reply.snapshot.vm_bounds.is_some_and(|values| {
                 !runtime_bounds_supported(values, guard.owner.limits.max_frame_bytes)
             })
@@ -724,6 +748,14 @@ fn validate_command_data(
     bounds: VmBounds,
     limit: usize,
 ) -> Result<(), ProcessFailure> {
+    if let WorkerCommand::Boot { boot } = command
+        && (boot.startup_timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(boot.startup_timeout)
+                .is_none())
+    {
+        return Err(ProcessFailure::InvalidLimits);
+    }
     if let WorkerCommand::Recipe {
         command: RecipeCommand::UpdateRuntimeSettings { values, .. },
     } = command
@@ -1038,6 +1070,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 recipe,
                 effective_task_settings,
                 vm_bounds: recipes.as_ref().map(WorkerRecipes::bounds),
+                recipe_context_capacity: recipes.as_ref().map(WorkerRecipes::context_capacity),
                 task_accounting,
                 withheld_answers: root.take_withheld_answers(),
             },
@@ -1054,6 +1087,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 recipe,
                 effective_task_settings,
                 vm_bounds: recipes.as_ref().map(WorkerRecipes::bounds),
+                recipe_context_capacity: recipes.as_ref().map(WorkerRecipes::context_capacity),
                 task_accounting,
                 withheld_answers: Vec::new(),
             },

@@ -93,11 +93,17 @@ pub(crate) struct InstalledMontyCatalogue {
     generation: Uuid,
     generation_bytes: String,
     prefix: String,
+    mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
+    qualification_scope: IntentScope,
     // Retain the actual executable, independently of a mutable source pathname.
     _image: Arc<NativeExecutableImage>,
 }
 
 impl InstalledMontyCatalogue {
+    pub(crate) fn mcp_discovery(&self) -> Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery> {
+        self.mcp_discovery.clone()
+    }
+
     pub(crate) async fn boot(
         pool: Arc<PgPool>,
         kernel: Arc<dyn MontyKernelSnapshot>,
@@ -301,7 +307,29 @@ impl InstalledMontyCatalogue {
             .await
             .map_err(|_| invalid("installation intent retention failed"))?;
         }
+        // Discovery uses exactly this qualified normal-chat catalogue, never
+        // raw Skill/Recipe tables or a parallel latest-version selection.
+        let mcp_discovery = Arc::new(crate::mcp_recipe_catalogue::McpRecipeDiscovery::new());
+        let qualified = crate::mcp_command_qualification::qualify_installed_commands(
+            &pool,
+            scope,
+            generation,
+            &[&reply, &history],
+            &[&reply],
+        )
+        .await;
+        match qualified {
+            Ok(qualified) => mcp_discovery
+                .publish_qualified_installed(None, generation, &[&reply, &history], &qualified)
+                .map_err(|error| invalid(error.to_string()))?,
+            Err(crate::mcp_recipe_catalogue::McpDiscoveryError::Unqualified) => {
+                tracing::info!("MCP discovery awaits complete normal-command evidence");
+            }
+            Err(error) => return Err(invalid(error.to_string())),
+        }
         Ok(Arc::new(Self {
+            mcp_discovery,
+            qualification_scope: scope.clone(),
             pool,
             kernel,
             reply,
@@ -329,6 +357,33 @@ struct TaskCatalogue {
     history: SelectedMontyRecipe,
     // Pins the qualification/artifact owner with all its exact task selections.
     _package: Arc<InstalledMontyCatalogue>,
+}
+
+impl TaskCatalogue {
+    fn intent_scope(&self) -> Result<IntentScope, PortFailure> {
+        let context = self.host.run_context();
+        Ok(IntentScope {
+            tenant_id: context.scope.tenant_id.to_string(),
+            user_id: context
+                .actor
+                .as_ref()
+                .ok_or_else(failure)?
+                .user_id
+                .to_string(),
+            agent_id: context
+                .scope
+                .agent_id
+                .as_ref()
+                .ok_or_else(failure)?
+                .to_string(),
+            project_id: context
+                .scope
+                .project_id
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "default".into()),
+        })
+    }
 }
 
 #[async_trait]
@@ -430,6 +485,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                 answers: tokio::sync::Mutex::new(BTreeMap::new()),
             });
             selections.push(SelectedMontyRecipe {
+                normal_match: None,
                 inspected: (*selected).clone(),
                 inputs: None,
                 tools: Some(tools),
@@ -449,6 +505,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
 
 fn copy_selection(selected: &SelectedMontyRecipe) -> SelectedMontyRecipe {
     SelectedMontyRecipe {
+        normal_match: None,
         inspected: selected.inspected.clone(),
         inputs: selected.inputs.clone(),
         tools: selected.tools.clone(),
@@ -457,29 +514,39 @@ fn copy_selection(selected: &SelectedMontyRecipe) -> SelectedMontyRecipe {
 
 #[async_trait]
 impl MontyTaskCatalogue for TaskCatalogue {
+    async fn refresh_command_qualification(&self) {
+        let package = &self._package;
+        if package.mcp_discovery.snapshot().is_ok() {
+            return;
+        }
+        let result = async {
+            let qualified = crate::mcp_command_qualification::qualify_installed_commands(
+                &package.pool,
+                &package.qualification_scope,
+                package.generation,
+                &[&package.reply, &package.history],
+                &[&package.reply],
+            )
+            .await?;
+            package.mcp_discovery.publish_qualified_installed(
+                None,
+                package.generation,
+                &[&package.reply, &package.history],
+                &qualified,
+            )
+        }
+        .await;
+        match result {
+            Ok(()) | Err(crate::mcp_recipe_catalogue::McpDiscoveryError::Unqualified) => {}
+            Err(crate::mcp_recipe_catalogue::McpDiscoveryError::Conflict)
+                if package.mcp_discovery.snapshot().is_ok() => {}
+            Err(error) => {
+                tracing::warn!(%error, "MCP command qualification refresh failed; discovery remains unavailable")
+            }
+        }
+    }
     async fn resolve_intent(&self, query: &str) -> Result<MontyIntentSelection, PortFailure> {
-        let context = self.host.run_context();
-        let scope = IntentScope {
-            tenant_id: context.scope.tenant_id.to_string(),
-            user_id: context
-                .actor
-                .as_ref()
-                .ok_or_else(failure)?
-                .user_id
-                .to_string(),
-            agent_id: context
-                .scope
-                .agent_id
-                .as_ref()
-                .ok_or_else(failure)?
-                .to_string(),
-            project_id: context
-                .scope
-                .project_id
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "default".into()),
-        };
+        let scope = self.intent_scope()?;
         let mut client = self.pool.get().await.map_err(|_| failure())?;
         let tx = client
             .build_transaction()
@@ -491,10 +558,29 @@ impl MontyTaskCatalogue for TaskCatalogue {
         let instruction = self.reply.inspected.program().inputs().instruction();
         let eligible =
             RetainedIntentEligibility::from_instructions(&[instruction]).map_err(|_| failure())?;
+        // A public command must not fall into Tier 2 after its physical route
+        // disappears or changes. This initial check retains the task selection;
+        // it never rematches a begun execution or consults latest components.
+        if scope == self._package.qualification_scope
+            && [&self._package.reply, &self._package.history]
+                .iter()
+                .any(|selected| {
+                    let instruction = selected.program().inputs().instruction();
+                    instruction.snapshot().revisions()[&instruction.recipe().uuid]
+                        .draft()
+                        .document()
+                        .get("mcp_call")
+                        .is_some()
+                })
+        {
+            crate::mcp_command_qualification::verify_routing_metadata(&tx, &scope, &[instruction])
+                .await
+                .map_err(|_| failure())?;
+        }
         let matched = resolve_catalogue_intent_in_transaction(&tx, &scope, query, &eligible)
             .await
             .map_err(|_| failure())?;
-        let result = match &matched {
+        let mut result = match &matched {
             IntentResolution::NoMatch => MontyIntentSelection::NoMatch,
             IntentResolution::Disambiguation { .. } => MontyIntentSelection::Disambiguation,
             IntentResolution::Match {
@@ -547,6 +633,18 @@ impl MontyTaskCatalogue for TaskCatalogue {
             }
         };
         tx.commit().await.map_err(|_| failure())?;
+        if let MontyIntentSelection::Match(selected) = &mut result {
+            selected.normal_match = Some(Box::new(
+                crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
+                    self._package.generation,
+                    query,
+                    &matched,
+                    selected.inspected.program().inputs().instruction(),
+                    selected.inputs.as_ref().ok_or_else(failure)?,
+                )
+                .ok_or_else(failure)?,
+            ));
+        }
         Ok(result)
     }
     async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure> {

@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-beba03dc3062b412",
+  "object": "chat.completion",
+  "created": 1791521053,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"offline-design export only; no submission, Q1/Q2, activation, runtime or approval claims\", \"result\": \"class21 recipe-transfer-08 payload with the exact supplied UUIDs and empty compatibility arrays\"}, {\"guard\": \"data-only subworkflow; never posts a user message\", \"result\": \"single orchestrator component step returning state data; intents describe computing/returning data, not posting\"}, {\"guard\": \"one desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema; each step includes exactly one UUID in order\", \"result\": \"step 1 includes the PythonCode UUID, tool_bindings empty, dependencies null\"}, {\"guard\": \"one variant step_link=0:1-0:E, variable_patterns empty, ten distinct intents in both payload and variant arrays\", \"result\": \"intent_examples array of ten distinct data-return intents\"}, {\"guard\": \"all required payload keys present; empty arrays usage-specific; JSON closed\", \"result\": \"name, description, trigger, steps, prior_knowledge_content, intent_examples, step_descriptions, variants, dependency_registry all present\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"unapproved draft, Q1 and human Q2 required before activation\"], \"notes\": \"The supplied program returns only state data; it cannot satisfy say/post/reply intents. Intents must describe computing/returning the idle state object, not a \"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114391,
+    "total_tokens": 114714,
+    "completion_tokens": 323,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

@@ -405,15 +405,11 @@ async def _execute_task(task):
             raise RuntimeError("recipe_composition_failed")
         if not isinstance(reply_link, str) or reply_link == "":
             raise RuntimeError("recipe_composition_failed")
-        reply_ref = await _execute_recipe(task_token, reply_id, reply_link, {"answer": answer})
-        if not isinstance(reply_ref, str) or not reply_ref.startswith("msg:"):
-            raise RuntimeError("recipe_reply_invalid")
-        # The reply Recipe persists the real scoped transcript. Verify its actual
-        # finalization before completing; no duplicate reply or history replay.
-        answer = await host.resolve_reply(task_token, reply_ref)
-        if not isinstance(answer, str):
-            raise RuntimeError("recipe_reply_invalid")
-        return reply_ref
+        # Both routes converge on the same reply verification and history
+        # completion below. No-Match does not bypass the retained history Recipe.
+        recipe_id = reply_id
+        step_link = reply_link
+        inputs = {"answer": answer}
     elif status == "disambiguation":
         raise RuntimeError("intent_disambiguation_required")
     else:

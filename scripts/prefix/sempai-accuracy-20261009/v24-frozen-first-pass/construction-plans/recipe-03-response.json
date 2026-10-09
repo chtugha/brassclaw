@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-9945ce41d052ef0b",
+  "object": "chat.completion",
+  "created": 1791520903,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"task_kind\": \"recipe\", \"branches\": [{\"guard\": \"host.post_reply is an actual user-message effect, not returned data\", \"result\": \"class21 recipe-transfer-03 posts the fixed word 'Healthy' as a user reply via the bound existing ToolSkill 95a56828-1af9-58d3-8b46-107c7a1fb548 then the PythonCode 52840069-3cd9-5ba7-bfe2-e160739911b3 invokes host.post_reply(answer='Healthy')\"}, {\"guard\": \"offline full-v3 export only; current live sink drops v3 fields\", \"result\": \"payload carries full v3 keys name,description,trigger,steps,prior_knowledge_content,intent_examples,step_descriptions,variants,dependency_registry; steps=[] and dependency_registry=null; executable UUIDs live in step_descriptions only\"}, {\"guard\": \"one desc_idx=0 with persisted knowledge/stepnumber/type=component/include schema; each step includes exactly one supplied UUID in order\", \"result\": \"step 1 (knowledge=rust, include=95a56828-1af9-58d3-8b46-107c7a1fb548) binds the ToolSkill; step 2 (knowledge=orchestrator, include=52840069-3cd9-5ba7-bfe2-e160739911b3) runs the PythonCode; tool_bindings=[] and dependencies=null on both\"}, {\"guard\": \"one variant step_link=0:1-0:E, variable_patterns=[]; ten distinct natural intents in both payload and variant arrays\", \"result\": \"say healthy, reply healthy, post healthy, send the healthy reply, respond with healthy, tell me healthy, please say healthy, please reply healthy, post the fixed healthy message, send the fixed healthy message\"}, {\"guard\": \"no runtime/approval claims; unapproved dependencies and Q1/human Q2 required\", \"result\": \"description and prior_knowledge_content state the draft is unapproved, needs Q1 and human Q2, and the current live sink cannot preserve full v3 fields; no execution, submission or activation occurred\"}], \"helper_required\": false, \"workflow\": [], \"authorized_edits\": [], \"prerequisites\": [\"Q1 structural/contract/injection checks\", \"human Q2 approval of the authored class21 draft\", \"resolved existing host.post_reply ToolSkill binding and PythonCode callable\", \"current global Tool policy allows host.post_reply at dispatch\"], \"notes\": \"This is a data-posting workflow, not a data-return subworkflow: the shared word Healthy selects a posted user reply effect, so step 1 binds the existing Tool, a\"}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 114485,
+    "total_tokens": 115120,
+    "completion_tokens": 635,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 112992,
+      "num_lmcache_cached_tokens": 112992,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

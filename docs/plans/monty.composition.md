@@ -1,6 +1,74 @@
 # monty.composition
 
+## Reply/history migration review gate
+
+The existing packaged `host-post-reply` and `host-save-history` Recipes, their
+associated Skills and PythonCode are migration inputs, **not qualified current-v3
+implementations to reuse unchanged**. Updating these exact workflows is the parent
+task; implementing the qualified preload/export adapter is its prerequisite.
+
+Before selecting a successor, independently review the actual retained definitions,
+interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
+callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
+Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
+pinned export invocation, isolated mutable state and current kernel enforcement.
+Complete the applicable exact-combination bootstrap/approval and behavioral evidence
+before activation. Names, existing package status, old acceptance receipts and the
+word “canonical” do not qualify the unchanged implementation.
+
+Preserve compatible stable UUIDs and old task selections when that reviewed migration
+supports them; do not copy deprecated source substitution, ambient step state,
+module-level Tool execution or unsafe retry guidance into the new adapter. Review
+reply/history ownership, both routing branches, history framing, finalization and
+no-replay behavior together after the adapter is qualified. Keep these internal
+usages out of public MCP discovery unless a separately qualified public contract
+explicitly permits exposure. The commented instructions below are historical only.
+
+
+**MCP source status (2026-10-09):** the raw-Skill/composer serving stub has been retired and legacy outbound MCP activation/attachment has been suspended. Earlier source observations of that stub are historical. See [section 26](#26-inbound-mcp-source-review-and-transport-retirement-2026-10-09) for the repairs and the still-required Recipe/chat/Kohai implementation. The new inbound service is not yet runtime-qualified.
+
 **Updated v3 Skill definition:** a Skill is one Tool usage exposed through a preloadable Python function interface, with prose, explicit associated code, public exported names/signatures and private helper/constant dependencies. Resolve and pin its exact interface/code/association/Tool graph, load definitions in dependency-first order without effects, and invoke the selected export on demand. Loading enables no Tool; matching ToolSkill binding and live kernel checks remain required. Code/immutable constants can be shared; mutable arrays/defaults/closures/results are isolated per invocation/task/attempt. See [the binding function-interface contract](../../skills.md#preloadable-function-interface-binding-v3-target). All legacy and new Skill rows require the per-usage function migration in the implementation appendix; pure wrappers remain PythonCode documentation. This is a target and plan update, not runtime support.
+
+## Tier-2 history and Sempai handoff audit
+
+No-Match turns require the same verified reply/history completion as Match turns.
+The former early return after publication was a bug, not an architectural exemption.
+The root source now converges both routes on reply verification followed by the
+retained history Recipe. Failure after publication must retain that completed
+effect and must not publish again or replay the task as Tier 2.
+
+Daily-memory records, the authoritative conversation transcript and Sempai's
+analysis input are distinct. The current resolved model gateway captures each
+provider request's supplied history/prompt in a forensic packet and adds the
+provider response afterwards. However, `InterceptingModelGateway::prepare`
+performs Sempai review before Kohai dispatch, while `close` only records the
+response. There is no post-response Sempai call in that path. Packet persistence
+failures are logged and do not currently establish a durable learning handoff.
+A packet status named `SempaiReviewed` therefore does not prove that Sempai has
+reviewed the completed current turn. The legacy `PgKohaiPort` also records packets,
+but its source explicitly has no Sempai dispatch; it is not an alternative that
+completes this requirement.
+
+The completed-turn learning workflow remains required implementation work:
+review/compose a Recipe using qualified existing usages for a correlated typed
+bundle of conversation/run/attempt/message identities, original and effective
+model prompts, responses, Tool/effect receipts and terminal completion/failure
+state. Pin the Sempai model/prefix selection independently. Record a durable,
+deduplicated review request with exact bundle references, submit any proposed
+components through the authored Q1/behavior/human-Q2 path, and retain review and
+queue outcomes. Delivery/review recovery may not replay task effects, publish a
+second reply or infer absent effects from an incomplete packet. Resolve missing
+primitive/store/runner support explicitly before activation; a daily log or an
+existing pre-dispatch review is not a substitute for this post-turn workflow.
+
+**Producer implementation:** V122 now retains an immutable review event in the
+original admission settlement transaction for actual No-Match turns, including
+failed turns after publication. It snapshots available model packets and exact
+Recipe/Tool evidence without private claim/admission keys. This is durable
+handoff retention, not delivered Sempai review or proof of complete task data.
+The event explicitly has `evidence_complete=false`. The consumer, qualified
+model/proposal usages and durable review acknowledgement remain prerequisites.
+Follow the [completed-turn Recipe authoring record and acceptance contract](../reborn/contracts/completed-turn-sempai-review.md).
 
 ## 1. Legacy components containing Python code to update and convert
 
@@ -172,9 +240,9 @@ The planned roles have an explicit Python/executable-usage requirement but often
 
 | Component | Purpose | What needs to be upgraded or changed |
 | --- | --- | --- |
-| 1. [Packaged reply PythonCode: `reply:code`; Skill: `reply:skill`](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L170) | Publish one supplied answer to the admitted task and return its actual message reference. | Packaged and used by the installed global catalogue. No placeholder/import rewrite is indicated: the body reads typed answer and assigns result from one host.post_reply call. Retain exact package/association/artifact evidence, verify task-owned finalization, and preserve confirmed publication across downstream failure. This audit did not rerun acceptance. **Old functionality exists:** `pc-host-post-reply`, `pc-zencoder-post-auth-instructions`, `pc-exec-echo`. The first two duplicate reply publication; echo only overlaps message passthrough and must remain diagnostic. Review exact contracts to avoid double components. **Recipe overlap review (section18):** `host-post-reply` reuses this executable role; move workflow sequencing to the Recipe and keep one canonical code implementation. |
-| 2. [Packaged history writer PythonCode: `history:code`; Skill: `history:skill`](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L156) | Append the supplied completed-turn record to the daily memory log. | Packaged and used by the installed catalogue. No Python syntax change is indicated. Verify the fixed daily_log target, real append acknowledgement and recursive result bounds against the retained adapter. Preserve durable effect identity on lost acknowledgements; do not broaden this into a general target/patch/replace writer. **Old functionality exists:** `pc-memory-write`, `pc-exec-memory-write`, `pc-exec-memory-append`. Review equivalence to avoid double components. **Recipe overlap review (section18):** `memory-write / host-save-history` reuses this executable role; move workflow sequencing to the Recipe and keep one canonical code implementation. |
-| 3. [Packaged history formatter PythonCode: `history:formatter`](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L349) | Create a completed-turn record from the owning task’s user input, finalized answer and reply reference. | Packaged pure logic uses three typed strings and assigns result without host calls. No rewrite is indicated. Keep the input/output bounds and exact source pinned, validate the actual task-owned reply before formatting, and test quotes/newlines/Unicode as data. This is a turn-record formatter, not a general timestamped-note formatter. **Old functionality exists:** `pc-host-history-format`, `pc-memory-format-entry`. Review equivalence to avoid double components. **Recipe overlap review (section18):** `host-save-history` reuses this executable role; move workflow sequencing to the Recipe and keep one canonical code implementation. |
+| 1. [Packaged reply PythonCode: `reply:code`; Skill: `reply:skill`](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L170) | Publish one supplied answer to the admitted task and return its actual message reference. | Packaged and used by the installed global catalogue. <!-- Historical instruction withdrawn: No placeholder/import rewrite is indicated: the body reads typed answer and assigns result from one host.post_reply call. --> Review and upgrade the exact usage/Recipe against the qualified preload/export adapter before reuse. Retain exact package/association/artifact evidence, verify task-owned finalization, and preserve confirmed publication across downstream failure. This audit did not rerun acceptance. **Old functionality exists:** `pc-host-post-reply`, `pc-zencoder-post-auth-instructions`, `pc-exec-echo`. The first two duplicate reply publication; echo only overlaps message passthrough and must remain diagnostic. Review exact contracts to avoid double components. **Recipe overlap review (section18):** `host-post-reply` reuses this executable role; move workflow sequencing to the Recipe and keep one canonical code implementation. |
+| 2. [Packaged history writer PythonCode: `history:code`; Skill: `history:skill`](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L156) | Append the supplied completed-turn record to the daily memory log. | Packaged and used by the installed catalogue. <!-- Historical instruction withdrawn: No Python syntax change is indicated. --> Review and migrate the exact history writer and consuming Recipe to the qualified preload/export contract before reuse. Verify the fixed daily_log target, real append acknowledgement and recursive result bounds against the retained adapter. Preserve durable effect identity on lost acknowledgements; do not broaden this into a general target/patch/replace writer. **Old functionality exists:** `pc-memory-write`, `pc-exec-memory-write`, `pc-exec-memory-append`. Review equivalence to avoid double components. **Recipe overlap review (section18):** `memory-write / host-save-history` reuses this executable role; move workflow sequencing to the Recipe and keep one canonical code implementation. |
+| 3. [Packaged history formatter PythonCode: `history:formatter`](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L349) | Create a completed-turn record from the owning task’s user input, finalized answer and reply reference. | Packaged pure logic uses three typed strings and assigns result without host calls. <!-- Historical instruction withdrawn: No rewrite is indicated. --> Review the formatter and its typed record/Recipe handoff; qualify any successor rather than retaining it blindly. Keep the input/output bounds and exact source pinned, validate the actual task-owned reply before formatting, and test quotes/newlines/Unicode as data. This is a turn-record formatter, not a general timestamped-note formatter. **Old functionality exists:** `pc-host-history-format`, `pc-memory-format-entry`. Review equivalence to avoid double components. **Recipe overlap review (section18):** `host-save-history` reuses this executable role; move workflow sequencing to the Recipe and keep one canonical code implementation. |
 | 4. [`orchestrator:global` — protected class-10 Python root](../../crates/brassclaw_reborn_composition/src/global_root_seed.rs#L19) | Keep the instance orchestrator alive, admit isolated tasks, route Match/No-Match work, execute pinned steps and record finalized replies/history. | A concrete protected Python-bearing component, not a class-22 Skill usage. The source already uses asyncio, typed state and opaque program references. Complete supported continuation/effect reconciliation for explicit waits: _non_match currently rejects non-completed capability outcomes. Extend whole-catalogue acceptance and durable recovery under the existing v3 plan. Review flow/reference limits and recursive schemas against the real assembler; do not apply the child one-host-call rule to this root or split its helper functions into invented library rows. **Old functionality exists:** `pc-host-resolve-intent`, `pc-host-compose-orchestrator`, `pc-host-fetch-component`, `pc-host-resolve-component-by-name`, `pc-host-kohai-complete`, `pc-host-assemble-non-match-prompt`, `pc-host-fallback-prior-knowledge`, `pc-host-check-signals`. Review equivalence to avoid double components. **Recipe overlap review (section18):** protected global routing/task execution; supersede legacy host workflows without another root. |
 
 ### Typed guide examples and planned validator components
@@ -1184,7 +1252,7 @@ On the qualified typed path, invalid/null values must not be repaired by the leg
 | TS048. [ts-skill-install](../archive/builtin_stuff_v3.md#step-165--toolskill-ts-skill-install-class-13)<br>Archive-only proposal | Describe legacy imported-Skill installation binding. | Retire the monolithic binding proposal; fetch, validate source, admit immutable candidate and review/activate are separate Recipe steps. Reuse real HTTP/read and candidate-admission bindings where contracts fit. Associated Skill requires prose plus exact executable and reviewed dependencies; no automatic install from manifest text. **Review overlap to avoid duplicates:** `ts-http-fetch`, `ts-read-file`, `ts-host-validate-component`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS049. [ts-skill-remove](../archive/builtin_stuff_v3.md#step-166--toolskill-ts-skill-remove-class-13)<br>Archive-only proposal | Describe legacy Skill withdrawal/removal binding. | No current descriptor seed/registered removal Tool found. Resolve supported one-operation catalogue withdrawal contract if required; move dependency handling/workflow out. Preserve retained revisions/running selections and remove legacy scope grants/universal invocation confirmation. Do not execute or install this archived metadata. |
 | TS050. [ts-host-regex-match](../archive/builtin_stuff_v3.md#toolskill-class-13)<br>Archive-only proposal | Describe the archive regex wrapper binding. | Retire alongside archive host.regex_match when the existing pure pc-regex-match implements the qualified need. Pure matching has no artificial ToolSkill or zero-Tool Skill. Invalid regex/resource failure remains distinct from a negative match; do not infer an active binding from the legacy __regex_match__ helper. |
-| TS051. [packaged reply binding](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L325) | Prepare the retained owning-task reply usage. | Implemented narrow class13 successor record uses tool-skill-binding/1, existing post_reply Tool UUID and exact packaged code/Skill association. Review legacy ts-host-post-reply; reconcile canonical binding identity rather than seed a second reply usage. No descriptor rewrite indicated here; wider authored catalogue and retained-version acceptance remain open. **Another listed component/profile overlaps:** `ts-host-post-reply`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
+| TS051. [packaged reply binding](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L325) | Prepare the retained owning-task reply usage. | Implemented narrow class13 successor record uses tool-skill-binding/1, existing post_reply Tool UUID and exact packaged code/Skill association. Review legacy ts-host-post-reply; reconcile canonical binding identity rather than seed a second reply usage. <!-- Withdrawn: No descriptor rewrite indicated here; wider authored catalogue and retained-version acceptance remain open. --> Independently review and migrate this binding with the reply Recipe and preload/export interface; current package status does not qualify unchanged reuse. Wider authored catalogue and retained-version acceptance remain open. **Another listed component/profile overlaps:** `ts-host-post-reply`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS052. [packaged history binding](../../crates/brassclaw_skills/src/global_bootstrap_components.rs#L325) | Prepare completed-turn daily-log appending. | Implemented narrow descriptor reuses memory_write and exact packaged history association. Review ts-memory-write; keep this fixed-target profile only if its narrower contract warrants it. Preserve finite result, trusted package/native retention and one history owner; it does not qualify arbitrary memory writes or grant policy. **Another listed component/profile overlaps:** `ts-memory-write`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS053. [typed interval binding profile N05 — guide design](../../toolskills.md#10-worked-example-bind-file-reading-execute-an-interval-usage) | Prepare file reading with computed inclusive interval arguments. | Reuse/revise ts-read-file for actual path/offset/limit. start_line/end_line are local Skill inputs, not Tool keywords; approved code computes bounded offset/limit. Complete exact association and real retained adapter acceptance. This design has no separate seeded ToolSkill UUID and warrants no new file-read Tool. **Another listed component/profile overlaps:** `ts-read-file`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
 | TS054. [typed JSON parse binding profile N06 — guide design](monty.composition.implementation.md#n06-typed-json-parse-usage) | Prepare parse-only JSON text usage. | Review ts-json-stringify and specialize fixed operation=parse with finite parsed-result contract and missing/null/nonfinite behavior. Reuse a compatible descriptor revision; a distinct binding is justified only by real compatibility restrictions. No unallocated name proves registration/activation and no second JSON Tool. **Another listed component/profile overlaps:** `ts-json-stringify`. Compare exact primitive, callable, typed operation/result and approval subject; reuse a compatible identity/profile rather than copying it. |
@@ -1350,3 +1418,219 @@ The [Skill execution Recipe appendix](monty.composition.skill-recipes.md) contai
 | [execute-catalogue-export-usage](monty.composition.skill-recipes.md#skr096-catalogue-export-usage-execution-recipe) | Catalogue sweep and export | Qualify the linked one-usage command/capture/export/binding/result contract. **Review existing Recipe overlap:** reuse an equivalent existing variant before allocating a new identity; narrower or additional effects are not equivalent. Preserve the linked Skill's blocked/internal status. |
 | [execute-compiler-worker-usage](monty.composition.skill-recipes.md#skr097-compiler-worker-usage-execution-recipe) | Registered compiler worker invocation | Qualify the linked one-usage command/capture/export/binding/result contract. **Review existing Recipe overlap:** reuse an equivalent existing variant before allocating a new identity; narrower or additional effects are not equivalent. Preserve the linked Skill's blocked/internal status. |
 | [execute-prefix-generation-publication-usage](monty.composition.skill-recipes.md#skr098-prefix-generation-publication-usage-execution-recipe) | Prefix generation publication | Qualify the linked one-usage command/capture/export/binding/result contract. **Review existing Recipe overlap:** reuse an equivalent existing variant before allocating a new identity; narrower or additional effects are not equivalent. Preserve the linked Skill's blocked/internal status. |
+
+## 26. Inbound MCP source review and transport retirement (2026-10-09)
+
+This review covers the inbound server, its settings/listener wiring, Kohai's
+provider handoff and the separate legacy outbound client. The repairs below
+retire incompatible behavior; they do **not** implement or qualify the complete
+new MCP service.
+
+| Source boundary | Finding | Code disposition |
+| --- | --- | --- |
+| `orchestrator_mcp_server.rs` | `tools/list` exposed raw class-1/2 Skills; `tools/call` flattened arbitrary arguments, resolved a Skill UUID as a Recipe and returned composed Python as success. | Removed the DB/ComponentPort dependencies, raw-Skill discovery and source-returning dispatcher. Only the completed-command request shape remains; discovery/calls report missing qualified chat support and admit no execution. Request IDs are retained, notifications have no JSON-RPC reply, unsupported SSE returns 405, requests are bounded and browser Origins are rejected. |
+| `webui.rs` / `mcp_server_service.rs` | Settings constructed a dedicated composer and an unwired no-op listener; optional manual start/stop conflated listener lifetime with provider connectivity. | Removed the dedicated composer/listener ownership. Settings report the actual unavailable integration instead of claiming a stopped/running implementation. The compatibility auto-start field is always true; false is rejected atomically. WebUI no longer offers manual listener start/stop. This is not evidence that an always-on listener starts today. |
+| Host ingress listener | Dormant unauthenticated spawner bound all interfaces. | Retained the host-owned socket boundary with loopback binding. A remotely reachable provider endpoint still requires explicit authenticated ingress and qualified startup wiring. |
+| `factory.rs` / extension lifecycle | The legacy outbound client was automatically attached when HTTP egress existed. Activation could discover external MCP servers, and restart could republish previously enabled MCP extensions. | Removed automatic client attachment and its composition constructor; block MCP extension activation before network/publication. Startup keeps installed assets and durable operator intent but does not publish those extensions. Active model-visible capability projection excludes the legacy MCP runtime. Client substrate/security code remains available for a future separately authorized reintroduction. |
+| `pg_kohai_port.rs` / model gateway request | Prefix composition and final-answer handling exist, but the provider request contract has no qualified request-local MCP advertisement/connection adapter. | Do not add pretend SDK fields, reconnect the outbound extension client, or dispatch model Tool requests in a hidden Rust loop. Implement the provider-specific request exchange below before enabling advertisement. |
+
+### Remaining implementation steps — required before enabling inbound MCP
+
+1. Add catalogue-owned qualification/discovery of the available activated,
+   approved MCP-call Skill execution Recipes from one coherent generation.
+   Persist exact command/variable/formatting/result contracts and their reviewed
+   Skill associations. Neither a raw Skill row, a `system` label, a Recipe name
+   prefix nor a Markdown SKR draft establishes this qualification. Rebuild at
+   startup/restart and atomically refresh on qualified activation/update/removal.
+2. Implement the MCP **ordinary-chat client** against the existing product
+   conversation facade. Persist authenticated exchange/request/chat/message/run
+   correlation before submission; validate a command against its advertised
+   contract and compatible current catalogue before opening/submitting its chat.
+   Do not hand a pinned Recipe directly to Monty or add an MCP-only matcher.
+3. Add the missing durable non-destructive chat closure and terminal-result
+   correlation/recovery support. The existing `delete_thread` facade is not an
+   archive/close contract. Submit acknowledgements, progress and unrelated latest
+   messages cannot serve as results. Unknown send/result/closure outcomes retain
+   the same chat and evidence and never create a replacement effectful chat.
+4. Wire one authenticated host-owned inbound listener after chat/catalogue
+   readiness at instance startup; retain it until shutdown. Provider connection
+   cleanup must not stop the listener. Missing adapters fail readiness explicitly;
+   do not replace them with a successful empty catalogue or the retired composer.
+5. Extend the supported provider gateway with a real MCP advertisement/session
+   adapter owned by Kohai. After final prefix addition and immediately before
+   provider send, capture the listing and connect/advertise for that request.
+   Retain the exchange across intermediate Tool requests; disconnect after the
+   complete model answer and on cancellation/error, without disconnecting other
+   concurrent requests. Unsupported providers remain explicitly unavailable.
+6. Accept the whole production path with a qualified execution Recipe: discovery,
+   completed command, ordinary chat match/IBS/global Monty, correlated reply,
+   evidence-preserving closure and forwarding. Exercise catalogue refresh,
+   concurrent provider exchanges, stale advertisements, cancellation, lost
+   replies/unknown sends, policy changes and restart recovery. These repairs'
+   fail-closed tests are not that end-to-end acceptance.
+
+HTTP corrections follow the [MCP Streamable HTTP transport contract](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+The accepted Recipe/chat/Kohai architecture remains section 16 and the
+Skill-execution Recipe appendix; no Rust workflow Tool is introduced here.
+
+Validation for this repair: the six inbound HTTP/readiness regressions and all
+26 extension lifecycle regressions passed. The broader MCP test selection passed
+29 tests and identified one obsolete Tool-path activation expectation; after
+updating it to the suspended-client contract, its focused regression passed.
+Affected composition/ingress library Clippy passed with warnings denied and the
+`skills-db` feature enabled. Rust formatting, JavaScript syntax and whitespace
+checks passed. These checks establish retirement/suspension behavior, not the
+new service's end-to-end acceptance.
+
+
+## 27. Qualified MCP Recipe discovery implementation started (2026-10-09)
+
+The ordinary installation catalogue now owns a read-only MCP discovery facade
+and publishes its generation at startup, after packaged catalogue retention and
+intent seeding. Runtime/HTTP callers receive no component store or execution
+handle. Explicit `mcp_call` declarations are read only from the same immutable
+retained Recipe selection as normal chat. This new retention-document metadata
+is not a field accepted by legacy Recipe INSERT APIs. See
+[the implemented contract and remaining qualification gates](../mcp-recipe-discovery.md).
+
+The discovery reader validates command/variant/Skill identities, exact variable
+positions, typed task-input contracts, examples and actual retained binding
+associations. Its current verbatim transport supports required non-null strings
+and rejects ambiguous delimiters; typed decoding needs the explicit reviewed
+Recipe steps and supported reader extension. Duplicate names/templates and
+example-demonstrated overlaps reject a generation. Structural checks do not
+substitute for trusted behavior/normal-match qualification.
+
+Publication compares the expected generation under one lock and makes a whole
+immutable snapshot available atomically. Existing advertised snapshots remain
+retained; new admission checks detect changed/withdrawn contracts. Fingerprints
+include command/task contracts and the exact compiled selection. Failed refresh
+makes current discovery unavailable; a stale publisher cannot overwrite a newer
+generation. The HTTP listing adapter preserves request identity and rejects
+unsupported cursor/filter parameters.
+
+**Current limit:** the production catalogue contains only packaged reply/history
+workflows, neither explicitly eligible for public MCP. Its qualified discovery
+generation is therefore empty. Discovery does not yet consume a complete qualified
+export/association and normal-match suite, so an explicit public candidate
+fails with `UnsupportedRunner` rather than being listed. Authored activation/
+withdrawal event wiring, full export/association qualification and nonempty
+publication remain open; there is no automatic raw-Skill seeding or permission
+shortcut. The always-on authenticated listener, durable chat bridge and Kohai
+provider-window integration from section 26 remain separate unfinished steps.
+No outbound MCP-client behavior is re-enabled.
+
+
+Validation for this first stage: four focused discovery regressions passed,
+including strict command/data handling, immutable advertised snapshots, stale
+publication/withdrawal rejection, HTTP empty-versus-unavailable behavior and
+rejection of an actually Monty-inspected draft body as a public preloaded export.
+The ordinary `native_global_runtime_retains_one_root_across_match_and_no_match`
+regression passed against real native PostgreSQL and the packaged Monty worker,
+including the new startup discovery-generation/empty-list assertions and its
+existing matched/unmatched chat turns. Composition library Clippy with
+`skills-db` and warnings denied passed; Rust formatting and whitespace checks
+passed. Initial fixtures omitted required `checks` and were corrected. Shared
+target cleanup repeatedly removed the worker/test binary, so final verification
+used Cargo-produced executable copies captured before releasing the target lock;
+no substitute worker or success result was used. PostgreSQL needed the ordinary
+unsandboxed shared-memory test permission. No nonempty/public Recipe discovery,
+authored activation refresh, provider connection or MCP chat execution is claimed
+by these results.
+
+
+## 28. Normal-match evidence implementation (2026-10-09)
+
+The existing reply/history Recipe workflow is unchanged. The catalogue owner
+now records a normal match after the real matcher/IBS transaction commits,
+including pinned generation, exact Recipe/variant/step-link and complete selection
+checksum, plus command/template/validated-input checksums. The global Recipe
+adapter attaches that observation only to the matched selection. Named child
+lookups remain distinct and carry no matching observation.
+
+The existing durable task-settlement transaction retains matching and actual
+Recipe/root completion together with the correlated reply outcome. Failed tasks
+preserve matching evidence without claiming completed execution; errors,
+No-Match and disambiguation remain distinct. Repeated settlement uses the same
+report and cannot replay matching or effects. This adds no MCP executor,
+component approval or Tool grant.
+
+Remaining qualification work: consume these trusted observations for every
+advertised positive/negative command and ambiguity/error case, check the exact
+preload/export/association evidence, and atomically publish only a coherent
+qualified generation. One observed successful match cannot enable discovery.
+
+Validation: the ordinary
+`native_global_runtime_retains_one_root_across_match_and_no_match` regression
+passed with real native PostgreSQL and the freshly built packaged Monty worker
+(46.61 seconds). It checks the durable matching/selection/input fingerprints,
+No-Match versus internal named lookup, and successful matching followed by task
+failure. PostgreSQL required unsandboxed shared-memory access. Composition
+library Clippy (`skills-db`, `--no-deps`, warnings denied) passed with only
+`clippy::collapsible_if` explicitly allowed: strict attempts encountered unrelated
+concurrent nested-if edits in `retained_source.rs` and `live_monty_settings.rs`.
+Those files were not changed for this work. Formatting and whitespace checks
+passed. This validates observed normal-chat matching and settlement, not a full
+public-command qualification suite or MCP execution.
+
+
+## 29. Complete declared-command qualification implementation (2026-10-09)
+
+The normal installation catalogue now has a committed command-qualification gate
+for public MCP declarations. It checks exact retained export invocations and
+requires a case contract covering every declared positive example's expected
+formatted reply, explicit terminal failure examples, negative commands and
+conservative command-language separation across the entire incoming eligible
+catalogue. It queries the ordinary PostgreSQL matcher/IBS and existing settled
+normal-chat records; it never runs examples or repeats effects. Missing, stale,
+failed or contradictory evidence cannot populate discovery. See
+[the case schema, artifact and publication contract](../mcp-recipe-discovery.md).
+
+The normal completion check now captures the finalized reply's content checksum
+in task-owned state, retained with the existing durable settlement report.
+Qualification checks that actual formatted result as well as full step/Recipe/
+root completion and correlation. Failure examples must identify an actual failed
+step of the selected Recipe; downstream/history failures cannot stand in for
+Skill error handling. No-Match, ambiguity and technical errors remain distinct.
+
+Migration V123 retains immutable qualification artifacts independently of
+component/association approval. A private committed proof pins the complete
+command set and generation. Publication checks it atomically and includes its
+identity in advertisement fingerprints. Missing execution receipts do not cause
+circular bootstrap: ordinary already approved Recipes remain available, MCP
+remains unavailable, and qualification retries only after durable settlement.
+No new invocation approval or automatic behavioral replay is introduced.
+
+The currently packaged workflows remain private, so this implementation retains
+an empty qualified listing. Authored activation/withdrawal, actual public Recipe
+population, MCP chat correlation/closure and Kohai/provider integration remain
+separate required work. Declared-case coverage and conservative language checks
+do not establish all possible environmental outcomes or full semantic approval.
+
+Qualification additionally verifies the physical eligible intent rows and their
+prefix/suffix anchors against the pinned templates. Public packaged routing in
+the qualification scope checks this integrity before matching, so a missing or
+corrupt route cannot silently become No-Match/Tier 2. V1 public declarations
+require verbatim captures without regex transformations; sample agreement alone
+cannot establish arbitrary capture semantics.
+
+Validation of this implementation: five focused qualification tests passed,
+including regex-capture rejection and rejection of an inspected export without
+execution evidence. The ordinary
+`native_global_runtime_retains_one_root_across_match_and_no_match` regression
+passed with real native PostgreSQL and a freshly captured packaged Monty worker
+(53.21 seconds). It covers exact positive/failure/negative cases using actual
+normal-chat executions, expected reply content, missing/stale evidence,
+immutable artifacts and corruption of physical routing anchors in a rolled-back
+transaction. This tests the nonempty case checker using the private installed
+reply workflow; it does not activate a public Recipe or establish nonempty
+public MCP acceptance. Native PostgreSQL required unsandboxed shared memory.
+The requested nested-if warning in `live_monty_settings.rs` was resolved by
+combining its conditions while preserving short-circuit evaluation and all error
+mappings. Formatting and whitespace checks passed.
+
+Strict affected-package Clippy also passed:
+`cargo clippy -p brassclaw_reborn_composition --features skills-db --lib --no-deps -- -D warnings`,
+using the stable NVMe target and `CARGO_INCREMENTAL=0`,
+`CARGO_PROFILE_DEV_DEBUG=0`. No lint was suppressed. This replaces the current
+nested-if blocker; the earlier section's validation record remains historical.

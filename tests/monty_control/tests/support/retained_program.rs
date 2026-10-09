@@ -27,12 +27,26 @@ pub(super) async fn program(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
 ) -> Arc<RetainedToolProgram> {
-    program_with_source(store, invalid_output, None).await
+    build_program(store, invalid_output, None, true).await
 }
 pub(super) async fn program_with_source(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
     source: Option<&str>,
+) -> Arc<RetainedToolProgram> {
+    build_program(store, invalid_output, source, false).await
+}
+pub(super) async fn program_with_preload_source(
+    store: &PgComponentRevisionStore,
+    source: &str,
+) -> Arc<RetainedToolProgram> {
+    build_program(store, false, Some(source), true).await
+}
+async fn build_program(
+    store: &PgComponentRevisionStore,
+    invalid_output: bool,
+    source: Option<&str>,
+    preload: bool,
 ) -> Arc<RetainedToolProgram> {
     let (root, code, descriptor, tool, skill) = (
         Uuid::new_v4(),
@@ -70,7 +84,41 @@ pub(super) async fn program_with_source(
             {"stepnumber":4,"knowledge":"orchestrator","goal":"Parse JSON again","content":"","type":"component","include":[code]}]}],
         "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":inputs,"steps":{
             "0:2":{"data":{"kind":"task_input","reference":"{{vars.data}}"}},"0:4":{"data":{"kind":"task_input","reference":"{{vars.data}}"}}}}}});
+    let helper = Uuid::new_v4();
+    let code_dependencies = if preload { vec![helper] } else { vec![] };
+    let mut code_document =
+        json!({"content":body,"input_contract":inputs,"result_contract":result});
+    let mut skill_document = json!({"body":"Parse the supplied JSON text and return its object."});
+    if preload {
+        code_document["content"] = json!(if invalid_output {
+            "def parse_usage(inputs):\n    parsed = _parse_data(inputs)\n    return 'invalid output'\ndef unused_usage(inputs):\n    return host.json(operation='parse', data=inputs['data'])"
+        } else {
+            "def parse_usage(inputs):\n    fresh = []\n    fresh.append(inputs['data'])\n    return _parse_data({'data': fresh[0]})\ndef unused_usage(inputs):\n    return host.json(operation='parse', data=inputs['data'])"
+        });
+        if let Some(source) = source {
+            code_document["content"] = json!(format!(
+                "{source}\ndef unused_usage(inputs):\n    return host.json(operation='parse', data=inputs['data'])"
+            ));
+        }
+        code_document["preload"] = json!({"format":"python-preload/2", "exports":{
+            "parse":{"symbol":"parse_usage","parameters":["inputs"],"mapping":true},
+            "unused":{"symbol":"unused_usage","parameters":["inputs"],"mapping":true}},
+            "private_functions":{},"constants":[],"imports":[],"dependencies":[helper],"default_export":"parse"});
+        skill_document["interface"] = json!({"format":"skill-interface/1","python_code_uuid":code,
+            "exports":code_document["preload"]["exports"],"inputs":inputs,"result":result,
+            "failure":serde_json::from_str::<Value>(&association).unwrap()["failure"],
+            "dependencies":[helper],"private_symbols":[]});
+    }
     let mut refs = Vec::new();
+    if preload {
+        refs.push(store.stage(&draft(helper, 22, json!({
+            "content":"PARSE_OPERATION = 'parse'\ndef _parse_data(inputs):\n    return host.json(operation=PARSE_OPERATION, data=inputs['data'])",
+            "preload":{"format":"python-preload/2","exports":{},"private_functions":{"_parse_data":["inputs"]},
+                "constants":["PARSE_OPERATION"],"imports":[],"dependencies":[],"default_export":null},
+            "input_contract":inputs,"result_contract":result
+        }), &[], Value::Null), 0).await.unwrap());
+    }
+
     for d in [
         draft(
             tool,
@@ -87,17 +135,11 @@ pub(super) async fn program_with_source(
             &[tool],
             Value::Null,
         ),
-        draft(
-            code,
-            22,
-            json!({"content":body,"input_contract":inputs,"result_contract":result}),
-            &[],
-            Value::Null,
-        ),
+        draft(code, 22, code_document, &code_dependencies, Value::Null),
         draft(
             skill,
             1,
-            json!({"body":"Parse the supplied JSON text and return its object."}),
+            skill_document,
             &[code, descriptor, tool],
             json!(association),
         ),

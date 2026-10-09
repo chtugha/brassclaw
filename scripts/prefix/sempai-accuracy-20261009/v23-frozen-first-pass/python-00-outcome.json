@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component pc-transfer-00. It accepts exact integer offset in -4..5 inclusive (rejecting bool/float/missing/null), returning {accepted:boolean, offset:original if accepted else null}. The helper receives the whole inputs mapping so missing and null are distinguished; module scope invokes it and assigns its returned object to result. No imports, I/O or host calls. No execution, submission, Q1/Q2 or activation occurred; typed inputs require selected-runner support.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-00",
+        "description": "Raw offset may omit or contain any JSON value. Accept exact integer -4..5 inclusive (not bool/float). Always result={accepted:boolean, offset:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "def inspect_offset(mapping):\n    if 'offset' not in mapping:\n        return {'accepted': False, 'offset': None}\n    value = mapping['offset']\n    if value is None:\n        return {'accepted': False, 'offset': None}\n    if type(value) is bool or not type(value) is int or not -4 <= value <= 5:\n        return {'accepted': False, 'offset': None}\n    return {'accepted': True, 'offset': value}\nresult = inspect_offset(inputs)"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

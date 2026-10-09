@@ -21,13 +21,20 @@ use tokio::{
     task::JoinHandle,
 };
 
-const OWNER_CHECK_BOUND: Duration = Duration::from_secs(2);
+#[path = "monty_ownership_policy.rs"]
+mod policy;
+use policy::{OwnershipControl, OwnershipRequest};
+pub(crate) use policy::{OwnershipLimits, OwnershipSnapshot};
 pub(crate) struct GlobalServiceConfig {
     pub(crate) boot: RootBoot,
     pub(crate) process: ProcessLimits,
     pub(crate) actor: ActorLimits,
-    pub(crate) queue_capacity: usize,
+    pub(crate) queue_capacity: u32,
+    pub(crate) queue_bytes: usize,
+    pub(crate) max_pending_settings: u32,
+    pub(crate) max_retained_attempts: u32,
     pub(crate) live: LiveMontyTaskSettings,
+    pub(crate) ownership: OwnershipLimits,
 }
 
 #[derive(thiserror::Error)]
@@ -58,7 +65,8 @@ impl std::fmt::Debug for GlobalOwnerError {
 /// Private ownership checks, never a Tool grant or serializable claim.
 #[derive(Clone)]
 pub(crate) struct GlobalOwnerCheck {
-    requests: mpsc::Sender<oneshot::Sender<Result<(), OwnershipError>>>,
+    requests: mpsc::UnboundedSender<OwnershipRequest>,
+    control: OwnershipControl,
     closed: Arc<AtomicBool>,
 }
 impl GlobalOwnerCheck {
@@ -71,13 +79,26 @@ impl GlobalOwnerCheck {
             return Err(OwnershipError::Lost);
         }
         let (answer, result) = oneshot::channel();
+        let request = self.control.request(answer)?;
+        let deadline = tokio::time::Instant::from_std(request.deadline);
         self.requests
-            .try_send(answer)
+            .send(request)
             .map_err(|_| OwnershipError::Connection)?;
-        tokio::time::timeout(OWNER_CHECK_BOUND, result)
+        tokio::time::timeout_at(deadline, result)
             .await
             .map_err(|_| OwnershipError::Connection)?
             .map_err(|_| OwnershipError::Connection)?
+    }
+    pub(crate) fn snapshot(&self) -> Result<OwnershipSnapshot, OwnershipError> {
+        self.control.snapshot()
+    }
+    pub(crate) fn publish(
+        &self,
+        expected: u64,
+        revision: u64,
+        limits: OwnershipLimits,
+    ) -> Result<(), OwnershipError> {
+        self.control.publish(expected, revision, limits)
     }
 }
 
@@ -105,16 +126,22 @@ impl GlobalMontyOwner {
         executable: &Path,
         config: GlobalServiceConfig,
     ) -> Result<Self, GlobalOwnerError> {
-        let guard = tokio::time::timeout(OWNER_CHECK_BOUND, PgMontyOwner::acquire(pool))
-            .await
-            .map_err(|_| OwnershipError::Connection)??;
-        // Register ownership before the first worker-start await. The bounded
+        let control = OwnershipControl::new(config.live.current().revision, config.ownership)?;
+        let guard =
+            tokio::time::timeout(config.ownership.check_timeout, PgMontyOwner::acquire(pool))
+                .await
+                .map_err(|_| OwnershipError::Connection)??;
+        // Register ownership before the first worker-start await. The
         // process registry also retains quarantine if this caller or supervisor
         // disappears; dropping a returned evidence object cannot unlock it.
         let guard = RetainedOwnership::register(guard)?;
         let closed = Arc::new(AtomicBool::new(false));
-        let (requests, inbox) = mpsc::channel(8);
-        let check = GlobalOwnerCheck { requests, closed };
+        let (requests, inbox) = mpsc::unbounded_channel();
+        let check = GlobalOwnerCheck {
+            requests,
+            control,
+            closed,
+        };
         let (shutdown, stopping) = watch::channel(false);
         let (ready, started) = oneshot::channel();
         let executable = executable.to_owned();
@@ -160,9 +187,8 @@ impl Drop for GlobalMontyOwner {
     }
 }
 
-// One product normally has one database. Bound diagnostic ownership across
-// multiple in-process test/embedded instances; reject before spawning a worker.
-const MAX_RETAINED_OWNERS: usize = 32;
+// Each actual database enforces its own singleton. Retain unknown ownership
+// without an arbitrary process-wide count; fail allocation before worker spawn.
 static RETAINED_OWNERS: OnceLock<Mutex<Vec<Arc<RetainedOwnership>>>> = OnceLock::new();
 
 pub(crate) struct RetainedOwnership {
@@ -174,9 +200,9 @@ impl RetainedOwnership {
             .get_or_init(Mutex::default)
             .lock()
             .map_err(|_| OwnershipError::Connection)?;
-        if registry.len() >= MAX_RETAINED_OWNERS {
-            return Err(OwnershipError::Connection);
-        }
+        registry
+            .try_reserve(1)
+            .map_err(|_| OwnershipError::Connection)?;
         let retained = Arc::new(Self {
             guard: tokio::sync::Mutex::new(Some(guard)),
         });
@@ -208,17 +234,27 @@ async fn bootstrap(
     guard: Arc<RetainedOwnership>,
     executable: std::path::PathBuf,
     config: GlobalServiceConfig,
-    inbox: mpsc::Receiver<oneshot::Sender<Result<(), OwnershipError>>>,
+    inbox: mpsc::UnboundedReceiver<OwnershipRequest>,
     stopping: watch::Receiver<bool>,
     check_port: GlobalOwnerCheck,
     ready: oneshot::Sender<Result<ServiceClient, GlobalOwnerError>>,
 ) -> Option<GlobalServiceExit> {
-    let mut owner = match ServiceOwner::start_with_live_settings(
+    let boot_timeout = config.ownership.check_timeout;
+    let mut owner = match ServiceOwner::start_with_hosting_limits(
         &executable,
         config.boot,
         config.process,
         config.actor,
-        config.queue_capacity,
+        brassclaw_monty_host::service::ServiceHostingLimits {
+            admission: brassclaw_monty_host::service::AdmissionLimits {
+                max_tasks: config.queue_capacity,
+                max_bytes: config.queue_bytes,
+            },
+            max_pending_settings: config.max_pending_settings,
+            max_retained_attempts: config.max_retained_attempts,
+            actor: None,
+            deadlines: None,
+        },
         config.live,
     )
     .await
@@ -242,8 +278,7 @@ async fn bootstrap(
                 }
             };
             if quiescent {
-                let release =
-                    tokio::time::timeout(OWNER_CHECK_BOUND, guard.release_quiescent()).await;
+                let release = tokio::time::timeout(boot_timeout, guard.release_quiescent()).await;
                 if !matches!(release, Ok(Ok(()))) {
                     tracing::error!("global Monty boot ownership release was not acknowledged");
                 }
@@ -253,10 +288,10 @@ async fn bootstrap(
             return None;
         }
     };
-    if let Err(error) = check(&guard).await {
+    if let Err(error) = check(&guard, boot_timeout).await {
         owner.request_shutdown();
         let service = owner.join().await;
-        let ownership = settle_ownership(guard, &service).await;
+        let ownership = settle_ownership(guard, &service, &check_port.control).await;
         check_port.closed.store(true, Ordering::Release);
         let _undelivered = ready.send(Err(GlobalOwnerError::BootOwnershipLost {
             failure: error,
@@ -276,75 +311,124 @@ async fn bootstrap(
         check_port.closed.store(true, Ordering::Release);
         owner.request_shutdown();
     }
-    Some(supervise(guard, owner, inbox, stopping, check_port.closed).await)
+    Some(
+        supervise(
+            guard,
+            owner,
+            inbox,
+            stopping,
+            check_port.closed,
+            check_port.control,
+        )
+        .await,
+    )
 }
 
-async fn check(guard: &RetainedOwnership) -> Result<(), OwnershipError> {
-    tokio::time::timeout(OWNER_CHECK_BOUND, guard.check())
+async fn check(guard: &RetainedOwnership, timeout: Duration) -> Result<(), OwnershipError> {
+    tokio::time::timeout(timeout, guard.check())
         .await
         .map_err(|_| OwnershipError::Connection)?
 }
 enum Event {
     Service(Box<Result<ServiceExit, ServiceFailure>>),
-    Request(Option<oneshot::Sender<Result<(), OwnershipError>>>),
+    Request(Option<OwnershipRequest>),
+    PolicyChanged,
     Heartbeat,
     Shutdown,
 }
 async fn supervise(
     guard: Arc<RetainedOwnership>,
     mut owner: ServiceOwner,
-    mut requests: mpsc::Receiver<oneshot::Sender<Result<(), OwnershipError>>>,
+    mut requests: mpsc::UnboundedReceiver<OwnershipRequest>,
     mut shutdown: watch::Receiver<bool>,
     closed: Arc<AtomicBool>,
+    control: OwnershipControl,
 ) -> GlobalServiceExit {
-    let mut heartbeat = tokio::time::interval(OWNER_CHECK_BOUND);
-    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut last_checked = std::time::Instant::now();
     let mut stopping = false;
     let mut ownership_failure = None;
     let service = loop {
+        let policy = control.snapshot();
+        let heartbeat_at = policy
+            .as_ref()
+            .ok()
+            .and_then(|policy| last_checked.checked_add(policy.limits.heartbeat_interval));
+        if !stopping && heartbeat_at.is_none() {
+            ownership_failure = Some(OwnershipError::Connection);
+            stopping = true;
+            closed.store(true, Ordering::Release);
+            requests.close();
+            while let Ok(request) = requests.try_recv() {
+                let _undelivered = request.answer.send(Err(OwnershipError::Lost));
+            }
+            owner.request_shutdown();
+        }
         let event = tokio::select! {
             result = owner.join() => Event::Service(Box::new(result)),
             request = requests.recv(), if !stopping => Event::Request(request),
-            _ = heartbeat.tick(), if !stopping => Event::Heartbeat,
+            _ = tokio::time::sleep_until(tokio::time::Instant::from_std(heartbeat_at.unwrap_or(last_checked))), if !stopping => Event::Heartbeat,
+            _ = control.changed(), if !stopping => Event::PolicyChanged,
             _ = shutdown.changed(), if !stopping => Event::Shutdown,
         };
         match event {
             Event::Service(result) => break *result,
-            Event::Request(Some(answer)) => {
-                let result = check(&guard).await;
-                if let Err(error) = result {
+            Event::Request(Some(request)) => {
+                let result = if std::time::Instant::now() >= request.deadline {
+                    Err(OwnershipError::Deadline)
+                } else {
+                    tokio::time::timeout_at(
+                        tokio::time::Instant::from_std(request.deadline),
+                        guard.check(),
+                    )
+                    .await
+                    .unwrap_or(Err(OwnershipError::Connection))
+                };
+                if let Err(error) = result
+                    && !matches!(error, OwnershipError::Deadline)
+                {
                     ownership_failure = Some(error);
                     stopping = true;
+                }
+                if result.is_ok() {
+                    last_checked = std::time::Instant::now();
                 }
                 if closed.load(Ordering::Acquire) {
-                    let _undelivered = answer.send(Err(OwnershipError::Lost));
+                    let _undelivered = request.answer.send(Err(OwnershipError::Lost));
                 } else {
-                    let _undelivered = answer.send(result);
+                    let _undelivered = request.answer.send(result);
                 }
             }
-            Event::Heartbeat => {
-                if let Err(error) = check(&guard).await {
+            Event::Heartbeat => match policy.map(|policy| policy.limits.check_timeout) {
+                Ok(timeout) => match check(&guard, timeout).await {
+                    Ok(()) => last_checked = std::time::Instant::now(),
+                    Err(error) => {
+                        ownership_failure = Some(error);
+                        stopping = true;
+                    }
+                },
+                Err(error) => {
                     ownership_failure = Some(error);
                     stopping = true;
                 }
-            }
+            },
+            Event::PolicyChanged => {}
             Event::Shutdown | Event::Request(None) => stopping = true,
         }
         if stopping {
             closed.store(true, Ordering::Release);
             requests.close();
-            while let Ok(answer) = requests.try_recv() {
-                let _undelivered = answer.send(Err(OwnershipError::Lost));
+            while let Ok(request) = requests.try_recv() {
+                let _undelivered = request.answer.send(Err(OwnershipError::Lost));
             }
             owner.request_shutdown();
         }
     };
     closed.store(true, Ordering::Release);
     requests.close();
-    while let Ok(answer) = requests.try_recv() {
-        let _undelivered = answer.send(Err(OwnershipError::Lost));
+    while let Ok(request) = requests.try_recv() {
+        let _undelivered = request.answer.send(Err(OwnershipError::Lost));
     }
-    let ownership = settle_ownership(guard, &service).await;
+    let ownership = settle_ownership(guard, &service, &control).await;
     GlobalServiceExit {
         service,
         ownership,
@@ -355,6 +439,7 @@ async fn supervise(
 async fn settle_ownership(
     guard: Arc<RetainedOwnership>,
     service: &Result<ServiceExit, ServiceFailure>,
+    control: &OwnershipControl,
 ) -> OwnershipSettlement {
     if service.as_ref().is_ok_and(|exit| {
         exit.transport.as_ref().is_ok_and(|transport| {
@@ -363,8 +448,11 @@ async fn settle_ownership(
                 && transport.containment_error.is_none()
         })
     }) {
+        let Ok(policy) = control.snapshot() else {
+            return OwnershipSettlement::Quarantined(guard);
+        };
         OwnershipSettlement::ReleaseAttempt(
-            tokio::time::timeout(OWNER_CHECK_BOUND, guard.release_quiescent())
+            tokio::time::timeout(policy.limits.check_timeout, guard.release_quiescent())
                 .await
                 .unwrap_or(Err(OwnershipError::Connection)),
         )

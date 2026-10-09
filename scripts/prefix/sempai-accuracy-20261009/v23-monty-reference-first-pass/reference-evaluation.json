@@ -1,0 +1,691 @@
+{
+  "cases": [
+    {
+      "id": "eval-policy",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "BrassClaw authored PythonCode forbids eval/exec/open/os/subprocess by authoring contract, regardless of upstream Monty's restricted eval support; the subset is stricter, not looser (D17:91e48baa1f2c, D16:83e4d8efa98b).",
+        "citations": [
+          "91e48baa1f2c",
+          "83e4d8efa98b"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 13.061,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "A snapshot is only opaque bytes from a trusted producer and carries no effect ledger; neither restored memory nor a timeout establishes that no external effect happened (D17:20f7280e3852, D14:720c16e0bd5a). Replaying requires durable counts, confirmed/unresolved effect status and safe reconciliation, not snapshot restoration alone (D21:50229a45ff7f).",
+        "citations": [
+          "20f7280e3852",
+          "720c16e0bd5a",
+          "50229a45ff7f"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 13.944,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-trust",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "No. Snapshot trust requires the caller to establish provenance and integrity before loading; Monty does not authenticate or fully validate snapshots, so a parseable byte format alone is insufficient (D14:720c16e0bd5a, D17:20f7280e3852).",
+        "citations": [
+          "720c16e0bd5a",
+          "20f7280e3852"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 18.896,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "generator-function",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects yield/yield from at parse time (D10 be98cdf265c1, 70fcd01853d7); generator functions are not supported, and generator expressions only materialize to a list (D10 be98cdf265c1).",
+        "citations": [
+          "be98cdf265c1",
+          "70fcd01853d7"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.433,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "match-language",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects match statements at parse time (D07:6ae8c4c80d41, D10:be98cdf265c1). Match/case is not a supported BrassClaw PythonCode construct.",
+        "citations": [
+          "6ae8c4c80d41",
+          "be98cdf265c1"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 15.264,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "inheritance",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Monty rejects class inheritance and metaclasses at parse time (D07, D10); a component may only define simple classes without base classes.",
+        "citations": [
+          "7fd9c60187ee",
+          "be98cdf265c1",
+          "6ae8c4c80d41"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.978,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "typed-proof",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Type-check success is static only and does not prove recursive runtime validation or behavior; the reference explicitly states type checking is static, parser-rejected constructs are not modeled, and passing the check does not mean the code runs (D15:190-202, D17:36-55).",
+        "citations": [
+          "1db6a93471ac",
+          "cedb78540d84"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 21.19,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "private-frame",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The reference states BrassClaw's private transport caps frames at 64 MiB and depth at 64, and explicitly says not to claim the upstream 256 MiB wire allowance is available to a BrassClaw task (D17:440b0b7c9682).",
+        "citations": [
+          "440b0b7c9682"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 14.786,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "task-clock",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Upstream feed/turn clocks restart per feed/turn and are not one cumulative BrassClaw task budget (D17:440b0b7c9682). The BrassClaw task account is separate and persists consumption across steps/waits/retries (D17:440b0b7c9682).",
+        "citations": [
+          "440b0b7c9682"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 18.516,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "global-lifecycle",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "AGENTS.md (5b6bb5721f21) and tools.md (50229a45ff7f) state that completing or cancelling a turn must not terminate the single global Monty orchestrator; only instance shutdown or supervised fatal-runtime recovery may end its lifetime.",
+        "citations": [
+          "5b6bb5721f21",
+          "50229a45ff7f"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 16.823,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "seed-q2",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Bundled system_seed components use installation-owned integrity/structural/behavioral qualification without an installed-instance human Q2; only post-installation authored components require human Q2 (D17:0b3b4f3127ab).",
+        "citations": [
+          "0b3b4f3127ab"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 25.531,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "binding-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes. Current global Tool policy is checked independently before every actual dispatch, including for a retained approved pinned component version (tools.md 0385d6d1be78, 6dac84e6f370; toolskills.md a1c8acdb10be).",
+        "citations": [
+          "0385d6d1be78",
+          "6dac84e6f370",
+          "a1c8acdb10be"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 15.421,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "upstream-eval",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "D17 states upstream Monty has restricted eval/exec, while D17 also states BrassClaw forbids them in authored components.",
+        "citations": [
+          "714f2f799947",
+          "91e48baa1f2c"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 29.139,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "eager-generator",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "The pinned Monty v1.0.0 limitations docs state generator expressions currently materialize to a list rather than a lazy iterator (D06, D10).",
+        "citations": [
+          "df38d3c88991",
+          "15376363079d",
+          "be98cdf265c1"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 19.295,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "host-inputs",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes. skills.md \u00a73 (107cc9abcaaa) and toolskills.md \u00a7C (e59b1ae87392) require PythonCode to read step-local typed values from inputs[...]; sempai-monty-compatibility.md \u00a73 (7f4fc60e4d31) forbids constructing another Monty pool/VM inside a component.",
+        "citations": [
+          "107cc9abcaaa",
+          "e59b1ae87392",
+          "7f4fc60e4d31"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 26.267,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "snapshot-ledger",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 snapshot bytes are not a durable effect ledger and cannot establish that no external effect occurred, so BrassClaw needs retained continuation/effect records for safe reconciliation.",
+        "citations": [
+          "20f7280e3852",
+          "50229a45ff7f",
+          "83e4d8efa98b"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 17.492,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "preload-effects",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "Loading is effect-free and must run no Tool calls, model calls, I/O or effectful initializers (skills.md 107cc9abcaaa, 1db6a93471ac); a Tool call during preload would be an effect, not a definition load.",
+        "citations": [
+          "107cc9abcaaa",
+          "1db6a93471ac",
+          "2489be7f6c72"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 31.15,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "preload-not-invoke",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "The reference states loading is not an invocation or a new Recipe effect step, and that preloading definitions is assembly preparation while invoking the pinned export is a separate operation (skills.md 1086b833f7f0, 534be94fd078; recipe.md 099304cbaf9a).",
+        "citations": [
+          "1086b833f7f0",
+          "534be94fd078",
+          "099304cbaf9a"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 13.66,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-source",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "MCP accepts only the completed listed command and forwards the correlated chat result; it has no direct Monty/IBS/Rust Tool execution connection and accepts no Python source (D20:6458c0f387c9, D22:14906f78b85b, D17:91e48baa1f2c).",
+        "citations": [
+          "6458c0f387c9",
+          "14906f78b85b",
+          "91e48baa1f2c"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 21.499,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "shared-defaults",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "skills.md \u00a73 (card 3d36e5155aa4) forbids shared mutable function defaults, captured task objects, caches and closures over another task's inputs; each invocation/task owns its mutable state. recipe.md \u00a76 (card 64f362dc5042) likewise warns against undefined previous_result and combining independent calls to conceal fresh-state gaps.",
+        "citations": [
+          "3d36e5155aa4",
+          "64f362dc5042"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 13.179,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "export-api",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The documentation explicitly states the skill-association/1 interface declaration is a target specification, not a field accepted by current INSERT APIs, and warns against inventing export fields in persisted Recipe JSON (skills.md 534be94fd078, 4a81ae8867b2).",
+        "citations": [
+          "534be94fd078",
+          "4a81ae8867b2"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 19.651,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "exports-live-policy",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes \u2014 preloaded Skill exports do not enable a Tool; the matching ToolSkill binding and current global Tool policy are still enforced before every actual host.<tool>(...) dispatch (skills.md L231-251, 7fd9c60187ee; tools.md L189-211, 0385d6d1be78).",
+        "citations": [
+          "7fd9c60187ee",
+          "1eb80630e4cb",
+          "0385d6d1be78"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 10.953,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-listing",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "MCP tools/list is derived from available activated, approved mcp-call-skill-recipes, not raw Skill rows (D20:5c8537816934, D22:9886764b53a2). A raw Skill row alone is not a listing entry; the matching recipe must be activated and approved.",
+        "citations": [
+          "5c8537816934",
+          "9886764b53a2"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 15.154,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-connect-order",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "Yes. The v3 binding contract (tools.md/e84ee1c5d45f, skills.md/6458c0f387c9, toolskills.md/d6770407d412) states the provider connects/advertises only after final prefix addition and immediately before sending the model request, then disconnects that request on the complete answer.",
+        "citations": [
+          "e84ee1c5d45f",
+          "6458c0f387c9",
+          "d6770407d412"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 10.592,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-server-lifetime",
+      "expected": false,
+      "answer": {
+        "answer": true,
+        "reason": "The binding text states the MCP server stays running while BrassClaw runs and only disconnects the completed request's connection, not the server (skills.md 6458c0f387c9, tools.md 2dd411eaf08f).",
+        "citations": [
+          "6458c0f387c9",
+          "2dd411eaf08f"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 14.463,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "mcp-refresh-pins",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The MCP server stays running and only refreshes discovery at startup/restart and on qualified catalogue changes; an in-flight call keeps its advertised contract and normal chat task snapshot, so a refresh cannot silently replace it (skills.md L6458c0f387c9, toolskills.md L473-504).",
+        "citations": [
+          "6458c0f387c9",
+          "a1c8acdb10be"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": true,
+      "passed": true,
+      "finish_reason": "stop",
+      "seconds": 8.104,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "monty-memory-ceiling",
+      "expected": false,
+      "answer": {
+        "answer": false,
+        "reason": "The 512 MiB minimum is a ceiling (a budget), not reserved memory; AGENTS.md L399-446 (5b6bb5721f21) states the budget is a ceiling, not reserved memory, and startup sizing is one-time without periodic pressure monitoring.",
+        "citations": [
+          "5b6bb5721f21"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 10.456,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    },
+    {
+      "id": "monty-upgrade-floor",
+      "expected": true,
+      "answer": {
+        "answer": true,
+        "reason": "AGENTS.md L399-407 (card 5b6bb5721f21) states the global Monty upgrade must follow simplified_v3.md Phase 3a's Monty 1.0 gate, and AGENTS.md L546-554 (card 8a3b69bdf088) specifies that upgrade raises smaller configured values to the 512 MiB floor with a new revision while preserving larger values and modes.",
+        "citations": [
+          "5b6bb5721f21",
+          "8a3b69bdf088"
+        ]
+      },
+      "citations_resolved": true,
+      "citations_support_expected_contract": false,
+      "passed": false,
+      "finish_reason": "stop",
+      "seconds": 8.984,
+      "cached_token_stats": {
+        "cached_token_stats": {
+          "num_vllm_cached_tokens": 114048,
+          "num_lmcache_cached_tokens": 114048,
+          "num_lmcache_extra_cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "temperature": 0,
+  "repair": false,
+  "citations_constrained_to_manifest": true,
+  "generation": "a8f7820e08c2b1f5ab86d4b30bd29baa4a1a96fd3b42962fa5c155cb701cde56",
+  "suite_sha256": "357b159de949e17bd6dd819e8ae3a924982cf220d21cdb26cf028e0338c03cf0",
+  "production_q1_q2_verified": false,
+  "support_check": "Topic regex on cited originals; reasons additionally require semantic review. Not a general entailment verifier.",
+  "passed": 23
+}

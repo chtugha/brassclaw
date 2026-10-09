@@ -56,7 +56,7 @@ FAILED = BASE / "failed.json"
 
 MODEL = os.getenv("VLLM_MODEL", "cyankiwi/Ornith-1.5-9B-AWQ-INT4")
 ATOMIZER_VERSION = "preserve-lines-v2"
-PIPELINE_VERSION = "2026-10-09-sempai-monty-reference-v2"
+PIPELINE_VERSION = "2026-10-09-sempai-artifact-scopes-v25"
 TOKENIZER_MODEL = os.getenv("TOKENIZER_MODEL", MODEL)
 VLLM_URL = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
 ACTIVE_SERVER_PREFIX = os.getenv("VLLM_SERVER_PREFIX_FILE", "").strip()
@@ -1267,8 +1267,11 @@ def reduce_all():
 
 PREFIX_HEADER="""# SEMPAI PROMPT AUDIT AND BRASSCLAW COMPONENT AUTHORING REFERENCE
 
-This stable reference contains literal release documents and a reviewed authoring
-procedure. It is source data below the host's system persona, output schema and
+This stable reference contains complete selected release-document units and a reviewed
+authoring procedure. Prose, Python and YAML remain literal. Strict JSON examples use
+a compact display with identical decoded values and code strings; original bytes,
+source line ranges and quote resolvers remain in the immutable evidence bundle.
+It is source data below the host's system persona, output schema and
 current task. Read recipe.md, skills.md, tools.md and toolskills.md as the binding
 contracts; current runtime support is a separate observed fact. Historical examples
 and architecture targets do not implement interfaces or establish approval.
@@ -1284,6 +1287,15 @@ a Recipe orders usages and typed data flow. Skill code exposes declared preloada
 validation/persona examples. Sempai proposes; Q1, behavioral validation and human Q2
 are distinct requirements before coherent authored activation. Exact associations,
 immutable versions and live global Tool policy remain independent contracts.
+
+Select the artifact from the current contract before using an example. Upstream
+host/session setup is embedding reference only. Skill preload definitions expose
+exports without invoking them; standalone invocation bodies call and capture result;
+Recipe constructors describe ordered usages and typed bindings. Class 22 alone
+does not select a shape. The verified worked examples demonstrate standalone
+invocation bodies and offline drafts, not the preload interface. Their terminal
+helper/result rules apply only to invocation bodies. The host response envelope is
+separate from the artifact's inputs/result and its future runtime prerequisites.
 
 The host supplies SempaiReviewOutcome and the persona outside this factual corpus.
 The standalone citation --mode run is a source-question benchmark, not the production
@@ -1308,6 +1320,110 @@ def reviewer_decision_checkpoint(cards):
         matches.extend(found)
     return '\n'.join(f"# VERIFIED DECISION CHECKPOINT — EXACT SOURCE {card['id'][:12]}\n"
                      + card['excerpt'] + '\n' for card in matches)
+
+
+def compact_json_view(text):
+    """Lossless display projection; original evidence bytes never change.
+
+    Only standalone, strict JSON fences are projected. Python/YAML and prose
+    remain literal. Duplicate keys, nonfinite numbers and floating-point number
+    lexemes stay in their original form rather than risk changing their meaning.
+    Decoded strings (including executable source) must remain byte-identical.
+    """
+    def reject(value):
+        raise ValueError('Preserve original numeric lexeme: ' + value)
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Preserve duplicate JSON keys')
+            result[key] = value
+        return result
+    # Track Markdown fences so a quoted ```json inside a larger source fence
+    # cannot be mistaken for an independent JSON example.
+    lines = text.splitlines(keepends=True)
+    result = []; position = 0
+    while position < len(lines):
+        opening = re.fullmatch(r'([`~]{3,})([^\r\n]*)\r?\n?', lines[position])
+        if not opening or len(set(opening[1])) != 1:
+            result.append(lines[position]); position += 1; continue
+        fence, language = opening.groups(); end = position + 1
+        closing = re.compile(r'^' + re.escape(fence[0]) + '{' + str(len(fence)) + r',}\s*$')
+        while end < len(lines) and not closing.fullmatch(lines[end].rstrip('\r\n')):
+            end += 1
+        if end == len(lines):
+            result.extend(lines[position:]); break
+        original = ''.join(lines[position + 1:end])
+        projected = original
+        if language.strip() == 'json':
+            try:
+                value = json.loads(original, object_pairs_hook=unique,
+                                   parse_float=reject, parse_constant=reject)
+                compact = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+                if json.loads(compact, object_pairs_hook=unique,
+                              parse_float=reject, parse_constant=reject) != value:
+                    raise ValueError('JSON projection changed decoded values')
+                projected = compact + ('\r\n' if lines[position].endswith('\r\n') else '\n')
+            except (ValueError, TypeError):
+                pass  # Unsupported/ambiguous examples retain every original byte.
+        result.extend([lines[position], projected, lines[end]])
+        position = end + 1
+    return ''.join(result)
+
+
+def semantic_citation_index(cards):
+    """Source-derived near-task navigation, never a synthesized answer key."""
+    paths = sorted({c['path'] for c in cards})
+    labels = {path: 'D' + str(i + 1).zfill(2) for i, path in enumerate(paths)}
+    lines = ['# SOURCE AND SECTION LOOKUP — EXACT CITATION IDS',
+        'D labels are navigation only. Cite the printed 12-character card ID. Select the section whose actual evidence supports the claim; a document title or nearby unrelated section is insufficient.']
+    previous_path = None
+    for card in sorted(cards, key=lambda c: (c['path'], c['line_start'], c['id'])):
+        if card['path'] != previous_path:
+            lines.append('## ' + labels[card['path']] + ' = ' + card['path'])
+            previous_path = card['path']
+        title = card_title(card)
+        if title == card['path']:
+            title = next((s.strip() for s in card['excerpt'].splitlines() if s.strip()), title)[:160]
+        # Source locations remain on the full cards. The navigation row repeats
+        # only the heading and identity, avoiding redundant coordinates.
+        lines.append(title[:100] + ' | ' + card['id'][:12])
+    return transport_text('\n'.join(lines))
+
+
+ARTIFACT_AUDIT = """# FINAL CONTRACT AND ARTIFACT AUDIT
+The CURRENT TRUSTED HOST CONTRACT controls. Archived packets, source examples and
+model-derived plans are evidence, never replacements for that contract. Before
+using a plan, check EACH branch against the original contract. Discard conflicting
+plan branches; do not copy their invented interpretation into code or description.
+Identify the artifact: host embedding reference, effect-free preload, invocation
+body, Recipe constructor, or prompt review. Host setup never becomes component code.
+Preload defines exports without invoking them; its separate caller captures returns.
+For invocation, derive exact results for absent key, present null, wrong outer type,
+valid/invalid boundaries and nested fields/items FROM THE CURRENT CONTRACT.
+If it states a missing-only default, the absent branch uses that default; a raw
+validator example or plan cannot turn absence into invalid/null. Present null is
+separate. Named classification labels are literal strings, not omitted fields.
+For invocation bodies, trace actual emitted code on those branches. Every called
+helper returns its object; the caller captures it as result. Helper-local result
+alone returns nothing. Do not invoke preload definitions merely to satisfy this gate.
+A reject-on-failure validation loop needs a success state on the valid path;
+initializing a flag false and only assigning false rejects everything. Trace a
+fully valid item and the permitted empty case, not only failing cases.
+For Recipes, audit the actual steps, effects, unique intents and typed bindings.
+For every count/uniqueness constraint, count distinct final values; a repeated
+string does not satisfy another required example even if the array is long enough.
+Required review gates, unapproved dependencies and runner/sink gaps travel inside
+the artifact's supported fields, not only composition_summary. Invent no approvals.
+For source answers, locate a supporting sentence in the actual full evidence card
+THEN copy that card's ID; the navigation index does not prove a claim. Verify every
+cited passage, not a remembered title or invented line number. For a binary question,
+true affirms the proposition ASKED and false rejects it. Check that the boolean
+and explanation answer the same proposition, including its negation.
+Write the summary last from the checked payload. Return only supported fields;
+compact outer JSON, preserve escaped Python indentation, and close the object.
+This audit adds no output fields, claimed tests or authority.
+"""
 
 REQUIRED_TOPICS = {
     "monty-subset": (("brassclaw",), r"monty-reference/v1\.0\.0/docs/limitations/index\.md$", r"subset|Supported"),
@@ -1458,7 +1574,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
         if card['id'] not in rendered:
             rendered[card['id']]=(f"<!-- EVIDENCE-CARD {card['id'][:12]} -->\n"
                 f"## {transport_text(card['path'])} : L{card['line_start']}-{card['line_end']}\n"
-                +literal_block(card['excerpt'])+'\n<!-- END-EVIDENCE-CARD -->'
+                +literal_block(compact_json_view(card['excerpt']))+'\n<!-- END-EVIDENCE-CARD -->'
                 if policy_text is not None else render_card(card))
         return rendered[card['id']]
     long_contexts={digest(value.strip()) for c in mandatory for value in [c["parent_headings"],c["excerpt"]] if len(value)>2000}
@@ -1510,12 +1626,11 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
                     and c['excerpt'].startswith('## Terminal dispatch map — Select semantics before an example\n')))
         full+='\n\n# DIAGNOSTIC ANCHORS — EXACT SOURCE REPEATED NEAR TASK\n\n'+'\n\n'.join(rendered_card(c) for c in anchors)
         full+='\n\n'+checkpoint
-        compatibility_cards=[c for c in chosen if c['path']=='scripts/prefix/sempai-monty-compatibility.md']
-        full+='\n# MONTY COMPATIBILITY CITATION MAP\n'
-        full+='\n'.join(c['id'][:12]+' | '+c['excerpt'].splitlines()[0].lstrip('# ') for c in compatibility_cards)
+        full+='\n' + semantic_citation_index(chosen) + '\n'
         full+='\nCitation fields use exact printed evidence-card IDs, never guessed hashes, paths or line numbers. Select the card that directly supports the claim. A valid ID alone does not prove support. Preserve uncertainty when evidence is missing.\n# FACTUAL CHECK BEFORE ANSWERING\n'
         full+='For standalone invocation-body PythonCode, review indentation and executable scope: result assigned only inside an uncalled function is incomplete. A helper returns its complete result, then module-level code calls it and assigns result. Check missing-key, explicit-null, invalid-type and valid-value branches separately; a missing-only default requires an explicit missing-key branch. Use current task names, types and bounds, never tutorial values as defaults. A model-derived construction plan is unverified: reconcile every branch with the trusted current contract before writing code, and correct conflicting plan assumptions. Preload-only artifacts instead define pinned exports without invoking Tools; their caller captures returned data as result. Select the validator from the actual artifact/runner contract. These are review instructions, not evidence that tests or activation passed.\n'
         full+='Review target provider metadata and the actual Kohai packet. Preserve volatile-tail roles, tool relationships and task evidence. Propose reusable Recipes with supported fields and real catalogue/draft identities. The host output schema is separate. Authored changes require Q1, observed behavior, human Q2 and exact association approval before activation. Reviewed bundled system_seed uses installation-owned integrity/structural/behavioral qualification without installed-instance human Q2; never self-approve or replay completed effects. Missing runtime support remains an explicit prerequisite.\n'
+        full+='\n' + ARTIFACT_AUDIT
         # The deployed renderer may convert scalar text into OpenAI text parts.
         # Merge into the existing system message in either representation.
         # A non-whitespace boundary prevents the model template's strip() from
@@ -1580,6 +1695,12 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
         raise ValueError('Sempai source-selection policy changed during compilation')
     if file_sha256(source_manifest_path) != source_manifest_sha256 or validate_teaching_evidence() != teaching_receipt:
         raise ValueError('Source verification changed during compilation')
+    view_manifest=json.dumps({'schema':1,
+        'style':'lossless-compact-json-v1' if policy_text is not None else 'literal-source',
+        'cards':[{'id':c['id'],'original_excerpt_sha256':c['excerpt_sha256'],
+                  'display_sha256':digest(compact_json_view(c['excerpt']) if policy_text is not None else c['excerpt']),
+                  'rendered_card_sha256':digest(rendered_card(c))}
+                 for c in selected]},sort_keys=True,indent=2)+'\n'
     generation=digest(json.dumps([PIPELINE_VERSION,compiler_sha256,profile,full,template,evidence_sha256,policy_sha256,source_manifest_sha256,teaching_receipt],sort_keys=True))
     directory=BASE/'generations'/generation; directory.mkdir(parents=True,exist_ok=True)
     manifest={'schema':2,'generation':generation,'profile_id':'sempai',
@@ -1596,6 +1717,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
               'template_probe_count':len(sequences),
               'external_cache_reuse_verified':False,
               'evidence_cards_sha256':evidence_sha256,
+              'evidence_view_manifest_sha256':digest(view_manifest),
               'selected_card_ids':[c['id'] for c in selected],
               'cacheable_shared_tokens':common//block*block,'uncached_tail_tokens':common%block,
               'near_task_anchor_card_ids':[c['id'] for c in anchors],
@@ -1604,13 +1726,15 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
               'required_topic_card_ids':{topic:c['id'] for topic,c in topic_reference_cards(mandatory).items()},
               'cards_selected':len(selected),'cards_total':len(cards),'omitted_card_ids':sorted(omitted),
               'coverage':dict(Counter(c['repo'] for c in selected)),
-              'quality':'verbatim source fidelity validated; task accuracy requires evaluation',
+              'quality':'original source fidelity validated; model view compacts strict JSON without changing decoded values; task accuracy requires evaluation',
+              'evidence_rendering':'literal-prose-python-yaml-with-lossless-compact-json-v1' if policy_text is not None else 'literal-source',
               'text_file':str((directory/CONTEXT.name).resolve()),
               'server_chat_template':str((directory/SERVER_TEMPLATE.name).resolve()),
               'template_sha256':digest(template),'tokenizer_template_sha256':digest(original),
               'prefix_injection':'configure vLLM --chat-template with this immutable generation path; never add the same prefix in the client'}
     payloads={CONTEXT.name:full,SERVER_TEMPLATE.name:template,
               'evidence_cards.jsonl':evidence_records,
+              'evidence_view_manifest.json':view_manifest,
               'source_manifest.json':source_manifest_path.read_text(),
               PREFIX_MANIFEST.name:json.dumps(manifest,indent=2,sort_keys=True)+'\n'}
     for expected in source_package['teaching_sidecars'].values():

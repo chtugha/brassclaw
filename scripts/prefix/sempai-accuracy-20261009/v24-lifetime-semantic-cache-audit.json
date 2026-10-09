@@ -1,0 +1,62 @@
+{
+  "input_sha256": "f6c12a72a530210266d79995b1bf3b6c3f3a10df373a3406562d865e0b5153bd",
+  "cache_paths_verified": {
+    "cold": true,
+    "native": true,
+    "external": true
+  },
+  "question": "Does disconnecting a completed provider request stop the instance MCP server?",
+  "expected_basis": "Current binding docs: only the request connection closes; instance MCP server remains running.",
+  "behavioral_results": [
+    {
+      "stage": "cold",
+      "valid_json": true,
+      "expected_answer": false,
+      "actual_answer": true,
+      "boolean_correct": false,
+      "reason": "The binding text states the server stays running and only disconnects that request's connection on the complete answer; the server remains alive.",
+      "citations": [
+        "6458c0f387c9",
+        "2489be7f6c72"
+      ]
+    },
+    {
+      "stage": "native",
+      "valid_json": true,
+      "expected_answer": false,
+      "actual_answer": true,
+      "boolean_correct": false,
+      "reason": "The binding text states the server stays running and only disconnects that request's connection on the complete answer; the server remains alive.",
+      "citations": [
+        "6458c0f387c9",
+        "2489be7f6c72"
+      ]
+    },
+    {
+      "stage": "external",
+      "valid_json": true,
+      "expected_answer": false,
+      "actual_answer": true,
+      "boolean_correct": false,
+      "reason": "The binding text states the server stays running and only disconnects that request's connection on the complete answer; the server remains alive.",
+      "citations": [
+        "6458c0f387c9",
+        "2489be7f6c72"
+      ]
+    },
+    {
+      "stage": "restored_native",
+      "valid_json": true,
+      "expected_answer": false,
+      "actual_answer": true,
+      "boolean_correct": false,
+      "reason": "The binding text states the server stays running and only disconnects that request's connection on the complete answer; the server remains alive.",
+      "citations": [
+        "6458c0f387c9",
+        "2489be7f6c72"
+      ]
+    }
+  ],
+  "conclusion": "Same wrong polarity in every tested cache path, including telemetry-verified cold execution. No evidence that restoration caused this particular failure.",
+  "scope": "One fixed question; not general cache or model qualification."
+}

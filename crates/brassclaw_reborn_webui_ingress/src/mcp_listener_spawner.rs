@@ -6,10 +6,10 @@
 //! crates under the `reborn_product_api_crates_do_not_bind_http_ingress`
 //! architecture contract.
 //!
-//! Wire this into the composition layer at startup by replacing the default
-//! `NoopMcpListenerSpawner` with a `DefaultMcpListenerSpawner` when configuring
-//! `McpServerServiceImpl` (or via a future `RebornWebuiBundle::with_mcp_spawner`
-//! wiring helper).
+//! This legacy host adapter is not currently wired by production startup.
+//! Qualify the Recipe catalogue and ordinary-chat service, then install an
+//! authenticated ingress before starting it. Local binding is loopback-only;
+//! provider reachability must use an explicit authenticated transport.
 
 use std::net::SocketAddr;
 
@@ -31,7 +31,7 @@ impl McpListenerSpawner for DefaultMcpListenerSpawner {
         port: u16,
         router: axum::Router,
     ) -> Result<(u16, JoinHandle<()>), McpServerServiceError> {
-        let addr: SocketAddr = format!("0.0.0.0:{port}")
+        let addr: SocketAddr = format!("127.0.0.1:{port}")
             .parse()
             .map_err(|e: std::net::AddrParseError| McpServerServiceError::Invalid(e.to_string()))?;
 

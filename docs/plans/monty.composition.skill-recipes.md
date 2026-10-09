@@ -1,5 +1,30 @@
 # monty.composition — per-Skill execution Recipe instructions
 
+## Reply/history migration review gate
+
+The existing packaged `host-post-reply` and `host-save-history` Recipes, their
+associated Skills and PythonCode are migration inputs, **not qualified current-v3
+implementations to reuse unchanged**. Updating these exact workflows is the parent
+task; implementing the qualified preload/export adapter is its prerequisite.
+
+Before selecting a successor, independently review the actual retained definitions,
+interfaces, bindings, dependency graph, typed input/result handoffs and global-runtime
+callers against `recipe.md`, `skills.md` and section 24 of `monty.composition.md`.
+Upgrade the usages and Recipes for effect-free dependency-first loading, explicit
+pinned export invocation, isolated mutable state and current kernel enforcement.
+Complete the applicable exact-combination bootstrap/approval and behavioral evidence
+before activation. Names, existing package status, old acceptance receipts and the
+word “canonical” do not qualify the unchanged implementation.
+
+Preserve compatible stable UUIDs and old task selections when that reviewed migration
+supports them; do not copy deprecated source substitution, ambient step state,
+module-level Tool execution or unsafe retry guidance into the new adapter. Review
+reply/history ownership, both routing branches, history framing, finalization and
+no-replay behavior together after the adapter is qualified. Keep these internal
+usages out of public MCP discovery unless a separately qualified public contract
+explicitly permits exposure. The commented instructions below are historical only.
+
+
 **MCP discovery/provider lifecycle:** derive tools/list from available approved mcp-call-skill-recipes and their exact command variants. The server remains running; Kohai connects/advertises only after final prefix addition immediately before prompt send and disconnects on the complete model answer. Refresh the server list at startup/restart and qualified Skill/Recipe catalogue changes. Preserve request-local advertised contracts and ordinary-chat result recovery; see [the authoritative lifecycle](monty.composition.md#recipe-derived-discovery-and-kohai-owned-provider-connections).
 
 Plans only. This appendix covers **98 Skill execution Recipe roles**: 90 legacy companion usages and eight explicitly associated newer/planned usages. The two retired pure wrappers and pure N19 are not Skills and receive no artificial execution Recipes. Role labels do not allocate UUIDs; equivalent existing Recipes/variants are reused after exact contract review. Additional future real Skills must receive the same companion Recipe contract before MCP exposure.
@@ -18,7 +43,7 @@ The `<listed-skill-name>` is a unique admitted label mapped to canonical Skill/R
 
 Each role below has exactly one canonical execution Recipe association. First inspect the existing Recipe inventory for the same one-usage inputs/results/effects; reuse or qualify a compatible existing variant. A task Recipe with additional writes/replies is not automatically equivalent. Keep old task selections and artifacts. Recipes carry stable component UUIDs without versions. The retained input layout maps decoded command inputs to `inputs["local_name"]` or explicit exported keyword parameters.
 
-Preload the complete selected function/helper/immutable-constant graph in dependency-first order without effects. The minimal usage sequence is one Rust ToolSkill component step followed immediately by one class-22 invocation component step; each step includes exactly one UUID. Optional pure input preparation or public-result formatting uses its own canonical component step. Select the export through a supported retained interface; invent no persisted Recipe fields. The usage result feeds the Recipe's selected normal public formatter/reply owner; ordinary chat history ownership remains in the existing chat path. MCP reads that posted response and forwards it without another formatter, reply or history write. Reuse the existing reply/history ownership rather than append duplicate N01/N02 calls. If the Skill itself is a reply/history operation, explicitly qualify one output/history owner for that Recipe to avoid a second effect.
+Preload the complete selected function/helper/immutable-constant graph in dependency-first order without effects. The minimal usage sequence is one Rust ToolSkill component step followed immediately by one class-22 invocation component step; each step includes exactly one UUID. Optional pure input preparation or public-result formatting uses its own canonical component step. Select the export through a supported retained interface; invent no persisted Recipe fields. The usage result feeds the Recipe's selected normal public formatter/reply owner; ordinary chat history ownership remains in the existing chat path. MCP reads that posted response and forwards it without another formatter, reply or history write. <!-- Withdrawn: Reuse the existing reply/history ownership rather than append duplicate N01/N02 calls. --> Preserve one reply/history owner, but independently review and migrate its actual Recipe and usages under the migration review gate before reuse; do not append duplicate publication/history effects. If the Skill itself is a reply/history operation, explicitly qualify one output/history owner for that Recipe to avoid a second effect.
 
 Expose only qualified public usages. Protected root/candidate/evidence/admin/installation-owned internal usages require their existing internal admitted contract and are not automatically listed merely because this appendix gives their Recipe role. Shell and subagent usages remain Tier1. Missing adapters, unsafe fixed selectors, absent control/conditional guarantees or incompatible results keep a role BLOCKED. The preloadable interface, typed capture/layout, exact association approval and complete retained closure need real production-path acceptance; skeletons below are not insertable records.
 

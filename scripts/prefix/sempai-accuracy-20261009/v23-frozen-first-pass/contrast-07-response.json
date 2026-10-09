@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-823ec4de3f8456bb",
+  "object": "chat.completion",
+  "created": 1791519230,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"adjusted_volatile_messages\": [[\"user\",\"Prepare the requested reusable draft without executing any operation.\"]], \"bridge_messages\": [], \"composition_summary\": \"Drafted one unapproved pure-logic class22 pc-contrast-07. Raw records is a list of 1..3 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty/missing/null/wrong-type/extra-field inputs yield {ok:false, records:[]}; valid inputs echo the original records with ok:true. Module-level result is assigned on every branch. No I/O, imports, host calls, upstream validation, tests, Q1/Q2 or activation. Conversation preserved unchanged.\", \"proposed_components\": [{\"class_code\": 22, \"payload\": {\"name\": \"pc-contrast-07\", \"description\": \"Raw records is a list of 1..3 items; each object has exactly code (string length 2..5) and enabled (exact bool, False valid). Empty is invalid; missing/null/wrong types/extra fields invalid without exceptions/coercion. Always result={ok:boolean, records:original if valid else []}. Target typed inputs interface requires selected-runner support; unapproved draft, not submitted or activated.\", \"content\": \"records = inputs.get('records')\\nok = type(records) is list and 1 <= len(records) <= 3\\nif ok:\\n    for record in records:\\n        if type(record) is not dict or set(record) != {'code', 'enabled'}:\\n            ok = False\\n            break\\n        if not (type(record['code']) is str and 2 <= len(record['code']) <= 5 and type(record['enabled']) is bool):\\n            ok = False\\n            break\\nresult = {'ok': ok, 'records': records if ok else []}\"}}], \"proposed_intent_examples\": [], \"proposed_recipe_updates\": [], \"settings_adjustments\": []}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 115405,
+    "total_tokens": 115820,
+    "completion_tokens": 415,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+    "cached_token_stats": {
+      "num_vllm_cached_tokens": 114048,
+      "num_lmcache_cached_tokens": 114048,
+      "num_lmcache_extra_cached_tokens": 0
+    }
+  },
+  "ec_transfer_params": null,
+  "metrics": null
+}

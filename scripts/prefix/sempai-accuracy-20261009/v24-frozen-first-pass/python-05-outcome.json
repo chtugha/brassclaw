@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Prepare the requested reusable draft without executing any operation."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Drafted one unapproved pure-logic class22 component. Raw rank may be absent or any JSON value; uses inputs.get('rank') so absence and explicit null both reach the validator without exceptions. Accepts exact int 1..10 inclusive (bool/float rejected); always result={accepted:boolean,rank:original if accepted else null}. No imports/I/O/host calls. No execution, submission, Q1/Q2 or activation was performed by this example reviewer.",
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-transfer-05",
+        "description": "Raw rank may be absent or contain any JSON value. Accept exact int 1..10 inclusive (not bool/float). Always result={accepted:boolean,rank:original if accepted else null}; invalid/missing return false/null without exceptions or coercion. Target typed inputs needs selected-runner support; unapproved draft, not submitted or activated.",
+        "content": "rank = inputs.get('rank')\nvalid = type(rank) is int and 1 <= rank <= 10\nresult = {'accepted': valid, 'rank': rank if valid else None}"
+      }
+    }
+  ],
+  "proposed_intent_examples": [],
+  "proposed_recipe_updates": [],
+  "settings_adjustments": []
+}

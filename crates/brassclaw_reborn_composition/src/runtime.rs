@@ -204,6 +204,8 @@ pub struct RebornRuntime {
     services: RebornServices,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     global_monty_owner: crate::global_monty_owner::GlobalMontyOwner,
+    #[cfg(feature = "skills-db")]
+    mcp_recipe_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     monty_settings_owner: crate::live_monty_settings::MontySettingsOwner,
     #[cfg(all(test, feature = "postgres", feature = "skills-db"))]
@@ -592,6 +594,13 @@ fn snapshot_run_actor_matches(
 }
 
 impl RebornRuntime {
+    /// Read-only discovery from the same qualified catalogue as ordinary chat.
+    /// This supplies no chat execution adapter or provider connection.
+    #[cfg(feature = "skills-db")]
+    pub fn mcp_recipe_discovery(&self) -> Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery> {
+        self.mcp_recipe_discovery.clone()
+    }
+
     /// Snapshot of the substrate facades produced by `build_reborn_services`.
     /// Exposed for diagnostics / readiness reporting; **not** for traffic.
     pub fn services(&self) -> &RebornServices {
@@ -2521,8 +2530,9 @@ pub async fn build_reborn_runtime(
                 pool,
                 owner.ownership_check(),
                 Arc::new(catalogue.clone()),
-                256,
+                owner.client(),
                 settings_owner.store().recipe_capacity_source(),
+                settings_owner.store().cancellation_policy_source(),
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
@@ -2533,7 +2543,6 @@ pub async fn build_reborn_runtime(
                 owner.client(),
                 thread_service.clone(),
                 ports.clone(),
-                256,
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
@@ -2798,7 +2807,7 @@ pub async fn build_reborn_runtime(
         feature = "skills-db"
     ))]
     let system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>> =
-        Some(installed_catalogue);
+        Some(installed_catalogue.clone());
     #[cfg(all(
         feature = "postgres",
         feature = "root-llm-provider",
@@ -3127,6 +3136,8 @@ pub async fn build_reborn_runtime(
     };
 
     Ok(RebornRuntime {
+        #[cfg(feature = "skills-db")]
+        mcp_recipe_discovery: installed_catalogue.mcp_discovery(),
         services,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         global_monty_owner,
@@ -3703,6 +3714,449 @@ mod tests {
         drop(pool);
         drop(booted);
         drop(database);
+    }
+
+    #[cfg(all(feature = "skills-db", feature = "test-support"))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_webui_cancellation_deadline_keeps_accepted_revision_and_evidence() {
+        use crate::global_monty_driver::GlobalTaskPortsFactory;
+        use axum::{
+            body::Body,
+            http::{Method, Request, StatusCode},
+        };
+        use brassclaw_product_workflow::MontyVmSettingsStore;
+        use brassclaw_turns::run_profile::{AgentLoopDriverError, MontyTurnDriverPort};
+        use tower::ServiceExt;
+        struct Operator;
+        #[async_trait]
+        impl crate::WebuiAuthenticator for Operator {
+            async fn authenticate(&self, token: &str) -> Option<UserId> {
+                (token == "settings-owner").then(|| UserId::new(token).unwrap())
+            }
+            fn allows_operator_webui_config(&self) -> bool {
+                true
+            }
+        }
+        struct HeldProvider {
+            run: StdMutex<Option<brassclaw_turns::TurnRunId>>,
+            entered: tokio::sync::Notify,
+            release: tokio::sync::Semaphore,
+        }
+        #[async_trait]
+        impl HostManagedModelGateway for HeldProvider {
+            async fn stream_model(
+                &self,
+                request: HostManagedModelRequest,
+            ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+                *self.run.lock().unwrap() = Some(request.run_id);
+                self.entered.notify_one();
+                self.release.acquire().await.unwrap().forget();
+                Ok(HostManagedModelResponse::assistant_reply(
+                    "late cancelled provider answer",
+                ))
+            }
+        }
+        let rig = super::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let root = tempfile::tempdir().unwrap();
+        let provider = Arc::new(HeldProvider {
+            run: StdMutex::new(None),
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Semaphore::new(0),
+        });
+        let input = RebornRuntimeInput::from_services(
+            rig.build_input("cancellation-budget-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_model_gateway_override(provider.clone());
+        let runtime = Arc::new(build_reborn_runtime(input).await.unwrap());
+        let identity = runtime.global_monty_owner.client().root_identity();
+        let settings = runtime.webui_monty_settings_store();
+        let before = settings.get("default", "default").await.unwrap();
+        let driver = runtime.monty_test_controls.0.clone();
+        let factory = runtime.monty_test_controls.1.clone();
+        let acknowledged = factory.cancellation_acknowledgement().unwrap();
+        assert_eq!(acknowledged.revision, before.revision);
+        assert_eq!(acknowledged.timeout, Duration::from_secs(5));
+        let bundle = build_webui_services(runtime.clone(), None).await.unwrap();
+        let app = crate::webui_v2_app(
+            bundle,
+            crate::WebuiServeConfig::new(
+                runtime.thread_scope.tenant_id.clone(),
+                Arc::new(Operator),
+                Vec::new(),
+            ),
+        )
+        .unwrap();
+        let conversation = runtime.new_conversation().await.unwrap();
+        let sending = {
+            let runtime = runtime.clone();
+            tokio::spawn(async move {
+                runtime
+                    .send_user_message(
+                        &conversation,
+                        "cancellation deadline native acceptance canary",
+                    )
+                    .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(10), provider.entered.notified())
+            .await
+            .unwrap();
+        let run = provider.run.lock().unwrap().unwrap();
+        let host = driver.retained_host_for_run(run).unwrap().unwrap();
+        let attempt = host.attempt();
+        let started = std::time::Instant::now();
+        let mut stopping = Box::pin(driver.stop_attempt(attempt));
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_millis(50)) => {},
+            result = &mut stopping => panic!("held provider must retain settlement: {result:?}"),
+        }
+        let mut successor = before.execution_limits;
+        successor.cancellation_ack_timeout_millis = 250;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri("/api/settings/monty-vm")
+                    .header("Authorization", "Bearer settings-owner")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "expected_revision":before.revision,"execution_limits":successor
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let policy = factory.cancellation_acknowledgement().unwrap();
+        assert_eq!(policy.revision, before.revision + 1);
+        assert_eq!(policy.timeout, Duration::from_millis(250));
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            identity
+        );
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_millis(500)) => {},
+            result = &mut stopping => panic!("successor must not shorten accepted wait: {result:?}"),
+        }
+        assert!(matches!(
+            stopping.await,
+            Err(AgentLoopDriverError::Unavailable { .. })
+        ));
+        assert!(started.elapsed() >= acknowledged.timeout);
+        assert!(driver.take_settlement(attempt).is_err());
+        assert!(
+            runtime
+                .global_monty_owner
+                .client()
+                .retained_attempts()
+                .retained
+                > 0
+        );
+        let client = rig.pool.get().await.unwrap();
+        let phase: String = client
+            .query_one(
+                "SELECT phase FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+                &[&run.as_uuid()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(phase, "started");
+        drop(client);
+        provider.release.add_permits(1);
+        let result = tokio::time::timeout(Duration::from_secs(10), sending)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_ne!(result.status, TurnStatus::Completed);
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                match driver.stop_attempt(attempt).await {
+                    Ok(()) => break,
+                    Err(AgentLoopDriverError::Unavailable { .. }) => tokio::task::yield_now().await,
+                    Err(error) => panic!("actual late settlement failed: {error:?}"),
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let (_, receipt, _, driver_credit) = driver.take_settlement(attempt).unwrap().unwrap();
+        let (_, admission, ports, factory_receipt, factory_credit) =
+            factory.take_failed_settlement(attempt).unwrap().unwrap();
+        assert!(Arc::ptr_eq(&receipt, &factory_receipt));
+        assert!(Arc::ptr_eq(&driver_credit, &factory_credit));
+        assert!(host.finalized_reply_ref().is_none());
+        assert!(admission.check_and_start().await.is_err());
+        drop((
+            ports,
+            admission,
+            receipt,
+            factory_receipt,
+            driver_credit,
+            factory_credit,
+        ));
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            identity
+        );
+        drop((app, driver, factory));
+        shutdown_shared_runtime(runtime).await.unwrap();
+    }
+
+    #[cfg(all(feature = "skills-db", feature = "test-support"))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_webui_incomplete_execution_replacement_preserves_live_limits() {
+        use axum::{
+            body::Body,
+            http::{Method, Request, StatusCode},
+        };
+        use brassclaw_product_workflow::MontyVmSettingsStore;
+        use tower::ServiceExt;
+        struct Operator;
+        #[async_trait]
+        impl crate::WebuiAuthenticator for Operator {
+            async fn authenticate(&self, token: &str) -> Option<UserId> {
+                (token == "settings-owner").then(|| UserId::new(token).unwrap())
+            }
+            fn allows_operator_webui_config(&self) -> bool {
+                true
+            }
+        }
+        let rig = super::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let desired_store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        );
+        let before = desired_store.get("default", "default").await.unwrap();
+        let mut custom = before.execution_limits;
+        custom.max_pending_ownership_checks = 17;
+        let update = serde_json::from_value(serde_json::json!({
+            "expected_revision":before.revision,"execution_limits":custom
+        }))
+        .unwrap();
+        let desired = desired_store
+            .upsert("default", "default", &update)
+            .await
+            .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let gateway = Arc::new(crate::test_support::BudgetTestGateway::new());
+        let input = RebornRuntimeInput::from_services(
+            rig.build_input("replacement-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_model_gateway_override(gateway.clone());
+        let runtime = Arc::new(build_reborn_runtime(input).await.unwrap());
+        let identity = runtime.global_monty_owner.client().root_identity();
+        let bundle = build_webui_services(runtime.clone(), None).await.unwrap();
+        let app = crate::webui_v2_app(
+            bundle,
+            crate::WebuiServeConfig::new(
+                runtime.thread_scope.tenant_id.clone(),
+                Arc::new(Operator),
+                Vec::new(),
+            ),
+        )
+        .unwrap();
+        let complete = serde_json::to_value(custom).unwrap();
+        let mut incomplete = complete.clone();
+        incomplete
+            .as_object_mut()
+            .unwrap()
+            .remove("max_pending_ownership_checks");
+        let mut unknown = complete.clone();
+        unknown["unsupported_limit"] = serde_json::json!(1);
+        let mut null_field = complete.clone();
+        null_field["ownership_check_timeout_millis"] = serde_json::Value::Null;
+        let duplicate = format!(
+            "{{\"expected_revision\":{},\"execution_limits\":{{\"max_pending_ownership_checks\":19,{}}}}}",
+            desired.revision,
+            serde_json::to_string(&complete)
+                .unwrap()
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+        );
+        for (case, body) in [
+            serde_json::json!({"expected_revision":desired.revision,"execution_limits":incomplete})
+                .to_string(),
+            serde_json::json!({"expected_revision":desired.revision,"execution_limits":unknown})
+                .to_string(),
+            serde_json::json!({"expected_revision":desired.revision,"execution_limits":null_field})
+                .to_string(),
+            duplicate,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::PUT)
+                        .uri("/api/settings/monty-vm")
+                        .header("Authorization", "Bearer settings-owner")
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "invalid replacement case {case}"
+            );
+            let stored = desired_store.get("default", "default").await.unwrap();
+            assert_eq!(
+                serde_json::to_value(stored).unwrap(),
+                serde_json::to_value(&desired).unwrap()
+            );
+            let live = runtime
+                .global_monty_owner
+                .client()
+                .live_task_settings()
+                .current();
+            assert_eq!(live.revision, desired.revision);
+            assert_eq!(
+                runtime
+                    .global_monty_owner
+                    .ownership_check()
+                    .snapshot()
+                    .unwrap()
+                    .limits
+                    .max_pending_checks,
+                17
+            );
+            assert_eq!(
+                runtime.global_monty_owner.client().root_identity(),
+                identity
+            );
+        }
+        // Omitting the entire replacement retains normal top-level patch
+        // semantics. A valid duration edit still reaches the same global VM.
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri("/api/settings/monty-vm")
+                    .header("Authorization", "Bearer settings-owner")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "expected_revision":desired.revision,"max_duration_secs":777
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let updated = desired_store.get("default", "default").await.unwrap();
+        assert_eq!(updated.execution_limits, custom);
+        assert_eq!(updated.revision, desired.revision + 1);
+        let live = runtime
+            .global_monty_owner
+            .client()
+            .live_task_settings()
+            .current();
+        assert_eq!(live.revision, updated.revision);
+        assert_eq!(live.limits.max_compute_time.as_secs(), 777);
+        assert_eq!(
+            runtime.global_monty_owner.client().root_identity(),
+            identity
+        );
+        drop(app);
+        shutdown_shared_runtime(runtime).await.unwrap();
+        assert_eq!(gateway.call_count(), 0);
+    }
+
+    #[cfg(all(feature = "skills-db", feature = "test-support"))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_global_owner_heartbeat_fences_real_connection_loss() {
+        use crate::monty_instance_owner::{OwnershipError, PgMontyOwner};
+        use brassclaw_product_workflow::MontyVmSettingsStore;
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let settings = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        );
+        let before = settings.get("default", "default").await.unwrap();
+        let mut limits = before.execution_limits;
+        limits.ownership_heartbeat_interval_millis = 200;
+        let update = serde_json::from_value(
+            serde_json::json!({"expected_revision":before.revision,"execution_limits":limits}),
+        )
+        .unwrap();
+        settings
+            .upsert("default", "default", &update)
+            .await
+            .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let gateway = Arc::new(crate::test_support::BudgetTestGateway::new());
+        let input = crate::RebornRuntimeInput::from_services(
+            rig.build_input("heartbeat-owner", home.path())
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+        )
+        .with_model_gateway_override(gateway.clone());
+        let runtime = crate::build_reborn_runtime(input).await.unwrap();
+        let owner = runtime.global_monty_owner.ownership_check();
+        owner.check().await.unwrap();
+        let client = rig.pool.get().await.unwrap();
+        // Kill the actual detached PostgreSQL session holding the two-int
+        // instance owner lock, not a fake channel or the worker process.
+        let rows = client
+            .query(
+                "SELECT pid FROM pg_locks WHERE locktype='advisory'
+            AND classid::bigint=$1 AND objid::bigint=$2 AND objsubid=2
+            AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+            AND mode='ExclusiveLock' AND granted",
+                &[&i64::from(0x4252_434c), &i64::from(0x4d4f_4e54)],
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        let pid: i32 = rows[0].get(0);
+        assert!(
+            client
+                .query_one("SELECT pg_terminate_backend($1)", &[&pid])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        drop(client);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !owner.is_closed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("real heartbeat fences the lost owner");
+        assert!(matches!(owner.check().await, Err(OwnershipError::Lost)));
+        assert!(
+            matches!(runtime.shutdown().await,
+                Err(super::RebornRuntimeError::InvalidArgument { reason })
+                if reason == "global Monty shutdown requires reconciliation"),
+            "ownership loss must remain a reported shutdown failure"
+        );
+        let replacement = PgMontyOwner::acquire(&rig.pool).await.unwrap();
+        replacement.check().await.unwrap();
+        replacement.release().await.unwrap();
+        assert_eq!(gateway.call_count(), 0);
     }
 
     async fn shutdown_shared_runtime(
@@ -4801,6 +5255,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_global_runtime_retains_one_root_across_match_and_no_match() {
         use brassclaw_product_workflow::MontyVmSettingsStore;
+        use sha2::Digest;
 
         let root = tempfile::tempdir().unwrap();
         let rig = super::test_pg::pg_rig().await;
@@ -4819,6 +5274,9 @@ mod tests {
             max_total: RUNTIME_SEND_TIMEOUT,
         });
         let runtime = build_reborn_runtime(input).await.unwrap();
+        let discovery = runtime.mcp_recipe_discovery().snapshot().unwrap();
+        assert!(!discovery.generation().is_nil());
+        assert_eq!(discovery.tools_list(), serde_json::json!({"tools":[]}));
         let conversation = runtime.new_conversation().await.unwrap();
         assert!(
             uuid::Uuid::parse_str(conversation.0.as_str()).is_err(),
@@ -4854,6 +5312,21 @@ mod tests {
             }
             let client = rig.pool.get().await.unwrap();
             let row=client.query_one("SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",&[&reply.run_id.as_uuid()]).await.unwrap();
+            let retained_outcome: serde_json::Value = row.get(0);
+            let review_event = client
+                .query_opt(
+                    "SELECT event_bytes FROM brassclaw_monty_review_events WHERE run_id=$1",
+                    &[&reply.run_id.as_uuid()],
+                )
+                .await
+                .unwrap();
+            assert_eq!(review_event.is_some(), !text.starts_with("reply "));
+            if let Some(event) = review_event {
+                let event: serde_json::Value = serde_json::from_str(event.get(0)).unwrap();
+                assert_eq!(event["outcome"], retained_outcome);
+                assert_eq!(event["scope"]["thread_id"], conversation.0.as_str());
+                assert_eq!(event["evidence_complete"], false);
+            }
             outcomes.push(row.get::<_, serde_json::Value>(0));
         }
         let root_id = &outcomes[0]["execution"]["root"]["vm_id"];
@@ -4863,14 +5336,58 @@ mod tests {
                 .iter()
                 .all(|outcome| &outcome["execution"]["root"]["vm_id"] == root_id)
         );
-        assert_eq!(
-            outcomes[1]["execution"]["recipes"]
+        for outcome in &outcomes {
+            assert_eq!(
+                outcome["execution"]["recipes"].as_array().unwrap().len(),
+                2,
+                "both Match and No-Match must use retained reply and history workflows"
+            );
+        }
+        for (index, outcome) in outcomes.iter().enumerate() {
+            let execution = &outcome["execution"];
+            assert_eq!(
+                execution["intent_outcome"],
+                if index == 1 { "match" } else { "no_match" }
+            );
+            let matched: Vec<_> = execution["recipes"]
                 .as_array()
                 .unwrap()
-                .len(),
-            2,
-            "matched reply and history must both run through IBS/Monty"
-        );
+                .iter()
+                .filter(|recipe| !recipe["normal_match"].is_null())
+                .collect();
+            if index != 1 {
+                assert!(
+                    matched.is_empty(),
+                    "named reply/history lookup must not invent matching evidence"
+                );
+                continue;
+            }
+            assert_eq!(matched.len(), 1);
+            let recipe = matched[0];
+            let evidence = &recipe["normal_match"];
+            assert_eq!(evidence["recipe_completed"], true);
+            assert_eq!(evidence["task_completed"], true);
+            let matching = &evidence["matching"];
+            assert_eq!(matching["format"], "monty-normal-match/1");
+            assert_eq!(
+                matching["catalogue_generation"],
+                discovery.generation().to_string()
+            );
+            assert_eq!(matching["recipe_uuid"], recipe["recipe_id"]);
+            assert_eq!(matching["selection_checksum"], recipe["selection_checksum"]);
+            assert_eq!(
+                matching["command_checksum"],
+                hex::encode(sha2::Sha256::digest(format!("reply {literal}").as_bytes()))
+            );
+            assert_eq!(
+                matching["task_inputs_checksum"],
+                hex::encode(sha2::Sha256::digest(
+                    serde_json::json!({"answer":literal}).to_string().as_bytes()
+                ))
+            );
+            assert_eq!(execution["semantic_approval"], false);
+            assert_eq!(execution["catalogue_activation"], false);
+        }
         let recorded = requests.lock().unwrap().clone();
         assert_eq!(
             recorded.len(),
@@ -4921,6 +5438,14 @@ mod tests {
                 &[&result.run_id.as_uuid()],
             ).await.unwrap();
             let outcome: serde_json::Value = row.get(0);
+            assert_eq!(outcome["execution"]["intent_outcome"], "match");
+            let evidence = &outcome["execution"]["recipes"][0]["normal_match"];
+            assert_eq!(evidence["matching"]["format"], "monty-normal-match/1");
+            assert_eq!(
+                evidence["task_completed"],
+                expected_status == TurnStatus::Completed,
+                "a matched Recipe followed by failure cannot qualify a completed command"
+            );
             assert_eq!(
                 outcome["execution"]["checked_recipe_capacity"]["max_recipes"],
                 capacity
@@ -4988,8 +5513,9 @@ mod tests {
             .is_err(),
             "a failed attempt cannot acquire a replacement admission"
         );
-        let (original, receipt, control) = driver.take_settlement(host.attempt()).unwrap().unwrap();
-        let (owned, _, ports, owned_receipt) = factory
+        let (original, receipt, control, _driver_retention) =
+            driver.take_settlement(host.attempt()).unwrap().unwrap();
+        let (owned, _, ports, owned_receipt, _factory_retention) = factory
             .take_failed_settlement(host.attempt())
             .unwrap()
             .unwrap();
@@ -4998,6 +5524,32 @@ mod tests {
         assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
         let report = ports.settlement_report(&receipt).await.unwrap();
         assert_eq!(report["root_completed"], false);
+        let qualified_program = ports.matched_program().await.unwrap();
+        crate::mcp_command_qualification::assert_recorded_command_cases(
+            &rig.pool,
+            &brassclaw_engine::memory::intent_system::IntentScope {
+                tenant_id: runtime.thread_scope.tenant_id.to_string(),
+                user_id: runtime.actor_user_id.to_string(),
+                agent_id: host
+                    .run_context()
+                    .scope
+                    .agent_id
+                    .as_ref()
+                    .unwrap()
+                    .to_string(),
+                project_id: host
+                    .run_context()
+                    .scope
+                    .project_id
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "default".into()),
+            },
+            discovery.generation(),
+            &qualified_program,
+            &format!("reply {literal}"),
+        )
+        .await;
         assert_eq!(
             requests.lock().unwrap().len(),
             2,
@@ -5105,7 +5657,10 @@ mod tests {
                 .unwrap();
             let status = response.status();
             let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-            (status, serde_json::from_slice(&bytes).unwrap())
+            let body = serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+                panic!("settings HTTP {status} returned a non-JSON body: {error}")
+            });
+            (status, body)
         }
         let root = tempfile::tempdir().unwrap();
         let rig = super::test_pg::pg_rig().await;
@@ -5156,6 +5711,93 @@ mod tests {
             brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES
         );
         assert_eq!(initial["settings"]["max_recipes_per_task"], 8);
+        assert_eq!(
+            initial["settings"]["execution_limits"]["max_pending_settings"],
+            8
+        );
+        assert_eq!(
+            initial["settings"]["execution_limits"]["max_retained_attempts"],
+            256
+        );
+        assert_eq!(
+            initial["settings"]["execution_limits"]["max_recipe_contexts"],
+            64
+        );
+        assert_eq!(
+            initial["settings"]["execution_limits"]["max_queued_tasks"],
+            64
+        );
+        assert_eq!(
+            initial["settings"]["execution_limits"]["max_queued_bytes"],
+            67108864
+        );
+        for capacity in [
+            serde_json::json!(0),
+            serde_json::json!(u32::MAX as u64 + 1),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!(null),
+            serde_json::json!("private-invalid-settings-value"),
+        ] {
+            let mut invalid = initial["settings"]["execution_limits"].clone();
+            invalid["max_recipe_contexts"] = capacity;
+            let (code, error) = request(&app, Method::PUT, "settings-a", "/api/settings/monty-vm",
+                serde_json::json!({"expected_revision":initial["settings"]["revision"],"execution_limits":invalid})).await;
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+            assert_eq!(error["error"], "invalid_request");
+            assert!(!error.to_string().contains("private-invalid-settings-value"));
+        }
+        for field in [
+            "max_queued_tasks",
+            "max_queued_bytes",
+            "max_pending_settings",
+            "max_retained_attempts",
+            "max_actor_requests",
+            "max_actor_reserved_bytes",
+            "max_actor_control_requests",
+            "max_actor_control_reserved_bytes",
+            "startup_timeout_millis",
+            "response_timeout_millis",
+            "settings_source_timeout_millis",
+            "settings_uptake_timeout_millis",
+            "ownership_check_timeout_millis",
+            "ownership_heartbeat_interval_millis",
+            "max_pending_ownership_checks",
+            "cancellation_ack_timeout_millis",
+        ] {
+            let mut invalid = initial["settings"]["execution_limits"].clone();
+            invalid[field] = serde_json::json!(0);
+            let (code, _) = request(&app, Method::PUT, "settings-a", "/api/settings/monty-vm",
+                serde_json::json!({"expected_revision":initial["settings"]["revision"],"execution_limits":invalid})).await;
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+        }
+        for (content_type, body, expected) in [
+            ("text/plain", "{}", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+            (
+                "application/json",
+                "{private-invalid-settings-value",
+                StatusCode::BAD_REQUEST,
+            ),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::PUT)
+                        .uri("/api/settings/monty-vm")
+                        .header("Authorization", "Bearer settings-a")
+                        .header("Content-Type", content_type)
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+            let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+            let error: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(error["error"], "invalid_request");
+            assert!(!error.to_string().contains("private-invalid-settings-value"));
+        }
         let (code, _) = request(&app, Method::PUT, "settings-a", "/api/settings/monty-vm",
             serde_json::json!({"expected_revision":initial["settings"]["revision"],"max_memory_bytes":brassclaw_product_workflow::DEFAULT_MONTY_HEAP_BYTES-1})).await;
         assert_eq!(code, StatusCode::BAD_REQUEST);
@@ -5266,6 +5908,25 @@ mod tests {
         // existing VM and its Rust watch without charging that wait or restarting.
         for (offset, duration, enabled) in [(1, 7200, true), (2, 600, false)] {
             execution_limits["max_feeds"] = serde_json::json!(128 + offset);
+            execution_limits["max_recipe_contexts"] = serde_json::json!(128 + offset);
+            execution_limits["max_queued_tasks"] = serde_json::json!(128 + offset);
+            execution_limits["max_queued_bytes"] = serde_json::json!(67108864 + offset);
+            execution_limits["max_pending_settings"] = serde_json::json!(16 + offset);
+            execution_limits["max_retained_attempts"] = serde_json::json!(256 + offset);
+            execution_limits["max_actor_requests"] = serde_json::json!(2048 + offset);
+            execution_limits["max_actor_reserved_bytes"] = serde_json::json!(1073741824 + offset);
+            execution_limits["max_actor_control_requests"] = serde_json::json!(2048 + offset);
+            execution_limits["max_actor_control_reserved_bytes"] =
+                serde_json::json!(1073741824 + offset);
+            execution_limits["startup_timeout_millis"] = serde_json::json!(30000 + offset);
+            execution_limits["response_timeout_millis"] = serde_json::json!(40000 + offset);
+            execution_limits["settings_source_timeout_millis"] = serde_json::json!(3000 + offset);
+            execution_limits["settings_uptake_timeout_millis"] = serde_json::json!(7000 + offset);
+            execution_limits["ownership_check_timeout_millis"] = serde_json::json!(3000 + offset);
+            execution_limits["ownership_heartbeat_interval_millis"] =
+                serde_json::json!(2500 + offset);
+            execution_limits["max_pending_ownership_checks"] = serde_json::json!(1024 + offset);
+            execution_limits["cancellation_ack_timeout_millis"] = serde_json::json!(4000 + offset);
             execution_limits["execution_slice_millis"] = serde_json::json!(5 + offset);
             let (code, result) = request(
                 &app,
@@ -5305,8 +5966,52 @@ mod tests {
                 runtime.global_monty_owner.client().root_identity(),
                 root_identity
             );
+            let ownership = runtime
+                .global_monty_owner
+                .ownership_check()
+                .snapshot()
+                .unwrap();
+            assert_eq!(ownership.revision, initial_revision + offset);
+            assert_eq!(
+                ownership.limits.check_timeout.as_millis() as u64,
+                3000 + offset
+            );
+            assert_eq!(
+                ownership.limits.heartbeat_interval.as_millis() as u64,
+                2500 + offset
+            );
+            assert_eq!(ownership.limits.max_pending_checks as u64, 1024 + offset);
+            assert_eq!(
+                result["runtime"]["execution_limits"]["ownership_effective_revision"],
+                ownership.revision
+            );
             let bounds = runtime.global_monty_owner.client().vm_bounds();
             assert_eq!(bounds.max_feeds as u64, 128 + offset);
+            assert_eq!(
+                runtime
+                    .global_monty_owner
+                    .client()
+                    .recipe_context_capacity()
+                    .limit as u64,
+                128 + offset
+            );
+            let backlog = runtime.global_monty_owner.client().admission_observation();
+            assert_eq!(backlog.limits.max_tasks as u64, 128 + offset);
+            assert_eq!(backlog.limits.max_bytes as u64, 67108864 + offset);
+            let publications = runtime.global_monty_owner.client().settings_capacity();
+            assert_eq!(publications.limit as u64, 16 + offset);
+            assert_eq!(
+                result["runtime"]["execution_limits"]["limits"]["max_pending_settings"],
+                publications.limit
+            );
+            assert_eq!(
+                result["runtime"]["execution_limits"]["queued_tasks"],
+                backlog.tasks
+            );
+            assert_eq!(
+                result["runtime"]["execution_limits"]["queued_bytes"],
+                backlog.bytes as u64
+            );
             assert_eq!(bounds.execution_slice.as_millis() as u64, 5 + offset);
             assert_eq!(
                 result["runtime"]["task_budget"]["effective_revision"],

@@ -59,7 +59,7 @@ limitations; this describes the target, not a completed v3 cutover.
 
 ## Quick Start
 
-**Requirements:** any machine with ~8 GB RAM, 64-bit CPU, ~4 GB free disk space.
+**Requirements:** any machine with ~8 GB RAM, 64-bit CPU, ~4 GB free disk space; Python 3.9+ for the installation/removal scripts.
 
 ### Option A: Linux — one-line install (recommended)
 
@@ -78,8 +78,28 @@ sudo bash install.sh
 Pin to a specific version:
 
 ```bash
-sudo bash install.sh -v 1.2.9
+sudo bash install.sh -v 1.7.0-rc.4
 ```
+
+The installer selects the newest published release containing the complete
+application/worker pair for your platform, which can be a prerelease (announced
+explicitly). Use `-v` to choose a specific release. It verifies both executables
+and their checksums before installation. Linux systemd upgrades preserve the existing service unit, data
+location, credentials and operator overrides. The service stops before executable
+replacement; both previous executables are retained as `.bak` files. Startup is
+confirmed through the authenticated live Monty status endpoint, with a default
+180-second timeout (`--startup-timeout seconds` to change it).
+
+Fresh systemd installations bind to `127.0.0.1:3000` and use `local_dev`. The
+`v1.7.0-rc.4` runtime's default `full` profile fails during PostgreSQL
+startup; an operator profile set in `/etc/brassclaw/secrets.env` overrides the
+service default. For a remote machine, use `ssh -L 3000:127.0.0.1:3000 your-host`
+and open `http://localhost:3000/v2` locally.
+
+If a new release fails readiness, the installer stops it and reports failure.
+Check its journal and database migration compatibility before restoring an older
+executable pair; automatic database downgrade is not performed. Manual/user-local
+upgrades require stopping the running instance first.
 
 ### Option B: macOS — manual binary
 
@@ -121,7 +141,7 @@ Set the required environment variables then start the server:
 ```bash
 export BRASSCLAW_REBORN_WEBUI_TOKEN=your-secret-token
 export BRASSCLAW_REBORN_WEBUI_USER_ID=your-user-id
-brassclaw-reborn serve --host 0.0.0.0 --port 3000
+brassclaw-reborn serve --host 127.0.0.1 --port 3000
 ```
 
 Open `http://localhost:3000/v2` in your browser and log in with the token.
@@ -178,13 +198,29 @@ Then set `provider_id = "ollama"` and `model = "qwen2.5:7b"` in `config.toml`.
 
 ## Uninstall
 
+Requires Python 3.9+. The script lists the removal inventory, then asks for
+confirmation: **Enter permanently wipes all discovered BrassClaw state**;
+`keep` removes the application while retaining data; `cancel` stops.
+
 ```bash
-# Remove binary and service, keep data:
 curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash
 
-# Wipe everything (binary, service, config, all data):
-curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash -s -- --wipe
+# Inspect without stopping or removing anything:
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash -s -- --dry-run
+
+# Explicit unattended choices:
+bash uninstall.sh --yes
+bash uninstall.sh --keep-data
 ```
+
+A full wipe removes the service, main and Monty worker binaries, backups,
+embedded PostgreSQL, configuration, credentials, extensions, workspace, caches,
+and identified BrassClaw downloads and temporary files. It removes dedicated
+BrassClaw package/container resources and installation-owned system accounts.
+Custom configured state directories are included when their ownership is safe.
+Unresolved shared resources or external PostgreSQL require separate cleanup;
+the script refuses to report a complete wipe while these remain unresolved.
+Shared OS journals and shared system dependencies are preserved.
 
 ---
 
