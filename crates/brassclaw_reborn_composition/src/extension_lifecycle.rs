@@ -1371,6 +1371,16 @@ mod tests {
         )
         .await
         .unwrap();
+        let package_ref =
+            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "notion").unwrap();
+        let rejected = port
+            .activate(package_ref, ExtensionActivationMode::Static)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(rejected, ProductWorkflowError::InvalidBindingRequest { reason }
+            if reason == "legacy outbound MCP client capability is disabled")
+        );
         assert!(
             registry
                 .snapshot()

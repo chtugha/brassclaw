@@ -1,5 +1,6 @@
 //! Request-local Kohai MCP sessions. The existing Monty root owns Tool-call
 //! sequencing; this adapter only advertises commands and exchanges MCP packets.
+use crate::global_task_factory::{TaskProviderBinding, TaskProviderLease};
 use crate::mcp_chat_bridge::{McpChatBridge, McpProviderExchange};
 use crate::mcp_recipe_catalogue::McpRecipeDiscoverySnapshot;
 use async_trait::async_trait;
@@ -99,6 +100,38 @@ impl McpProviderBinding {
         if let Err(error) = port.finish().await {
             tracing::debug!(reason=%error,"MCP exchange durable disconnect failed; credential is revoked");
         }
+    }
+}
+
+struct McpTaskProviderLease {
+    binding: Arc<McpProviderBinding>,
+    port: Arc<CommandPort>,
+}
+
+impl TaskProviderBinding for McpProviderBinding {
+    fn retain(
+        self: Arc<Self>,
+        run_id: TurnRunId,
+    ) -> Result<Option<Arc<dyn TaskProviderLease>>, AgentLoopHostError> {
+        Ok(self
+            .port(run_id)?
+            .map(|port| -> Arc<dyn TaskProviderLease> {
+                Arc::new(McpTaskProviderLease {
+                    binding: self,
+                    port,
+                })
+            }))
+    }
+}
+
+#[async_trait]
+impl TaskProviderLease for McpTaskProviderLease {
+    fn surface_version(&self) -> &CapabilitySurfaceVersion {
+        self.port.surface_version()
+    }
+
+    async fn finish(&self) {
+        self.binding.finish_port(&self.port).await;
     }
 }
 

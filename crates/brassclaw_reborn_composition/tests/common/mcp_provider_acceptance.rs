@@ -103,7 +103,12 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
     drop(client);
     let chat = runtime.new_conversation().await.unwrap();
     let reply=runtime.send_user_message(&chat,"Use the publish_literal_reply tool exactly once with command 'publish literal reply provider acceptance Ω'. After receiving its result, answer with that result text. You must call the tool; do not answer from memory.").await.unwrap();
-    if !reply.is_successful_final_reply() {
+    if !reply.is_successful_final_reply()
+        || !reply
+            .text
+            .as_deref()
+            .is_some_and(|text| text.contains("provider acceptance Ω"))
+    {
         let client = pool.get().await.unwrap();
         let outcome: Value = client
             .query_one(
@@ -131,13 +136,6 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
             .get(0);
         panic!("{reply:?}; exchanges={exchanges}; calls={calls}; task outcome={outcome}");
     }
-    assert!(
-        reply
-            .text
-            .as_deref()
-            .unwrap()
-            .contains("provider acceptance Ω")
-    );
     let client = pool.get().await.unwrap();
     let exchange=client.query_one("SELECT exchange_id,active,disconnected_at FROM brassclaw_mcp_exchanges WHERE parent_run_id=$1", &[&reply.run_id.as_uuid()]).await.unwrap();
     assert!(!exchange.get::<_, bool>(1));

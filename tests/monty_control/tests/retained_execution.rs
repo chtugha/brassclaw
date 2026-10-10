@@ -147,6 +147,10 @@ mod pg_monty_admission;
 mod retained_kernel;
 #[path = "support/retained_program.rs"]
 mod retained_program;
+#[path = "support/retained_program_variants.rs"]
+mod retained_program_variants;
+use retained_program_variants::{program_with_preload_source, program_with_source};
+
 #[path = "support/runtime.rs"]
 mod support;
 
@@ -313,7 +317,7 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             // Exercise an actual caught exception before both retained Tool
             // occurrences. The local alias must not become a dependency, and
             // the error's text remains typed data passed to the JSON usage.
-            retained_program::program_with_preload_source(
+            program_with_preload_source(
                 &store,
                 "def parse_usage(inputs):\n    try:\n        raise ValueError(inputs['data'])\n    except ValueError as error:\n        data = str(error)\n    return _parse_data({'data': data})",
                 None,
@@ -653,7 +657,7 @@ async fn retained_source_preflight_rejects_unbound_code_before_any_execution() {
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     let valid = "# host.forbidden() import os\ntext = 'host.fake() eval(1) __execute_action__'\nresult = host.json(operation='parse', data=inputs['data'])";
-    let program = retained_program::program_with_source(&store, false, Some(valid)).await;
+    let program = program_with_source(&store, false, Some(valid)).await;
     let inspected = InspectedRetainedProgram::inspect(
         RetainedProgram::Tools(program.clone()),
         support::worker(),
@@ -677,7 +681,7 @@ async fn retained_source_preflight_rejects_unbound_code_before_any_execution() {
         "value = host.json(data=inputs['data'])",
         "result = {'text': inputs['data']}",
     ] {
-        let program = retained_program::program_with_source(&store, false, Some(source)).await;
+        let program = program_with_source(&store, false, Some(source)).await;
         let error = match InspectedRetainedProgram::inspect(
             RetainedProgram::Tools(program),
             support::worker(),
@@ -690,7 +694,7 @@ async fn retained_source_preflight_rejects_unbound_code_before_any_execution() {
         assert!(matches!(error, RetainedSourceError::Invalid { .. }));
         assert!(!format!("{error:?}").contains(source));
     }
-    let program = retained_program::program_with_source(&store, false, Some("def broken(:")).await;
+    let program = program_with_source(&store, false, Some("def broken(:")).await;
     let error =
         match InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
             .await
@@ -950,7 +954,7 @@ async fn selected_export_preflight_rejects_unsafe_libraries_before_execution() {
         "STATE = []\ndef parse_usage(inputs):\n    STATE.append(inputs['data'])\n    return _parse_data(inputs)",
         "def parse_usage(inputs):\n    global STATE\n    STATE = inputs\n    return _parse_data(inputs)",
     ] {
-        let program = retained_program::program_with_preload_source(&store, source, None).await;
+        let program = program_with_preload_source(&store, source, None).await;
         assert!(matches!(
             InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), support::worker())
                 .await,

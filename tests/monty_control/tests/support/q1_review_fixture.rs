@@ -44,6 +44,9 @@ mod pg_workflow_review;
 mod retained_kernel;
 #[path = "retained_program.rs"]
 mod retained_program;
+#[path = "retained_program_variants.rs"]
+mod retained_program_variants;
+use retained_program_variants::{program_with_preload_source, program_with_source};
 #[path = "runtime.rs"]
 mod support;
 
@@ -61,7 +64,7 @@ async fn native_preload_checks_every_public_signature_before_effects() {
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     let source = "def parse_usage(inputs):\n    return _parse_data(inputs)";
-    let valid = retained_program::program_with_preload_source(&store, source, None).await;
+    let valid = program_with_preload_source(&store, source, None).await;
     let inspected = InspectedRetainedProgram::inspect(RetainedProgram::Tools(valid), worker())
         .await
         .unwrap();
@@ -78,8 +81,7 @@ async fn native_preload_checks_every_public_signature_before_effects() {
         "parse":{"symbol":"parse_usage","parameters":["inputs"],"mapping":true},
         "unused":{"symbol":"unused_usage","parameters":["inputs"],"mapping":false}
     });
-    let invalid =
-        retained_program::program_with_preload_source(&store, source, Some(incompatible)).await;
+    let invalid = program_with_preload_source(&store, source, Some(incompatible)).await;
     assert!(matches!(
         InspectedRetainedProgram::inspect(RetainedProgram::Tools(invalid), worker()).await,
         Err(RetainedSourceError::Invalid {
@@ -89,7 +91,7 @@ async fn native_preload_checks_every_public_signature_before_effects() {
     ));
     // Keep migration preflight exercised by the shared root caller too; a
     // legacy body must never disguise an unbound Tool as a qualified export.
-    let legacy = retained_program::program_with_source(
+    let legacy = program_with_source(
         &store,
         false,
         Some("result = host.unbound(data=inputs['data'])"),

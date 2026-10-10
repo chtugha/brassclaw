@@ -364,6 +364,7 @@ impl NativeTaskPortsFactory {
                 service,
                 capacity,
                 cancellation,
+                None,
             )
             .unwrap(),
         }
@@ -456,6 +457,14 @@ async fn admitted_with_text(
     ThreadScope,
     Arc<PgInterceptorStore>,
 ) {
+    // Every standalone caller must establish its own real host prerequisites;
+    // do not rely on another test having initialized this process-local prompt.
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!(
+            "../../../crates/brassclaw_loop_support/prompts/compaction_summarizer_fresh.md"
+        )
+        .to_owned(),
+    );
     let name = input.name;
     let user_input = input.text;
     let tenant = TenantId::new("native-global-host").unwrap();
@@ -1392,6 +1401,39 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         root_draft.exact_bytes()
     );
     assert!(!owner.ownership_check().is_closed());
+    // The actual owner policy accepts only a fresh revision. Publishing its
+    // unchanged limits together with the worker's acknowledged revision keeps
+    // both owners coordinated without replacing the global VM.
+    let ownership = owner.ownership_check();
+    let initial = ownership.snapshot().unwrap();
+    let settings = owner.client().live_task_settings().current();
+    assert_eq!(initial.revision, settings.revision);
+    let next_revision = settings.revision + 1;
+    let acknowledgement = owner
+        .client()
+        .publish_settings(
+            settings.revision,
+            brassclaw_monty_host::process::TaskSettings {
+                revision: next_revision,
+                max_compute_time: settings.limits.max_compute_time,
+                token_budgets_enabled: settings.limits.token_budgets_enabled,
+            },
+        )
+        .await
+        .unwrap();
+    ownership
+        .publish(initial.revision, next_revision, initial.limits)
+        .unwrap();
+    assert_eq!(
+        ownership.snapshot().unwrap().revision,
+        acknowledgement.effective_settings.revision
+    );
+    assert!(
+        ownership
+            .publish(initial.revision, next_revision + 1, initial.limits)
+            .is_err()
+    );
+    assert_eq!(ownership.snapshot().unwrap().revision, next_revision);
     let factory = Arc::new(
         NativeTaskPortsFactory::new(
             database.pool.clone(),
@@ -1755,6 +1797,7 @@ async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admi
         owner.client(),
         Arc::new(FixtureRecipeCapacity),
         FixtureCancellationPolicy::new(&owner.client()),
+        None,
     )
     .unwrap();
     let provider = Arc::new(RecordingProvider::default());
@@ -1890,6 +1933,7 @@ async fn owned_task_factory_retains_cancelled_catalogue_preparation() {
         owner.client(),
         Arc::new(FixtureRecipeCapacity),
         FixtureCancellationPolicy::new(&owner.client()),
+        None,
     )
     .unwrap();
     let provider = Arc::new(RecordingProvider::default());
@@ -2545,6 +2589,13 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
     assert!(Arc::ptr_eq(&factory_receipt, &receipt));
     assert!(Arc::ptr_eq(&driver_retention, &factory_retention));
     assert_eq!(owner.client().retained_attempts().retained, 1);
+    // Failed execution keeps the originally selected program for reconciliation;
+    // inspecting it must neither rematch nor read a replacement revision.
+    let retained_program = retained_ports.matched_program().await.unwrap();
+    assert_eq!(
+        retained_program.program().inputs().instruction().recipe(),
+        program.inputs().instruction().recipe(),
+    );
     // The caller now owns both the actual child/Tool state and its durable
     // admission address. Taking settlement cannot grant another dispatch.
     retained_ports.fence();

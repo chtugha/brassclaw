@@ -127,6 +127,7 @@ fn global_vm_is_waiting_at_boot_and_keeps_running_after_task_host_errors() {
                                     MontyObject::string("reason_kind"),
                                     MontyObject::string("task_execution_failed")
                                 ),
+                                (MontyObject::string("receipt_ref"), MontyObject::none()),
                             ])
                         );
                         drop(args);

@@ -59,6 +59,12 @@ remain in progress.
 
 ### Fixed
 
+- Restore the isolated Monty harness build by retaining request-local provider
+  ownership through a private lifecycle port and declaring its direct runtime
+  dependency. MCP cancellation and settlement still disconnect the same exchange.
+- Align global-root completion checks and CLI extension coverage with the current
+  contracts: rejected outbound MCP activation preserves installed assets and
+  durable state, and removal remains available.
 - Preserve durable admission/effect evidence until actual task settlement and
   release completed-task resources through acknowledged Monty cleanup.
 - Keep accepted cancellation waits on their captured deadline; a timeout retains

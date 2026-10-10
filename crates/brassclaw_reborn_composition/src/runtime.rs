@@ -2783,11 +2783,11 @@ pub async fn build_reborn_runtime(
                 owner.client(),
                 settings_owner.store().recipe_capacity_source(),
                 settings_owner.store().cancellation_policy_source(),
+                Some(mcp_provider_binding.clone()),
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
-            })?
-            .with_mcp_provider_binding(mcp_provider_binding.clone()),
+            })?,
         );
         let driver = Arc::new(
             crate::global_monty_driver::GlobalMontyDriver::new(

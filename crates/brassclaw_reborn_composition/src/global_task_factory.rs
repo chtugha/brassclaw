@@ -16,8 +16,10 @@ use brassclaw_monty_host::service::{
 use brassclaw_pg::PgPool;
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_turns::{
-    LoopMessageRef,
-    run_profile::{AgentLoopDriverError, MontyTaskAttempt},
+    LoopMessageRef, TurnRunId,
+    run_profile::{
+        AgentLoopDriverError, AgentLoopHostError, CapabilitySurfaceVersion, MontyTaskAttempt,
+    },
 };
 use serde_json::{Value, json};
 
@@ -43,6 +45,23 @@ pub(crate) trait MontyCatalogueProvider: Send + Sync {
     ) -> Result<Arc<dyn MontyTaskCatalogue>, AgentLoopDriverError>;
 }
 
+/// Retain an already selected request-local provider exchange. This lifecycle
+/// boundary neither advertises commands nor executes a Tool or model request.
+/// The owning adapter must keep the exact port alive through cancellation and
+/// settlement, and make repeated disconnects safe for that same exchange.
+#[async_trait]
+pub(crate) trait TaskProviderLease: Send + Sync {
+    fn surface_version(&self) -> &CapabilitySurfaceVersion;
+    async fn finish(&self);
+}
+
+pub(crate) trait TaskProviderBinding: Send + Sync {
+    fn retain(
+        self: Arc<Self>,
+        run_id: TurnRunId,
+    ) -> Result<Option<Arc<dyn TaskProviderLease>>, AgentLoopHostError>;
+}
+
 struct RetainedTask {
     host: Arc<MontyTaskHost>,
     retention: Arc<AttemptRetentionLease>,
@@ -52,7 +71,7 @@ struct RetainedTask {
     execution_report: Option<Value>,
     settled: bool,
     provider_watch: Option<tokio_util::task::AbortOnDropHandle<()>>,
-    provider_port: Option<Arc<crate::mcp_provider_gateway::CommandPort>>,
+    provider_port: Option<Arc<dyn TaskProviderLease>>,
 }
 
 /// Transfers the real host, private admission address, child/Tool port state
@@ -79,7 +98,7 @@ pub(crate) struct OwnedGlobalTaskFactory {
     cancellation: Arc<dyn CancellationAckSource>,
     retention: Arc<AttemptRetentionRegistry>,
     tasks: Mutex<HashMap<MontyTaskAttempt, RetainedTask>>,
-    mcp_provider_binding: Option<Arc<crate::mcp_provider_gateway::McpProviderBinding>>,
+    mcp_provider_binding: Option<Arc<dyn TaskProviderBinding>>,
 }
 
 impl OwnedGlobalTaskFactory {
@@ -90,6 +109,7 @@ impl OwnedGlobalTaskFactory {
         service: ServiceClient,
         recipe_capacity: Arc<dyn RecipeCapacitySource>,
         cancellation: Arc<dyn CancellationAckSource>,
+        mcp_provider_binding: Option<Arc<dyn TaskProviderBinding>>,
     ) -> Result<Self, AgentLoopDriverError> {
         if service.retained_attempts().limit == 0 {
             return Err(failed("monty_retention_unavailable"));
@@ -102,16 +122,8 @@ impl OwnedGlobalTaskFactory {
             cancellation,
             retention: AttemptRetentionRegistry::new(service),
             tasks: Mutex::new(HashMap::new()),
-            mcp_provider_binding: None,
+            mcp_provider_binding,
         })
-    }
-
-    pub(crate) fn with_mcp_provider_binding(
-        mut self,
-        binding: Arc<crate::mcp_provider_gateway::McpProviderBinding>,
-    ) -> Self {
-        self.mcp_provider_binding = Some(binding);
-        self
     }
 
     fn tasks(
@@ -189,7 +201,8 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         }
         let provider_port = if let Some(binding) = &self.mcp_provider_binding {
             if let Some(port) = binding
-                .port(context.run_id)
+                .clone()
+                .retain(context.run_id)
                 .map_err(|_| failed("mcp_exchange_unavailable"))?
             {
                 let surface = host
@@ -221,19 +234,14 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             if tasks.contains_key(&host.attempt()) {
                 return Err(failed("monty_admission_replay_requires_recovery"));
             }
-            let provider_watch = self
-                .mcp_provider_binding
-                .as_ref()
-                .zip(provider_port.as_ref())
-                .map(|(binding, port)| {
-                    let binding = binding.clone();
-                    let host = host.clone();
-                    let port = port.clone();
-                    tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
-                        host.cancellation_requested().await;
-                        binding.finish_port(&port).await;
-                    }))
-                });
+            let provider_watch = provider_port.as_ref().map(|port| {
+                let host = host.clone();
+                let port = port.clone();
+                tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+                    host.cancellation_requested().await;
+                    port.finish().await;
+                }))
+            });
             tasks.insert(
                 host.attempt(),
                 RetainedTask {
@@ -354,10 +362,8 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // same transaction records outcome and child completion together; audit
         // recovery never rereads latest, restores dispatch or repeats an effect.
         outcome["execution"] = report;
-        if let Some(binding) = &self.mcp_provider_binding
-            && let Some(port) = &provider_port
-        {
-            binding.finish_port(port).await;
+        if let Some(port) = &provider_port {
+            port.finish().await;
         }
         admission.settle(outcome).await?;
         // Optional discovery observes only acknowledged durable evidence. Its

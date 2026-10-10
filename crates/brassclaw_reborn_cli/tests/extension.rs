@@ -123,7 +123,7 @@ fn extension_search_human_output_escapes_control_characters() {
 }
 
 #[test]
-fn extension_activate_and_remove_json_use_persisted_installation_state() {
+fn legacy_outbound_mcp_activation_is_rejected_and_installed_package_remains_removable() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     write_extension_fixture(&reborn_home, "zztest-mcp");
@@ -131,10 +131,28 @@ fn extension_activate_and_remove_json_use_persisted_installation_state() {
     let install = run_extension_json(&reborn_home, &["install", "zztest-mcp", "--json"]);
     assert_eq!(install["phase"], "installed");
 
-    let activate = run_extension_json(&reborn_home, &["activate", "zztest-mcp", "--json"]);
-    assert_eq!(activate["phase"], "active");
-    assert_eq!(activate["payload"]["kind"], "extension_activate");
-    assert_eq!(activate["payload"]["activated"], true);
+    let manifest = reborn_home.join("local-dev/system/extensions/zztest-mcp/manifest.toml");
+    let installed_bytes = fs::read(&manifest).expect("installed manifest");
+    let activate = run_extension(&reborn_home, &["activate", "zztest-mcp", "--json"]);
+    assert!(!activate.status.success());
+    assert!(
+        activate.stdout.is_empty(),
+        "a rejected activation has no success response"
+    );
+    assert!(
+        String::from_utf8_lossy(&activate.stderr)
+            .contains("legacy outbound MCP client capability is disabled")
+    );
+    assert_eq!(
+        fs::read(&manifest).expect("retained manifest"),
+        installed_bytes
+    );
+
+    // A separate process still sees the original durable installation. Neither
+    // the rejected activation nor startup may discard it or install a successor.
+    let duplicate = run_extension(&reborn_home, &["install", "zztest-mcp", "--json"]);
+    assert!(!duplicate.status.success());
+    assert!(String::from_utf8_lossy(&duplicate.stderr).contains("already installed"));
 
     let remove = run_extension_json(&reborn_home, &["remove", "zztest-mcp", "--json"]);
     assert_eq!(remove["phase"], "removed");
@@ -149,20 +167,7 @@ fn extension_activate_and_remove_json_use_persisted_installation_state() {
 }
 
 fn run_extension_json(reborn_home: &Path, args: &[&str]) -> serde_json::Value {
-    let home = reborn_home
-        .parent()
-        .expect("reborn_home should have a parent temp dir")
-        .join("home");
-    fs::create_dir_all(&home).expect("create fake HOME dir");
-    let output = Command::new(reborn_bin())
-        .arg("extension")
-        .args(args)
-        .env_clear()
-        .env("BRASSCLAW_REBORN_HOME", reborn_home)
-        .env("HOME", &home)
-        .output()
-        .expect("brassclaw-reborn extension command should run");
-
+    let output = run_extension(reborn_home, args);
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -170,6 +175,22 @@ fn run_extension_json(reborn_home: &Path, args: &[&str]) -> serde_json::Value {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str(stdout.trim()).expect("valid JSON")
+}
+
+fn run_extension(reborn_home: &Path, args: &[&str]) -> std::process::Output {
+    let home = reborn_home
+        .parent()
+        .expect("reborn_home should have a parent temp dir")
+        .join("home");
+    fs::create_dir_all(&home).expect("create fake HOME dir");
+    Command::new(reborn_bin())
+        .arg("extension")
+        .args(args)
+        .env_clear()
+        .env("BRASSCLAW_REBORN_HOME", reborn_home)
+        .env("HOME", &home)
+        .output()
+        .expect("brassclaw-reborn extension command should run")
 }
 
 fn write_extension_fixture(reborn_home: &Path, extension_id: &str) {

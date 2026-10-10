@@ -17,7 +17,9 @@ use brassclaw_skills::{
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
+#[path = "support/runtime.rs"]
 mod support;
+const SOURCE: &str = include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py");
 
 fn ids() -> ReviewComponents {
     ReviewComponents {
@@ -113,7 +115,7 @@ async fn prepare(
         UtilityRequest::Evaluate {
             source,
             inputs: BTreeMap::from([("inputs".into(), json!({"claim_bytes":claim.to_string()}))]),
-            bounds: support::boot(support::SOURCE).bounds.values,
+            bounds: support::boot(SOURCE).bounds.values,
             max_compute_time: Duration::from_secs(2),
         },
         support::limits(),

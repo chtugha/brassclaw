@@ -632,7 +632,7 @@ fn opaque_admitted_tasks_interleave_and_actual_child_failure_leaves_other_waits_
         vec![
             json!("b"),
             json!({"status": "failed", "reply_ref": null,
-        "reason_kind": "task_execution_failed"})
+        "reason_kind": "task_execution_failed", "receipt_ref": null})
         ]
     );
     assert!(matches!(

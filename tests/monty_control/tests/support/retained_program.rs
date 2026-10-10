@@ -29,21 +29,7 @@ pub(super) async fn program(
 ) -> Arc<RetainedToolProgram> {
     build_program(store, invalid_output, None, true, None).await
 }
-pub(super) async fn program_with_source(
-    store: &PgComponentRevisionStore,
-    invalid_output: bool,
-    source: Option<&str>,
-) -> Arc<RetainedToolProgram> {
-    build_program(store, invalid_output, source, false, None).await
-}
-pub(super) async fn program_with_preload_source(
-    store: &PgComponentRevisionStore,
-    source: &str,
-    exports: Option<Value>,
-) -> Arc<RetainedToolProgram> {
-    build_program(store, false, Some(source), true, exports).await
-}
-async fn build_program(
+pub(super) async fn build_program(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
     source: Option<&str>,

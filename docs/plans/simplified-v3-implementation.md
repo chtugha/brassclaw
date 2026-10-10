@@ -5964,3 +5964,87 @@ provider waits, reconciled fatal recovery, platform/performance acceptance and
 the remaining simplified-v3 gates remain open. The native cases use legacy
 provider bootstrap and actual model discovery, with deterministic Match tasks;
 they do not qualify DB-only provider configuration or inference behavior.
+
+
+### 2026-10-10 — Cross-platform CI caller repairs (local acceptance)
+
+GitHub run `38068121220` on `f14b7d1635a88e191ac511ddf3f44d93cdb67bfa`
+finished with four failing jobs: the tagged Monty upgrade harness, contained
+Monty on Ubuntu and macOS, and the CLI package. Native memory capacity passed
+on Windows, macOS and Ubuntu; those results do not establish full platform
+acceptance. The failed logs are preserved without filtering their diagnostics.
+
+The upgrade lifecycle assertion retained an older completion shape. It now
+checks the exact `receipt_ref: null` emitted by the actual global root on
+a host error. The corresponding extension-host assertion is aligned too;
+neither assertion drops fields or changes failure into No-Match.
+
+Both contained jobs failed to compile `model_host`: its real production
+task factory had acquired concrete MCP-gateway dependencies, and the separate
+harness lacked the direct `tokio-util` dependency. The factory now retains an
+already selected provider lease through a private lifecycle-only port. The
+actual MCP adapter retains the original binding and CommandPort, checks its
+surface identity and delegates cancellation/settlement disconnect to the same
+owner. The constructor receives that optional owner explicitly; production
+supplies the real adapter, while the non-MCP harness supplies None. There is
+no substitute gateway, conditional test bypass or workflow fallback. The
+harness manifest/lock graph records the existing pinned tokio-util directly.
+
+The CLI failure expected activation of the retired outbound MCP client.
+Section 26 of monty.composition.md explicitly requires blocking that activation
+before network/publication while preserving installation assets and durable
+operator intent. The CLI regression now verifies the exact rejection, no
+success output, unchanged manifest bytes, rejected duplicate installation
+in a new process, and successful removal. The real lifecycle regression also
+checks that rejected activation leaves a previously enabled installation
+unchanged and absent from the active registry after restart. Supported bundled
+first-party lifecycle checks remain separate; the outbound client is not
+reactivated to satisfy an obsolete assertion.
+
+**Accepted subset:** 24 actual upstream interpreter/isolated-allocator tests
+pass on a frozen local snapshot of the base commit plus these repairs. All ten
+executables were copied, fsynced and hashed on compiler-artifact events before
+Cargo exited. The 9,026 snapshot file hashes stayed fixed through that run.
+The strict upgrade lint subsequently passed in a coordinated serial window.
+All 156 contained tests passed, followed by all-target strict contained linting.
+Ten focused native follow-ups also passed after correcting shared fixture
+ownership and initialization: every source-including caller uses the same
+variant builder, and standalone model-host admission initializes the exact
+packaged compaction prompt instead of depending on another test running first.
+The original dead-code/needless-borrow diagnostics, missed Q1 fixture caller
+and test-order failure remain recorded; no warning was suppressed.
+
+The paired application/worker build, real lifecycle rejection test and all
+five CLI extension subprocess tests passed. The ordinary-chat vLLM/MCP
+acceptance returned a final answer that failed its required content assertion.
+That attempt is not accepted. Its diagnostic now reports that reply together with the
+persisted task outcome and actual exchange/call counts, preserving the same
+content and durable child-call requirements. The next actual vLLM/MCP run passed
+all those requirements, including the settled matched child, parent No-Match,
+durable exchange disconnect and identical global VM identity. No production or
+request behavior changed between the failed and passing inference runs; the
+failure's exact content was unavailable before this diagnostic change. This
+demonstrates a successful provider path, not reliable model command compliance.
+Provider quality/repeated-run acceptance remains under prefix_v3_upgrade.md
+Phase E and the full-plan acceptance gates. Strict product Clippy also passed.
+None of these local checks certifies peer edits excluded from the frozen source
+copies or full cross-platform acceptance.
+
+The subsequent strict upgrade lint failed because another agent cleaned
+the shared NVMe target during compilation: fingerprint/dep-info/temp paths
+disappeared. The diagnostics remain visible. The screen batch stopped at that
+first failure; it did not start another Cargo process or infer success.
+The user authorized coordination, and the other chat reserved a serial window
+and acknowledged the competing clean. Early release messages were rejected by
+the messaging tool's approval policy. After completing the serial window, the
+release message was successfully delivered; this chat relinquished Cargo while
+that chat validates its changes. The active goal remains open. Push and rerun
+the failed CI gates. Reuse the passing
+upstream, contained and CLI evidence unless relevant sources change.
+
+Snapshot, ten retained images, compiler/test output, original CI diagnostics
+and serial validation commands: `/private/tmp/brassclaw-ci-repair-*` and
+`target/validation/ci-repair-20261010*`. Concurrent peer work is excluded from
+this snapshot and must retain its independent acceptance. Full dependency-chain
+compiler sharing, authored activation, complete prefix/provider sources, durable
+fatal recovery and the other remaining plan gates are still open.

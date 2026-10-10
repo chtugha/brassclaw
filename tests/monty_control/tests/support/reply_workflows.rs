@@ -120,8 +120,11 @@ pub(crate) async fn prepare_named_reply(
         normal_match: None,
         inspected: Arc::new(
             InspectedRetainedProgram::inspect(
-                RetainedProgram::Tools(history_program), support::worker(),
-            ).await.unwrap(),
+                RetainedProgram::Tools(history_program),
+                support::worker(),
+            )
+            .await
+            .unwrap(),
         ),
         inputs: None,
         tools: Some(history_tools),
@@ -304,16 +307,20 @@ impl global_task_factory::MontyCatalogueProvider for DraftProvider {
                         .inspected
                         .program()
                         .inputs()
-                        .bind_variant_example(&input_text, &input.user_input, &json!({}))
+                        .bind_variant_example(input_text, &input.user_input, &json!({}))
                         .unwrap(),
                 );
                 // This identifies this validator's committed draft snapshot,
                 // not an activated/approved production catalogue generation.
-                selection.normal_match = crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
-                    uuid::Uuid::new_v4(), &input.user_input, &matched,
-                    selection.inspected.program().inputs().instruction(),
-                    selection.inputs.as_ref().unwrap(),
-                ).map(Box::new);
+                selection.normal_match =
+                    crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
+                        uuid::Uuid::new_v4(),
+                        &input.user_input,
+                        &matched,
+                        selection.inspected.program().inputs().instruction(),
+                        selection.inputs.as_ref().unwrap(),
+                    )
+                    .map(Box::new);
                 assert!(selection.normal_match.is_some());
                 MontyIntentSelection::Match(selection)
             }
@@ -753,10 +760,13 @@ async fn whole_match(block_history: bool, skip_history: bool) {
         let content = String::from_utf8(stored).unwrap();
         assert!(content.ends_with('\n'));
         assert_eq!(content.lines().count(), 1);
-        assert_eq!(serde_json::from_str::<Value>(&content).unwrap(), json!({
-            "format":"completed-turn/1", "user_input":query,
-            "answer":answer, "reply_ref":reference.as_str(),
-        }));
+        assert_eq!(
+            serde_json::from_str::<Value>(&content).unwrap(),
+            json!({
+                "format":"completed-turn/1", "user_input":query,
+                "answer":answer, "reply_ref":reference.as_str(),
+            })
+        );
     }
     drop(client);
     // Retained implementation ownership cannot reopen a completed/failed
