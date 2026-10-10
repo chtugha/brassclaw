@@ -93,16 +93,33 @@ fn context_compute(account: &RootExecutionAccounting, context: u32) -> Duration 
         .get(&Some(context))
         .copied()
         .unwrap_or_default()
-        + account
-            .preparation_contexts
-            .get(&Some(context))
-            .copied()
-            .unwrap_or_default()
-        + account
-            .adaptation_contexts
-            .get(&Some(context))
-            .copied()
-            .unwrap_or_default()
+}
+
+fn assert_owned_observations(
+    budget: &SharedMontyTaskBudget,
+    after: &RootExecutionAccounting,
+    before: &RootExecutionAccounting,
+    context: u32,
+) {
+    let usage = budget.check().unwrap().usage;
+    let difference =
+        |after: &std::collections::BTreeMap<Option<u32>, Duration>,
+         before: &std::collections::BTreeMap<Option<u32>, Duration>| {
+            after.get(&Some(context)).copied().unwrap_or_default()
+                - before.get(&Some(context)).copied().unwrap_or_default()
+        };
+    assert_eq!(
+        usage.compute_time,
+        difference(&after.contexts, &before.contexts)
+    );
+    assert_eq!(
+        usage.preparation_time,
+        difference(&after.preparation_contexts, &before.preparation_contexts)
+    );
+    assert_eq!(
+        usage.adaptation_time,
+        difference(&after.adaptation_contexts, &before.adaptation_contexts)
+    );
 }
 
 fn task_budget() -> SharedMontyTaskBudget {
@@ -148,6 +165,7 @@ fn root_compute_follows_actual_coroutines_and_resume_owners_across_a_b_a() {
         GlobalBoundary::Waiting(_)
     ));
     let after_a = vm.execution_accounting().unwrap();
+    assert_owned_observations(&budget_a, &after_a, &boot, a);
     assert!(after_a.contexts[&Some(a)] > boot.contexts[&Some(a)]);
     assert_eq!(after_a.contexts[&Some(b)], boot.contexts[&Some(b)]);
     assert_eq!(
@@ -167,6 +185,8 @@ fn root_compute_follows_actual_coroutines_and_resume_owners_across_a_b_a() {
         GlobalBoundary::Waiting(_)
     ));
     let after_b = vm.execution_accounting().unwrap();
+    assert_owned_observations(&budget_a, &after_b, &boot, a);
+    assert_owned_observations(&budget_b, &after_b, &boot, b);
     assert!(after_b.contexts[&Some(b)] > after_a.contexts[&Some(b)]);
     assert_eq!(after_b.contexts[&Some(a)], after_a.contexts[&Some(a)]);
     // No interpreter run occurs during this real external wait.
@@ -196,6 +216,8 @@ fn root_compute_follows_actual_coroutines_and_resume_owners_across_a_b_a() {
     assert_eq!(finish_a.args[0], json!("A"));
     assert_eq!(vm.pending_context(finish_a.continuation), Some(a));
     let resumed_a = vm.execution_accounting().unwrap();
+    assert_owned_observations(&budget_a, &resumed_a, &boot, a);
+    assert_owned_observations(&budget_b, &resumed_a, &boot, b);
     assert!(resumed_a.contexts[&Some(a)] > after_b.contexts[&Some(a)]);
     assert_eq!(resumed_a.contexts[&Some(b)], after_b.contexts[&Some(b)]);
     assert!(resumed_a.adaptation > after_b.adaptation);
@@ -422,7 +444,7 @@ fn terminal_shared_account_is_visible_without_poisoning_global_vm() {
 }
 
 #[test]
-fn root_answer_adapter_exhaustion_retains_the_actual_error_before_python_observes_it() {
+fn terminal_account_retains_the_actual_host_error_before_python_observes_it() {
     let mut vm = GlobalVm::start_ready(
         Arc::from(SOURCE),
         Sha256::digest(SOURCE.as_bytes()).into(),
@@ -438,13 +460,16 @@ fn root_answer_adapter_exhaustion_retains_the_actual_error_before_python_observe
             .unwrap(),
     );
     vm.defer(intent.continuation).unwrap();
-    // Explicit near-limit account fixture; this does not claim 600 seconds
-    // of measured work. The adapter interval below is measured, not supplied.
+    // Explicit exceeded account fixture, not a claim of measured VM work.
+    // Adaptation remains separately measured and cannot cause ComputeExceeded.
     let consumed = budget.check().unwrap().usage.compute_time;
     budget
-        .record_compute_time(Duration::from_secs(600) - consumed)
+        .record_compute_time(Duration::from_secs(601) - consumed)
         .unwrap();
-    budget.check().unwrap();
+    assert_eq!(
+        budget.check(),
+        Err(brassclaw_resources::MontyTaskBudgetError::ComputeExceeded)
+    );
     let before = vm.execution_accounting().unwrap();
     let error = monty_types::MontyException::runtime_error("actual host rejection ".repeat(128));
     let finish = call(

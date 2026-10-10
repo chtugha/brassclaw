@@ -8,7 +8,9 @@ and terminal failure state. Task compute consumption remains outside settings
 and survives updates and waits. The neutral task contract does not require an
 allocation count: Monty 1.0 removed that limit. Existing legacy DB/operator
 values remain intact until the explicit upgrade migration; do not represent
-them as an enforced Monty 1.0 resource. Active compute excludes queue/idle/external waits;
+them as an enforced Monty 1.0 resource. Active compute is executing VM time.
+Preparation/compilation and Rust value adaptation are separate observations;
+they do not debit that duration. Queue/idle/external waits enter none of these clocks;
 external-call deadlines and shared heap are separate. `AdaptiveMontyHeapBudget`
 calculates finite targets from measured additional capacity and reserve; it
 does not probe the OS, reclaim live continuations or claim production wiring.

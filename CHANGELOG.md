@@ -62,6 +62,8 @@ remain in progress.
 
 ### Fixed
 
+- Debit Monty task duration only for executing VM segments; retain compilation
+  and value-adapter observations separately across children, feeds and live edits.
 - Give CLI `run`/`repl` instances independent loopback MCP ports by default,
   permit explicit ports and drain runtime/database ownership on listener failure.
   Keep PostgreSQL fallback diagnostics on stderr and surface shutdown failures.

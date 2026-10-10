@@ -331,12 +331,14 @@ fn typed_boundary_work_charges_the_shared_account_even_when_input_is_rejected() 
     let shared = budget();
     let mut vm = RecipeVm::new(shared.clone(), bounds()).unwrap();
     let selected = artifact("result = inputs['items']", &[], bounds());
-    let initial = shared.check().unwrap().usage.compute_time;
+    let initial = shared.check().unwrap().usage;
     let invalid = json!({"items": vec!["payload"; bounds().max_value_nodes]});
     let error = vm.start_step(selected.clone(), invalid).unwrap_err();
     assert_eq!(error.failure, VmFailure::InvalidInputs);
-    let after_rejection = shared.check().unwrap().usage.compute_time;
-    assert!(after_rejection > initial);
+    let after_rejection = shared.check().unwrap().usage;
+    assert!(after_rejection.adaptation_time > initial.adaptation_time);
+    assert_eq!(after_rejection.compute_time, initial.compute_time);
+    assert_eq!(after_rejection.preparation_time, initial.preparation_time);
     // Pre-dispatch invalid input leaves the context available, but never resets
     // already charged conversion work. A real feed then imports/exports data.
     let items = json!(vec!["payload"; 512]);
@@ -347,7 +349,10 @@ fn typed_boundary_work_charges_the_shared_account_even_when_input_is_rejected() 
         ),
         items
     );
-    assert!(shared.check().unwrap().usage.compute_time > after_rejection);
+    let after_feed = shared.check().unwrap().usage;
+    assert!(after_feed.compute_time > after_rejection.compute_time);
+    assert!(after_feed.preparation_time > after_rejection.preparation_time);
+    assert!(after_feed.adaptation_time > after_rejection.adaptation_time);
 
     vm.cancellation().request();
     let error = vm

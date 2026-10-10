@@ -134,7 +134,7 @@ impl RootControl {
         if let Some(task) = context.and_then(|context| account.tasks.get_mut(&context))
             && let Err(error) = task
                 .budget
-                .record_compute_time(duration)
+                .record_adaptation_time(duration)
                 .and_then(|()| task.budget.check().map(|_| ()))
         {
             task.failure.get_or_insert(error);
@@ -376,7 +376,7 @@ impl ExecutionControl for RootControl {
         if let Some(task) = preparation_context.and_then(|context| account.tasks.get_mut(&context))
             && let Err(error) = task
                 .budget
-                .record_compute_time(preparation_delta)
+                .record_preparation_time(preparation_delta)
                 .and_then(|()| task.budget.check().map(|_| ()))
         {
             task.failure.get_or_insert(error);
@@ -983,7 +983,7 @@ impl GlobalVm {
             // failure retains this binding for reconciliation, never for replay.
             account.tasks.insert(context, binding);
         }
-        // Admission conversion is charged only after validation and binding.
+        // Admission conversion is observed only after validation and binding.
         // Generic answers already belong to their exact active task context.
         if work_wait
             && let Err(mut error) = self.control.record_adaptation(context, conversion_time)

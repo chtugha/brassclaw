@@ -657,9 +657,9 @@ impl WorkerRecipes {
     }
 }
 
-/// Constructor work has no VM execution clock or external wait. Charge it once
-/// to the same task account, even on syntax/integrity failure. Child execution
-/// and typed conversion use their own existing non-overlapping clock segments.
+/// Constructor work has no VM execution clock or external wait. Observe it once
+/// as preparation, even on syntax/integrity failure; never debit VM execution.
+/// Child execution and typed conversion own separate non-overlapping segments.
 fn prepare<T>(
     budget: &SharedMontyTaskBudget,
     work: impl FnOnce() -> Result<T, VmError>,
@@ -670,7 +670,7 @@ fn prepare<T>(
     let started = Instant::now();
     let result = work();
     budget
-        .record_compute_time(started.elapsed())
+        .record_preparation_time(started.elapsed())
         .and_then(|()| budget.check())
         .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
     result

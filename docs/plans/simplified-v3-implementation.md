@@ -6154,3 +6154,51 @@ Sources/commands/receipts: `target/validation/cli-listener-repair-20261010`,
 `/private/tmp/brassclaw-ci-repair-cli-listener*`. This batch excludes peers'
 activation/reconciliation and the subsequent clock correction. Cargo/cleanup
 held the common lock; a new GitHub product run remains required.
+
+### 2026-10-10 — Executing-time task account correction (local acceptance)
+
+`SharedMontyTaskBudget` now retains distinct execution, preparation and Rust
+adaptation observations. Only execution is compared with `max_compute_time`.
+Both cumulative execution and preparation cursors retain explicit baselines and
+monotonic ownership across feeds/resumes. Any overflow or regression fails the
+shared task closed; live limit increases cannot revive it. Settings publication
+still preserves one coherent revision and never resets any observations.
+
+Child `TaskControl` now consumes the actual interpreter's separate observations.
+A legacy combined-only callback cannot attribute VM time and fails closed.
+Scheduling slices still observe execution plus preparation, and cancellation
+still runs at their boundaries. Root preparation scopes preserve exact coroutine/
+admission ownership but record preparation independently. Worker constructor/
+artifact preparation and Rust data conversion record their own nonoverlapping
+categories. Source, heap, value, frame and worker-deadline bounds are unchanged;
+this correction does not make compilation/native hangs uncontained.
+
+Nine shared-account cases, one real child-interpreter clock comparison and all
+156 selected contained control/worker/service/kernel cases passed. The child
+comparison retains its actual REPL over two feeds, checks observed execution and
+preparation against the actual tracker, applies a live revision and confirms
+cancellation adds no new work. Root A/B/A regression verifies all three task
+categories against their actual context ownership maps. Invalid typed input
+records adaptation without VM execution; original host failure evidence survives
+an exceeded task account without replay. Both strict all-target affected lints
+passed. All 9,028 frozen source hashes remained fixed and actual worker/test
+images were protected on compiler-artifact events. Sources/commands/receipts:
+`target/validation/execution-clocks-20261010`,
+`/private/tmp/brassclaw-execution-clocks-*` and
+`/private/tmp/brassclaw-ci-repair-execution-clocks-*`.
+
+The initial clock edits were parked when the other chat requested stable sources
+for its native build. Its matching worker/tests and source fingerprints were
+captured before these eight owned paths were reapplied. Its independent native
+reconciliation evidence is preserved, not recertified by this batch. Worker
+protocol/serialized task-accounting fields and interpreter dump ABI are unchanged;
+the additional internal observations do not alter those schemas. Complete
+dependency-chain compiler sharing and full product/platform cutover remain open.
+
+The peer's later monolithic composition test build also emitted an unsuppressed
+macOS linker warning: compact-unwind DWARF offsets exceed the 16 MiB encoding
+limit. Its protected image's actual `__eh_frame` section is `0x1036110` bytes.
+This warning remains unresolved; neither helper/native success nor lint claims
+its removal. Test-profile optimization must be measured against the affected
+retained source and real tests before any profile change is accepted; disabling
+unwinding or linker diagnostics is not a remedy.

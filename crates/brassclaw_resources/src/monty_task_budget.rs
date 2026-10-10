@@ -56,7 +56,7 @@ pub enum MontyTaskBudgetError {
     ComputeExceeded,
     #[error("Monty task accounting unavailable")]
     AccountingUnavailable,
-    #[error("Monty execution clock regressed")]
+    #[error("Monty task clock regressed")]
     ClockRegressed,
 }
 
@@ -115,21 +115,51 @@ impl LiveMontyTaskSettings {
     }
 }
 
-/// One task's consumption, retained over steps and continuations. Record only
-/// active execution segments; queue/idle/external waits do not debit this clock.
+/// One task's observations, retained over steps and continuations. Only active
+/// VM execution debits the duration limit. Preparation and Rust value adaptation
+/// remain observable separately; queue/idle/external waits enter none of them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MontyTaskUsage {
     pub compute_time: Duration,
+    pub preparation_time: Duration,
+    pub adaptation_time: Duration,
     overflowed: bool,
 }
 
 impl MontyTaskUsage {
     pub fn record_compute_time(&mut self, elapsed: Duration) -> Result<(), MontyTaskBudgetError> {
-        let Some(total) = self.compute_time.checked_add(elapsed) else {
+        self.record_time(TaskClockKind::Execution, elapsed)
+    }
+
+    pub fn record_preparation_time(
+        &mut self,
+        elapsed: Duration,
+    ) -> Result<(), MontyTaskBudgetError> {
+        self.record_time(TaskClockKind::Preparation, elapsed)
+    }
+
+    pub fn record_adaptation_time(
+        &mut self,
+        elapsed: Duration,
+    ) -> Result<(), MontyTaskBudgetError> {
+        self.record_time(TaskClockKind::Adaptation, elapsed)
+    }
+
+    fn record_time(
+        &mut self,
+        kind: TaskClockKind,
+        elapsed: Duration,
+    ) -> Result<(), MontyTaskBudgetError> {
+        let observed = match kind {
+            TaskClockKind::Execution => &mut self.compute_time,
+            TaskClockKind::Preparation => &mut self.preparation_time,
+            TaskClockKind::Adaptation => &mut self.adaptation_time,
+        };
+        let Some(total) = observed.checked_add(elapsed) else {
             self.overflowed = true;
             return Err(MontyTaskBudgetError::AccountingOverflow);
         };
-        self.compute_time = total;
+        *observed = total;
         Ok(())
     }
 
@@ -168,7 +198,8 @@ pub struct MontyTaskBudgetSnapshot {
     pub usage: MontyTaskUsage,
 }
 
-/// Hosting-owned cursor over one interpreter's cumulative execution clock.
+/// Hosting-owned cursor over one interpreter's cumulative execution or
+/// preparation clock, selected by the corresponding account constructor.
 ///
 /// Attach at an explicit task/execution ownership boundary, supplying the
 /// current clock as the baseline. Prior service work or another task's work is
@@ -184,6 +215,14 @@ pub struct MontyTaskBudgetSnapshot {
 pub struct MontyTaskClock {
     budget: SharedMontyTaskBudget,
     observed: Duration,
+    kind: TaskClockKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TaskClockKind {
+    Execution,
+    Preparation,
+    Adaptation,
 }
 
 impl MontyTaskClock {
@@ -202,7 +241,7 @@ impl MontyTaskClock {
                 .get_or_insert(MontyTaskBudgetError::ClockRegressed);
             return Err(error.clone());
         };
-        self.budget.record_compute_time(delta)?;
+        self.budget.record_time(self.kind, delta)?;
         self.observed = cumulative;
         self.budget.check()
     }
@@ -222,12 +261,40 @@ impl SharedMontyTaskBudget {
         MontyTaskClock {
             budget: self.clone(),
             observed: baseline,
+            kind: TaskClockKind::Execution,
+        }
+    }
+
+    /// Separate cumulative preparation cursor, with the same ownership,
+    /// regression and terminal-failure rules as the execution cursor. These
+    /// observations never debit the executing-VM-time limit.
+    pub fn preparation_clock(&self, baseline: Duration) -> MontyTaskClock {
+        MontyTaskClock {
+            budget: self.clone(),
+            observed: baseline,
+            kind: TaskClockKind::Preparation,
         }
     }
 
     /// Record each active execution segment exactly once, through the hosting
     /// owner. Rust and Monty readers use `check`, not separate usage counters.
     pub fn record_compute_time(&self, elapsed: Duration) -> Result<(), MontyTaskBudgetError> {
+        self.record_time(TaskClockKind::Execution, elapsed)
+    }
+
+    pub fn record_preparation_time(&self, elapsed: Duration) -> Result<(), MontyTaskBudgetError> {
+        self.record_time(TaskClockKind::Preparation, elapsed)
+    }
+
+    pub fn record_adaptation_time(&self, elapsed: Duration) -> Result<(), MontyTaskBudgetError> {
+        self.record_time(TaskClockKind::Adaptation, elapsed)
+    }
+
+    fn record_time(
+        &self,
+        kind: TaskClockKind,
+        elapsed: Duration,
+    ) -> Result<(), MontyTaskBudgetError> {
         let mut account = self
             .account
             .lock()
@@ -235,7 +302,7 @@ impl SharedMontyTaskBudget {
         if let Some(error) = &account.terminal {
             return Err(error.clone());
         }
-        if let Err(error) = account.usage.record_compute_time(elapsed) {
+        if let Err(error) = account.usage.record_time(kind, elapsed) {
             account.terminal = Some(error.clone());
             return Err(error);
         }
@@ -277,6 +344,66 @@ mod tests {
                 max_compute_time: Duration::from_secs(seconds),
                 token_budgets_enabled: false,
             },
+        }
+    }
+
+    #[test]
+    fn preparation_and_adaptation_are_observed_without_debiting_vm_duration() {
+        let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+        let task = SharedMontyTaskBudget::new(live.clone());
+        let child = task.clone();
+        let mut execution = child.execution_clock(Duration::ZERO);
+        let mut preparation = child.preparation_clock(Duration::from_secs(5));
+        execution.checkpoint(Duration::from_secs(1)).unwrap();
+        preparation.checkpoint(Duration::from_secs(1005)).unwrap();
+        preparation.checkpoint(Duration::from_secs(1005)).unwrap();
+        child
+            .record_adaptation_time(Duration::from_secs(2000))
+            .unwrap();
+        live.publish(1, settings(2, 1)).unwrap();
+        let snapshot = task.check().unwrap();
+        assert_eq!(snapshot.settings.revision, 2);
+        assert_eq!(snapshot.usage.compute_time, Duration::from_secs(1));
+        assert_eq!(snapshot.usage.preparation_time, Duration::from_secs(1000));
+        assert_eq!(snapshot.usage.adaptation_time, Duration::from_secs(2000));
+        assert_eq!(snapshot, child.check().unwrap());
+        assert_eq!(
+            execution.checkpoint(Duration::from_secs(2)),
+            Err(MontyTaskBudgetError::ComputeExceeded)
+        );
+        live.publish(2, settings(3, 600)).unwrap();
+        assert_eq!(
+            preparation.checkpoint(Duration::from_secs(1006)),
+            Err(MontyTaskBudgetError::ComputeExceeded)
+        );
+    }
+
+    #[test]
+    fn preparation_regression_and_observation_overflow_fail_the_shared_task_closed() {
+        let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+        let task = SharedMontyTaskBudget::new(live.clone());
+        let mut preparation = task.preparation_clock(Duration::ZERO);
+        preparation.checkpoint(Duration::from_secs(1)).unwrap();
+        assert_eq!(
+            preparation.checkpoint(Duration::ZERO),
+            Err(MontyTaskBudgetError::ClockRegressed)
+        );
+        assert_eq!(
+            task.record_compute_time(Duration::from_secs(1)),
+            Err(MontyTaskBudgetError::ClockRegressed)
+        );
+        for kind in [TaskClockKind::Preparation, TaskClockKind::Adaptation] {
+            let task = SharedMontyTaskBudget::new(live.clone());
+            task.record_time(kind, Duration::MAX).unwrap();
+            assert_eq!(task.check().unwrap().usage.compute_time, Duration::ZERO);
+            assert_eq!(
+                task.record_time(kind, Duration::from_secs(1)),
+                Err(MontyTaskBudgetError::AccountingOverflow)
+            );
+            assert_eq!(
+                task.clone().check(),
+                Err(MontyTaskBudgetError::AccountingOverflow)
+            );
         }
     }
 

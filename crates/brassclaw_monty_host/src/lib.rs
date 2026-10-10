@@ -27,14 +27,16 @@ pub mod process;
 mod process_recipe;
 pub mod service;
 pub mod source_structure;
+#[cfg(test)]
+mod task_clock_tests;
 pub mod transport_actor;
 pub mod utility;
 
 use monty::{MontyRepl, PreparedReplSeed, ReplProgress, ReplStartError};
 use monty_types::{
     CallArgs, CompileOptions, ExcType, ExecutionControl, ExecutionControlAction,
-    ExecutionControlError, MontyException, MontyObject, MontyUuid, PrintWriter, ResourceLimits,
-    ResourceTracker,
+    ExecutionControlError, ExecutionObservation, MontyException, MontyObject, MontyUuid,
+    PrintWriter, ResourceLimits, ResourceTracker,
 };
 use num_traits::ToPrimitive;
 use sha2::{Digest, Sha256};
@@ -257,6 +259,7 @@ impl std::error::Error for VmError {}
 struct TaskControl {
     budget: SharedMontyTaskBudget,
     clock: Mutex<MontyTaskClock>,
+    preparation_clock: Mutex<MontyTaskClock>,
     cancelled: AtomicBool,
     last_yield: Mutex<Duration>,
     slice_nanos: AtomicU64,
@@ -264,16 +267,49 @@ struct TaskControl {
 impl ExecutionControl for TaskControl {
     fn checkpoint(
         &self,
-        elapsed: Duration,
+        _elapsed: Duration,
     ) -> Result<ExecutionControlAction, ExecutionControlError> {
-        self.clock
+        // The legacy callback supplies a combined clock and cannot establish
+        // the required executing/preparation attribution. The qualified tracker
+        // always calls checkpoint_context; missing observations fail closed.
+        Err(ExecutionControlError::AccountingUnavailable)
+    }
+
+    fn checkpoint_context(
+        &self,
+        observation: ExecutionObservation,
+    ) -> Result<ExecutionControlAction, ExecutionControlError> {
+        self.preparation_clock
             .lock()
             .map_err(|_| ExecutionControlError::AccountingUnavailable)?
-            .checkpoint(elapsed)
+            .checkpoint(observation.preparation)
             .map_err(|error| match error {
                 MontyTaskBudgetError::ComputeExceeded => ExecutionControlError::TaskComputeExceeded,
                 _ => ExecutionControlError::AccountingUnavailable,
             })?;
+        self.clock
+            .lock()
+            .map_err(|_| ExecutionControlError::AccountingUnavailable)?
+            .checkpoint(observation.execution)
+            .map_err(|error| match error {
+                MontyTaskBudgetError::ComputeExceeded => ExecutionControlError::TaskComputeExceeded,
+                _ => ExecutionControlError::AccountingUnavailable,
+            })?;
+        // Scheduling fairness still observes both kinds of synchronous work;
+        // only the execution cursor debits the task's duration allowance.
+        self.slice_action(
+            observation
+                .execution
+                .checked_add(observation.preparation)
+                .ok_or(ExecutionControlError::AccountingUnavailable)?,
+        )
+    }
+}
+impl TaskControl {
+    fn slice_action(
+        &self,
+        elapsed: Duration,
+    ) -> Result<ExecutionControlAction, ExecutionControlError> {
         if self.cancelled.load(Ordering::Acquire) {
             return Err(ExecutionControlError::Cancelled);
         }
@@ -345,6 +381,7 @@ impl RecipeVm {
         }
         let control = Arc::new(TaskControl {
             clock: Mutex::new(budget.execution_clock(Duration::ZERO)),
+            preparation_clock: Mutex::new(budget.preparation_clock(Duration::ZERO)),
             budget,
             cancelled: AtomicBool::new(false),
             last_yield: Mutex::new(Duration::ZERO),
@@ -552,7 +589,7 @@ impl RecipeVm {
         PrintWriter::CollectString(&mut self.stdout, Some(self.bounds.max_stdout_bytes))
     }
 
-    /// Charge only this synchronous data adapter. Never wrap interpreter calls,
+    /// Observe only this synchronous data adapter. Never wrap interpreter calls,
     /// provider waits or a child in this wall-clock interval: those own separate
     /// clocks and would otherwise be charged twice or include external waits.
     fn adapt<T>(
@@ -583,9 +620,12 @@ impl RecipeVm {
         let result = check().and_then(|()| {
             let started = Instant::now();
             let result = operation(self.bounds);
-            let charge = self.control.budget.record_compute_time(started.elapsed());
+            let charge = self
+                .control
+                .budget
+                .record_adaptation_time(started.elapsed());
             // Check even a rejected value, and never expose successful output
-            // or a dispatch request if its conversion exhausted the account.
+            // or a dispatch request after any terminal accounting failure.
             check()?;
             charge.map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
             result
