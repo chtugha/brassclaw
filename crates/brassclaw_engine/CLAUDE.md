@@ -64,15 +64,20 @@ See `docs/plans/2026-03-20-engine-v2-architecture.md` for the 8-phase roadmap.
 | **MemoryDoc** | Unit of durable knowledge (summaries, lessons, skills) | Workspace memory blobs |
 | **Project** | Unit of context (scopes memory, threads) | Flat workspace namespace |
 
-## Monty migration prerequisite
+## Current Monty runtime and migration evidence
 
-`simplified_v3.md` Phase 3a requires Monty 1.0 before global production wiring.
-The old custom `ResourceTracker` trait is removed upstream. Its compatibility
-proof is private and test-only; do not build production adapters on it. Feed and
-Monty turn limits are not BrassClaw task limits, and their setters reset timing
-accumulators. Task consumption must remain shared with Rust across feeds, nested
-execution and settings revisions. The 1.0 allocator is process-wide; installing
-it does not prove isolated heap accounting in this shared Rust process.
+The application uses verified Monty `v1.0.0` with the local control extension
+through [the vendored source contract](../../vendor/monty-control/BRASSCLAW.md).
+[Monty integration](MONTY.md) identifies the manifests and independent harnesses.
+The historical generic `ResourceTracker` proof lives in
+`tests/monty_legacy_tracker`; it is not the production resource API.
+
+Ordinary `skills-db` startup owns one supervised global Monty service before
+workers and ingress. Rust transports admitted tasks, hosts the worker and enforces
+kernel policy; Python/Recipes sequence execution. Task executing-time accounts,
+shared live memory and effective settings revisions have separate owners.
+A completed turn releases its task contexts without terminating the global root.
+Recorded runtime acceptance is limited; the remaining v3 gates still apply.
 
 ## Build & Test
 
@@ -107,9 +112,9 @@ src/
 │   ├── lease.rs          # LeaseManager — grant/check/consume/revoke/expire leases
 │   └── policy.rs         # PolicyEngine — deterministic effect-level allow/deny/approve + provenance taint
 ├── runtime/              # Internal store writes + thread messaging
-│   ├── internal_write.rs # Internal store writes (the ThreadManager / ConversationManager / ThreadTree / lease_refresh modules were retired in v3 Phase C.7 — the agent-loop PersistentMontyDriver now owns turn lifecycle)
+│   ├── internal_write.rs # Internal store writes (the ThreadManager / ConversationManager / ThreadTree / lease_refresh modules were retired in v3 Phase C.7 — the supervised global Monty service owns turn sequencing)
 │   └── messaging.rs      # ThreadSignal, ThreadOutcome, signal channels
-├── executor/             # Step execution (the retired `ExecutionLoop`/`context`/`compaction` modules were removed in v3 Phase C.7 — turn lifecycle is now owned by the composition `PersistentMontyDriver`)
+├── executor/             # Step execution (the retired `ExecutionLoop`/`context`/`compaction` modules were removed in v3 Phase C.7 — turn sequencing belongs to the supervised global Monty service)
 │   ├── code_audit.rs             # LLM code-audit gate for Orchestrator (class 10) + Scaffold (class 50) Q1→Q2
 │   ├── composition_port.rs       # ComponentPort — composition-facing component fetch facade
 │   ├── db_skill_loader.rs        # (skills-db) DB-backed skill loader
@@ -117,7 +122,6 @@ src/
 │   ├── kohai_port.rs             # KohaiPort — host.kohai_complete LLM gateway facade
 │   ├── orchestrator.rs           # Tier-1 Monty orchestrator: prepare_monty_session, assemble_prior_knowledge_with_hint, execute_tier_zero_channel
 │   ├── prompt.rs                 # System prompt construction (CodeAct preamble/postamble)
-│   ├── legacy_resource_tracker.rs # Test-only v0.0.16 compatibility proof; not the Monty 1.0 resource API
 │   ├── scripting.rs              # Tier 1: embedded Python via Monty (CodeAct/RLM)
 │   ├── structured.rs             # Tier 0: structured tool call execution
 │   ├── thread_context.rs         # Build ThreadExecutionContext from current thread state (pub(crate))
@@ -167,26 +171,41 @@ The engine defines three traits that the host crate implements:
 | `Store` | Thread/Step/Event/Project/Doc/Lease CRUD | `Database` (PostgreSQL + libSQL) |
 | `EffectExecutor` | `execute_action(name, params, lease, ctx) -> ActionResult` | `ToolRegistry` + `SafetyLayer` |
 
-## Execution Loop
+## Global execution and retained preparation
 
-The turn is sequenced by the Python orchestrator (`orchestrator/basic_mode.py`, `DEFAULT_ORCHESTRATOR`), driven by Monty via `MontySession::drive_to_yield`. Rust is the host (muscle): it serves `host.*` calls and runs `host.run_program` code; it does NOT sequence the turn. The retired Rust `ExecutionLoop::run` was removed in v3 Phase C.7 — the composition `PersistentMontyDriver` now owns the turn lifecycle and parks the session in a conversation-keyed registry between turns.
+`orchestrator/global_mode.py` sequences admitted tasks in the already-running
+global service. `GlobalMontyOwner` starts it during instance startup;
+`GlobalMontyDriver` hands work to it. There is no conversation-keyed lazy VM or
+Rust agent-loop fallback. The global root waits for work without polling and
+retains its identity across completed turns. Task/conversation/run/attempt IDs
+keep history, results, cancellation and replies isolated.
 
-The orchestrator runs a resumable long-running loop (one iteration per turn; the VM parks at `host.await_next_turn()` instead of returning):
+1. Monty requests intent resolution against one coherent approved catalogue.
+2. A Match selects a Recipe. IBS pins its exact workflow, typed input layout,
+   revisions, associations and implementations; composition prepares executable
+   Python and compatible Tool bindings. Runtime data never becomes source.
+3. The retained adapter checks the complete source/dependency graph before
+   effects, loads qualified definitions without effects, then invokes selected
+   exports with typed data. Monty owns intermediate result handoff. Rust binding
+   metadata grants no permission; actual Tool dispatch checks current policy.
+4. Only an actual No-Match uses the explicit model path. Matching/DB errors,
+   ambiguity and begun Recipe failures are errors; they never replay in Tier 2.
+5. The selected reply/history workflows complete through their retained host
+   ports. Failures retain dispatch/effect evidence rather than replaying effects.
+   Completing a task leaves the global orchestrator available for further work.
 
-1. `host.check_signals()` — "stop" short-circuits to `FINAL(...)`.
-2. `user_input = host.await_next_turn()` — the park point; the driver resumes the parked VM with the next turn's input. Empty input → `FINAL(...)`.
-3. Append the User message to the in-VM `history`.
-4. `host.resolve_intent(user_input=)` → dispatch on `status`:
-   - **match** → `host.compose_orchestrator(component_id, step_link, user_input)` → iterate `program.steplist` running each step's `executable_code` via `host.run_program`. The `program.skills` array is carried for consultation (exact tool-usage narrative); per-step code is concrete (variable substitution is server-side in `compose_orchestrator`).
-   - **disambiguation / no_match / error** → resolve + run the `host-non-match-llm-answer` recipe; ultimate fallback → direct `host.kohai_complete` (Monty assembles the prompt from `history`; Kohai swaps the prefix placeholder for the provider prefix and calls the provider LLM via `KohaiPort` → `HostManagedModelGateway`).
-5. `host.post_reply(text=answer)`; resolve + run the `host-save-history` recipe (best-effort); append the Assistant answer to `history`.
-6. Loop back to step 1 (park at the next `host.await_next_turn()`).
+The supported retained modules are `retained_preload`, `retained_source` and
+`retained_recipe`. Their construction/inspection is not component approval.
+`PreparedReplSeed` currently shares first-feed compiler code with isolated task
+state; complete dependency-chain compilation and full catalogue acceptance
+remain implementation work. See [the implementation evidence](../../docs/plans/simplified-v3-implementation.md)
+and [the binding plan](../../simplified_v3.md).
 
-`drive_to_yield` returns `OrchestratorYield::Complete(Box<OrchestratorResult>)` when the script reaches `FINAL(...)`, or `OrchestratorYield::AwaitNextTurn` when it parks. `FINAL(...)` is only reached on stop/empty-input termination; the happy path loops forever, parked between turns. The non-persistent `execute_orchestrator` caller maps an `AwaitNextTurn` park to an error (the persistent C.6 driver parks the session instead).
+## Legacy engine-v2 CodeAct helper interfaces
 
-## CodeAct / Monty Integration (Tier 1)
-
-Python execution via Monty interpreter (`executor/scripting.rs`). Follows the RLM (Recursive Language Model) pattern.
+These helper APIs remain migration surfaces, not an alternative ordinary-chat
+loop. Do not extend their old scoped grants or operation approvals as v3
+requirements; the binding instance-wide Tool policy applies independently.
 
 For engine v2 prompt surfacing, installed-but-unauthed provider tools (e.g.
 `gmail` without an OAuth token) are direct-callable: the engine's auth
@@ -211,9 +230,12 @@ hidden gate on `tool_install` from #2868 was removed; the tool's
 
 **Compact output metadata**: Between code steps, only a summary is added to chat context (`"[code output] stdout (4532 chars): The results show..."`) — not the full output. This prevents context bloat across iterations.
 
-**Resource limits**: 30s timeout, 64MB memory, 1M allocations. All execution wrapped in `catch_unwind` for Monty panic safety.
+**Current resource boundary:** use the actual retained task account, live settings
+revision and supervised worker limits. Historical helper constants are not global
+Monty defaults. Monty 1.0 has no allocation-count limit; do not introduce one from
+the old tracker. Consult [the current host contract](../../vendor/monty-control/BRASSCLAW.md).
 
-## Capability Leases
+## Legacy engine-v2 capability leases
 
 Threads don't have static permissions. They receive **leases** — scoped, time-limited, use-limited grants:
 

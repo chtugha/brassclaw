@@ -34,21 +34,49 @@ Current-source observations and historical step-body examples below must be
 migrated to this interface before being accepted as updated v3 implementations.
 
 
-Monty is the embedded Python interpreter used for Tier 1 (CodeAct) execution. It's a lightweight Rust-native Python implementation — not CPython — so it has a restricted feature set.
+## Current source and execution boundary
 
-**Source**: `git = "https://github.com/pydantic/monty.git", tag = "v0.0.16"`
-**Pinned at**: `v0.0.16` (2026-04-19)
+The application uses upstream `v1.0.0` plus the versioned BrassClaw control
+extension, currently `1.0.0-brassclaw.control.7`. Engine and Monty host dependencies
+point to the same local libraries under `vendor/monty-control`:
 
-## Upgrade Process
+- [Engine manifest](Cargo.toml)
+- [Monty host manifest](../brassclaw_monty_host/Cargo.toml)
+- [Control source/ABI and recorded evidence](../../vendor/monty-control/BRASSCLAW.md)
 
-1. **Update the pin**: `cargo update -p monty`
-2. **Check for new features**: `cd ~/.cargo/git/checkouts/monty-*/*/` and `git log --oneline` since last pin
-3. **Update the preamble**: If a previously-unsupported feature now works, remove it from the "Runtime environment" section in `prompts/codeact_preamble.md`
-4. **Update this file**: Record the new pin and what changed
-5. **Run tests**: `cargo test -p brassclaw_engine`
-6. **Watch traces**: After deploying, check traces for new `NotImplementedError` patterns (self-improvement mission catches these)
+The production allocator belongs to the supervised worker process. Ordinary
+`skills-db` startup creates one global orchestrator before ingress; task-local
+child contexts preserve isolated values and retained selections within that
+service. First-feed compiler sharing is available; full dependency-chain sharing
+and complete authored catalogue activation still require their acceptance gates.
+An upstream feature or passing interpreter test does not establish a qualified
+Skill export, current Tool permission or whole-product support.
 
-## Current Limitations (as of pin `v0.0.16`)
+## Upgrade process
+
+Read the current manifests, upstream hash record, control patch and compatibility
+contract before an upgrade. Preserve upstream integrity and round-trip the local
+patch; update the actual path dependencies, independent lockfiles and relevant
+ABI/transport contracts together. The source pin is not a Git dependency that
+`cargo update -p monty` can advance. Run the relevant real upstream, contained
+worker and production callers after a coherent change, following
+[development validation policy](../../docs/development-policy.md). Never bypass
+retained selections or replay unresolved effects to pass an upgrade.
+
+The generic-tracker compatibility proof under `tests/monty_legacy_tracker` is
+historical and test-only. Monty 1.0 removes the old allocation-count limit;
+executing-task time, preparation observations and shared live memory are separate
+contracts. Use effective runtime/WebUI settings rather than the historical fixed
+limits below. See [simplified v3](../../simplified_v3.md).
+
+## Historical v0.0.16 inventory
+
+The following language/module/host inventory and changelog record the older
+CodeAct integration as inspected on 2026-04-19. They do not describe the current
+Monty 1.0 feature set or the qualified v3 preload profile. Inspect the selected
+interpreter, structural validator and actual caller before relying on a feature.
+
+### Historical limitations (pin `v0.0.16`)
 
 These are documented in `prompts/codeact_preamble.md` so the LLM avoids them:
 

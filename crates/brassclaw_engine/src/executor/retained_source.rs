@@ -108,27 +108,8 @@ impl InspectedRetainedProgram {
                 "legacy step bodies cannot share a preloaded namespace",
             ));
         }
-        let mut preload_order = Vec::new();
-        let mut remaining: std::collections::BTreeSet<_> = libraries.keys().copied().collect();
-        while !remaining.is_empty() {
-            let next = remaining
-                .iter()
-                .find(|id| {
-                    libraries[id]
-                        .dependencies
-                        .iter()
-                        .all(|dependency| preload_order.contains(dependency))
-                })
-                .copied()
-                .ok_or_else(|| {
-                    fail(
-                        program.inputs().instruction().recipe().uuid,
-                        "preload dependency cycle",
-                    )
-                })?;
-            remaining.remove(&next);
-            preload_order.push(next);
-        }
+        let preload_order = super::retained_preload::dependency_order(&libraries)
+            .map_err(|reason| fail(program.inputs().instruction().recipe().uuid, reason))?;
         let mut symbols = BTreeMap::new();
         let mut public_names = BTreeMap::new();
         for (id, library) in &libraries {

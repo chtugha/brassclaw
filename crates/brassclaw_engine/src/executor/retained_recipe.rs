@@ -369,7 +369,9 @@ pub struct RetainedRecipeExecution {
     observations: BTreeMap<String, RetainedStepObservation>,
     observation_order: Vec<String>,
     observe_behavior: bool,
-    loaded_exports: BTreeMap<String, uuid::Uuid>,
+    /// Completed prefix of the immutable dependency-first library selection.
+    /// Advance only after the worker acknowledges an effect-free preload.
+    preloaded: usize,
     transport_failure: Option<RetainedTransportEvidence>,
 }
 impl RetainedRecipeExecution {
@@ -433,7 +435,7 @@ impl RetainedRecipeExecution {
             observations: BTreeMap::new(),
             observation_order: Vec::new(),
             observe_behavior,
-            loaded_exports: BTreeMap::new(),
+            preloaded: 0,
             transport_failure: None,
         })
     }
@@ -639,11 +641,12 @@ impl RetainedRecipeExecution {
             );
         }
         let result = async {
-            let order = self.source_checks.preload_order().to_vec();
-            for id in order {
-                if self.loaded_exports.values().any(|loaded| *loaded == id) {
-                    continue;
-                }
+            while let Some(id) = self
+                .source_checks
+                .preload_order()
+                .get(self.preloaded)
+                .copied()
+            {
                 let source = selected.inputs().instruction().snapshot().revisions()[&id]
                     .draft()
                     .document()["content"]
@@ -665,7 +668,7 @@ impl RetainedRecipeExecution {
                     StepFeedMode::Preload,
                 )
                 .await?;
-                self.loaded_exports.insert(id.to_string(), id);
+                self.preloaded += 1;
             }
             self.feed(
                 transport,

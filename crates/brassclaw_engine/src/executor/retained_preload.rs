@@ -175,6 +175,47 @@ impl PreloadDeclaration {
     }
 }
 
+/// Dependency-first order with the smallest stable UUID chosen at each ready
+/// frontier. The complete graph is checked before any definitions are loaded.
+pub(crate) fn dependency_order(
+    libraries: &BTreeMap<Uuid, PreloadDeclaration>,
+) -> Result<Vec<Uuid>, &'static str> {
+    let mut remaining = BTreeMap::new();
+    let mut dependents: BTreeMap<Uuid, Vec<Uuid>> = BTreeMap::new();
+    let mut ready = BTreeSet::new();
+    for (id, library) in libraries {
+        remaining.insert(*id, library.dependencies.len());
+        if library.dependencies.is_empty() {
+            ready.insert(*id);
+        }
+        for dependency in &library.dependencies {
+            if !libraries.contains_key(dependency) {
+                return Err("preload dependency must be a qualified retained library");
+            }
+            dependents.entry(*dependency).or_default().push(*id);
+        }
+    }
+    let mut order = Vec::with_capacity(libraries.len());
+    while let Some(id) = ready.pop_first() {
+        order.push(id);
+        if let Some(children) = dependents.remove(&id) {
+            for child in children {
+                let count = remaining
+                    .get_mut(&child)
+                    .expect("dependent belongs to the checked graph");
+                *count -= 1;
+                if *count == 0 {
+                    ready.insert(child);
+                }
+            }
+        }
+    }
+    if order.len() != libraries.len() {
+        return Err("preload dependency cycle");
+    }
+    Ok(order)
+}
+
 /// Only pinned declarations and the interpreter's qualified pure builtins may
 /// satisfy free symbols. Imports are validated independently by source inspection.
 pub fn builtin(name: &str) -> bool {
@@ -231,4 +272,74 @@ pub fn builtin(name: &str) -> bool {
             | "ZeroDivisionError"
             | "StopIteration"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn declaration(dependencies: &[u128]) -> PreloadDeclaration {
+        PreloadDeclaration {
+            format: "python-preload/2".into(),
+            exports: BTreeMap::new(),
+            private_functions: BTreeMap::new(),
+            constants: Vec::new(),
+            imports: Vec::new(),
+            dependencies: dependencies.iter().copied().map(Uuid::from_u128).collect(),
+            default_export: None,
+        }
+    }
+
+    #[test]
+    fn ready_frontier_uses_stable_uuid_and_loads_shared_dependencies_once() {
+        let libraries = BTreeMap::from([
+            (Uuid::from_u128(1), declaration(&[3])),
+            (Uuid::from_u128(2), declaration(&[3])),
+            (Uuid::from_u128(3), declaration(&[5])),
+            (Uuid::from_u128(4), declaration(&[])),
+            (Uuid::from_u128(5), declaration(&[])),
+            (Uuid::from_u128(6), declaration(&[])),
+        ]);
+        // A newly released smaller UUID precedes other ready nodes. Sorting
+        // graph levels or insertion order instead would change this contract.
+        assert_eq!(
+            dependency_order(&libraries).unwrap(),
+            [4, 5, 3, 1, 2, 6].map(Uuid::from_u128)
+        );
+        assert!(dependency_order(&BTreeMap::new()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn incomplete_graph_and_cycles_never_return_a_partial_load_order() {
+        let mut libraries = BTreeMap::from([
+            (Uuid::from_u128(1), declaration(&[2])),
+            (Uuid::from_u128(2), declaration(&[1])),
+            (Uuid::from_u128(3), declaration(&[])),
+        ]);
+        assert_eq!(
+            dependency_order(&libraries),
+            Err("preload dependency cycle")
+        );
+        libraries.remove(&Uuid::from_u128(2));
+        assert_eq!(
+            dependency_order(&libraries),
+            Err("preload dependency must be a qualified retained library")
+        );
+        libraries.insert(Uuid::from_u128(1), declaration(&[1]));
+        assert_eq!(
+            dependency_order(&libraries),
+            Err("preload dependency cycle")
+        );
+    }
+
+    #[test]
+    fn deep_dependency_chain_uses_no_recursive_stack_walk() {
+        let count = 4096_u128;
+        let mut libraries: BTreeMap<_, _> = (1..count)
+            .map(|id| (Uuid::from_u128(id), declaration(&[id + 1])))
+            .collect();
+        libraries.insert(Uuid::from_u128(count), declaration(&[]));
+        let expected: Vec<_> = (1..=count).rev().map(Uuid::from_u128).collect();
+        assert_eq!(dependency_order(&libraries).unwrap(), expected);
+    }
 }

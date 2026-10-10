@@ -6048,3 +6048,74 @@ and serial validation commands: `/private/tmp/brassclaw-ci-repair-*` and
 this snapshot and must retain its independent acceptance. Full dependency-chain
 compiler sharing, authored activation, complete prefix/provider sources, durable
 fatal recovery and the other remaining plan gates are still open.
+
+### 2026-10-10 — Preload assembly and Engine caller repair (local acceptance)
+
+The CI caller repairs were pushed as `fd909c17032f41577388a9f54b461d2d427e1852`.
+[GitHub run 38080007851](https://github.com/chtugha/brassclaw/actions/runs/38080007851)
+passed its Monty upgrade gate. Its contained Ubuntu job then exposed a separate
+Engine integration-test dependency error: `retained_inputs.rs` references the
+actual host API's adapter-reserve constant without a direct dev dependency.
+The candidate adds that dependency and the root lockfile edge; it changes no
+production Tool or workflow. The contained workspace consumes Engine as a
+dependency and does not include Engine's dev-dependency edges in its lockfile.
+
+Preload assembly now uses a dependency queue with a stable-UUID ready frontier,
+checking the whole closure before returning an order. Shared dependencies load
+once; missing nodes and cycles return errors, never a partial accepted order.
+This replaces repeated remaining-node and loaded-order scans with
+`O((V + E) log V)` graph work. The executor retains the acknowledged prefix
+length of its immutable preload order instead of allocating an order copy and
+scanning a loaded-ID map on every step. The cursor advances only after an actual
+successful effect-free preload. A dropped/failed feed retains existing execution
+fencing; children have their own cursor and typed state. No selection, approval,
+Tool binding, dispatch or retry rule changes.
+
+Candidate checks cover stable frontier ordering, shared dependencies, missing
+nodes, self/multi-node cycles and a 4,096-node nonrecursive chain. The existing
+real PostgreSQL/IBS/global-worker/kernel regression admits exactly four feeds:
+two definitions and two usage occurrences. Reloading definitions on the second
+occurrence would fail its real budget rather than go unnoticed. The actual
+Engine `retained_inputs` integration target is included alongside those focused
+checks and strict affected Engine/caller linting. All three graph unit cases,
+all four real Engine integration cases, all five contained retained-execution
+cases and both strict affected lints passed. The screen batch held
+`/private/tmp/brassclaw-shared-cargo.lock` throughout and verified all 9,027
+source hashes before and after each check. Actual executable images were
+protected on compiler-artifact events. The frozen candidate excludes peers'
+authored activation and post-turn reconciliation work. Sources/commands:
+`target/validation/preload-assembly-20261010-r2` and
+`/private/tmp/brassclaw-preload-assembly-r2-*`.
+
+The obsolete first queued wrapper survived closing its screen, later acquired
+the common lock and blocked the corrected batch. Exact process inspection found
+its wrapper/shell with no Cargo child. Approved termination retired only those
+obsolete processes; the corrected batch then acquired and released the lock.
+Do not treat closing a screen as proof that its detached descendants stopped.
+
+The same GitHub run independently found CLI MCP port collisions and PostgreSQL
+fallback diagnostics leaking into reply-only stdout. Those separate repairs and
+their real subprocess/lifecycle acceptance are pending. Native memory capacity
+passed on Linux, macOS and Windows, while a skipped full Windows build and the
+failed/cancelled product jobs do not establish whole-platform acceptance.
+
+Engine AGENTS/CLAUDE/MONTY routing now identifies the vendored Monty 1.0 control
+source, global service and typed retained path. Old v0.0.16 language observations
+are explicitly historical; the deleted per-chat driver, plain-text substitution,
+error-to-Tier-2 fallback and fixed allocation-count limit are not current targets.
+This documentation correction supplies no runtime acceptance.
+
+**Next resource reconciliation, identified from actual source:** the current
+child `TaskControl` inherits the interpreter control trait's combined execution/
+preparation clock. `RootControl` separately observes preparation but still debits
+it to the task compute account. Constructor preparation and Rust value adapters
+also debit that account. Reconcile these callers with Phase 3a's executing-VM-time
+contract and validator_v3.md section 7.7 before accepting complete compiler reuse:
+retain preparation/adaptation observations separately in the shared account,
+keep non-overlapping execution cursors and their live revision/latched failures,
+and preserve independent source/heap/value/transport/cancellation limits. Trace
+all root, child, constructor and conversion callers; validate actual interpreter
+observations and settings changes, not only manually incremented counters.
+No clock/resource behavior has been changed or accepted by this preload candidate.
+Complete dependency-chain compiler sharing, general catalogue activation, prefix/
+provider/recovery and full-platform acceptance remain open.

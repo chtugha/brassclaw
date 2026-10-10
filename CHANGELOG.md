@@ -39,6 +39,9 @@ remain in progress.
 
 ### Changed
 
+- Order qualified preload dependencies with a stable UUID frontier and retain
+  the acknowledged definition cursor, avoiding repeated graph and per-step scans
+  while preserving task isolation and failure fencing.
 - Inbound MCP discovery follows the retained Recipe catalogue and normal-chat
   command contract. Remove the former direct execution path and document the
   remaining listener/provider and public population integration work.
@@ -59,6 +62,8 @@ remain in progress.
 
 ### Fixed
 
+- Declare the Engine typed-input integration target's direct host-API dependency;
+  verify its actual PostgreSQL/global-worker callers and affected strict lints.
 - Restore the isolated Monty harness build by retaining request-local provider
   ownership through a private lifecycle port and declaring its direct runtime
   dependency. MCP cancellation and settlement still disconnect the same exchange.

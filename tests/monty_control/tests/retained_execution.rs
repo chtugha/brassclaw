@@ -344,6 +344,9 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         // This validation entry has one coroutine/initial work wait. The
         // production helper's normal entry creates its configured worker set.
         boot.bounds.workers = 1;
+        // Exactly two library definitions and two usage occurrences fit. The
+        // second usage must reuse the retained definitions, without reloading.
+        boot.bounds.values.max_feeds = 4;
         boot.aliases.insert("validation_result".into());
         let (mut owner, ready) = TransportOwner::start(
             support::worker(),
