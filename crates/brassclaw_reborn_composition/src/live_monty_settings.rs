@@ -134,6 +134,8 @@ impl MontySettingsOwner {
                 )
             || task_settings(&initial) != TaskSettings::from(service.live_task_settings().current())
             || execution_bounds(initial.execution_limits)? != service.vm_bounds()
+            || ipc_frame(initial.execution_limits)?
+                != service.worker_memory_status().frame.configured_frame_bytes
             || adapter_reserve(initial.execution_limits)?
                 != service.allocator_status().adapter_reserve_bytes
             || initial.execution_limits.max_recipe_contexts
@@ -320,6 +322,19 @@ pub(crate) fn adapter_reserve(limits: MontyExecutionLimits) -> Result<usize, Mon
         MontyVmSettingsError::Invalid("adapter reserve exceeds native representation".into())
     })
 }
+
+pub(crate) fn ipc_frame(limits: MontyExecutionLimits) -> Result<usize, MontyVmSettingsError> {
+    usize::try_from(limits.max_ipc_frame_bytes)
+        .ok()
+        .filter(|frame| {
+            *frame > 0 && *frame <= isize::MAX as usize && u32::try_from(*frame).is_ok()
+        })
+        .ok_or_else(|| {
+            MontyVmSettingsError::Invalid(
+                "IPC frame exceeds finite native/wire representation".into(),
+            )
+        })
+}
 pub(crate) fn admission_limits(
     limits: MontyExecutionLimits,
 ) -> Result<AdmissionLimits, MontyVmSettingsError> {
@@ -372,7 +387,7 @@ pub(crate) fn hosting_deadlines(
 }
 
 fn observed_limits(
-    resources: (VmBounds, brassclaw_monty_host::heap::AllocatorStatus),
+    resources: (VmBounds, brassclaw_monty_host::heap::WorkerMemoryStatus),
     max_recipe_contexts: u32,
     admission: AdmissionLimits,
     max_pending_settings: u32,
@@ -384,9 +399,11 @@ fn observed_limits(
         crate::global_monty_owner::OwnershipLimits,
     ),
 ) -> MontyExecutionLimits {
-    let (bounds, allocator) = resources;
+    let (bounds, memory) = resources;
+    let allocator = memory.allocator;
     let (deadlines, settings_deadlines, ownership) = deadlines;
     MontyExecutionLimits {
+        max_ipc_frame_bytes: memory.frame.configured_frame_bytes as u64,
         worker_adapter_reserve_bytes: allocator.adapter_reserve_bytes as u64,
         max_recipe_contexts,
         max_queued_tasks: admission.max_tasks,
@@ -516,18 +533,20 @@ impl LiveMontySettingsStore {
             .map_err(|_| (revision, "invalid_execution_limits"))?;
         let reserve = adapter_reserve(desired.execution_limits)
             .map_err(|_| (revision, "invalid_adapter_reserve"))?;
+        let frame =
+            ipc_frame(desired.execution_limits).map_err(|_| (revision, "invalid_ipc_frame"))?;
         self.service
             .validate_adapter_reserve(reserve)
             .map_err(|_| (revision, "unsupported_adapter_reserve"))?;
         let hosting = hosting_deadlines(desired.execution_limits)
             .map_err(|_| (revision, "invalid_hosting_deadlines"))?;
         self.service
-            .validate_runtime_bounds(values, hosting.response_timeout)
+            .validate_runtime_bounds_for_frame(values, hosting.response_timeout, frame)
             .map_err(|_| (revision, "unsupported_execution_limits"))?;
         let actor = actor_limits(desired.execution_limits)
             .map_err(|_| (revision, "invalid_actor_limits"))?;
         self.service
-            .validate_actor_limits(actor)
+            .validate_actor_limits_for_frame(actor, frame)
             .map_err(|_| (revision, "unsupported_actor_limits"))?;
         if desired.revision < effective.revision {
             return Err((revision, "settings_revision_regressed"));
@@ -540,6 +559,12 @@ impl LiveMontySettingsStore {
                     .map_err(|_| (revision, "hosting_accounting_unavailable"))?
                 || task_settings(&desired) != TaskSettings::from(effective)
                 || values != self.service.vm_bounds()
+                || frame
+                    != self
+                        .service
+                        .worker_memory_status()
+                        .frame
+                        .configured_frame_bytes
                 || reserve != self.service.allocator_status().adapter_reserve_bytes
                 || desired.execution_limits.max_recipe_contexts
                     != self.service.recipe_context_capacity().limit
@@ -576,6 +601,7 @@ impl LiveMontySettingsStore {
                     values,
                     desired.execution_limits.max_recipe_contexts,
                     brassclaw_monty_host::service::ServiceHostingLimits {
+                        max_frame_bytes: Some(frame),
                         adapter_reserve_bytes: Some(reserve),
                         admission: admission_limits(desired.execution_limits)
                             .map_err(|_| (revision, "invalid_admission_limits"))?,
@@ -825,11 +851,12 @@ impl LiveMontySettingsStore {
         let admission = self.service.admission_observation();
         let settings_capacity = self.service.settings_capacity();
         let retained_attempts = self.service.retained_attempts();
-        let allocator = self.service.allocator_status();
+        let worker_memory = self.service.worker_memory_status();
+        let allocator = worker_memory.allocator;
         let hosting = actor.zip(deadlines).zip(ownership);
         let limits = hosting.map(|((actor, deadlines), ownership)| {
             observed_limits(
-                (self.service.vm_bounds(), allocator),
+                (self.service.vm_bounds(), worker_memory),
                 contexts.limit,
                 admission.limits,
                 settings_capacity.limit,
@@ -903,6 +930,13 @@ impl LiveMontySettingsStore {
             }),
             execution_limits: hosting.map(|((actor, _deadlines), ownership)| {
                 MontyExecutionLimitsStatus {
+                    configured_ipc_frame_bytes: worker_memory.frame.configured_frame_bytes as u64,
+                    required_ipc_frame_capacity_bytes: worker_memory.frame.required_capacity_bytes
+                        as u64,
+                    effective_ipc_frame_capacity_bytes: worker_memory.frame.effective_capacity_bytes
+                        as u64,
+                    max_retained_ipc_frame_bytes: actor.max_retained_frame_bytes as u64,
+                    ipc_frame_capacity_pending_reduction: worker_memory.frame.pending_reduction(),
                     worker_memory_budget_bytes: allocator.memory_budget_bytes as u64,
                     worker_non_vm_reserve_bytes: allocator.non_vm_reserve_bytes as u64,
                     pending_ownership_checks: ownership.pending_checks,
@@ -1001,12 +1035,14 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
         if let Some(limits) = update.execution_limits {
             adapter_reserve(limits)?;
             admission_limits(limits)?;
-            self.service.validate_actor_limits(actor_limits(limits)?)
+            let frame = ipc_frame(limits)?;
+            self.service.validate_actor_limits_for_frame(actor_limits(limits)?, frame)
                 .map_err(|_| MontyVmSettingsError::Invalid("ordinary actor bytes must exceed one frame; control bytes must reserve a full request and response".into()))?;
             self.service
-                .validate_runtime_bounds(
+                .validate_runtime_bounds_for_frame(
                     execution_bounds(limits)?,
                     hosting_deadlines(limits)?.response_timeout,
+                    frame,
                 )
                 .map_err(|error| MontyVmSettingsError::Invalid(match error {
                     ServiceFailure::Backpressure => "VM slice must fit current and pending IPC deadlines; increase the response deadline first and let earlier exchanges finish".into(),
@@ -1129,6 +1165,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
             let settings = task_settings(&expected);
             let values = execution_bounds(limits)?;
             let hosting = brassclaw_monty_host::service::ServiceHostingLimits {
+                max_frame_bytes: Some(ipc_frame(limits)?),
                 adapter_reserve_bytes: Some(adapter_reserve(limits)?),
                 admission: admission_limits(limits)?,
                 max_pending_settings: limits.max_pending_settings,

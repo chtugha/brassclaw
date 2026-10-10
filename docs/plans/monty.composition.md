@@ -1444,6 +1444,12 @@ new MCP service.
 
 ### Remaining implementation steps — required before enabling inbound MCP
 
+**Acceptance update (2026-10-10):** sections 27–34 implement and accept these
+steps for the qualified packaged public-reply workflow. The numbered list below
+records the original gates. General authored catalogue activation and additional
+component/command profiles remain governed by their separate implementation plans;
+this acceptance does not make raw Skill additions advertisable.
+
 1. Add catalogue-owned qualification/discovery of the available activated,
    approved MCP-call Skill execution Recipes from one coherent generation.
    Persist exact command/variable/formatting/result contracts and their reviewed
@@ -1883,7 +1889,7 @@ formatting and `git diff --check` passed. Evidence covers the packaged public
 reply qualification path; it does not claim deployed-instance qualification,
 MCP `tools/call` chat transport or Kohai provider-window acceptance.
 
-## 34. Ordinary MCP chat transport and instance listener (in progress)
+## 34. Ordinary MCP chat transport and instance listener
 
 The transport now has a runtime-owned ordinary-chat bridge. An authenticated
 provider exchange pins its qualified advertising snapshot and receives a fresh
@@ -1911,7 +1917,8 @@ connects after final prefix preparation and proxies the advertised Recipe comman
 through actual MCP HTTP using the existing provider function-call gateway. The
 Python root owns intermediate Tool-call sequencing. Final answers disconnect the
 exchange; cancellation/fencing/shutdown revoke its exact lease. This is not a
-provider-native remote-MCP SDK claim. Real provider acceptance remains in progress.
+provider-native remote-MCP SDK claim. The real provider round trip is accepted
+as recorded below, together with the separate instance-listener check.
 
 The extended real PostgreSQL/retained-worker/global-Monty regression passed in
 215.71 seconds. It exercised ordinary correlated submission/replay, changed-input
@@ -1950,5 +1957,49 @@ seconds before the final recovery/scheduling additions. A later check passed in
 61 seconds but reported a dependency dead-code warning from a concurrent Monty
 transaction change; it does not certify later edits. The first real vLLM/HTTP test
 failed at the 180-second caller timeout, exposing the scheduling defect above.
-Final acceptance must rerun that actual path, recovery/isolation and affected
-architecture/lint checks. No completed-provider acceptance is claimed here yet.
+The corrected real vLLM/HTTP regression passed in 192.07 seconds through
+`runtime::tests::native_mcp_provider_ordinary_chat_round_trip`, with the actual
+OpenAI-compatible provider loaded from PostgreSQL and the endpoint documented in
+LOCAL_TEST_ENV.md. It observed a parent No-Match prompt, actual provider function
+call, authenticated MCP HTTP request, separate ordinary child chat, normal Match,
+pinned Recipe execution, exact returned literal, preserved message references and
+phase-3 closure, followed by the model's final answer and durable provider
+disconnect while the socket remained live. The same regression also exercised
+restart recovery, same-request reconnect, exchange isolation, request-scoped
+cancellation, unknown-send containment and no replay. This is local native
+acceptance, not a claim of remote deployment or provider-native MCP support. A final
+compatible worker/composition-test rebuild passed the same complete regression
+in 234.81 seconds after concurrent Monty transport changes. A preceding rebuild
+failed on a concurrent mutex-guard-across-await error; the shared correction
+released the guard before asynchronous termination. The failed build is not
+acceptance evidence. Both passing runs used retained captured executables and
+RUST_MIN_STACK=16777216 for the test thread.
+
+Acceptance also found the provider adapter synthesizing a bearer credential for
+an endpoint configured without an API key. The transport now omits that generated
+Authorization header while preserving explicitly configured authentication. Its
+real TCP regression passed (0.28 seconds). Packaged worker copying now belongs
+to host_runtime's bounded, private artifact owner; it does not establish running
+image identity or bootstrap approval by itself. The retained-copy regression
+passed (0.02 seconds), and all 27 architecture checks passed (0.33 seconds),
+including rejection of unrelated filesystem reads.
+
+Final affected-package strict Clippy passed in 52.01 seconds for llm,
+host_runtime, reborn, loop_support, threads, composition, webui_ingress and CLI
+(their library/binary targets, composition and ingress skills-db, --no-deps,
+-D warnings). No warning suppression was added. The real instance-listener
+test passed in 60.75 seconds through
+`brassclaw_reborn_webui_ingress/tests/inbound_mcp_native.rs` with a captured
+compatible host/worker pair, actual PostgreSQL, actual global Monty and the
+production `InboundMcpListener`. It verified startup readiness, empty-to-qualified
+publication after the declared ordinary command cases, actual HTTP initialization,
+listing and call, the literal result, provider-only credential revocation while
+the listener continued serving, and instance-owned shutdown/status. Earlier
+shared-target deletion and mismatched-worker attempts established no acceptance.
+
+These results complete the supported packaged reply profile's qualification,
+ordinary-chat MCP serving and Kohai/provider-window acceptance. They do not mark
+the full component conversion plan, general authored activation, provider-native
+remote MCP integration or remote product deployment complete. Catalogue changes
+continue to require the supported coherent activation/qualification owner; no raw
+Skill insertion is advertised.

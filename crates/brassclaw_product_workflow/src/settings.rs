@@ -427,6 +427,11 @@ pub struct MontyMemoryBudgetStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyExecutionLimitsStatus {
+    pub configured_ipc_frame_bytes: u64,
+    pub required_ipc_frame_capacity_bytes: u64,
+    pub effective_ipc_frame_capacity_bytes: u64,
+    pub max_retained_ipc_frame_bytes: u64,
+    pub ipc_frame_capacity_pending_reduction: bool,
     /// Acknowledged budget above the worker allocator baseline; not RSS.
     pub worker_memory_budget_bytes: u64,
     /// Two transport frames plus configured adapter/exception headroom.

@@ -348,7 +348,7 @@ impl TurnRunTransitionPort for MockTransitionPort {
 struct MockMontyDriver {
     drive_result: Mutex<Result<LoopExit, AgentLoopDriverError>>,
     drive_delay: Duration,
-    stop_delay: Duration,
+    stop_error: Option<AgentLoopDriverError>,
     drive_requests: Mutex<Vec<AgentLoopDriverRunRequest>>,
     drive_attempts: Mutex<Vec<brassclaw_turns::run_profile::MontyTaskAttempt>>,
     stop_attempts: Mutex<Vec<brassclaw_turns::run_profile::MontyTaskAttempt>>,
@@ -359,7 +359,7 @@ impl MockMontyDriver {
         Self {
             drive_result: Mutex::new(Ok(test_completed_exit())),
             drive_delay: Duration::ZERO,
-            stop_delay: Duration::ZERO,
+            stop_error: None,
             drive_requests: Mutex::new(Vec::new()),
             drive_attempts: Mutex::new(Vec::new()),
             stop_attempts: Mutex::new(Vec::new()),
@@ -370,7 +370,7 @@ impl MockMontyDriver {
         Self {
             drive_result: Mutex::new(Err(error)),
             drive_delay: Duration::ZERO,
-            stop_delay: Duration::ZERO,
+            stop_error: None,
             drive_requests: Mutex::new(Vec::new()),
             drive_attempts: Mutex::new(Vec::new()),
             stop_attempts: Mutex::new(Vec::new()),
@@ -404,8 +404,10 @@ impl MontyTurnDriverPort for MockMontyDriver {
         // This test adapter owns no independent service task: its drive future
         // is already dropped by the worker before this notification.
         self.stop_attempts.lock().expect("lock").push(attempt);
-        tokio::time::sleep(self.stop_delay).await;
-        Ok(())
+        match &self.stop_error {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
     }
 }
 
@@ -997,7 +999,7 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
 }
 
 #[tokio::test]
-async fn worker_cancellation_relinquishes_run() {
+async fn worker_cancellation_does_not_requeue_interrupted_run() {
     let desc = test_descriptor();
     let monty = Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
@@ -1033,22 +1035,10 @@ async fn worker_cancellation_relinquishes_run() {
         panic!("worker cancellation should stop active driver promptly");
     }
     result.unwrap().expect("worker task should complete");
-    // WorkerCancelled routes through relinquish_run (re-queue) rather than
-    // record_runner_failure (terminal), so the run stays available for retry.
-    assert!(
-        port.calls().contains(&TransitionCall::Relinquish),
-        "WorkerCancelled should relinquish the run, not terminate it"
-    );
-    assert!(!port.calls().contains(&TransitionCall::RecordRunnerFailure));
-    let claim_requests = port.claim_requests.lock().expect("lock");
-    let relinquish_requests = port.relinquish_requests.lock().expect("lock");
-    let claim = claim_requests.first().expect("claim should be issued");
-    let relinquish = relinquish_requests
-        .first()
-        .expect("relinquish should be issued");
-    assert_eq!(relinquish.run_id, run_id);
-    assert_eq!(relinquish.runner_id, claim.runner_id);
-    assert_eq!(relinquish.lease_token, claim.lease_token);
+    assert!(!port.calls().contains(&TransitionCall::Relinquish));
+    assert!(port.calls().contains(&TransitionCall::RecordRunnerFailure));
+    assert_first_terminal_failure_matches_first_claim(&port, run_id);
+    assert_eq!(first_terminal_failure_category(&port), "worker_cancelled");
 }
 
 #[tokio::test]
@@ -1456,12 +1446,14 @@ fn sanitized_driver_failure_returns_driver_failed_for_unknown_category() {
 }
 
 #[tokio::test]
-async fn cancellation_ack_timeout_stops_new_worker_claims() {
+async fn cancellation_ack_failure_stops_new_worker_claims() {
     let desc = test_descriptor();
     let mut driver = MockMontyDriver::failing(AgentLoopDriverError::Failed {
         reason_kind: "test_failure".into(),
     });
-    driver.stop_delay = MONTY_STOP_ACK_TIMEOUT * 2;
+    driver.stop_error = Some(AgentLoopDriverError::Unavailable {
+        reason: "Monty attempt did not acknowledge settlement before deadline".into(),
+    });
     let driver = Arc::new(driver);
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
@@ -1476,12 +1468,9 @@ async fn cancellation_ack_timeout_stops_new_worker_claims() {
     )
     .with_monty_driver(driver.clone());
     let cancel = CancellationToken::new();
-    tokio::time::timeout(
-        MONTY_STOP_ACK_TIMEOUT + Duration::from_secs(2),
-        worker.run(cancel.clone()),
-    )
-    .await
-    .expect("worker must stop after failed cancellation");
+    tokio::time::timeout(Duration::from_secs(2), worker.run(cancel.clone()))
+        .await
+        .expect("worker must stop after failed cancellation");
     assert!(cancel.is_cancelled());
     assert_eq!(driver.drive_requests.lock().expect("lock").len(), 1);
     assert_eq!(driver.stop_attempts.lock().expect("lock").len(), 1);

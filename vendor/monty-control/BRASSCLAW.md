@@ -163,3 +163,20 @@ configured frame. This is not a reservation or a durable settings transaction.
 The transport owner must retain the quiescent boundary through persistence and
 publication; full live frame uptake and queued-exchange retention remain open.
 Dump ABI stays `0xBC05`; the process protocol and interpreter dump are separate.
+
+`PreparedReplSeed` compiles a first feed against pristine compiler tables.
+Compatible empty child contexts copy those tables while sharing immutable module
+and function bytecode. Each context supplies its own heap, globals, inputs,
+host receiver, execution control and OS environment. Existing contexts reject
+seed insertion; later feeds compile against their retained namespace. No task
+values or continuation state belong to a seed. Seed loading accounts table
+copying and input preparation to the current task before execution.
+
+The worker caches these source-and-alias selections weakly, rechecking actual
+source integrity and live source bounds on every lookup. Active child contexts
+retain their first seed; closing the contexts permits its reclamation. This is
+first-feed reuse, not complete dependency-chain or catalogue-prefix compilation.
+Function bytecode's `Arc` serialization preserves the existing Code payload;
+neither the dump ABI nor the worker protocol changes. Interpreter, worker and
+ordinary product acceptance must establish isolation and retained selections
+before claiming this optimization is accepted.

@@ -19,6 +19,7 @@ import {
 } from "../lib/settings-api.js";
 
 const EXECUTION_FIELDS = [
+  "max_ipc_frame_bytes",
   "worker_adapter_reserve_bytes",
   "max_recipe_contexts", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
   "max_actor_requests", "max_actor_reserved_bytes", "max_actor_control_requests", "max_actor_control_reserved_bytes",
@@ -31,6 +32,8 @@ const EXECUTION_FIELDS = [
 ];
 const pendingSettings = (status, desiredRevision) => status.state === "running" &&
   ((Number.isSafeInteger(desiredRevision) && status.task_budget?.desired_revision < desiredRevision) ||
+    status.execution_limits?.ipc_frame_capacity_pending_reduction === true ||
+    status.execution_limits?.effective_ipc_frame_capacity_bytes > status.execution_limits?.configured_ipc_frame_bytes ||
     status.execution_limits?.recipe_contexts_over_capacity === true ||
     status.execution_limits?.queue_over_capacity === true ||
     status.execution_limits?.settings_over_capacity === true ||
@@ -172,13 +175,18 @@ export function MontyVmTab({ searchQuery = "" }) {
         if (String(settings.execution_limits?.[key] ?? "").trim() === "") throw new Error(t("montyVm.executionLimitsInvalid"));
         const value = Number(settings.execution_limits?.[key]);
         if (!Number.isSafeInteger(value) || value < (key === "worker_adapter_reserve_bytes" ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
-        if (["max_recipe_contexts", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (["max_ipc_frame_bytes", "max_recipe_contexts", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (key === "status_poll_interval_millis" && value > 2147483647) throw new Error(t("montyVm.statusPollInvalid"));
         executionLimits[key] = value;
       }
       if (executionLimits.response_timeout_millis < executionLimits.startup_timeout_millis ||
           executionLimits.execution_slice_millis >= executionLimits.response_timeout_millis) {
         throw new Error(t("montyVm.hostingDeadlinesInvalid"));
+      }
+      const frame = executionLimits.max_ipc_frame_bytes;
+      if (["max_source_bytes", "max_stdout_bytes", "max_value_bytes"].some((key) => executionLimits[key] > frame) ||
+          executionLimits.max_actor_reserved_bytes <= frame || executionLimits.max_actor_control_reserved_bytes < 2 * frame) {
+        throw new Error(t("montyVm.framePolicyInvalid"));
       }
       const memory = Number(settings.max_memory_bytes);
       const policy = { ...settings.memory_policy };
@@ -342,6 +350,11 @@ function StatusCard({ status, isPolling, t }) {
         ${status.execution_limits && html`
           <div className="text-sm text-[var(--v2-text-muted)]">
             ${t("montyVm.executionLimitsTitle")}
+            · ${t("montyVm.execution.max_ipc_frame_bytes")}: ${status.execution_limits.configured_ipc_frame_bytes}
+            · ${t("montyVm.requiredFrameCapacity")}: ${status.execution_limits.required_ipc_frame_capacity_bytes}
+            · ${t("montyVm.effectiveFrameCapacity")}: ${status.execution_limits.effective_ipc_frame_capacity_bytes}
+            · ${t("montyVm.retainedFrameBound")}: ${status.execution_limits.max_retained_ipc_frame_bytes}
+            ${status.execution_limits.effective_ipc_frame_capacity_bytes > status.execution_limits.configured_ipc_frame_bytes && html`<span> · ${t("montyVm.frameCapacityDraining")}</span>`}
             · ${t("montyVm.workerMemoryBudget")}: ${(status.execution_limits.worker_memory_budget_bytes / 1048576).toFixed(2)} MiB
             · ${t("montyVm.workerNonVmReserve")}: ${(status.execution_limits.worker_non_vm_reserve_bytes / 1048576).toFixed(2)} MiB
             · ${t("montyVm.execution.worker_adapter_reserve_bytes")}: ${status.execution_limits.limits.worker_adapter_reserve_bytes}

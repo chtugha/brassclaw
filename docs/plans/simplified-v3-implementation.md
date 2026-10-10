@@ -5578,3 +5578,389 @@ bounds, retained task usage/identity/effect evidence, full settings revision
 publication and actual final capacity release. Shared MCP, authored activation/
 preload caching, durable recovery, DB-only providers, release/platform performance
 and full-plan acceptance remain open.
+
+### 2026-10-10 — Shared frame requirements and retained-credit accounting
+
+Service and transport clients now read one shared frame-policy source instead of
+copying a scalar into each clone. The existing actor ledger counts every accepted
+frame bound in an ordered map across both lanes. Completion preserves the bound;
+collecting a receipt refunds its count and credits together. The maximum changes
+only when the last receipt retaining that bound is collected. Failed enqueue
+refunds use the same checked accounting path and retain evidence on accounting
+failure. A read-only watch exposes configured and maximum retained bounds without
+polling, rescanning VM memory or retaining service ownership. These requirements
+are distinct from acknowledged native worker allocator capacity.
+
+All 39 actual worker actor/service cases passed, including duplicate maximum
+bounds, abandoned tickets, completed unclaimed receipts, exact credit refunds,
+change notifications and unchanged root identity. Strict composition-library
+Clippy with `skills-db,libsql`, `--locked` and `-D warnings` passed. All 12 archived
+relevant source/manifest/lock files remained unchanged through validation. Exact
+source/diff, commands and logs:
+`/private/tmp/brassclaw-frame-requirements-accepted-20261010`.
+
+This closes the shared parent-side source and retained-credit accounting
+prerequisites. Production still configures a 64 MiB frame at startup; no live
+worker-capacity acknowledgment or API/WebUI frame setting is claimed. Worker
+protocol 11 and process/utility code are unchanged, so their previous acceptance
+remains the baseline rather than a newly executed CLI/PostgreSQL check. Continue
+the complete live-frame candidate, allocator/capacity publication and retained-work
+acceptance above; the full plan remains unfinished.
+
+### 2026-10-10 — Acknowledged frame capacity and release after receipt collection
+
+Private protocol 12 now reports configured frame policy, required retained
+capacity and actual effective capacity separately. The complete mechanical
+runtime candidate can couple a frame change with heap, adapter, values, duration
+and context changes. Its nonmutating worker probe validates finite native/wire
+representation, proposed value/source/stdout bounds, allocator feasibility and
+capacity for its own retained exchange. Publication updates framing and allocator
+geometry synchronously; request decoding follows effective capacity and each
+reply keeps its accepted bound. The parent validates acknowledged geometry using
+effective capacity, rather than its obsolete startup frame scalar. Mixed protocol
+images fail closed; host and worker must be packaged together.
+
+The actor checks frame candidates against all credited older bounds, publishes
+new configured policy to every clone only after worker/Rust acknowledgment and
+retains old receipts without changing their bounds or deadlines. The last credit
+refund wakes the sole owner to request capacity release. This mechanical RPC
+advances no Python and preserves settings/heap revisions and task consumption.
+Unsafe physical reductions remain explicitly pending, retaining effective
+capacity; later ordinary safe boundaries can reconcile them. Frame debt alone
+does not pause admission. One shared observation publishes frame status and
+allocator geometry together, without OS pressure polling or page reclamation.
+
+All 72 actual worker cases passed (20 process, 15 actor, 25 service, 12 utility).
+New regressions cover growth past startup capacity with a real larger task,
+unchanged task compute consumption and VM identity, old exchange bounds after
+reduction, duplicate abandoned receipts, denied premature release and automatic
+capacity release after the final refund. Strict Clippy initially required a
+match guard; it was corrected without suppression. The affected 15 actor cases
+were rerun; the unchanged 57 cases remain applicable. Both final strict host
+`--all-targets` and composition `skills-db,libsql` library Clippy checks passed.
+The serial validation guard waited for the other active Cargo build.
+
+A paired native CLI/default-features and protocol-12 worker passed fresh ordinary
+PostgreSQL V133/authenticated API acceptance for the existing settings path:
+combined heap/reserve/duration growth and reduction, rejected durable writes with
+unchanged runtime/allocator state, retained source/IPC deadlines, exact SQL
+revision confirmation, stale rejection and unchanged child PIDs. The 1.25-second
+SQL delay was deliberately injected for deadline acceptance. Shutdown exited 0
+in 0.148 seconds with closed ports. Only the explicitly required DB rejection
+error occurred. All 2,235 archived native source files stayed fixed; verified
+paired images, sources/diffs, commands and failed/passing logs are retained at:
+`/private/tmp/brassclaw-frame-capacity-accepted-20261010`.
+
+**Continue the product integration before claiming live frame settings:** add
+`execution_limits.max_ipc_frame_bytes` with a finite 64 MiB default to the neutral
+settings DTO, compatibility decode, strict complete API object and migration.
+Preserve explicit values and advance each affected durable revision once. Replace
+the startup constant, extend the service's complete hosting candidate and publish
+frame/actor/deadline changes coherently at the existing durable barrier. Construct
+required capacity from the configured successor, the edit's retained exchange
+and every older credit; validate actual future control/receipt serialization and
+root source before persistence, without a guessed fixed minimum. Existing
+callback checks against the old frame must be revised for the complete proposed
+frame/actor combination rather than forcing separate operator edits.
+
+Expose desired/effective configured policy, retained requirements, effective
+capacity and pending physical release in API/WebUI. Native WebUI acceptance must
+exercise growth above 64 MiB, reduction with older in-flight/unclaimed work,
+correct old/new contracts, effect evidence, task usage and final capacity release
+in the same global VM. Current native acceptance covers ordinary startup and
+existing settings edits; the live frame field remains unwired and production
+still starts at 64 MiB. Shared immutable preload caching, authored activation,
+durable recovery, shared MCP/provider acceptance, DB-only providers,
+release/platform performance and full-plan acceptance remain open.
+
+### 2026-10-10 — Live product IPC frame policy and native WebUI acceptance
+
+The preceding product wiring gap is now implemented for
+`execution_limits.max_ipc_frame_bytes`. Its finite 64 MiB default remains a
+compatibility default, not a second transport ceiling. V134 preserves explicit
+stored values, increments only migrated rows once and rejects missing, null,
+noninteger, zero or out-of-wire-range values. The strict complete API object
+requires the new field; compatibility decoding of old stored rows supplies it.
+Startup reads the setting instead of a constant. Native size, source, value,
+clock, actor reservation and allocator constraints remain checked.
+
+The complete service candidate coordinates frame, actor, adapter, heap and task
+settings at the existing owned durable barrier. Acceptance captures frame and
+value contracts together under the actor ledger lock; serialization outside the
+lock must recheck both before admission. Older exchanges retain their original
+bounds/deadlines and require capacity until their last credit is refunded. A
+combined frame/actor edit is validated against the proposed pair; operators need
+not first publish an incompatible intermediate policy. A same-frame edit keeps
+an already pending physical release rather than forcing it early.
+
+Before persistence, the actual worker validates the serialized future control
+acknowledgement and subsequent inspect/reconcile commands against the proposed
+frame. It projects the actual root identity, waits, task accounting, revisions,
+context counts and allocator geometry, with conservative wire-width counters;
+this projection is never published as an observation. Pending automatic heap
+application is checked as an additional possible receipt. Temporary transport
+buffers leave the VM allocation domain and are dropped before publication. A
+rejected candidate cannot apply pending heap housekeeping. There is no guessed
+fixed minimum frame. The worker repeats validation before actual publication.
+The private protocol is 13; installation must ship the paired CLI/worker.
+
+API and WebUI expose configured policy, required capacity, effective capacity,
+largest retained exchange bound and pending physical reduction. The form sends
+a complete candidate, validates source/stdout/value and actor relationships, and
+continues status monitoring while an older bound still requires capacity.
+
+**Accepted locally:** 61 real subprocess/actor/service cases (15 actor, 21 process,
+25 service), two complete/strict API DTO cases and all 18 native PostgreSQL
+settings/migration cases pass. The service durable-write regression now couples
+8 MiB frame growth with actor/heap/reserve settings while a real file/child task
+waits; rejected writes preserve the old policy, an abandoned successful waiter
+still settles, reduction to 64 KiB releases capacity, and the next real file
+task completes in the same root. A 512-byte future control frame is rejected
+without changing worker settings, heap, allocator or identity. Strict host
+all-target and composition `skills-db,libsql` library lints pass with `-D warnings`.
+Changed frontend JavaScript syntax checks pass.
+
+A fresh ordinary local-dev CLI/embedded-PostgreSQL instance used the verified
+paired native binaries. An actual DB trigger rejected a complete frame/heap/
+reserve/duration edit without runtime publication. Successful growth 64→96 MiB,
+combined reduction 96→32 MiB and release of the edit's retained capacity kept the
+same child PIDs. Finite representation and actual root-source denials preserved
+the durable revision. In the actual browser, an incomplete 48 MiB frame candidate
+was rejected before a write; the complete frame/actor candidate saved once and
+showed the persisted and Rust/Monty-effective 48 MiB value. An independent SQL
+read confirmed the final settings, stale writes returned 409, shutdown returned
+zero and both private ports closed. Only the expected deliberate DB-rejection
+error occurred; no warning or connection error was silenced.
+
+The first native attempt's ten-minute browser window expired before browser
+authentication completed. Its failing evidence is retained. Only acceptance was
+rerun with the same verified images and a longer interaction window; compilation
+was not repeated. All 2,236 archived native sources stayed unchanged through the
+build and accepted rerun. Sources/diffs, commands, passing/failing logs, paired
+images, browser receipt and database/runtime receipts are retained at
+`/private/tmp/brassclaw-live-frame-product-accepted-20261010`.
+
+**Latency clarification rechecked on these images:** 40 ordinary authenticated
+saves without a delay trigger took 2.937 ms median, 4.307 ms p95 and 4.955 ms
+maximum, including durable persistence and effective Rust/Monty acknowledgement.
+The earlier 1.25-second save deliberately included SQL `pg_sleep(1.25)` to test
+independent durable/IPC deadlines; it was never ordinary latency. The browser
+instance's frame/heap growth save took 5.541 ms. These are idle local debug-build
+measurements, not release, loaded-system or cross-platform performance claims.
+
+**Remaining acceptance:** exercise native product tasks/child execution,
+cancellation, in-flight and unclaimed work through live frame edits, including
+physical reduction that is temporarily infeasible and final release. Candidate
+worker/actor/service cases do not certify that entire product matrix. Shared
+immutable preload caching, authored activation, durable effect recovery, shared
+MCP/provider acceptance, DB-only providers, release/platform performance and
+full-plan acceptance remain open. Do not mark the full v3 plan complete.
+
+### 2026-10-10 — Host progress during owned settings publication
+
+The latency investigation confirmed that the earlier 1.25-second SQL write was
+deliberate deadline fault injection, not normal settings latency. It also found
+a real scheduling defect under a held durable publication: the service awaited
+the settings operation without polling its accepted host futures. PostgreSQL
+showed an answered-invocation update idle inside an uncommitted transaction,
+without a database blocker, while the settings update waited on the deliberate
+lock. Its Rust future could not advance to commit or queue its continuation.
+
+The service now polls already accepted host I/O while runtime or heap settings
+publication owns the transport boundary. Completed host results remain private
+until the barrier settles; a child may queue its retained continuation, but the
+actor still holds VM execution until durable persistence, worker acknowledgement
+and coordinated Rust publication complete. No workflow selection, new dispatch,
+effect replay or Rust-loop fallback is introduced. Buffered results are included
+in normal draining, shutdown and failure evidence. A host panic or failed finish
+contract fences admission and requests containment promptly, preserving both
+the actual host result and the actor-owned durable write/receipt.
+
+**Accepted on the final sources:** all 26 real service regressions and strict
+host all-target Clippy (`-D warnings`) pass. The strengthened file/child case
+verifies actual I/O progress, private completed answers, old-bound queued work,
+rejected writes and abandoned successful waiters. The fatal-port case verifies
+prompt fencing, no reply replay and the retained actual durable write and
+unclaimed worker receipt. One missing test import was corrected before the
+passing run; the failed compiler diagnostic remains archived.
+
+Four native ordinary chat tasks completed through authenticated product HTTP
+ingress, actual embedded PostgreSQL and the installed pinned reply/history
+workflows in the same global VM. A real journal wait survived frame/time growth;
+an actual answered-effect transaction committed and queued its old-bound
+continuation during a held settings reduction. After release, both runtimes
+acknowledged the same revision, each reply/history effect occurred once, task
+contexts were released and effective frame capacity reached the reduced value.
+The next admitted task used that revision and VM. Shutdown exited zero in
+0.208 seconds; no native warning, error or connection failure occurred.
+All 2,236 native source hashes remained fixed through build and acceptance.
+Paired verified binaries, sources, commands and receipts are retained at
+`/private/tmp/brassclaw-host-progress-final-accepted-20261010`. Earlier failing
+native observations remain in the separate first-through-fourth attempt archives.
+
+This closes the native task/child and queued in-flight continuation subset of
+the preceding live-frame acceptance gap. Native cancellation, temporarily
+infeasible physical reduction and the complete unclaimed-work product matrix
+remain open, along with shared immutable preload caching, authored activation,
+durable recovery, MCP/provider acceptance, DB-only providers and release/platform
+performance. The full v3 plan is not complete.
+
+### 2026-10-10 — Native cancellation, journal fencing and live frame edits
+
+Native acceptance exposed two distinct gaps. A dispatch-intent transaction held
+the turn snapshot lock while its journal insert waited, blocking the WebUI
+cancellation write itself. After repairing that ordering, cancellation still
+became a generic Recipe failure: the default runtime's coordinator and task host
+used different cancellation owners, and the global driver did not observe the
+host signal while awaiting its task receipt. Both failed native attempts and
+their diagnostics are retained; neither was treated as passing evidence.
+
+Admission reservation/start, workflow selection and dispatch-intent preparation
+now use an unlocked claim preflight followed by effect-free journal preparation
+and a final locked claim check immediately before commit. The commit remains
+required before any Tool dispatch. Cancellation/reclaim that wins during
+preparation rolls back provisional writes. No claim/policy check, unique effect
+identity or uncertain-commit retention was removed. Late answer retention still
+uses the original invocation keys independently of current dispatch authority.
+
+The default runtime shares one cancellation factory between coordinator wakes
+and task hosts. The driver observes that host signal, fences the exact attempt
+and awaits the owned settlement with its captured acknowledged live timeout.
+A genuinely acknowledged cancelled task returns the typed cancelled exit;
+the trusted exit applier independently verifies the durable request. Partial
+effects remain retained. Confirmed completion reads the existing finalized reply
+evidence rather than attempting another host call after a later fence.
+
+**Accepted:** five actual-worker/native-PostgreSQL retained-execution cases pass,
+including the new blocked-intent regression: cancellation returns while the
+insert remains blocked, final claim verification rejects it, zero intents commit
+and the original exact selection remains. Strict composition library Clippy
+with `skills-db,libsql`, dependencies and `-D warnings` passes on final sources.
+
+Four native ordinary product chat cases pass on verified paired CLI/worker
+images. Pre-effect cancellation across frame/time growth settled in 0.260 s
+with zero intents/replies/history effects. Cancellation after a confirmed reply
+survived frame reduction and a successor 250 ms acknowledgement setting;
+the original wait settled in 1.061 s, retaining exactly one answered invocation
+and one reply, with no history dispatch/replay. Both durable turns are
+`Cancelled` with one claim and no failure. Task contexts and old frame capacity
+were released, and the following chat completed in the same global VM and
+unchanged child processes. Shutdown exited zero in 0.189 s with closed ports
+and no warnings/errors. All 2,237 archived source hashes stayed fixed.
+Evidence is at `/private/tmp/brassclaw-cancel-delivery-accepted-20261010`.
+
+**Next cancellation contract repair:** `brassclaw_reborn::turn_runner` still wraps
+`stop_attempt` in a fixed five-second `MONTY_STOP_ACK_TIMEOUT`, which can shorten
+an operator-selected longer acknowledgement policy during driver error/shutdown.
+Reconcile that caller with the bounded owner contract and captured revision;
+do not add another hidden ceiling or drop owned futures/results. Qualify through
+real pending work, a configured deadline above five seconds, failed/unacknowledged
+settlement and supervised shutdown. The accepted cases above do not cover this
+path, provider waits, arbitrary blocked commits, temporarily infeasible physical
+release, fatal recovery or the full v3 plan.
+
+### 2026-10-10 — One owned stop deadline and no replay after worker interruption
+
+The preceding fixed five-second caller deadline is removed. The production
+`GlobalMontyDriver` already fences the exact attempt before waiting and bounds
+actual service/durable settlement using its captured acknowledged cancellation
+revision. `TurnRunnerWorker` now awaits that bounded result; it neither shortens
+a longer WebUI policy nor abandons the owner's settlement future with another
+timer. The neutral port documents that ownership and failure contract. A debug
+event records the captured revision/deadline without task content or secrets.
+Unavailable/expired acknowledgement still stops worker admission and preserves
+the original attempt/effect evidence; it never establishes absent effects.
+
+Real native qualification exposed a second defect: an acknowledged shutdown
+after a confirmed reply persisted the interrupted turn as `Queued`. The worker
+now requeues only explicit uncommitted input admission. Worker shutdown and
+heartbeat interruption preserve sanitized terminal failure and the original
+Monty journal/settlement evidence instead of permitting another claim/replay.
+This uses the current supported terminal-failure contract; it does not claim
+implemented safe continuation or unknown-effect reconciliation.
+
+**Accepted on final sources:** 20 focused worker checks, strict composition
+library Clippy with `skills-db,libsql` and `-D warnings`, and the paired native
+CLI/worker build pass. Two actual product cases use authenticated WebUI ingress,
+embedded PostgreSQL, the global Monty service and pinned packaged reply/history
+workflows. A real confirmed-reply answer-journal wait survives more than six
+seconds with a twelve-second acknowledged policy; shutdown settles in 6.523 s.
+The independent 300 ms deadline case reports missing acknowledgement after
+0.303 s in the owner's actual log timestamps, retains the blocked dispatch
+record/admission and then drains the original answer without a history effect.
+Neither case manufactures an absent effect or replays the published reply.
+
+Both cases restart the same installed instance. The interrupted turns remain
+`Failed` with one claim, one answered invocation and original attempt count one;
+the long case records `worker_cancelled`, the expired case records
+`monty_stop_unacknowledged`. Journals and the single published replies stay
+unchanged. An ordinary new task completes after each restart. Expected forced
+shutdown recovery warnings and the deliberately induced deadline error remain
+visible; no other warning/error or connection failure occurs, and both restart
+shutdowns close their private ports cleanly. These are graceful product restarts,
+not fatal global-VM recovery qualification or a claim of full v3 completion.
+
+All 2,237 source hashes stayed fixed through final build and acceptance.
+Paired images, sources, commands, native/restart logs, actual PostgreSQL receipts
+and deadline timestamp evidence are retained at
+`/private/tmp/brassclaw-stop-recovery-accepted-20261010`. The earlier accepted
+deadline cases that exposed unsafe `Queued` recovery are preserved separately
+at `/private/tmp/brassclaw-stop-owner-accepted-20261010`.
+Native real-provider waits, arbitrary blocked commits, infeasible physical
+capacity release, complete unclaimed-work acceptance, supervised fatal recovery,
+shared immutable preload caching and the other full-plan gates remain open.
+
+### 2026-10-10 — Compatible first-feed compiler sharing
+
+`PreparedReplSeed` compiles the first child feed without executing it. Compatible
+empty contexts receive independent compiler tables, heap, globals, typed inputs,
+host receiver, OS environment and execution controls, while module/function
+bytecode stays immutable and shared. Insertion into a used namespace or a
+different input/options layout fails before execution and retains the original
+session. Later Recipe feeds still compile against that child's retained state;
+this neither creates fresh state per step nor replaces Monty's result handoff.
+The function-code `Arc` serializes as the previous Code payload, without a new
+dump or worker protocol. Trusted snapshot restoration remains required.
+
+The actual worker now retains source/checksum/alias selections weakly. Every
+hit verifies actual source bytes and current source limits; cached aliases never
+grant permission or replace current kernel Tool checks. Active contexts retain
+their first seed. Closing them releases that ownership and prunes dead entries;
+the cache retains no task inputs/results or inactive catalogue indefinitely.
+Cold first feeds avoid the previous preflight-plus-execution recompilation.
+This is compatible first-feed reuse, not complete dependency-chain or catalogue
+prefix compilation, activation-time warmup or measured performance acceptance.
+
+Strict vendor linting also exposed the existing heap page helper's unnecessary
+boxed return. Its new append helper uses a safe, length-checked conversion from
+directly allocated uninitialized slots, preserving fixed-page addresses and
+allocation behavior while removing the raw-pointer cast. The vendored lockfile's
+four stale control.6 entries now match control.7; third-party versions are
+unchanged. All 228 upstream hashes and the regenerated patch round trip verify.
+
+**Accepted:** 49 actual interpreter checks, 42 actual host/transport/service
+checks, 37 retained PostgreSQL/IBS/worker/typed-input/compatibility checks,
+strict interpreter and host linting with `-D warnings`, and paired native CLI/
+worker builds. Interpreter regressions prove shared bytecode pointer identity,
+fresh closure/list state, retained predecessor exports, rejected incompatible
+seeding and trusted dump restoration. Worker acceptance includes current policy,
+exact effect preservation, cancellation and unsafe export rejection.
+
+Four ordinary native product chats pass through authenticated WebUI ingress,
+embedded PostgreSQL and pinned packaged reply/history workflows in the same
+global VM. A real journal wait survives live frame/time growth; an accepted older
+host result survives durable frame reduction. Contexts and old capacity drain,
+the following chat completes, and shutdown exits zero in 0.185 s without
+warnings/errors. The synchronized growth save took 5.105 ms in this run; it is
+not a full latency benchmark. All 2,238 source hashes remained fixed through
+acceptance. Images, sources, commands and receipts are preserved at
+`/private/tmp/brassclaw-seed-cache-accepted-20261010`. The integration fixture's
+worker image was copied after Cargo exited while its serial tests were running;
+that retention limitation is recorded separately from images captured on their
+compiler-artifact events before Cargo exited.
+
+Full dependency-chain/catalogue caching, complete authored/preload activation,
+provider waits, reconciled fatal recovery, platform/performance acceptance and
+the remaining simplified-v3 gates remain open. The native cases use legacy
+provider bootstrap and actual model discovery, with deterministic Match tasks;
+they do not qualify DB-only provider configuration or inference behavior.

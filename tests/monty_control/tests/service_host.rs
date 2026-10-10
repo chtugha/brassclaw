@@ -67,6 +67,7 @@ struct FilePorts {
     expected: Value,
     fenced: AtomicBool,
     reads: AtomicUsize,
+    completed_reads: AtomicUsize,
     writes: AtomicUsize,
     started: Notify,
     release: Notify,
@@ -94,6 +95,7 @@ impl FilePorts {
             }),
             fenced: AtomicBool::new(false),
             reads: AtomicUsize::new(0),
+            completed_reads: AtomicUsize::new(0),
             writes: AtomicUsize::new(0),
             started: Notify::new(),
             release: Notify::new(),
@@ -299,6 +301,7 @@ impl TaskPorts for FilePorts {
                             .map_err(|_| failure("file_read_failed"))?,
                     };
                     assert!(!self.panic_after_read, "actual port panic after file read");
+                    self.completed_reads.fetch_add(1, Ordering::AcqRel);
                     Ok(Value::String(value))
                 }
                 "post_reply" => {
@@ -503,6 +506,7 @@ async fn live_adapter_reserve_preserves_heap_identity_and_waiting_task_accountin
         token_budgets_enabled: false,
     };
     let hosting = |reserve| ServiceHostingLimits {
+        max_frame_bytes: None,
         adapter_reserve_bytes: Some(reserve),
         admission: client.admission_observation().limits,
         max_pending_settings: client.settings_capacity().limit,
@@ -1193,6 +1197,140 @@ async fn port_panic_contains_instance_and_preserves_task_for_reconciliation() {
 }
 
 #[tokio::test]
+async fn port_panic_during_durable_publication_fences_and_retains_the_owned_write() {
+    use brassclaw_monty_host::{
+        process::WorkerCommand,
+        service::{DurableSettingsCommit, HeapCommitOutcome, ServiceHostingLimits},
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start(FILE_ROOT).await;
+    let client = owner.client();
+    let initial = client.live_task_settings().current();
+    let mut ports = FilePorts::new(directory.path(), "publication-panic", true);
+    Arc::get_mut(&mut ports).unwrap().panic_after_read = true;
+    let task = client.submit(ports.input(), ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), ports.started.notified())
+        .await
+        .unwrap();
+    let written = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let path = directory.path().join("settings-before-host-panic");
+    let settings = brassclaw_monty_host::process::TaskSettings {
+        revision: initial.revision + 1,
+        ..initial.into()
+    };
+    let hosting = ServiceHostingLimits {
+        max_frame_bytes: None,
+        adapter_reserve_bytes: None,
+        admission: client.admission_observation().limits,
+        max_pending_settings: client.settings_capacity().limit,
+        max_retained_attempts: client.retained_attempts().limit,
+        actor: None,
+        deadlines: None,
+    };
+    let publication = tokio::spawn({
+        let client = client.clone();
+        let path = path.clone();
+        let written = written.clone();
+        let release = release.clone();
+        async move {
+            client
+                .publish_control_settings_transaction(
+                    initial.revision,
+                    settings,
+                    client.vm_bounds(),
+                    8,
+                    hosting,
+                    DurableSettingsCommit {
+                        heap_update: None,
+                        timeout: Duration::from_secs(2),
+                        future: Box::pin(async move {
+                            use std::io::Write;
+                            let mut file = std::fs::OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(path)
+                                .unwrap();
+                            file.write_all(settings.revision.to_string().as_bytes())
+                                .unwrap();
+                            file.sync_all().unwrap();
+                            written.notify_one();
+                            release.notified().await;
+                            HeapCommitOutcome::Committed
+                        }),
+                    },
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(2), written.notified())
+        .await
+        .unwrap();
+    ports.release.notify_one();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_millis(500), publication)
+            .await
+            .unwrap()
+            .unwrap(),
+        Err(ServiceFailure::InvalidPortResult)
+    ));
+    assert!(ports.fenced.load(Ordering::Acquire));
+    let next = FilePorts::new(directory.path(), "after-publication-panic", false);
+    assert!(matches!(
+        client.submit(next.input(), next),
+        Err(ServiceFailure::Closed)
+    ));
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        settings.revision.to_string()
+    );
+    // Containment must still observe the independently owned durable operation.
+    // A disappearing RPC waiter does not undo its actual synchronized write.
+    let mut joining = Box::pin(owner.join());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut joining)
+            .await
+            .is_err()
+    );
+    release.notify_one();
+    let exit = tokio::time::timeout(Duration::from_secs(2), joining)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::InvalidPortResult));
+    assert_eq!(exit.tasks.len(), 1);
+    assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+    assert_eq!(ports.writes.load(Ordering::Acquire), 0);
+    assert!(!ports.reply.exists());
+    assert!(matches!(
+        task.wait().await,
+        Err(ServiceFailure::InvalidPortResult)
+    ));
+    let outstanding = exit.transport_inbox.outstanding().unwrap();
+    assert_eq!(outstanding.len(), 1);
+    let receipt = exit.transport_inbox.try_take(outstanding[0]).unwrap();
+    assert!(receipt.transport_started);
+    assert!(matches!(receipt.original_command().unwrap(),
+        WorkerCommand::Recipe {
+            command: brassclaw_monty_host::process::RecipeCommand::UpdateRuntimeSettings {
+                settings: retained, ..
+            }
+        } if retained == settings));
+    let snapshot = match &receipt.outcome {
+        Ok(snapshot) => snapshot,
+        Err(error) => error.snapshot.as_deref().unwrap(),
+    };
+    assert_eq!(
+        snapshot.effective_task_settings.unwrap().revision,
+        settings.revision
+    );
+    let transport = exit.transport.unwrap();
+    assert!(transport.exit_status.is_some());
+    assert!(transport.containment_error.is_none());
+    assert!(transport.reap_error.is_none());
+}
+
+#[tokio::test]
 async fn settings_publication_preserves_active_task_consumption_and_rejects_stale_edits() {
     use brassclaw_monty_host::process::TaskSettings;
     let directory = tempfile::tempdir().unwrap();
@@ -1778,6 +1916,7 @@ async fn live_settings_capacity_retains_accepted_edits_and_grows_beyond_eight() 
     let first_path = directory.path().join("first-committed-settings");
     let (release, commit) = held_commit(client.clone(), first_path.clone()).await;
     let hosting = |limit| ServiceHostingLimits {
+        max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
         max_pending_settings: limit,
@@ -2128,6 +2267,11 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
         tokio::time::timeout(Duration::from_secs(2), ports.started.notified())
             .await
             .unwrap();
+        let other = FilePorts::new(directory.path(), &format!("buffered-{label}"), true);
+        let other_task = client.submit(other.input(), other.clone()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), other.started.notified())
+            .await
+            .unwrap();
         let entered = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
         let path = directory.path().join(format!("settings-{label}"));
@@ -2146,11 +2290,17 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             },
         };
         let hosting = ServiceHostingLimits {
+            max_frame_bytes: Some(8 * 1024 * 1024),
             adapter_reserve_bytes: Some(0),
             admission: client.admission_observation().limits,
             max_pending_settings: client.settings_capacity().limit,
             max_retained_attempts: client.retained_attempts().limit,
-            actor: None,
+            actor: Some(ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 32 * 1024 * 1024,
+                max_control_unclaimed: 8,
+                max_control_reserved_frame_bytes: 32 * 1024 * 1024,
+            }),
             deadlines: None,
         };
         let publication = tokio::spawn({
@@ -2202,10 +2352,34 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             .await
             .unwrap();
         ports.release.notify_one();
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        other.release.notify_one();
+        // Existing host futures must keep progressing during the real durable
+        // write barrier. The child queues its old-bound feed; the other read
+        // finishes actual file I/O, but its root answer is held until publication.
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let capacity = client.actor_capacity().unwrap();
+                if capacity.ordinary_requests > 0
+                    && other.completed_reads.load(Ordering::Acquire) == 1
+                {
+                    assert!(capacity.control_requests > 0);
+                    assert_eq!(capacity.max_retained_frame_bytes, limits().max_frame_bytes);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
         assert!(!ports.child_resumed.load(Ordering::Acquire));
+        assert_eq!(other.writes.load(Ordering::Acquire), 0);
+        assert!(!other.reply.exists());
         assert_eq!(client.live_task_settings().current(), previous);
         assert_eq!(client.heap_observation().status.effective, heap);
+        assert_eq!(
+            client.worker_memory_status().frame.configured_frame_bytes,
+            limits().max_frame_bytes
+        );
         if committed {
             publication.abort();
         }
@@ -2231,6 +2405,17 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             .unwrap()
             .unwrap();
         assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        let other_receipt = tokio::time::timeout(Duration::from_secs(2), other_task.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            other_receipt.outcome,
+            TaskOutcome::Completed { .. }
+        ));
+        assert_eq!(other.reads.load(Ordering::Acquire), 1);
+        assert_eq!(other.completed_reads.load(Ordering::Acquire), 1);
+        assert_eq!(other.writes.load(Ordering::Acquire), 1);
         assert!(ports.child_resumed.load(Ordering::Acquire));
         assert_eq!(ports.reads.load(Ordering::Acquire), 1);
         assert_eq!(ports.writes.load(Ordering::Acquire), 1);
@@ -2246,6 +2431,10 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             );
             assert!(!client.heap_observation().status.pending_reduction);
             assert_eq!(client.allocator_status().adapter_reserve_bytes, 0);
+            assert_eq!(
+                client.worker_memory_status().frame.configured_frame_bytes,
+                8 * 1024 * 1024
+            );
             assert_eq!(
                 std::fs::read_to_string(&path).unwrap(),
                 settings.revision.to_string()
@@ -2266,6 +2455,56 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             assert_eq!(client.heap_observation().status.effective, heap);
         }
     }
+    // Reduce frame and actor limits together: these actor byte limits would
+    // be invalid against the old 8 MiB policy. The accepted settings exchange
+    // still retains its old bound until its receipt is collected.
+    let previous = client.live_task_settings().current();
+    let reduced = client
+        .publish_control_settings(
+            previous.revision,
+            brassclaw_monty_host::process::TaskSettings {
+                revision: previous.revision + 1,
+                ..previous.into()
+            },
+            client.vm_bounds(),
+            8,
+            ServiceHostingLimits {
+                max_frame_bytes: Some(65536),
+                adapter_reserve_bytes: Some(0),
+                admission: client.admission_observation().limits,
+                max_pending_settings: client.settings_capacity().limit,
+                max_retained_attempts: client.retained_attempts().limit,
+                actor: Some(ActorLimits {
+                    max_unclaimed: 8,
+                    max_reserved_frame_bytes: 131072,
+                    max_control_unclaimed: 8,
+                    max_control_reserved_frame_bytes: 131072,
+                }),
+                deadlines: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(reduced.frame.configured_frame_bytes, 65536);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while client.worker_memory_status().frame.effective_capacity_bytes != 65536 {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(client.allocator_status().non_vm_reserve_bytes, 131072);
+    assert_eq!(client.root_identity(), identity);
+    let next = FilePorts::new(directory.path(), "after-frame-reduction", false);
+    let receipt = client
+        .submit(next.input(), next.clone())
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+    assert_eq!(next.reads.load(Ordering::Acquire), 1);
+    assert_eq!(next.writes.load(Ordering::Acquire), 1);
     graceful(&mut owner).await;
 }
 
@@ -2305,6 +2544,7 @@ async fn unacknowledged_actual_settings_write_fences_queued_child_and_retains_ev
     let mut settings: brassclaw_monty_host::process::TaskSettings = initial.into();
     settings.revision += 1;
     let hosting = ServiceHostingLimits {
+        max_frame_bytes: None,
         adapter_reserve_bytes: Some(0),
         admission: client.admission_observation().limits,
         max_pending_settings: client.settings_capacity().limit,
@@ -2422,6 +2662,7 @@ async fn live_retention_capacity_preserves_owned_credits_and_grows_beyond_256() 
                     client.vm_bounds(),
                     8,
                     ServiceHostingLimits {
+                        max_frame_bytes: None,
                         adapter_reserve_bytes: None,
                         admission: client.admission_observation().limits,
                         max_pending_settings: client.settings_capacity().limit,
@@ -2479,6 +2720,7 @@ async fn actor_policy_is_published_with_the_worker_settings_revision() {
         ..initial
     };
     let hosting = |actor| ServiceHostingLimits {
+        max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
         max_pending_settings: client.settings_capacity().limit,
@@ -2546,6 +2788,7 @@ async fn live_hosting_deadlines_share_revision_and_preserve_global_root() {
     let root = client.root_identity();
     let initial = client.hosting_deadlines().unwrap();
     let policy = |deadlines| ServiceHostingLimits {
+        max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
         max_pending_settings: client.settings_capacity().limit,

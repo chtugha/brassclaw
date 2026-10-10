@@ -1,6 +1,7 @@
 use std::{
     cell::OnceCell,
     fmt::{self, Write},
+    sync::Arc,
 };
 
 use crate::{args::Signature, bytecode::Code, expressions::Identifier, intern::Interns, namespace::NamespaceId};
@@ -91,7 +92,7 @@ pub(crate) struct Function {
     exact_positional_call: OnceCell<Option<ExactPositionalCall>>,
     /// Compiled body borrowed by active frames, which track body-relative instruction offsets.
     #[serde(rename = "B")]
-    pub code: Code,
+    pub code: Arc<Code>,
 }
 
 impl Function {
@@ -134,7 +135,7 @@ impl Function {
             defaults_count,
             is_async,
             exact_positional_call: OnceCell::new(),
-            code,
+            code: Arc::new(code),
         }
     }
 

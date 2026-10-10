@@ -3,10 +3,14 @@
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MONTY_ADAPTER_RESERVE_BYTES: u64 = 4 * 1024 * 1024;
+pub const DEFAULT_MONTY_IPC_FRAME_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MontyExecutionLimits {
+    /// Bound for newly accepted exchanges; older credits retain their bounds.
+    #[serde(default = "default_ipc_frame")]
+    pub max_ipc_frame_bytes: u64,
     /// Worker adapter/exception headroom, separate from VM heap and IPC frames.
     #[serde(default = "default_adapter_reserve")]
     pub worker_adapter_reserve_bytes: u64,
@@ -73,6 +77,7 @@ pub struct MontyExecutionLimits {
 impl Default for MontyExecutionLimits {
     fn default() -> Self {
         Self {
+            max_ipc_frame_bytes: default_ipc_frame(),
             worker_adapter_reserve_bytes: default_adapter_reserve(),
             max_recipe_contexts: default_recipe_contexts(),
             max_queued_tasks: default_queued_tasks(),
@@ -109,7 +114,15 @@ impl MontyExecutionLimits {
     /// Representation-independent validation. Each host also checks its native
     /// integer, transport and control-response constraints before publication.
     pub fn validate(self) -> Result<(), &'static str> {
-        if self.max_queued_tasks == 0
+        if self.max_ipc_frame_bytes == 0
+            || u32::try_from(self.max_ipc_frame_bytes).is_err()
+            || self.max_source_bytes > self.max_ipc_frame_bytes
+            || self.max_stdout_bytes > self.max_ipc_frame_bytes
+            || self.max_value_bytes > self.max_ipc_frame_bytes
+            || self.max_actor_reserved_bytes <= self.max_ipc_frame_bytes
+            || self.max_ipc_frame_bytes.checked_mul(2).is_none_or(|bytes|
+                self.max_actor_control_reserved_bytes < bytes)
+            || self.max_queued_tasks == 0
             || self.max_pending_settings == 0
             || self.max_retained_attempts == 0
             || self.max_actor_requests == 0
@@ -150,6 +163,10 @@ impl MontyExecutionLimits {
 
 fn default_recipe_contexts() -> u32 {
     64
+}
+
+fn default_ipc_frame() -> u64 {
+    DEFAULT_MONTY_IPC_FRAME_BYTES
 }
 
 fn default_adapter_reserve() -> u64 {

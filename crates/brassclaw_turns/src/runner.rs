@@ -163,8 +163,10 @@ pub trait TurnRunTransitionPort: Send + Sync {
 
     /// Release the lease and re-queue the run so another worker can claim it.
     ///
-    /// Use for transient worker-side events (`WorkerCancelled`, `HeartbeatStopped`) where
-    /// the turn should be retried rather than permanently failed.
+    /// Use only with verified pre-execution/replay-safety evidence, such as input
+    /// admission that has not committed. Worker shutdown, a lost heartbeat or
+    /// cancellation acknowledgement alone cannot establish absent effects and
+    /// must not automatically re-queue an already handed-off task.
     /// If the run is already `CancelRequested`, the cancellation intent is honored and the
     /// run transitions to `Cancelled` instead of being re-queued.
     async fn relinquish_run(

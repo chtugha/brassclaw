@@ -15,7 +15,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    ContinuationKey, PythonArtifact, RecipeVm, VmBoundary, VmBounds, VmError, VmFailure,
+    ContinuationKey, RecipeVm, VmBoundary, VmBounds, VmError, VmFailure,
     global::{GlobalBoundary, GlobalVm, Lifecycle},
     process::PortAnswer,
 };
@@ -110,6 +110,7 @@ pub enum RecipeCommand {
         max_recipe_contexts: Option<u32>,
         adapter_reserve_bytes: Option<usize>,
         heap_update: Option<crate::heap::HeapUpdate>,
+        frame_update: Option<crate::heap::FrameUpdate>,
     },
     UpdateSettings {
         expected_revision: u64,
@@ -219,6 +220,7 @@ pub(crate) struct WorkerRecipes {
     max_tasks: usize,
     max_contexts: usize,
     bounds: VmBounds,
+    artifacts: crate::artifact_cache::ArtifactCache,
 }
 impl WorkerRecipes {
     pub(crate) fn validate_runtime_settings(
@@ -267,6 +269,7 @@ impl WorkerRecipes {
             max_tasks: max_tasks as usize,
             max_contexts: max_contexts as usize,
             bounds,
+            artifacts: crate::artifact_cache::ArtifactCache::default(),
         })
     }
     pub(crate) fn settings(&self) -> TaskSettings {
@@ -447,14 +450,14 @@ impl WorkerRecipes {
                     return Err(VmError::kind(VmFailure::Terminal));
                 }
                 let artifact = prepare(&task.budget, || {
-                    PythonArtifact::new(
+                    self.artifacts.prepare(
                         Arc::from(selected.source),
                         selected.checksum,
                         selected.aliases,
                         self.bounds,
                     )
                 })?;
-                let boundary = owner.vm.start_step(Arc::new(artifact), inputs)?;
+                let boundary = owner.vm.start_step(artifact, inputs)?;
                 Ok(RecipeEvent::Progress {
                     context,
                     boundary: boundary.into(),
@@ -570,10 +573,11 @@ impl WorkerRecipes {
                 max_recipe_contexts,
                 adapter_reserve_bytes: _,
                 heap_update,
+                frame_update,
             } => {
                 // Only the worker allocator owner can publish this field. It
                 // strips the already-applied heap edit before registry update.
-                if heap_update.is_some() {
+                if heap_update.is_some() || frame_update.is_some() {
                     return Err(VmError::kind(VmFailure::InvalidBounds));
                 }
                 self.validate_runtime_settings(
@@ -648,6 +652,7 @@ impl WorkerRecipes {
                 stdout: stopped.stdout,
             });
         }
+        self.artifacts.prune();
         Ok(released)
     }
 }

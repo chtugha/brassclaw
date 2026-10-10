@@ -13,7 +13,8 @@ use brassclaw_loop_support::{
     LoopCapabilityResultWriter, ProductLiveCancellationReadiness, RunCancellationFactory,
     SpawnSubagentInputCodec, SubagentDefinitionResolver, SubagentPromptComposer,
     SubagentPromptMaterialSource, SubagentSpawnCapabilityPort, SubagentSpawnDeps,
-    SubagentSpawnGoalStore, SubagentSpawnLimits, verify_product_live_cancellation_probe,
+    SubagentSpawnGoalStore, SubagentSpawnLimits, TurnStateRunCancellationFactory,
+    verify_product_live_cancellation_probe,
 };
 use brassclaw_threads::{SessionThreadService, ThreadScope};
 use brassclaw_turns::{
@@ -464,18 +465,20 @@ where
 
     let (wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker_wake_notifier: Arc<dyn TurnRunWakeNotifier> = Arc::new(wake_sender.clone());
-    // When a cancellation factory is supplied, fan-out each coordinator wake to
-    // BOTH the worker AND the factory's `notify_run_wake` observer. Without
-    // this composite, the worker still wakes but retained product run handles
-    // never flip on `cancel_run` — breaking end-to-end product-live
-    // cancellation observation.
-    let wake_notifier: Arc<dyn TurnRunWakeNotifier> = match parts.cancellation_factory.clone() {
-        Some(factory) => Arc::new(CompositeTurnRunWakeNotifier::new(
-            worker_wake_notifier,
-            factory,
-        )),
-        None => worker_wake_notifier,
+    // Coordinator wakes and task hosts must share the same cancellation owner,
+    // including the default runtime. Waking a busy worker alone cannot signal
+    // its retained host; an unrelated factory would leave only polling fallback.
+    let cancellation_factory: Arc<dyn RunCancellationFactory> = match parts.cancellation_factory {
+        Some(factory) => factory,
+        None => {
+            let store: Arc<dyn TurnStateStore> = parts.turn_state.clone();
+            Arc::new(TurnStateRunCancellationFactory::new(store))
+        }
     };
+    let wake_notifier: Arc<dyn TurnRunWakeNotifier> = Arc::new(CompositeTurnRunWakeNotifier::new(
+        worker_wake_notifier,
+        cancellation_factory.clone(),
+    ));
     let turn_state_for_observer: Arc<dyn TurnSpawnTreeStateStore> = parts.turn_state.clone();
     let completion_observer = Arc::new(SubagentCompletionObserver::new_unbound(
         Arc::clone(&parts.subagent_gate_store),
@@ -577,9 +580,7 @@ where
     if let Some(resolver) = parts.model_route_resolver {
         host_factory = host_factory.with_model_route_resolver(resolver);
     }
-    if let Some(factory) = parts.cancellation_factory {
-        host_factory = host_factory.with_cancellation_factory(factory);
-    }
+    host_factory = host_factory.with_cancellation_factory(cancellation_factory);
     if let Some(queue) = parts.input_queue {
         host_factory = host_factory.with_input_queue(queue);
     }

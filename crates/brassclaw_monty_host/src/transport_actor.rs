@@ -228,6 +228,7 @@ struct Credits {
     reserved: usize,
 }
 struct Ledger {
+    values: VmBounds,
     deadlines: HostingDeadlines,
     limits: ActorLimits,
     frame: watch::Sender<FrameRequirements>,
@@ -434,13 +435,20 @@ pub struct TransportClient {
     inbox: CompletionInbox,
     values: watch::Receiver<VmBounds>,
     recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
-    allocator: watch::Receiver<crate::heap::AllocatorStatus>,
+    memory: watch::Receiver<crate::heap::WorkerMemoryStatus>,
     frame: watch::Receiver<FrameRequirements>,
     stopped: watch::Receiver<Option<StopKind>>,
 }
 impl TransportClient {
     pub fn validate_limits(&self, limits: ActorLimits) -> Result<(), ActorFailure> {
-        if limits.valid(self.frame_limit()) {
+        self.validate_limits_for_frame(limits, self.frame_limit())
+    }
+    pub fn validate_limits_for_frame(
+        &self,
+        limits: ActorLimits,
+        frame: usize,
+    ) -> Result<(), ActorFailure> {
+        if crate::process::valid_frame_limit(frame) && limits.valid(frame) {
             Ok(())
         } else {
             Err(ActorFailure::InvalidLimits)
@@ -508,7 +516,7 @@ impl TransportClient {
         limits: Option<ActorLimits>,
         deadlines: Option<HostingDeadlines>,
     ) -> Result<(), ActorFailure> {
-        self.publish_hosting_policy_for_bounds(limits, deadlines, *self.values.borrow())
+        self.publish_hosting_policy_for_bounds(limits, deadlines, *self.values.borrow(), None)
     }
 
     pub(crate) fn publish_hosting_policy_for_bounds(
@@ -516,6 +524,7 @@ impl TransportClient {
         limits: Option<ActorLimits>,
         deadlines: Option<HostingDeadlines>,
         values: VmBounds,
+        memory: Option<crate::heap::WorkerMemoryStatus>,
     ) -> Result<(), ActorFailure> {
         if deadlines.is_some_and(|deadlines| {
             !deadlines.valid() || values.execution_slice >= deadlines.response_timeout
@@ -530,7 +539,18 @@ impl TransportClient {
         if ledger.closed {
             return Err(ActorFailure::Closed);
         }
-        if limits.is_some_and(|limits| !limits.valid(ledger.frame.borrow().configured_frame_bytes))
+        let before = *ledger.frame.borrow();
+        let configured = memory.map_or(before.configured_frame_bytes, |memory| {
+            memory.frame.configured_frame_bytes
+        });
+        let retained = ledger
+            .retained_frames
+            .last_key_value()
+            .map_or(0, |(frame, _)| *frame);
+        if !limits.unwrap_or(ledger.limits).valid(configured)
+            || memory.is_some_and(|memory| {
+                !memory.frame.valid() || memory.frame.effective_capacity_bytes < retained
+            })
         {
             return Err(ActorFailure::InvalidLimits);
         }
@@ -539,6 +559,18 @@ impl TransportClient {
         }
         if let Some(deadlines) = deadlines {
             ledger.deadlines = deadlines;
+        }
+        if memory.is_some() {
+            let next = FrameRequirements {
+                configured_frame_bytes: configured,
+                max_retained_frame_bytes: retained,
+            };
+            if before != next {
+                ledger.frame.send_replace(next);
+            }
+            ledger.values = values;
+            // Receiver-only clients cannot publish. Owner observations follow
+            // immediately after this callback while no later RPC can advance.
         }
         Ok(())
     }
@@ -559,7 +591,19 @@ impl TransportClient {
     }
 
     pub fn allocator_status(&self) -> crate::heap::AllocatorStatus {
-        *self.allocator.borrow()
+        self.memory.borrow().allocator
+    }
+
+    pub fn frame_status(&self) -> crate::heap::FrameStatus {
+        self.memory.borrow().frame
+    }
+    pub fn worker_memory_status(&self) -> crate::heap::WorkerMemoryStatus {
+        *self.memory.borrow()
+    }
+
+    /// Read-only acknowledged worker capacity; copy observations before awaits.
+    pub fn live_worker_memory(&self) -> watch::Receiver<crate::heap::WorkerMemoryStatus> {
+        self.memory.clone()
     }
 
     pub fn completions(&self) -> CompletionInbox {
@@ -709,13 +753,14 @@ impl TransportClient {
         if ledger.credits(control).count >= ledger.limits.lane(control).0 {
             return Err(submit(ActorFailure::Backpressure, command));
         }
+        let configured_frame = ledger.frame.borrow().configured_frame_bytes;
+        let accepted_values = ledger.values;
         drop(ledger);
-        let configured_frame = self.frame_limit();
         let max_frame_bytes = max_frame_bytes.unwrap_or(configured_frame);
         if max_frame_bytes == 0 || max_frame_bytes > configured_frame {
             return Err(submit(ActorFailure::InvalidLimits, command));
         }
-        let wire = match retain_command(&command, *self.values.borrow(), max_frame_bytes) {
+        let wire = match retain_command(&command, accepted_values, max_frame_bytes) {
             Ok(wire) => wire,
             Err(kind) => return Err(submit(ActorFailure::Transport(kind), command)),
         };
@@ -732,8 +777,41 @@ impl TransportClient {
         }
         // Expensive serialization is outside the lock. A future frame-policy
         // publication cannot accept these bytes under a different bound.
-        if ledger.frame.borrow().configured_frame_bytes != configured_frame {
+        if ledger.frame.borrow().configured_frame_bytes != configured_frame
+            || ledger.values != accepted_values
+        {
             return Err(submit(ActorFailure::Backpressure, command));
+        }
+        let required_capacity = ledger
+            .retained_frames
+            .last_key_value()
+            .map_or(max_frame_bytes, |(frame, _)| (*frame).max(max_frame_bytes));
+        match &command {
+            WorkerCommand::Recipe {
+                command:
+                    RecipeCommand::UpdateRuntimeSettings {
+                        frame_update: Some(frame),
+                        ..
+                    },
+            } => {
+                if !frame.valid()
+                    || frame.required_capacity_bytes < required_capacity
+                    || (runtime_commit.is_none()
+                        && !ledger.limits.valid(frame.configured_frame_bytes))
+                {
+                    return Err(submit(ActorFailure::InvalidLimits, command));
+                }
+            }
+            WorkerCommand::ReconcileFrameCapacity {
+                configured_frame_bytes,
+                required_capacity_bytes,
+                ..
+            } if *configured_frame_bytes != configured_frame
+                || *required_capacity_bytes < required_capacity.max(configured_frame) =>
+            {
+                return Err(submit(ActorFailure::InvalidLimits, command));
+            }
+            _ => {}
         }
         if ledger.credits(control).count >= ledger.limits.lane(control).0 {
             return Err(submit(ActorFailure::Backpressure, command));
@@ -891,6 +969,7 @@ impl TransportOwner {
         });
         let inbox = CompletionInbox {
             ledger: Arc::new(Mutex::new(Ledger {
+                values,
                 limits,
                 deadlines,
                 frame: frame_policy,
@@ -903,14 +982,14 @@ impl TransportOwner {
         };
         let (values_tx, values_rx) = watch::channel(values);
         let (contexts_tx, contexts_rx) = watch::channel(context_capacity);
-        let (allocator_tx, allocator_rx) = watch::channel(ready.allocator);
+        let (memory_tx, memory_rx) = watch::channel(ready.worker_memory());
         let client = TransportClient {
             tx,
             control_tx,
             inbox: inbox.clone(),
             values: values_rx,
             recipe_contexts: contexts_rx,
-            allocator: allocator_rx,
+            memory: memory_rx,
             frame: observed_frame,
             stopped: observed_stop,
         };
@@ -924,7 +1003,7 @@ impl TransportOwner {
             RuntimeObservations {
                 values: values_tx,
                 recipe_contexts: contexts_tx,
-                allocator: allocator_tx,
+                memory: memory_tx,
             },
         ));
         Ok((
@@ -974,7 +1053,7 @@ impl Drop for TransportOwner {
 struct RuntimeObservations {
     values: watch::Sender<VmBounds>,
     recipe_contexts: watch::Sender<crate::process::RecipeContextCapacity>,
-    allocator: watch::Sender<crate::heap::AllocatorStatus>,
+    memory: watch::Sender<crate::heap::WorkerMemoryStatus>,
 }
 
 async fn run(
@@ -988,6 +1067,25 @@ async fn run(
 ) -> ActorExit {
     let mut shutdown_failure = None;
     let mut control_burst = 0usize;
+    let subscription = inbox
+        .ledger
+        .lock()
+        .map(|ledger| ledger.frame.subscribe())
+        .map_err(|_| ());
+    let mut frame_changes = match subscription {
+        Ok(receiver) => receiver,
+        Err(_) => {
+            let exit_status = process.terminate().await;
+            stopped.send_replace(Some(StopKind::AccountingFailed));
+            return ActorExit {
+                kind: StopKind::AccountingFailed,
+                exit_status,
+                containment_error: process.take_containment_error(),
+                reap_error: process.take_reap_error(),
+                shutdown_failure: None,
+            };
+        }
+    };
     let (kind, exit_status) = loop {
         let deadline = inbox
             .ledger
@@ -1005,6 +1103,47 @@ async fn run(
                 failure.exit_status = status;
                 shutdown_failure = Some(failure);
                 break (StopKind::TransportFailed, status);
+            }
+            changed = frame_changes.changed() => {
+                if changed.is_err() {
+                    break (StopKind::AccountingFailed, process.terminate().await);
+                }
+                let requirements = *frame_changes.borrow_and_update();
+                let required = requirements.required_capacity();
+                let frame = process.frame_status();
+                if required < frame.required_capacity_bytes {
+                    let Some(settings) = process.task_settings() else {
+                        break (StopKind::AccountingFailed, process.terminate().await);
+                    };
+                    // This owner-only mechanical RPC is bounded by the current
+                    // acknowledged frame/deadline. It neither consumes a caller
+                    // ticket nor advances Python. New accepts cannot increase
+                    // this requirement above their configured bound.
+                    let result = process.exchange(WorkerCommand::ReconcileFrameCapacity {
+                        expected_settings_revision: settings.revision,
+                        configured_frame_bytes: requirements.configured_frame_bytes,
+                        required_capacity_bytes: required,
+                    }).await;
+                    match result {
+                        Ok(snapshot) if snapshot.boundary.is_none()
+                            && snapshot.recipe.is_none() && snapshot.admitted_task.is_none()
+                            && snapshot.stdout.is_empty() && snapshot.withheld_answers.is_empty() => {
+                            observed.memory.send_replace(snapshot.worker_memory());
+                        }
+                        result => {
+                            let failure = match result {
+                                Err(error) => error,
+                                Ok(snapshot) => {
+                                    let mut error = ProcessError::new(ProcessFailure::Protocol);
+                                    error.snapshot = Some(Box::new(snapshot)); error
+                                }
+                            };
+                            shutdown_failure = Some(failure);
+                            break (StopKind::TransportFailed, process.terminate().await);
+                        }
+                    }
+                }
+                continue;
             }
             next = next_command(&mut rx, &mut control_rx, &mut stop, control_burst >= 8) => next,
         };
@@ -1067,6 +1206,46 @@ async fn run(
                 outcome = Err(error);
             }
         }
+        if let Ok(snapshot) = &outcome {
+            let publication = inbox
+                .ledger
+                .lock()
+                .map_err(|_| ActorFailure::AccountingUnavailable)
+                .and_then(|mut ledger| {
+                    let retained = ledger
+                        .retained_frames
+                        .last_key_value()
+                        .map_or(0, |(bound, _)| *bound);
+                    if !ledger.limits.valid(snapshot.frame.configured_frame_bytes)
+                        || snapshot.frame.effective_capacity_bytes < retained
+                    {
+                        return Err(ActorFailure::InvalidLimits);
+                    }
+                    let max_retained_frame_bytes = retained;
+                    let next = FrameRequirements {
+                        configured_frame_bytes: snapshot.frame.configured_frame_bytes,
+                        max_retained_frame_bytes,
+                    };
+                    let before = *ledger.frame.borrow();
+                    if before != next {
+                        ledger.frame.send_replace(next);
+                    }
+                    observed.memory.send_replace(snapshot.worker_memory());
+                    if let Some(values) = snapshot.vm_bounds {
+                        ledger.values = values;
+                    }
+                    Ok(())
+                });
+            if let Err(kind) = publication {
+                let Ok(snapshot) = outcome else {
+                    unreachable!("publication follows ACK")
+                };
+                let mut error = ProcessError::new(ProcessFailure::Protocol);
+                error.snapshot = Some(Box::new(snapshot));
+                error.diagnostic = Some(format!("frame publication failed: {kind:?}"));
+                outcome = Err(error);
+            }
+        }
         if let Ok(snapshot) = &outcome
             && let Some(bounds) = snapshot.vm_bounds
         {
@@ -1076,9 +1255,6 @@ async fn run(
             && let Some(capacity) = snapshot.recipe_context_capacity
         {
             observed.recipe_contexts.send_replace(capacity);
-        }
-        if let Ok(snapshot) = &outcome {
-            observed.allocator.send_replace(snapshot.allocator);
         }
         let graceful = outcome
             .as_ref()
@@ -1165,7 +1341,8 @@ async fn runtime_transaction(
     command: WorkerCommand,
     durable: DurableSettingsCommit,
 ) -> ExchangeResult {
-    let (expected, settings, values, contexts, reserve, heap_update) = match &command {
+    let (expected, settings, values, contexts, reserve, heap_update, frame_update) = match &command
+    {
         WorkerCommand::Recipe {
             command:
                 RecipeCommand::UpdateRuntimeSettings {
@@ -1175,6 +1352,7 @@ async fn runtime_transaction(
                     max_recipe_contexts,
                     adapter_reserve_bytes,
                     heap_update,
+                    frame_update,
                 },
         } => (
             *expected_revision,
@@ -1183,6 +1361,7 @@ async fn runtime_transaction(
             *max_recipe_contexts,
             *adapter_reserve_bytes,
             *heap_update,
+            *frame_update,
         ),
         WorkerCommand::Recipe {
             command:
@@ -1190,7 +1369,7 @@ async fn runtime_transaction(
                     expected_revision,
                     settings,
                 },
-        } => (*expected_revision, *settings, None, None, None, None),
+        } => (*expected_revision, *settings, None, None, None, None, None),
         _ => return Err(ProcessError::new(ProcessFailure::Protocol)),
     };
     // Child commands can have updated the heap since the service's last root
@@ -1220,6 +1399,7 @@ async fn runtime_transaction(
                 max_recipe_contexts: contexts,
                 adapter_reserve_bytes: reserve,
                 heap_update,
+                frame_update,
             },
         })
         .await?;

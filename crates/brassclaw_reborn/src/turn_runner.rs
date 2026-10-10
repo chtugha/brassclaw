@@ -38,10 +38,6 @@ use crate::{
     failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY, loop_exit_applier::LoopExitApplier,
 };
 
-// A service that cannot acknowledge addressed cancellation must not receive
-// another claim from this worker. This bounds recovery, not task compute time.
-const MONTY_STOP_ACK_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// Create a `SanitizedFailure` from a known-valid static category.
 ///
 /// All categories used here are lowercase ASCII with underscores, satisfying
@@ -509,31 +505,22 @@ impl TurnRunnerWorker {
             Err(err) => {
                 let mut stop_unacknowledged = false;
                 if let Some(monty) = self.monty_driver.as_ref() {
-                    let stop_result = tokio::time::timeout(
-                        MONTY_STOP_ACK_TIMEOUT,
-                        monty.stop_attempt(brassclaw_turns::run_profile::MontyTaskAttempt {
+                    // The adapter fences this exact attempt and owns the bounded
+                    // wait using its captured, acknowledged cancellation policy.
+                    // A second timer here would shorten that live policy and
+                    // drop its settlement future before the owner reports it.
+                    let stop_result = monty
+                        .stop_attempt(brassclaw_turns::run_profile::MontyTaskAttempt {
                             run_id,
                             runner_id,
                             lease_token,
-                        }),
-                    )
-                    .await;
-                    match stop_result {
-                        Ok(Ok(())) => {}
-                        Ok(Err(stop_error)) => {
-                            stop_unacknowledged = true;
-                            error!(?run_id, error = %stop_error,
-                                "Monty cancellation failed; stopping worker admission");
-                            cancel.cancel();
-                        }
-                        Err(_) => {
-                            stop_unacknowledged = true;
-                            error!(
-                                ?run_id,
-                                "Monty cancellation acknowledgement timed out; stopping worker admission"
-                            );
-                            cancel.cancel();
-                        }
+                        })
+                        .await;
+                    if let Err(stop_error) = stop_result {
+                        stop_unacknowledged = true;
+                        error!(?run_id, error = %stop_error,
+                            "Monty cancellation failed; stopping worker admission");
+                        cancel.cancel();
                     }
                 }
                 warn!(
@@ -642,8 +629,10 @@ impl TurnRunnerWorker {
 
     /// Handle a failed driver invocation.
     ///
-    /// Transient worker events (`WorkerCancelled`, `HeartbeatStopped`) relinquish the
-    /// lease so another worker can retry.  All other errors record a terminal failure.
+    /// Only explicitly uncommitted input admission can relinquish the lease.
+    /// Stopping a driver does not prove that effects are absent or replay-safe;
+    /// worker shutdown and heartbeat interruption retain a terminal failure and
+    /// the original Monty effect/settlement evidence rather than re-queueing.
     async fn record_terminal_failure(
         &self,
         run_id: TurnRunId,
@@ -654,9 +643,7 @@ impl TurnRunnerWorker {
         // Errors that warrant relinquish (re-queue) rather than terminal failure.
         let relinquish = matches!(
             error,
-            DriverInvocationError::WorkerCancelled
-                | DriverInvocationError::HeartbeatStopped
-                | DriverInvocationError::DriverError(AgentLoopDriverError::InputAdmissionPending)
+            DriverInvocationError::DriverError(AgentLoopDriverError::InputAdmissionPending)
         );
 
         if relinquish {
@@ -698,10 +685,10 @@ impl TurnRunnerWorker {
                     DriverInvocationError::HeartbeatFailed(_) => "heartbeat_failed",
                     DriverInvocationError::TurnTimeout => "turn_timeout",
                     DriverInvocationError::MontyStopUnacknowledged => "monty_stop_unacknowledged",
-                    // WorkerCancelled and HeartbeatStopped handled by relinquish branch above.
-                    DriverInvocationError::WorkerCancelled
-                    | DriverInvocationError::HeartbeatStopped
-                    | DriverInvocationError::DriverError(
+                    DriverInvocationError::WorkerCancelled => "worker_cancelled",
+                    DriverInvocationError::HeartbeatStopped => "heartbeat_stopped",
+                    // Only this explicit pre-execution condition is replay-safe.
+                    DriverInvocationError::DriverError(
                         AgentLoopDriverError::InputAdmissionPending,
                     ) => {
                         unreachable!("relinquish branch handles these")

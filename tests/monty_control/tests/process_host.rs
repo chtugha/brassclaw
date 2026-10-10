@@ -21,6 +21,225 @@ mod support;
 use support::{SOURCE, boot, limits, task, worker};
 
 #[tokio::test]
+async fn too_small_future_control_frame_is_rejected_before_runtime_publication() {
+    use brassclaw_monty_host::{
+        heap::FrameUpdate,
+        process::{RecipeCommand, RuntimeSettingsCandidate},
+    };
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let mut values = ready.vm_bounds.unwrap();
+    values.max_source_bytes = 1;
+    values.max_stdout_bytes = 1;
+    values.max_value_bytes = 1;
+    let candidate = RuntimeSettingsCandidate {
+        expected_revision: 1,
+        settings: TaskSettings {
+            revision: 2,
+            max_compute_time: Duration::from_secs(701),
+            token_budgets_enabled: false,
+        },
+        values,
+        max_recipe_contexts: None,
+        adapter_reserve_bytes: Some(0),
+        heap_update: None,
+        frame_update: Some(FrameUpdate {
+            configured_frame_bytes: 512,
+            required_capacity_bytes: limits().max_frame_bytes,
+        }),
+    };
+    // Scalars and the retained old exchange fit. The actual future control
+    // acknowledgement does not; both probe and direct publication must deny it.
+    for command in [
+        WorkerCommand::ValidateRuntimeSettings { candidate },
+        WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: candidate.expected_revision,
+                settings: candidate.settings,
+                values,
+                max_recipe_contexts: None,
+                adapter_reserve_bytes: candidate.adapter_reserve_bytes,
+                heap_update: None,
+                frame_update: candidate.frame_update,
+            },
+        },
+    ] {
+        let error = process.exchange(command).await.unwrap_err();
+        assert_eq!(error.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+        let snapshot = error.snapshot.unwrap();
+        assert_eq!(snapshot.runtime_settings(), ready.runtime_settings());
+        assert_eq!(snapshot.heap, ready.heap);
+        assert_eq!(snapshot.allocator, ready.allocator);
+        assert_eq!(snapshot.root, ready.root);
+    }
+    process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn live_frame_growth_and_reduction_preserve_root_task_usage_and_old_exchange_bounds() {
+    use brassclaw_monty_host::{
+        heap::FrameUpdate,
+        process::{RecipeCommand, RuntimeSettingsCandidate},
+    };
+    let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    let mut values = ready.vm_bounds.unwrap();
+    values.max_value_bytes = 512 * 1024;
+    let growth = RuntimeSettingsCandidate {
+        expected_revision: 1,
+        settings: TaskSettings {
+            revision: 2,
+            max_compute_time: Duration::from_secs(701),
+            token_budgets_enabled: false,
+        },
+        values,
+        max_recipe_contexts: None,
+        adapter_reserve_bytes: Some(0),
+        heap_update: None,
+        frame_update: Some(FrameUpdate {
+            configured_frame_bytes: 512 * 1024,
+            required_capacity_bytes: 512 * 1024,
+        }),
+    };
+    let probed = process
+        .exchange(WorkerCommand::ValidateRuntimeSettings { candidate: growth })
+        .await
+        .unwrap();
+    assert_eq!(probed.runtime_settings(), ready.runtime_settings());
+    assert_eq!(probed.allocator, ready.allocator);
+    for invalid in [
+        FrameUpdate {
+            configured_frame_bytes: 0,
+            required_capacity_bytes: 512 * 1024,
+        },
+        FrameUpdate {
+            configured_frame_bytes: 512 * 1024,
+            required_capacity_bytes: 256 * 1024,
+        },
+        FrameUpdate {
+            configured_frame_bytes: usize::MAX,
+            required_capacity_bytes: usize::MAX,
+        },
+    ] {
+        let mut candidate = growth;
+        candidate.frame_update = Some(invalid);
+        let error = process
+            .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+        let state = error.snapshot.unwrap();
+        assert_eq!(state.runtime_settings(), ready.runtime_settings());
+        assert_eq!(state.allocator, ready.allocator);
+        assert_eq!(state.root, ready.root);
+    }
+    let published = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: growth.expected_revision,
+                settings: growth.settings,
+                values,
+                max_recipe_contexts: None,
+                adapter_reserve_bytes: growth.adapter_reserve_bytes,
+                heap_update: None,
+                frame_update: growth.frame_update,
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(published.frame.configured_frame_bytes, 512 * 1024);
+    assert_eq!(published.frame.effective_capacity_bytes, 512 * 1024);
+    assert_eq!(published.allocator.non_vm_reserve_bytes, 1024 * 1024);
+    assert_eq!(published.heap, ready.heap);
+    let mut input = task();
+    input["user_input"] = json!("x".repeat(300 * 1024));
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: input,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        admitted.boundary,
+        Some(ProcessBoundary::HostCall { .. })
+    ));
+    let account = &admitted.task_accounting[0];
+    assert_eq!(account.effective_revision, 2);
+    let usage = account.compute_time.unwrap();
+    values.max_value_bytes = 16384;
+    let reduction = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: 2,
+                settings: TaskSettings {
+                    revision: 3,
+                    ..growth.settings
+                },
+                values,
+                max_recipe_contexts: None,
+                adapter_reserve_bytes: None,
+                heap_update: None,
+                frame_update: Some(FrameUpdate {
+                    configured_frame_bytes: 65536,
+                    required_capacity_bytes: 512 * 1024,
+                }),
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(reduction.frame.configured_frame_bytes, 65536);
+    assert_eq!(reduction.frame.effective_capacity_bytes, 512 * 1024);
+    assert_eq!(reduction.allocator, published.allocator);
+    assert_eq!(reduction.root, ready.root);
+    assert_eq!(reduction.task_accounting[0].effective_revision, 3);
+    assert_eq!(reduction.task_accounting[0].compute_time, Some(usage));
+    let old = process
+        .exchange_with_frame_limit(WorkerCommand::Inspect, 512 * 1024)
+        .await
+        .unwrap();
+    assert_eq!(old.frame, reduction.frame);
+    let released = process
+        .exchange(WorkerCommand::ReconcileFrameCapacity {
+            expected_settings_revision: 3,
+            configured_frame_bytes: 65536,
+            required_capacity_bytes: 65536,
+        })
+        .await
+        .unwrap();
+    assert_eq!(released.frame.effective_capacity_bytes, 65536);
+    assert!(!released.frame.pending_reduction());
+    assert_eq!(released.allocator.non_vm_reserve_bytes, 2 * 65536);
+    assert_eq!(released.heap, ready.heap);
+    assert_eq!(released.root, ready.root);
+    assert_eq!(released.task_accounting[0].compute_time, Some(usage));
+    assert_eq!(process.process_id(), pid);
+    let rejected = process
+        .exchange_with_frame_limit(WorkerCommand::Inspect, 512 * 1024)
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::InvalidLimits);
+    assert!(rejected.snapshot.is_none() && rejected.exit_status.is_none());
+    assert!(matches!(
+        rejected.command.as_deref(),
+        Some(WorkerCommand::Inspect)
+    ));
+    assert_eq!(
+        process
+            .exchange(WorkerCommand::Inspect)
+            .await
+            .unwrap()
+            .frame,
+        released.frame
+    );
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
 async fn retained_exchange_frame_validates_before_transport_without_changing_capacity() {
     let (mut process, ready) = GlobalProcess::start(worker(), boot(SOURCE), limits())
         .await
@@ -134,6 +353,7 @@ async fn complete_settings_probe_preserves_pending_heap_and_publishes_one_manual
         values: ready.vm_bounds.unwrap(),
         max_recipe_contexts: Some(9),
         adapter_reserve_bytes: Some(0),
+        frame_update: None,
         heap_update: Some(HeapUpdate {
             expected_revision: 2,
             settings: HeapSettings {
@@ -205,6 +425,7 @@ async fn complete_settings_probe_preserves_pending_heap_and_publishes_one_manual
                 max_recipe_contexts: candidate.max_recipe_contexts,
                 adapter_reserve_bytes: candidate.adapter_reserve_bytes,
                 heap_update: candidate.heap_update,
+                frame_update: candidate.frame_update,
             },
         })
         .await
@@ -734,7 +955,7 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
 #[tokio::test]
 async fn real_worker_rejects_invalid_exchange_frames_before_boot() {
     for accepted in [0, 1, limits().max_frame_bytes + 1] {
-        let request = json!({"protocol":11,"sequence":1,"max_frame_bytes":accepted,
+        let request = json!({"protocol":13,"sequence":1,"max_frame_bytes":accepted,
             "command":WorkerCommand::Boot { boot:boot(SOURCE) }});
         let body = serde_json::to_vec(&request).unwrap();
         assert!(body.len() < limits().max_frame_bytes);
@@ -1094,6 +1315,7 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
                 max_recipe_contexts: None,
                 adapter_reserve_bytes: Some(8 * 1024 * 1024),
                 heap_update: None,
+                frame_update: None,
             },
         })
         .await
@@ -1121,6 +1343,7 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
                     max_recipe_contexts: None,
                     adapter_reserve_bytes: Some(reserve),
                     heap_update: None,
+                    frame_update: None,
                 },
             })
             .await

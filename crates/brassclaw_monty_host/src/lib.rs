@@ -20,6 +20,7 @@ use std::{
 
 use brassclaw_resources::{MontyTaskBudgetError, MontyTaskClock, SharedMontyTaskBudget};
 mod admission_capacity;
+mod artifact_cache;
 pub mod global;
 pub mod heap;
 pub mod process;
@@ -29,7 +30,7 @@ pub mod source_structure;
 pub mod transport_actor;
 pub mod utility;
 
-use monty::{MontyRepl, MontyRun, ReplProgress, ReplStartError};
+use monty::{MontyRepl, PreparedReplSeed, ReplProgress, ReplStartError};
 use monty_types::{
     CallArgs, CompileOptions, ExcType, ExecutionControl, ExecutionControlAction,
     ExecutionControlError, MontyException, MontyObject, MontyUuid, PrintWriter, ResourceLimits,
@@ -77,6 +78,7 @@ pub struct PythonArtifact {
     body: Arc<str>,
     checksum: [u8; 32],
     bindings: BTreeSet<String>,
+    seed: PreparedReplSeed,
 }
 impl fmt::Debug for PythonArtifact {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -93,23 +95,11 @@ impl PythonArtifact {
         bindings: BTreeSet<String>,
         bounds: VmBounds,
     ) -> Result<Self, VmError> {
-        if !bounds.valid() {
-            return Err(VmError::kind(VmFailure::InvalidBounds));
-        }
-        if body.len() > bounds.max_source_bytes {
-            return Err(VmError::kind(VmFailure::SourceLimit));
-        }
-        if <[u8; 32]>::from(Sha256::digest(body.as_bytes())) != expected_checksum {
-            return Err(VmError::kind(VmFailure::Integrity));
-        }
-        if bindings.iter().any(|name| !identifier(name)) {
-            return Err(VmError::kind(VmFailure::InvalidBinding));
-        }
-        // Parse selected code before any effect. This is syntax evidence, not
-        // approval or proof of meaning. Task data is supplied later as values.
-        MontyRun::new(
-            format!("{body}\nresult\n"),
-            "component.py",
+        Self::validate(&body, expected_checksum, &bindings, bounds)?;
+        // Compiler metadata only: each child supplies fresh tables, heap,
+        // values, host receiver and execution control when starting this seed.
+        let seed = PreparedReplSeed::new(
+            Arc::from(format!("{body}\nresult\n")),
             vec!["host".into(), "inputs".into(), "result".into()],
             CompileOptions::default(),
         )
@@ -122,8 +112,30 @@ impl PythonArtifact {
         Ok(Self {
             body,
             checksum: expected_checksum,
-            bindings: bindings.clone(),
+            bindings,
+            seed,
         })
+    }
+
+    fn validate(
+        body: &str,
+        expected_checksum: [u8; 32],
+        bindings: &BTreeSet<String>,
+        bounds: VmBounds,
+    ) -> Result<(), VmError> {
+        if !bounds.valid() {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        if body.len() > bounds.max_source_bytes {
+            return Err(VmError::kind(VmFailure::SourceLimit));
+        }
+        if <[u8; 32]>::from(Sha256::digest(body.as_bytes())) != expected_checksum {
+            return Err(VmError::kind(VmFailure::Integrity));
+        }
+        if bindings.iter().any(|name| !identifier(name)) {
+            return Err(VmError::kind(VmFailure::InvalidBinding));
+        }
+        Ok(())
     }
 }
 fn identifier(name: &str) -> bool {
@@ -306,6 +318,8 @@ enum VmState {
 pub struct RecipeVm {
     state: VmState,
     artifact: Option<Arc<PythonArtifact>>,
+    // The weak worker cache retains no state after the last owning context.
+    seed_artifact: Option<Arc<PythonArtifact>>,
     control: Arc<TaskControl>,
     receiver: MontyUuid,
     vm_id: Uuid,
@@ -346,6 +360,7 @@ impl RecipeVm {
                 CompileOptions::default(),
             ))),
             artifact: None,
+            seed_artifact: None,
             control,
             receiver: MontyUuid::from_u128(vm_id.as_u128()),
             vm_id,
@@ -405,24 +420,31 @@ impl RecipeVm {
         let VmState::Idle(repl) = std::mem::replace(&mut self.state, VmState::Terminal) else {
             unreachable!()
         };
+        let first_feed = self.feeds == 0;
         self.compiled_bytes = total.expect("checked above");
         self.feeds += 1;
-        let code = format!("{}\nresult\n", artifact.body);
-        self.artifact = Some(artifact);
+        self.artifact = Some(artifact.clone());
+        if first_feed {
+            self.seed_artifact = Some(artifact.clone());
+        }
         let host = MontyObject::class_instance(
             MontyObject::class_type("BrassClawHost", HOST_TYPE, true, true, []),
             self.receiver,
             [],
         );
-        let result = repl.feed_start(
-            &code,
-            vec![
-                ("host".into(), host),
-                ("inputs".into(), inputs),
-                ("result".into(), MontyObject::ellipsis()),
-            ],
-            PrintWriter::CollectString(&mut self.stdout, Some(self.bounds.max_stdout_bytes)),
-        );
+        let values = vec![
+            ("host".into(), host),
+            ("inputs".into(), inputs),
+            ("result".into(), MontyObject::ellipsis()),
+        ];
+        let print =
+            PrintWriter::CollectString(&mut self.stdout, Some(self.bounds.max_stdout_bytes));
+        let result = if first_feed {
+            repl.feed_seed_start(&artifact.seed, values, print)
+        } else {
+            let code = format!("{}\nresult\n", artifact.body);
+            repl.feed_start(&code, values, print)
+        };
         self.accept(result)
     }
 
@@ -502,6 +524,7 @@ impl RecipeVm {
         };
         drop(state);
         self.artifact = None;
+        self.seed_artifact = None;
         VmStopped {
             pending_host,
             stdout: self.take_stdout(),

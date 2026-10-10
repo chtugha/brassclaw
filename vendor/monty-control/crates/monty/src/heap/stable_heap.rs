@@ -74,7 +74,7 @@ impl<T> StableHeap<T> {
         let num_pages = capacity.div_ceil(PAGE_SIZE);
         let mut pages = Vec::with_capacity(num_pages);
         for _ in 0..num_pages {
-            pages.push(create_page());
+            append_page(&mut pages);
         }
         Self {
             pages: UnsafeCell::new(pages),
@@ -165,7 +165,7 @@ impl<T> StableHeap<T> {
             let id = HeapId::from_index(self.len.get());
             let (page_idx, slot_idx) = Self::page_slot_indices(id);
             if page_idx >= pages.len() {
-                pages.push(create_page());
+                append_page(pages);
             }
             self.len.set(id.index() + 1);
             (id, &mut pages[page_idx][slot_idx])
@@ -217,11 +217,13 @@ impl<T> StableHeap<T> {
 }
 
 /// Allocates a new page of uninitialized slots directly on the heap.
-fn create_page<T>() -> Box<[Slot<T>; PAGE_SIZE]> {
-    let raw = Box::into_raw(Box::<[Slot<T>]>::new_uninit_slice(PAGE_SIZE)).cast();
-    // SAFETY: [DH] - allocation is known to be exactly PAGE_SIZE slots, so
-    // the cast-ed pointer can still be used with `Box::from_raw`
-    unsafe { Box::from_raw(raw) }
+fn append_page<T>(pages: &mut Vec<Page<T>>) {
+    // This safe conversion retains the directly allocated, uninitialized page;
+    // it never moves its slots onto the stack or reallocates their storage.
+    let Ok(page) = Box::<[Option<T>]>::new_uninit_slice(PAGE_SIZE).try_into() else {
+        unreachable!("page allocation has the requested fixed length");
+    };
+    pages.push(page);
 }
 
 /// Submodule for `StableHeapEntry` to help enforce a safety boundary around the `new` constructor.

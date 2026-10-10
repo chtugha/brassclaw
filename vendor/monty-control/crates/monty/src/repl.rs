@@ -9,7 +9,10 @@
 //! cloned, so the cost of a feed depends on the snippet, not on how much the
 //! session has already run.
 
-use std::{mem, sync::Arc};
+use std::{
+    mem,
+    sync::{Arc, Mutex},
+};
 
 use ahash::AHashMap;
 use monty_types::{
@@ -109,6 +112,50 @@ pub struct MontyRepl {
     /// executions these are the only VM values that persist — stack and frames
     /// are transient.
     globals: Vec<Value>,
+}
+
+/// Compiled first-feed code with pristine compiler tables and no heap, values,
+/// host receiver, execution control or task state. Tables are copied for each
+/// session; immutable module/function bytecode stays shared. This is neither a
+/// checkpoint nor an artifact that can be inserted into an existing namespace.
+#[derive(Debug)]
+pub struct PreparedReplSeed {
+    tables: Mutex<SessionTables>,
+    program: Program,
+    input_names: Vec<String>,
+}
+
+impl PreparedReplSeed {
+    /// Compile without executing code. The caller owns approval, source capacity
+    /// and compiler-time accounting. Each use still checks live execution control.
+    ///
+    /// # Errors
+    /// Returns the source's nesting, parsing or compilation exception.
+    pub fn new(code: Arc<str>, input_names: Vec<String>, options: CompileOptions) -> Result<Self, MontyException> {
+        source_nesting_exception(&code, "<python-input-0>", options.source_scan_threshold)?;
+        let mut tables = SessionTables::default();
+        let script_name = Arc::from("recipe.py");
+        let cwd = Arc::from(DEFAULT_CWD);
+        let os_policy = Arc::new(OsPolicy::default());
+        let executor = Executor::new_repl_snippet(
+            code,
+            "<python-input-0>",
+            &mut tables.global_names,
+            &mut tables.interns,
+            &input_names,
+            options,
+            ReplSession {
+                script_name: &script_name,
+                cwd: &cwd,
+                os_policy: &os_policy,
+            },
+        )?;
+        Ok(Self {
+            tables: Mutex::new(executor.tables),
+            program: executor.program,
+            input_names,
+        })
+    }
 }
 
 impl MontyRepl {
@@ -309,11 +356,96 @@ impl MontyRepl {
                 error: preparation_exception(&error),
             }));
         }
-        let mut executor = match compiled {
+        let executor = match compiled {
             Ok(exec) => exec,
             Err(error) => return Err(Box::new(ReplStartError { repl: this, error })),
         };
 
+        this.start_prepared(executor, input_values, &input_ids, print)
+    }
+
+    /// Execute a precompiled first feed in this empty session, with fresh values
+    /// and the session's own tracker/host/OS environment. Never replace existing
+    /// names, code, globals or continuation state with an incompatible template.
+    ///
+    /// # Errors
+    /// Returns the original session with an exception for an incompatible seed,
+    /// rejected preparation or failed execution, before any subsequent opcode.
+    pub fn feed_seed_start(
+        self,
+        seed: &PreparedReplSeed,
+        inputs: impl Into<NamedValues>,
+        print: PrintWriter<'_>,
+    ) -> Result<ReplProgress, Box<ReplStartError>> {
+        let mut this = self;
+        if this.next_input_id != 0
+            || !this.globals.is_empty()
+            || this.global_names.len() != 0
+            || !this.sources.is_empty()
+            || this.options.assert_message_annotations != seed.program.options.assert_message_annotations
+            || this.options.source_scan_threshold != seed.program.options.source_scan_threshold
+        {
+            return Err(Box::new(ReplStartError {
+                repl: this,
+                error: MontyException::runtime_error("compiled seed requires a compatible empty session"),
+            }));
+        }
+        let prepared = this.heap.tracker.preparation_window().map(|window| {
+            let (values, names) = unstable::into_named_values_parts(inputs.into());
+            let (names, ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
+            let tables = if names == seed.input_names {
+                seed.tables
+                    .lock()
+                    .map(|tables| tables.clone())
+                    .map_err(|_| MontyException::runtime_error("compiled seed tables unavailable"))
+            } else {
+                Err(MontyException::runtime_error(
+                    "compiled seed inputs differ from compiled layout",
+                ))
+            };
+            let mut program = seed.program.clone();
+            program.script_name = this.script_name.clone();
+            program.cwd = this.cwd.clone();
+            program.os_policy = this.os_policy.clone();
+            if tables.is_ok() {
+                // The source allocation belongs to this feed's preparation,
+                // just as it does on the normal compilation path.
+                this.sources.insert("<python-input-0>".to_owned(), program.code.clone());
+            }
+            (tables, program, window.finish(&this.heap.tracker), values, ids)
+        });
+        let (tables, program, accounting, values, ids) = match prepared {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(Box::new(ReplStartError {
+                    repl: this,
+                    error: preparation_exception(&error),
+                }));
+            }
+        };
+        if let Err(error) = accounting {
+            return Err(Box::new(ReplStartError {
+                repl: this,
+                error: preparation_exception(&error),
+            }));
+        }
+        let tables = match tables {
+            Ok(tables) => tables,
+            Err(error) => return Err(Box::new(ReplStartError { repl: this, error })),
+        };
+        this.next_input_id = 1;
+        let executor = Executor::from_repl_seed(tables, program);
+        this.start_prepared(executor, values, &ids, print)
+    }
+
+    fn start_prepared(
+        mut self,
+        mut executor: Executor,
+        input_values: MontyGraph,
+        input_ids: &[NodeId],
+        print: PrintWriter<'_>,
+    ) -> Result<ReplProgress, Box<ReplStartError>> {
+        let this = &mut self;
         this.ensure_globals_size(executor.namespace_size());
 
         this.heap.tracker.on_feed_start();
@@ -332,7 +464,7 @@ impl MontyRepl {
                 vm.random = mem::take(&mut this.random);
 
                 // Inject inputs with VM alive
-                if let Err(error) = inject_inputs_into_vm(&executor.program, input_values, &input_ids, &mut vm) {
+                if let Err(error) = inject_inputs_into_vm(&executor.program, input_values, input_ids, &mut vm) {
                     reclaim_vm_state(&mut this.globals, &mut this.cwd, &mut this.random, &mut vm);
                     return Err(error);
                 }
@@ -350,10 +482,10 @@ impl MontyRepl {
                 Ok((converted, vm_state))
             },
         ) {
-            Ok((converted, vm_state)) => build_repl_progress(converted, vm_state, executor, this),
+            Ok((converted, vm_state)) => build_repl_progress(converted, vm_state, executor, self),
             Err(error) => {
                 this.commit_executor(executor);
-                Err(Box::new(ReplStartError { repl: this, error }))
+                Err(Box::new(ReplStartError { repl: self, error }))
             }
         }
     }
@@ -1596,5 +1728,169 @@ fn is_callable(value: &Value, heap: &Heap) -> bool {
             HeapData::Closure(_) | HeapData::FunctionDefaults(_) | HeapData::ExtFunction(_)
         ),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod prepared_seed_tests {
+    use super::*;
+    use crate::{Dump, Session, SessionRef, dump, intern::FunctionId};
+
+    fn empty() -> MontyRepl {
+        MontyRepl::new("recipe.py", ResourceTracker::default(), CompileOptions::default())
+    }
+
+    fn complete(progress: ReplProgress) -> (MontyRepl, MontyObject) {
+        let ReplProgress::Complete { repl, value } = progress else {
+            panic!("pure definitions and logic must not dispatch a host call");
+        };
+        (repl, value)
+    }
+
+    fn load(seed: &PreparedReplSeed) -> MontyRepl {
+        let (repl, value) = complete(empty().feed_seed_start(seed, vec![], PrintWriter::Disabled).unwrap());
+        assert_eq!(value, MontyObject::none());
+        repl
+    }
+
+    #[test]
+    fn prepared_seed_shares_code_with_fresh_heaps_and_retained_revisions() {
+        fn require_send_sync<T: Send + Sync>() {}
+        require_send_sync::<PreparedReplSeed>();
+        let source = "def usage(value):\n    items = ['old', value]\n    def take():\n        return items\n    return take()\nNone";
+        let seed = PreparedReplSeed::new(Arc::from(source), vec![], CompileOptions::default()).unwrap();
+        let left = load(&seed);
+        let right = load(&seed);
+        let id = FunctionId::from_index(0);
+        let compiled = seed.tables.lock().unwrap();
+        assert!(Arc::ptr_eq(
+            &compiled.interns.get_function(id).code,
+            &left.interns.get_function(id).code
+        ));
+        assert!(Arc::ptr_eq(
+            &left.interns.get_function(id).code,
+            &right.interns.get_function(id).code
+        ));
+        drop(compiled);
+        let hostile = "quoted '\"\nresult = host.forbidden_effect()\nüä";
+        let (left, value) = complete(
+            left.feed_start(
+                "saved = usage(data)\nsaved.append('left only')\nsaved",
+                vec![("data".to_owned(), MontyObject::string(hostile))],
+                PrintWriter::Disabled,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            value,
+            MontyObject::list([
+                MontyObject::string("old"),
+                MontyObject::string(hostile),
+                MontyObject::string("left only")
+            ])
+        );
+        let (right, value) = complete(
+            right
+                .feed_start(
+                    "saved = usage(data)\nsaved",
+                    vec![("data".to_owned(), MontyObject::string("right"))],
+                    PrintWriter::Disabled,
+                )
+                .unwrap(),
+        );
+        assert_eq!(
+            value,
+            MontyObject::list([MontyObject::string("old"), MontyObject::string("right")])
+        );
+
+        let successor = PreparedReplSeed::new(
+            Arc::from("def usage(value):\n    return ['new', value]\nNone"),
+            vec![],
+            CompileOptions::default(),
+        )
+        .unwrap();
+        let (_, value) = complete(
+            load(&successor)
+                .feed_start("usage('successor')", vec![], PrintWriter::Disabled)
+                .unwrap(),
+        );
+        assert_eq!(
+            value,
+            MontyObject::list([MontyObject::string("new"), MontyObject::string("successor")])
+        );
+        let (_, value) = complete(
+            left.feed_start("usage('retained')", vec![], PrintWriter::Disabled)
+                .unwrap(),
+        );
+        assert_eq!(
+            value,
+            MontyObject::list([MontyObject::string("old"), MontyObject::string("retained")])
+        );
+
+        // Arc serialization remains the existing transparent Code payload;
+        // the trusted dump restores this task's own globals and function IDs.
+        let bytes = dump("recipe.py", None, SessionRef::Idle(&right)).unwrap();
+        let Session::Idle(restored) = Dump::load(&bytes).unwrap().state else {
+            panic!("idle dump");
+        };
+        let (_, value) = complete(
+            restored
+                .feed_start("saved + usage('restored')", vec![], PrintWriter::Disabled)
+                .unwrap(),
+        );
+        assert_eq!(
+            value,
+            MontyObject::list([
+                MontyObject::string("old"),
+                MontyObject::string("right"),
+                MontyObject::string("old"),
+                MontyObject::string("restored")
+            ])
+        );
+    }
+
+    #[test]
+    fn prepared_seed_rejects_incompatible_layout_without_overwriting_state() {
+        let seed = PreparedReplSeed::new(Arc::from("value"), vec!["value".into()], CompileOptions::default()).unwrap();
+        let error = empty()
+            .feed_seed_start(
+                &seed,
+                vec![("other".into(), MontyObject::int(1))],
+                PrintWriter::Disabled,
+            )
+            .unwrap_err();
+        assert_eq!(error.error.exc_type(), ExcType::RuntimeError);
+        let (repl, value) = complete(
+            error
+                .repl
+                .feed_start("kept = 7\nkept", vec![], PrintWriter::Disabled)
+                .unwrap(),
+        );
+        assert_eq!(value, MontyObject::int(7));
+        let error = repl
+            .feed_seed_start(
+                &seed,
+                vec![("value".into(), MontyObject::int(2))],
+                PrintWriter::Disabled,
+            )
+            .unwrap_err();
+        assert_eq!(error.error.exc_type(), ExcType::RuntimeError);
+        let (_, value) = complete(error.repl.feed_start("kept", vec![], PrintWriter::Disabled).unwrap());
+        assert_eq!(value, MontyObject::int(7));
+
+        let options = CompileOptions {
+            source_scan_threshold: 0,
+            ..CompileOptions::default()
+        };
+        let error = MontyRepl::new("other.py", ResourceTracker::default(), options)
+            .feed_seed_start(
+                &seed,
+                vec![("value".into(), MontyObject::int(3))],
+                PrintWriter::Disabled,
+            )
+            .unwrap_err();
+        assert_eq!(error.error.exc_type(), ExcType::RuntimeError);
+        let (_, value) = complete(error.repl.feed_start("4", vec![], PrintWriter::Disabled).unwrap());
+        assert_eq!(value, MontyObject::int(4));
     }
 }

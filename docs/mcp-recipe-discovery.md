@@ -266,11 +266,10 @@ unsupported and `listChanged` remains false, following the
 Future authored activation/withdrawal must publish discovery with the normal
 catalogue owner, including durable generation identity and failure handling.
 There is currently no authored activation event to subscribe to. Startup and
-restart rebuild the view from the retained packaged catalogue. Kohai must still
-capture and advertise the selected view for its request window; the chat bridge
-must still provide durable correlation, non-destructive closure and no-replay
-recovery. Neither connection lifecycle nor call admission is established by a
-successful discovery response. Legacy outbound MCP clients remain suspended.
+restart rebuild the view from the retained packaged catalogue. Kohai captures
+and advertises the selected view for its request window; the chat bridge supplies durable correlation, non-destructive closure and no-replay
+recovery, as described below. Discovery evidence alone does not establish those
+transport and lifecycle guarantees. Legacy outbound MCP clients remain suspended.
 
 ## Full public reply qualification and refresh
 
@@ -299,8 +298,8 @@ cannot qualify this denial. Unresolved calls, changed selections and prior-resul
 or multi-usage profiles outside this accepted runner remain unqualified.
 
 These records authorize advertising only. Current kernel policy still governs
-every dispatch. Full MCP chat transport and Kohai provider connection windows are
-separate integration work.
+every dispatch. MCP chat transport and Kohai provider connection windows have
+separate integration evidence, recorded below and in plan section 34.
 
 
 ## Ordinary-chat transport and provider lifecycle
@@ -337,6 +336,9 @@ cancellation. GET streaming and client DELETE are unsupported (405). Instance
 shutdown owns server termination. A command call does not create a component or
 require per-call Q1/Q2; actual Rust Tool dispatch still checks current kernel policy.
 
-Acceptance evidence for these infrastructure changes is recorded in section 34
-of [the implementation plan](plans/monty.composition.md). Source wiring alone does
-not establish production or deployed-instance acceptance.
+The qualified packaged public-reply profile has real PostgreSQL/global-Monty,
+host-listener and live-provider acceptance, recorded in section 34 of
+[the implementation plan](plans/monty.composition.md). This covers local native
+execution of the supported profile; general authored activation, additional
+profiles and remote deployment remain separate. An instance without the required
+ordinary command observations retains the pending empty listing.

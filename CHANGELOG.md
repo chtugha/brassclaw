@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-This development checkpoint collects the parallel v3 implementation work. Full
-v3 acceptance, public Recipe population, MCP chat/provider integration and
-completed-turn review delivery remain in progress.
+This development checkpoint collects the parallel v3 implementation work. The
+qualified packaged reply has local MCP chat/provider acceptance. Full v3
+acceptance, broader public Recipe population and completed-turn review delivery
+remain in progress.
 
 ### Added
 
@@ -33,6 +34,8 @@ completed-turn review delivery remain in progress.
   v25 grammar ordering and contract corrections. Archived trials retain their
   original source and score receipts; v25 has no new inference/deployment claim.
 - Installer/uninstaller regression checks in Reborn and release CI.
+- Live IPC frame settings (V134), with retained transport capacity for accepted
+  older exchanges and visible desired/effective capacity in the WebUI.
 
 ### Changed
 
@@ -50,6 +53,9 @@ completed-turn review delivery remain in progress.
 - Update architecture, Recipe/Skill authoring, validator and implementation
   guidance to distinguish binding targets, local evidence and production
   acceptance.
+- Share immutable compiled first-feed code across compatible child contexts,
+  with fresh task state and weak cache retention. Later Recipe feeds retain
+  their existing namespace; full catalogue-prefix caching remains unfinished.
 
 ### Fixed
 
@@ -64,6 +70,14 @@ completed-turn review delivery remain in progress.
   versioned store and preserve explicit ordering and rollback behavior.
 - Strengthen retained routing metadata, export/capture validation and catalogue
   qualification so malformed or stale public commands fail closed.
+- Keep accepted host operations progressing during owned settings publication,
+  preserving their results until the durable/Rust/Monty acknowledgement completes.
+- Apply one captured cancellation deadline through worker shutdown and retain
+  interrupted effect evidence without requeuing an already executing turn.
+- Permit cancellation during blocked effect-free dispatch preparation, then
+  recheck the exact live claim before committing a Tool dispatch intent.
+- Replace the vendored heap page helper's raw pointer cast with a safe conversion
+  that preserves allocation addresses; synchronize its local lockfile versions.
 
 ## [1.7.0-rc.4] - 2026-10-09
 

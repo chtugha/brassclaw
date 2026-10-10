@@ -7,6 +7,7 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
+    future::Future,
     panic::AssertUnwindSafe,
     path::Path,
     sync::{
@@ -144,6 +145,7 @@ struct TaskSettingsPublication {
     actor_limits: Option<ActorLimits>,
     hosting_deadlines: Option<HostingDeadlines>,
     adapter_reserve_bytes: Option<usize>,
+    frame_bytes: Option<usize>,
     heap_update: Option<crate::heap::HeapUpdate>,
     durable: Option<DurableSettingsCommit>,
     result: watch::Sender<Option<Result<Arc<SettingsReceipt>, ServiceFailure>>>,
@@ -156,6 +158,7 @@ struct HostingPolicyPatch {
     actor: Option<ActorLimits>,
     deadlines: Option<HostingDeadlines>,
     adapter_reserve_bytes: Option<usize>,
+    frame_bytes: Option<usize>,
 }
 struct HeapPublication {
     expected: u64,
@@ -201,6 +204,8 @@ impl SettingsCapacityObservation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceHostingLimits {
+    /// None preserves the configured frame policy, including legacy callers.
+    pub max_frame_bytes: Option<usize>,
     /// None preserves the worker's current adapter headroom.
     pub adapter_reserve_bytes: Option<usize>,
     pub admission: AdmissionLimits,
@@ -272,6 +277,7 @@ impl From<&ProcessSnapshot> for HeapObservation {
 pub struct SettingsReceipt {
     pub heap: HeapObservation,
     pub allocator: crate::heap::AllocatorStatus,
+    pub frame: crate::heap::FrameStatus,
     pub effective_settings: TaskSettings,
     pub recipe_context_capacity: crate::process::RecipeContextCapacity,
     pub admission: AdmissionObservation,
@@ -440,6 +446,10 @@ impl ServiceClient {
         self.transport.allocator_status()
     }
 
+    pub fn worker_memory_status(&self) -> crate::heap::WorkerMemoryStatus {
+        self.transport.worker_memory_status()
+    }
+
     pub fn validate_adapter_reserve(&self, reserve: usize) -> Result<(), ServiceFailure> {
         let heap = self.observed_heap.borrow().status;
         for heap in [heap.desired, heap.effective].into_iter().flatten() {
@@ -453,10 +463,20 @@ impl ServiceClient {
         heap: usize,
         reserve: usize,
     ) -> Result<(), ServiceFailure> {
+        self.validate_memory_layout_for_frame(
+            heap,
+            reserve,
+            self.transport.frame_status().effective_capacity_bytes,
+        )
+    }
+    fn validate_memory_layout_for_frame(
+        &self,
+        heap: usize,
+        reserve: usize,
+        frame: usize,
+    ) -> Result<(), ServiceFailure> {
         if heap == 0
-            || self
-                .transport
-                .frame_limit()
+            || frame
                 .checked_mul(2)
                 .and_then(|frames| frames.checked_add(reserve))
                 .and_then(|non_vm| heap.checked_add(non_vm))
@@ -480,7 +500,21 @@ impl ServiceClient {
         values: crate::VmBounds,
         response_timeout: Duration,
     ) -> Result<(), ServiceFailure> {
-        if !crate::process::runtime_bounds_supported(values, self.transport.frame_limit())
+        self.validate_runtime_bounds_for_frame(
+            values,
+            response_timeout,
+            self.transport.frame_limit(),
+        )
+    }
+
+    pub fn validate_runtime_bounds_for_frame(
+        &self,
+        values: crate::VmBounds,
+        response_timeout: Duration,
+        frame: usize,
+    ) -> Result<(), ServiceFailure> {
+        if !crate::process::valid_frame_limit(frame)
+            || !crate::process::runtime_bounds_supported(values, frame)
             || response_timeout.is_zero()
             || std::time::Instant::now()
                 .checked_add(response_timeout)
@@ -625,15 +659,33 @@ impl ServiceClient {
         hosting: ServiceHostingLimits,
         durable: Option<DurableSettingsCommit>,
     ) -> Result<Arc<SettingsReceipt>, ServiceFailure> {
+        let current = self.transport.frame_status();
+        let configured = hosting
+            .max_frame_bytes
+            .unwrap_or(current.configured_frame_bytes);
+        let reservation = if configured == current.configured_frame_bytes {
+            current.effective_capacity_bytes
+        } else {
+            configured.max(
+                self.transport
+                    .capacity()
+                    .map_err(|_| ServiceFailure::Transport)?
+                    .required_frame_capacity(),
+            )
+        };
         if let Some(update) = durable.as_ref().and_then(|durable| durable.heap_update) {
-            self.validate_memory_layout(
+            self.validate_memory_layout_for_frame(
                 update.settings.max_vm_bytes,
                 hosting
                     .adapter_reserve_bytes
                     .unwrap_or(self.allocator_status().adapter_reserve_bytes),
+                reservation,
             )?;
         } else if let Some(reserve) = hosting.adapter_reserve_bytes {
-            self.validate_adapter_reserve(reserve)?;
+            let heap = self.heap_observation().status;
+            for heap in [heap.desired, heap.effective].into_iter().flatten() {
+                self.validate_memory_layout_for_frame(heap.max_vm_bytes, reserve, reservation)?;
+            }
         }
         if hosting
             .deadlines
@@ -641,15 +693,16 @@ impl ServiceClient {
         {
             return Err(ServiceFailure::InvalidLimits);
         }
-        self.validate_runtime_bounds(
+        self.validate_runtime_bounds_for_frame(
             values,
             hosting
                 .deadlines
                 .unwrap_or(self.hosting_deadlines()?)
                 .response_timeout,
+            configured,
         )?;
         if let Some(actor) = hosting.actor {
-            self.validate_actor_limits(actor)?;
+            self.validate_actor_limits_for_frame(actor, configured)?;
         }
         if max_recipe_contexts == 0
             || !hosting.admission.valid()
@@ -670,6 +723,7 @@ impl ServiceClient {
                 actor: hosting.actor,
                 deadlines: hosting.deadlines,
                 adapter_reserve_bytes: hosting.adapter_reserve_bytes,
+                frame_bytes: hosting.max_frame_bytes,
             },
             durable,
         )
@@ -679,6 +733,15 @@ impl ServiceClient {
     pub fn validate_actor_limits(&self, limits: ActorLimits) -> Result<(), ServiceFailure> {
         self.transport
             .validate_limits(limits)
+            .map_err(|_| ServiceFailure::InvalidLimits)
+    }
+    pub fn validate_actor_limits_for_frame(
+        &self,
+        limits: ActorLimits,
+        frame: usize,
+    ) -> Result<(), ServiceFailure> {
+        self.transport
+            .validate_limits_for_frame(limits, frame)
             .map_err(|_| ServiceFailure::InvalidLimits)
     }
     pub fn actor_capacity(
@@ -762,6 +825,7 @@ impl ServiceClient {
                 actor_limits: hosting.actor,
                 hosting_deadlines: hosting.deadlines,
                 adapter_reserve_bytes: hosting.adapter_reserve_bytes,
+                frame_bytes: hosting.frame_bytes,
                 heap_update: durable.as_ref().and_then(|durable| durable.heap_update),
                 durable,
                 result,
@@ -1100,6 +1164,7 @@ impl ServiceOwner {
             process,
             actor,
             ServiceHostingLimits {
+                max_frame_bytes: None,
                 adapter_reserve_bytes: None,
                 admission: admission_limits,
                 max_pending_settings: 8,
@@ -1156,6 +1221,12 @@ impl ServiceOwner {
             return Err(StartError::Actor(
                 crate::transport_actor::ActorFailure::InvalidLimits,
             ));
+        }
+        if hosting
+            .max_frame_bytes
+            .is_some_and(|frame| frame != process.max_frame_bytes)
+        {
+            return Err(StartError::Actor(ActorFailure::InvalidLimits));
         }
         let root_source_bytes = boot.source.len();
         let workers = boot.bounds.workers;
@@ -1278,6 +1349,48 @@ struct PortResult {
     panicked: bool,
 }
 type Calls = FuturesUnordered<BoxFuture<'static, PortResult>>;
+
+/// Keep already accepted host I/O progressing while a settings transaction owns
+/// the worker boundary. A child can queue its retained continuation, but the
+/// transport owner still prevents VM execution until persistence and publication
+/// settle. Completed root answers stay private until that same barrier releases.
+/// No new call is selected here, and neither cancellation nor an abandoned
+/// settings waiter drops a started operation or its actual result.
+async fn with_host_progress<T>(
+    operation: impl Future<Output = Result<T, ServiceFailure>>,
+    calls: &mut Calls,
+    ready: &mut VecDeque<PortResult>,
+) -> Result<T, ServiceFailure> {
+    tokio::pin!(operation);
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut operation => return result,
+            Some(result) = calls.next(), if !calls.is_empty() => {
+                let fatal = result.panicked || matches!(&result.finished, Some(Err(_)));
+                ready.push_back(result);
+                if fatal {
+                    // Preserve the result and contain before another queued
+                    // child executes. The actor still owns any accepted durable
+                    // publication and its receipt; abandoning this wait cannot
+                    // undo that write or manufacture a rejection/replay.
+                    return Err(ServiceFailure::InvalidPortResult);
+                }
+            }
+        }
+    }
+}
+
+async fn next_host_result(
+    calls: &mut Calls,
+    ready: &mut VecDeque<PortResult>,
+) -> Option<PortResult> {
+    match ready.pop_front() {
+        Some(result) => Some(result),
+        None => calls.next().await,
+    }
+}
+
 struct ShutdownBounds {
     root: RootExecutionIdentity,
     admission_credits: Arc<AdmissionCapacity>,
@@ -1381,6 +1494,7 @@ fn runtime_commit(
     let values = publication.values;
     let contexts = publication.max_recipe_contexts;
     let reserve = publication.adapter_reserve_bytes;
+    let frame = publication.frame_bytes;
     let heap_update = publication.heap_update;
     let admission_limits = publication.admission_limits;
     let pending = publication.max_pending_settings;
@@ -1405,6 +1519,7 @@ fn runtime_commit(
                     .is_none_or(|capacity| capacity.limit != limit)
             })
             || reserve.is_some_and(|reserve| receipt.allocator.adapter_reserve_bytes != reserve)
+            || frame.is_some_and(|frame| receipt.frame.configured_frame_bytes != frame)
             || heap_update.is_some_and(|update| {
                 receipt.heap.desired != Some(update.settings)
                     || receipt.heap.effective != Some(update.settings)
@@ -1443,6 +1558,7 @@ fn runtime_commit(
             actor,
             deadlines,
             receipt.vm_bounds.ok_or(ActorFailure::InvalidLimits)?,
+            Some(receipt.worker_memory()),
         )?;
         heap.send_replace(HeapObservation::from(receipt));
         live.publish(expected, settings.into())
@@ -1536,6 +1652,7 @@ async fn run(
     let transport = owner.client();
     let mut tasks = BTreeMap::<TaskHandle, TaskRecord>::new();
     let mut calls = Calls::new();
+    let mut ready_calls = VecDeque::new();
     let mut shutting_down = false;
     let mut exchanges = ExchangeEvidence::default();
     let mut pending_admission: Option<Admission> = None;
@@ -1616,20 +1733,32 @@ async fn run(
                             // Do not mutate the worker or contain a healthy service.
                             publication.result.send_replace(Some(Err(ServiceFailure::Backpressure)));
                         } else {
+                            let frame_update = match publication.frame_bytes {
+                                Some(frame) if frame != transport.frame_limit() => {
+                                    let capacity = transport.capacity().map_err(|_| ServiceFailure::Transport)?;
+                                    Some(crate::heap::FrameUpdate {
+                                        configured_frame_bytes: frame,
+                                        required_capacity_bytes: frame.max(capacity.required_frame_capacity()),
+                                    })
+                                }
+                                _ => None,
+                            };
                             let durable = publication.durable.take();
-                            let update = update_runtime(&transport, &mut exchanges, WorkerCommand::Recipe {
+                            let update = with_host_progress(update_runtime(&transport, &mut exchanges, WorkerCommand::Recipe {
                                 command: match publication.values {
                                     Some(values) => RecipeCommand::UpdateRuntimeSettings {
                                         expected_revision: publication.expected, settings: publication.settings, values,
                                         max_recipe_contexts: publication.max_recipe_contexts,
                                         adapter_reserve_bytes: publication.adapter_reserve_bytes,
                                         heap_update: publication.heap_update,
+                                        frame_update,
                                     },
                                     None => RecipeCommand::UpdateSettings {
                                         expected_revision: publication.expected, settings: publication.settings,
                                     },
                                 },
-                            }, &snapshot, runtime_commit(&shutdown, &transport, &publication), durable).await;
+                            }, &snapshot, runtime_commit(&shutdown, &transport, &publication), durable),
+                                &mut calls, &mut ready_calls).await;
                             let (mut receipt, denial) = match update {
                                 Ok(receipt) => receipt,
                                 Err(error) => {
@@ -1655,6 +1784,7 @@ async fn run(
                             publication.result.send_replace(Some(Ok(Arc::new(SettingsReceipt {
                                 heap: HeapObservation::from(&snapshot),
                                 allocator: snapshot.allocator,
+                                frame: snapshot.frame,
                                 effective_settings: publication.settings,
                                 recipe_context_capacity: snapshot.recipe_context_capacity.ok_or(ServiceFailure::Protocol)?,
                                 admission: shutdown.admission_credits.observation(),
@@ -1673,8 +1803,9 @@ async fn run(
                         }
                     }
                     SettingsPublication::Heap(publication) => {
-                        let update = update_heap(&transport, &mut exchanges, &mut snapshot,
-                            publication.expected, publication.settings, publication.automatic, None).await;
+                        let update = with_host_progress(update_heap(&transport, &mut exchanges, &mut snapshot,
+                            publication.expected, publication.settings, publication.automatic, None),
+                            &mut calls, &mut ready_calls).await;
                         shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
                         match update {
                             Ok(denial) => {
@@ -1691,9 +1822,10 @@ async fn run(
                         }
                     }
                     SettingsPublication::HeapTransaction(publication) => {
-                        let update = update_heap(&transport, &mut exchanges, &mut snapshot,
+                        let update = with_host_progress(update_heap(&transport, &mut exchanges, &mut snapshot,
                             publication.expected, publication.settings, false,
-                            Some((publication.commit, publication.commit_timeout))).await;
+                            Some((publication.commit, publication.commit_timeout))),
+                            &mut calls, &mut ready_calls).await;
                         shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
                         match update {
                             Ok(denial) => {
@@ -1830,13 +1962,13 @@ async fn run(
                     continue;
                 }
                 Some(ProcessBoundary::Stopped) => {
-                    if tasks.is_empty() && calls.is_empty() { return Ok(()); }
+                    if tasks.is_empty() && calls.is_empty() && ready_calls.is_empty() { return Ok(()); }
                     return Err(ServiceFailure::Protocol);
                 }
                 Some(ProcessBoundary::Waiting { .. }) | None => {}
             }
 
-            if shutting_down && tasks.is_empty() && calls.is_empty() {
+            if shutting_down && tasks.is_empty() && calls.is_empty() && ready_calls.is_empty() {
                 // Pending admissions never ran. Their callers get an explicit
                 // stopped result instead of an invented successful task.
                 snapshot = exchange(&transport, &mut exchanges, WorkerCommand::BeginShutdown).await?;
@@ -1906,7 +2038,8 @@ async fn run(
                     };
                     queued.push_back(admission);
                 }
-                Some(result) = calls.next(), if !calls.is_empty() => {
+                Some(result) = next_host_result(&mut calls, &mut ready_calls),
+                    if !calls.is_empty() || !ready_calls.is_empty() => {
                     let record = tasks.get_mut(&result.task).ok_or(ServiceFailure::Protocol)?;
                     if result.panicked { return Err(ServiceFailure::InvalidPortResult); }
                     if let Some(finished) = result.finished {
@@ -1982,7 +2115,7 @@ async fn run(
     // Observe real containment and settle every retained actual host future.
     // A turn waiter may time out, but this owning task never aborts the futures.
     let transport_exit = owner.join().await.map_err(|_| ServiceFailure::Transport);
-    while let Some(result) = calls.next().await {
+    while let Some(result) = next_host_result(&mut calls, &mut ready_calls).await {
         if let Some(record) = tasks.get_mut(&result.task) {
             if let Ok(value) = result.result {
                 record.retained.push(value);

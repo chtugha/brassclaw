@@ -1,14 +1,15 @@
 diff --git a/.rustfmt.toml b/.rustfmt.toml
-index 8e47c652..237a52a1 100644
+index 8e47c65..237a52a 100644
 --- a/.rustfmt.toml
 +++ b/.rustfmt.toml
 @@ -2,2 +1,0 @@ max_width = 120
 -imports_granularity = "Crate"
 -group_imports = "StdExternalCrate"
 diff --git a/Cargo.toml b/Cargo.toml
+index a8b516c..5eb0aae 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -3,21 +3,2 @@
+@@ -3,21 +3,2 @@ resolver = "2"
 -members = [
 -    "crates/monty",
 -    "crates/monty-types",
@@ -32,10 +33,10 @@ diff --git a/Cargo.toml b/Cargo.toml
 -default-members = ["crates/monty-runtime"]
 +members = ["crates/monty", "crates/monty-types", "crates/monty-macros", "crates/monty-alloc"]
 +default-members = ["crates/monty"]
-@@ -27 +8 @@
+@@ -27 +8 @@ edition = "2024"
 -version = "1.0.0"
 +version = "1.0.0-brassclaw.control.7"
-@@ -63,9 +44,4 @@
+@@ -63,9 +44,4 @@ strip = false
 -monty = { path = "crates/monty", version = "1.0.0" }
 -monty-types = { path = "crates/monty-types", version = "1.0.0" }
 -monty-alloc = { path = "crates/monty-alloc", version = "1.0.0" }
@@ -50,16 +51,17 @@ diff --git a/Cargo.toml b/Cargo.toml
 +monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.7" }
 +monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.7" }
 diff --git a/crates/monty-alloc/Cargo.toml b/crates/monty-alloc/Cargo.toml
-index c8d3c876..97e5aa72 100644
+index c8d3c87..97e5aa7 100644
 --- a/crates/monty-alloc/Cargo.toml
 +++ b/crates/monty-alloc/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-alloc/README.md b/crates/monty-alloc/README.md
+index 75202ae..c6195e2 100644
 --- a/crates/monty-alloc/README.md
 +++ b/crates/monty-alloc/README.md
-@@ -54,3 +54,39 @@
+@@ -54,3 +54,39 @@ cdylib it would hijack the allocator of the embedding host process.
 -Published so the `monty` binary can be, not for direct use. On a 32-bit target
 -a limit near 4 GiB saturates the arithmetic and leaves the worker
 -uncapped.
@@ -103,6 +105,7 @@ diff --git a/crates/monty-alloc/README.md b/crates/monty-alloc/README.md
 +feasibility, durable commit and publication; a later unfenced write cannot rely
 +on an earlier successful probe.
 diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
+index 400c535..9a0db8d 100644
 --- a/crates/monty-alloc/src/lib.rs
 +++ b/crates/monty-alloc/src/lib.rs
 @@ -2 +2,4 @@
@@ -111,17 +114,16 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +    unsafe_code,
 +    reason = "GlobalAlloc requires aligned private headers and matching System layouts"
 +)]
-@@ -5,0 +9 @@
+@@ -5,0 +9 @@ use std::{
 +    cell::Cell,
-@@ -7,0 +12 @@
+@@ -7,0 +12 @@ use std::{
 +    marker::PhantomData,
-@@ -8,0 +14 @@
+@@ -8,0 +14 @@ use std::{
 +    rc::Rc,
-@@ -14 +20 @@
+@@ -14 +20 @@ use monty_types::OOM_EXIT_CODE;
 -use monty_types::{BASELINE_MEMORY, LIVE_MEMORY};
 +use monty_types::{BASELINE_MEMORY, LIVE_MEMORY, VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT};
-@@ -19,0 +26,160 @@
-+
+@@ -20,0 +27,160 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
 +thread_local! {
 +    // Const initialization and a destructor-free Cell are essential: allocator
 +    // entry must neither allocate recursively nor acquire a mutex.
@@ -281,17 +283,18 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +fn allocation_is_vm_owned() -> bool {
 +    VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) && VM_SCOPE.try_with(Cell::get).unwrap_or(false)
 +}
-@@ -27,2 +193,2 @@
++
+@@ -27,2 +193,2 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
 -/// On a 32-bit target (wasm) a budget near 4 GiB saturates the arithmetic and
 -/// leaves the worker uncapped — there is no cap to express.
 +/// An unrepresentable finite ceiling is rejected; it must never become an
 +/// unlimited worker. Invalid settings leave the previously armed ceiling intact.
-@@ -33,0 +200,4 @@
+@@ -33,0 +200,4 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str>
 +    let candidate = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
 +    if memory_budget.is_some_and(|bytes| candidate.checked_add(bytes).is_none()) {
 +        return Err("allocator memory budget is out of range");
 +    }
-@@ -37 +207,6 @@
+@@ -37 +207,6 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str>
 -    let hard_limit = memory_budget.map_or(usize::MAX, |bytes| baseline.saturating_add(bytes));
 +    let hard_limit = match memory_budget {
 +        Some(bytes) => baseline
@@ -299,7 +302,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +            .ok_or("allocator memory budget is out of range")?,
 +        None => usize::MAX,
 +    };
-@@ -46,3 +221,6 @@
+@@ -46,3 +221,6 @@ pub struct LimitedAllocator;
 -// SAFETY: every method forwards its arguments unchanged to `System` and returns
 -// what `System` returned (or diverges). No pointer is fabricated, aliased or
 -// freed here, so this upholds exactly the invariants `System` upholds.
@@ -309,7 +312,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +// The offset depends only on payload alignment, so realloc retains both the
 +// header and payload at their original offsets. Dealloc reconstructs exactly
 +// the original layout; headers are private and initialized before publication.
-@@ -51,3 +229,5 @@
+@@ -51,3 +229,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        charge(layout.size());
 -        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
 -        let ptr = unsafe { System.alloc(layout) };
@@ -318,7 +321,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +        charge(storage.size(), vm_owned);
 +        // SAFETY: storage is a validated Layout containing header and payload.
 +        let ptr = unsafe { System.alloc(storage) };
-@@ -60 +240,6 @@
+@@ -60 +240,6 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        ptr
 +        // SAFETY: storage reserves an aligned initialized header and a payload
 +        // at offset, with the caller's requested size and alignment.
@@ -326,7 +329,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +            ptr.cast::<Header>().write(Header { vm_owned });
 +            ptr.add(offset)
 +        }
-@@ -64,3 +249,9 @@
+@@ -64,3 +249,9 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        refund(layout.size());
 -        // SAFETY: `ptr` came from our `alloc`/`realloc` with this same `layout`.
 -        unsafe { System.dealloc(ptr, layout) };
@@ -339,7 +342,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +        // SAFETY: base and storage reconstruct the exact System allocation.
 +        unsafe { System.dealloc(base, storage) };
 +        refund(storage.size(), header.vm_owned);
-@@ -72,3 +263,5 @@
+@@ -72,3 +263,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        charge(layout.size());
 -        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
 -        let ptr = unsafe { System.alloc_zeroed(layout) };
@@ -348,22 +351,18 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +        charge(storage.size(), vm_owned);
 +        // SAFETY: validated combined layout; the payload remains all zeroes.
 +        let ptr = unsafe { System.alloc_zeroed(storage) };
-@@ -81 +274,5 @@
+@@ -81 +274,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        ptr
 +        // SAFETY: initializing the private header touches no payload bytes.
 +        unsafe {
 +            ptr.cast::<Header>().write(Header { vm_owned });
 +            ptr.add(offset)
 +        }
-@@ -87,8 +284,15 @@
+@@ -87,4 +284,10 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        if let Some(size_change) = new_size.checked_sub(layout.size()) {
 -            charge(size_change);
 -        } else {
 -            refund(layout.size() - new_size);
--        }
--        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
--        // `new_size` is the caller's — all forwarded unchanged.
--        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
 +        let (storage, offset) = storage_layout(layout);
 +        let new_payload = Layout::from_size_align(new_size, layout.align())
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocation layout overflow")));
@@ -374,12 +373,15 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +        let header = unsafe { base.cast::<Header>().read() };
 +        if new_storage.size() > storage.size() {
 +            charge(new_storage.size() - storage.size(), header.vm_owned);
-+        }
+@@ -92,3 +295,4 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+-        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
+-        // `new_size` is the caller's — all forwarded unchanged.
+-        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
 +        // SAFETY: storage describes base's live System block. Both layouts have
 +        // identical alignment and header/payload offsets; nonzero new_size is
 +        // part of the GlobalAlloc caller contract.
 +        let new_ptr = unsafe { System.realloc(base, storage, new_storage.size()) };
-@@ -98 +302,6 @@
+@@ -98 +302,6 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -        new_ptr
 +        if new_storage.size() < storage.size() {
 +            refund(storage.size() - new_storage.size(), header.vm_owned);
@@ -387,7 +389,7 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +        // SAFETY: realloc preserves the initialized header and overlapping
 +        // payload. The original payload offset remains valid after resize.
 +        unsafe { new_ptr.add(offset) }
-@@ -104,2 +313,7 @@
+@@ -104,2 +313,7 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 -fn charge(size: usize) {
 -    let live = LIVE_MEMORY.fetch_add(size, Ordering::Relaxed).saturating_add(size);
 +fn charge(size: usize, vm_owned: bool) {
@@ -397,13 +399,13 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +    let Some(live) = previous.checked_add(size) else {
 +        out_of_memory(format_args!("monty worker: allocator accounting overflow"));
 +    };
-@@ -110,0 +325,5 @@
+@@ -110,0 +325,5 @@ fn charge(size: usize) {
 +    if vm_owned {
 +        VM_LIVE_MEMORY
 +            .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: VM allocator accounting overflow")));
 +    }
-@@ -116,2 +335,14 @@
+@@ -116,2 +335,14 @@ fn charge(size: usize) {
 -fn refund(size: usize) {
 -    LIVE_MEMORY.fetch_sub(size, Ordering::Relaxed);
 +fn refund(size: usize, vm_owned: bool) {
@@ -421,21 +423,21 @@ diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
 +        out_of_memory(format_args!("monty worker: VM allocator accounting underflow"));
 +    }
 diff --git a/crates/monty-macros/Cargo.toml b/crates/monty-macros/Cargo.toml
-index 8099a65d..dee0990f 100644
+index 8099a65..dee0990 100644
 --- a/crates/monty-macros/Cargo.toml
 +++ b/crates/monty-macros/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-types/Cargo.toml b/crates/monty-types/Cargo.toml
-index c6423a9e..3ae8b35d 100644
+index c6423a9..3ae8b35 100644
 --- a/crates/monty-types/Cargo.toml
 +++ b/crates/monty-types/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-types/src/lib.rs b/crates/monty-types/src/lib.rs
-index 0f449f81..3dd6176b 100644
+index 0f449f8..3dd6176 100644
 --- a/crates/monty-types/src/lib.rs
 +++ b/crates/monty-types/src/lib.rs
 @@ -50,3 +50,4 @@ pub use crate::{
@@ -447,15 +449,16 @@ index 0f449f81..3dd6176b 100644
 +        OOM_EXIT_CODE, PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope,
 +        VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT, allocate_into_baseline, memory_limit_with_headroom,
 diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resource.rs
+index 076f825..edbf684 100644
 --- a/crates/monty-types/src/resource.rs
 +++ b/crates/monty-types/src/resource.rs
-@@ -14 +14,4 @@
+@@ -14 +14,4 @@ use std::{
 -    sync::atomic::{AtomicUsize, Ordering},
 +    sync::{
 +        Arc, Mutex,
 +        atomic::{AtomicBool, AtomicUsize, Ordering},
 +    },
-@@ -33,0 +37,11 @@
+@@ -33,0 +37,11 @@ pub static LIVE_MEMORY: AtomicUsize = AtomicUsize::new(0);
 +/// Allocations made in a trusted VM allocation scope, including allocation
 +/// headers/padding. Ownership survives scope exit, reallocations and waits.
 +/// Unlike LIVE_MEMORY minus a baseline, unrelated transport allocations never
@@ -467,15 +470,15 @@ diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resourc
 +/// Shared soft ceiling for the worker's VM allocation domain. Only the trusted
 +/// serialized worker owner changes it; no task/reset changes this account.
 +pub static VM_MEMORY_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
-@@ -49 +63 @@
+@@ -49 +63 @@ pub fn allocate_into_baseline<T>(build: impl FnOnce() -> T) -> T {
 -    let _ = BASELINE_MEMORY.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |baseline| {
 +    let _ = BASELINE_MEMORY.try_update(Ordering::Relaxed, Ordering::Relaxed, |baseline| {
-@@ -92,0 +107,2 @@
+@@ -92,0 +107,2 @@ pub enum ResourceError {
 +    /// Trusted host control failed; sandboxed code cannot catch this.
 +    Control(ExecutionControlError),
-@@ -137,0 +154 @@
+@@ -137,0 +154 @@ impl fmt::Display for ResourceError {
 +            Self::Control(reason) => write!(f, "execution control: {reason:?}"),
-@@ -277,0 +295,10 @@
+@@ -277,0 +295,10 @@ pub struct ResourceTracker {
 +    // Authority is never serialized. A controlled dump requires explicit trusted
 +    // reattachment before execution; it must not silently become uncontrolled.
 +    #[serde(skip)]
@@ -486,11 +489,11 @@ diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resourc
 +    /// Scheduler identity, not a product task or authority grant. Main is 0;
 +    /// None denotes a discarded coroutine context. Retained over snapshots.
 +    execution_context: Cell<Option<u32>>,
-@@ -283,0 +311,3 @@
+@@ -283,0 +311,3 @@ pub struct ResourceTracker {
 +    /// Synchronous interpreter preparation, accounted independently of VM
 +    /// feed/turn limits but included in the trusted task-control clock.
 +    preparation: Arc<Mutex<PreparationAccount>>,
-@@ -316,0 +347,119 @@
+@@ -316,0 +347,119 @@ impl Default for ResourceTracker {
 +#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 +struct PreparationAccount {
 +    total: Duration,
@@ -610,7 +613,7 @@ diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resourc
 +    IdentityExhausted,
 +}
 +
-@@ -317,0 +467,146 @@
+@@ -317,0 +467,146 @@ impl ResourceTracker {
 +    /// Attach trusted control without resetting consumption or terminal failure.
 +    /// Reattachment after loading a controlled dump is mandatory. It does not
 +    /// clear a failure already observed while control was unavailable.
@@ -757,34 +760,34 @@ diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resourc
 +        }
 +    }
 +
-@@ -329,0 +625,5 @@
+@@ -329,0 +625,5 @@ impl ResourceTracker {
 +            execution_control: None,
 +            control_required: false,
 +            control_error: Cell::new(None),
 +            control_yield: Cell::new(false),
 +            execution_context: Cell::new(Some(0)),
-@@ -330,0 +631 @@
+@@ -330,0 +631 @@ impl ResourceTracker {
 +            preparation: Arc::new(Mutex::new(PreparationAccount::default())),
-@@ -396 +697,2 @@
+@@ -396 +697,2 @@ impl ResourceTracker {
 -    /// Returns the configured memory budget, if any. Hosts that bound a worker
 +    /// Returns the current effective memory budget, including an installed
 +    /// shared VM-domain ceiling. Hosts that bound a worker
-@@ -400 +702 @@
+@@ -400 +702 @@ impl ResourceTracker {
 -        self.limits.max_memory
 +        self.effective_memory_limit()
-@@ -419 +721 @@
+@@ -419 +721 @@ impl ResourceTracker {
 -        self.limits.max_memory.is_some() || self.has_time_limit()
 +        self.effective_memory_limit().is_some() || self.has_time_limit()
-@@ -429 +731 @@
+@@ -429 +731 @@ impl ResourceTracker {
 -        self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
 +        self.control_required || self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
-@@ -457 +759 @@
+@@ -457 +759 @@ impl ResourceTracker {
 -        if let Some(limit) = self.limits.max_memory {
 +        if let Some(limit) = self.effective_memory_limit() {
-@@ -476 +778 @@
+@@ -476 +778 @@ impl ResourceTracker {
 -        if let Some(limit) = self.limits.max_memory {
 +        if let Some(limit) = self.effective_memory_limit() {
-@@ -485,0 +788,11 @@
+@@ -485,0 +788,11 @@ impl ResourceTracker {
 +    fn effective_memory_limit(&self) -> Option<usize> {
 +        let shared = VM_MEMORY_ACCOUNTING
 +            .load(Ordering::Acquire)
@@ -796,21 +799,21 @@ diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resourc
 +        }
 +    }
 +
-@@ -492,0 +806 @@
+@@ -492,0 +806 @@ impl ResourceTracker {
 +        self.poll_execution_control()?;
-@@ -660,0 +975 @@
+@@ -660,0 +975 @@ impl ResourceTracker {
 +        self.pause_preparation();
-@@ -675,0 +991,4 @@
+@@ -675,0 +991,4 @@ impl ResourceTracker {
 +            self.resume_preparation();
 +            if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
 +                self.control_error.set(Some(error));
 +            }
-@@ -703,0 +1023 @@
+@@ -703,0 +1023 @@ impl ResourceTracker {
 +        self.pause_preparation();
-@@ -706,0 +1027,2 @@
+@@ -706,0 +1027,2 @@ impl ResourceTracker {
 +        } else {
 +            self.resume_preparation();
-@@ -741,3 +1063,7 @@
+@@ -741,3 +1063,7 @@ fn probe_memory() -> usize {
 -    LIVE_MEMORY
 -        .load(Ordering::Relaxed)
 -        .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))
@@ -822,14 +825,14 @@ diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resourc
 +            .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))
 +    }
 diff --git a/crates/monty/Cargo.toml b/crates/monty/Cargo.toml
-index c66034a1..29279bf8 100644
+index c66034a..29279bf 100644
 --- a/crates/monty/Cargo.toml
 +++ b/crates/monty/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty/src/asyncio.rs b/crates/monty/src/asyncio.rs
-index c2870aa5..7d7b5b68 100644
+index c2870aa..7d7b5b6 100644
 --- a/crates/monty/src/asyncio.rs
 +++ b/crates/monty/src/asyncio.rs
 @@ -53,0 +54,5 @@ impl TaskId {
@@ -839,7 +842,7 @@ index c2870aa5..7d7b5b68 100644
 +    }
 +
 diff --git a/crates/monty/src/bytecode/vm/async_exec.rs b/crates/monty/src/bytecode/vm/async_exec.rs
-index 92db121a..306b682a 100644
+index 92db121..306b682 100644
 --- a/crates/monty/src/bytecode/vm/async_exec.rs
 +++ b/crates/monty/src/bytecode/vm/async_exec.rs
 @@ -244 +244 @@ impl<'h> VM<'h> {
@@ -877,7 +880,7 @@ index 92db121a..306b682a 100644
 +            self.heap.tracker.set_execution_context(Some(main.raw()));
 +            self.heap.tracker.check_memory_time()?;
 diff --git a/crates/monty/src/bytecode/vm/call.rs b/crates/monty/src/bytecode/vm/call.rs
-index 35acd90d..419a2063 100644
+index 35acd90..419a206 100644
 --- a/crates/monty/src/bytecode/vm/call.rs
 +++ b/crates/monty/src/bytecode/vm/call.rs
 @@ -504 +504,3 @@ impl<'h> VM<'h> {
@@ -890,7 +893,7 @@ index 35acd90d..419a2063 100644
 +                ExcType::not_implemented("control suspension cannot cross native synchronous reentry")
 +            }
 diff --git a/crates/monty/src/bytecode/vm/mod.rs b/crates/monty/src/bytecode/vm/mod.rs
-index d420ba0e..c1293d05 100644
+index d420ba0..c1293d0 100644
 --- a/crates/monty/src/bytecode/vm/mod.rs
 +++ b/crates/monty/src/bytecode/vm/mod.rs
 @@ -160 +160,7 @@ macro_rules! handle_call_result {
@@ -955,7 +958,7 @@ index d420ba0e..c1293d05 100644
 +                    Err(error) => return self.resume_with_exception(error),
 +                };
 diff --git a/crates/monty/src/bytecode/vm/scheduler.rs b/crates/monty/src/bytecode/vm/scheduler.rs
-index 829ff21a..27f5c3af 100644
+index 829ff21..27f5c3a 100644
 --- a/crates/monty/src/bytecode/vm/scheduler.rs
 +++ b/crates/monty/src/bytecode/vm/scheduler.rs
 @@ -10,0 +11 @@ use ahash::AHashMap;
@@ -1029,7 +1032,7 @@ index 829ff21a..27f5c3af 100644
 +    }
 +}
 diff --git a/crates/monty/src/dump_format.rs b/crates/monty/src/dump_format.rs
-index 5dbecc9a..aa1e1a1c 100644
+index 5dbecc9..aa1e1a1 100644
 --- a/crates/monty/src/dump_format.rs
 +++ b/crates/monty/src/dump_format.rs
 @@ -52 +52,3 @@ const MAGIC: &[u8; 6] = b"MONTY\0";
@@ -1037,27 +1040,62 @@ index 5dbecc9a..aa1e1a1c 100644
 +// BrassClaw control ABI: never accept upstream dumps or send these dumps to
 +// upstream binaries. Deployment must reconcile old continuations first.
 +pub const DUMP_VERSION: u16 = 0xBC05;
+diff --git a/crates/monty/src/function.rs b/crates/monty/src/function.rs
+index 13dcec5..c3d3ccd 100644
+--- a/crates/monty/src/function.rs
++++ b/crates/monty/src/function.rs
+@@ -3,0 +4 @@ use std::{
++    sync::Arc,
+@@ -94 +95 @@ pub(crate) struct Function {
+-    pub code: Code,
++    pub code: Arc<Code>,
+@@ -137 +138 @@ impl Function {
+-            code,
++            code: Arc::new(code),
+diff --git a/crates/monty/src/heap/stable_heap.rs b/crates/monty/src/heap/stable_heap.rs
+index 8416d72..ec57ebe 100644
+--- a/crates/monty/src/heap/stable_heap.rs
++++ b/crates/monty/src/heap/stable_heap.rs
+@@ -77 +77 @@ impl<T> StableHeap<T> {
+-            pages.push(create_page());
++            append_page(&mut pages);
+@@ -168 +168 @@ impl<T> StableHeap<T> {
+-                pages.push(create_page());
++                append_page(pages);
+@@ -220,5 +220,7 @@ impl<T> StableHeap<T> {
+-fn create_page<T>() -> Box<[Slot<T>; PAGE_SIZE]> {
+-    let raw = Box::into_raw(Box::<[Slot<T>]>::new_uninit_slice(PAGE_SIZE)).cast();
+-    // SAFETY: [DH] - allocation is known to be exactly PAGE_SIZE slots, so
+-    // the cast-ed pointer can still be used with `Box::from_raw`
+-    unsafe { Box::from_raw(raw) }
++fn append_page<T>(pages: &mut Vec<Page<T>>) {
++    // This safe conversion retains the directly allocated, uninitialized page;
++    // it never moves its slots onto the stack or reallocates their storage.
++    let Ok(page) = Box::<[Option<T>]>::new_uninit_slice(PAGE_SIZE).try_into() else {
++        unreachable!("page allocation has the requested fixed length");
++    };
++    pages.push(page);
 diff --git a/crates/monty/src/lib.rs b/crates/monty/src/lib.rs
-index f491b956..bb2a1781 100644
+index f491b95..08fdc88 100644
 --- a/crates/monty/src/lib.rs
 +++ b/crates/monty/src/lib.rs
 @@ -52,2 +52,2 @@ pub use crate::{
 -        CheckedSource, MontyRepl, ReplContinuationMode, ReplFunctionCall, ReplNameLookup, ReplOsCall, ReplProgress,
 -        ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
-+        CheckedSource, MontyRepl, ReplContinuationMode, ReplControlYield, ReplFunctionCall, ReplNameLookup, ReplOsCall,
-+        ReplProgress, ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
++        CheckedSource, MontyRepl, PreparedReplSeed, ReplContinuationMode, ReplControlYield, ReplFunctionCall,
++        ReplNameLookup, ReplOsCall, ReplProgress, ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
 @@ -56 +56 @@ pub use crate::{
 -    run_progress::{FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
 +    run_progress::{ControlYield, FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
 diff --git a/crates/monty/src/modules/asyncio.rs b/crates/monty/src/modules/asyncio.rs
-index a4d33c14..a8aeee26 100644
+index a4d33c1..a8aeee2 100644
 --- a/crates/monty/src/modules/asyncio.rs
 +++ b/crates/monty/src/modules/asyncio.rs
 @@ -96 +96 @@ fn sleep(vm: &mut VM<'_>, args: ArgValues) -> RunResult<CallResult> {
 -        _ => return Ok(CallResult::Value(vm.settled_awaitable(result))),
 +        _ => return Ok(CallResult::Value(vm.settled_awaitable(result)?)),
 diff --git a/crates/monty/src/object_bridge.rs b/crates/monty/src/object_bridge.rs
-index 2b46c52b..86b62e9c 100644
+index 2b46c52..86b62e9 100644
 --- a/crates/monty/src/object_bridge.rs
 +++ b/crates/monty/src/object_bridge.rs
 @@ -50,0 +51,3 @@ pub(crate) trait MontyObjectExt: Sized {
@@ -1165,13 +1203,19 @@ index 2b46c52b..86b62e9c 100644
 @@ -106,0 +154 @@ impl MontyGraphExt for MontyGraph {
 +    Ok(guard.into_inner())
 diff --git a/crates/monty/src/repl.rs b/crates/monty/src/repl.rs
-index 695ad5ab..c73dc070 100644
+index 695ad5a..f49d1b9 100644
 --- a/crates/monty/src/repl.rs
 +++ b/crates/monty/src/repl.rs
-@@ -17 +17 @@ use monty_types::{
+@@ -12 +12,4 @@
+-use std::{mem, sync::Arc};
++use std::{
++    mem,
++    sync::{Arc, Mutex},
++};
+@@ -17 +20 @@ use monty_types::{
 -    ResourceTracker, SOURCE_SCAN_THRESHOLD, SourceRange,
 +    ResourceError, ResourceTracker, SOURCE_SCAN_THRESHOLD, SourceRange,
-@@ -43,0 +44,12 @@ use crate::{
+@@ -43,0 +47,12 @@ use crate::{
 +// Preparation happens outside Python execution: no sandbox handler can intercept
 +// cancellation/resource failure, and no source data is needed in this exception.
 +fn preparation_exception(error: &ResourceError) -> MontyException {
@@ -1184,7 +1228,52 @@ index 695ad5ab..c73dc070 100644
 +    MontyException::new(exc_type, Some(error.to_string()))
 +}
 +
-@@ -144 +156,10 @@ impl MontyRepl {
+@@ -101,0 +117,44 @@ pub struct MontyRepl {
++/// Compiled first-feed code with pristine compiler tables and no heap, values,
++/// host receiver, execution control or task state. Tables are copied for each
++/// session; immutable module/function bytecode stays shared. This is neither a
++/// checkpoint nor an artifact that can be inserted into an existing namespace.
++#[derive(Debug)]
++pub struct PreparedReplSeed {
++    tables: Mutex<SessionTables>,
++    program: Program,
++    input_names: Vec<String>,
++}
++
++impl PreparedReplSeed {
++    /// Compile without executing code. The caller owns approval, source capacity
++    /// and compiler-time accounting. Each use still checks live execution control.
++    ///
++    /// # Errors
++    /// Returns the source's nesting, parsing or compilation exception.
++    pub fn new(code: Arc<str>, input_names: Vec<String>, options: CompileOptions) -> Result<Self, MontyException> {
++        source_nesting_exception(&code, "<python-input-0>", options.source_scan_threshold)?;
++        let mut tables = SessionTables::default();
++        let script_name = Arc::from("recipe.py");
++        let cwd = Arc::from(DEFAULT_CWD);
++        let os_policy = Arc::new(OsPolicy::default());
++        let executor = Executor::new_repl_snippet(
++            code,
++            "<python-input-0>",
++            &mut tables.global_names,
++            &mut tables.interns,
++            &input_names,
++            options,
++            ReplSession {
++                script_name: &script_name,
++                cwd: &cwd,
++                os_policy: &os_policy,
++            },
++        )?;
++        Ok(Self {
++            tables: Mutex::new(executor.tables),
++            program: executor.program,
++            input_names,
++        })
++    }
++}
++
+@@ -144 +203,10 @@ impl MontyRepl {
 -        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
 +        let window = self
 +            .heap
@@ -1196,11 +1285,11 @@ index 695ad5ab..c73dc070 100644
 +            .finish(&self.heap.tracker)
 +            .map_err(|error| preparation_exception(&error))?;
 +        result?;
-@@ -245,3 +265,0 @@ impl MontyRepl {
+@@ -245,3 +312,0 @@ impl MontyRepl {
 -        let (input_values, names) = unstable::into_named_values_parts(inputs.into());
 -        let (input_names, input_ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
 -
-@@ -249,7 +267,32 @@ impl MontyRepl {
+@@ -249,7 +314,32 @@ impl MontyRepl {
 -        // Preserve this snippet's source (see `feed_run` for rationale).
 -        let code: Arc<str> = Arc::from(code);
 -        this.sources.insert(input_script_name.clone(), Arc::clone(&code));
@@ -1240,7 +1329,7 @@ index 695ad5ab..c73dc070 100644
 +                    error: preparation_exception(&error),
 +                }));
 +            }
-@@ -257,9 +300,13 @@ impl MontyRepl {
+@@ -257,9 +347,13 @@ impl MontyRepl {
 -        let mut executor = match Executor::new_repl_snippet(
 -            code,
 -            &input_script_name,
@@ -1262,23 +1351,118 @@ index 695ad5ab..c73dc070 100644
 +                error: preparation_exception(&error),
 +            }));
 +        }
-+        let mut executor = match compiled {
-@@ -335 +382 @@ impl MontyRepl {
++        let executor = match compiled {
+@@ -269,0 +364,85 @@ impl MontyRepl {
++        this.start_prepared(executor, input_values, &input_ids, print)
++    }
++
++    /// Execute a precompiled first feed in this empty session, with fresh values
++    /// and the session's own tracker/host/OS environment. Never replace existing
++    /// names, code, globals or continuation state with an incompatible template.
++    ///
++    /// # Errors
++    /// Returns the original session with an exception for an incompatible seed,
++    /// rejected preparation or failed execution, before any subsequent opcode.
++    pub fn feed_seed_start(
++        self,
++        seed: &PreparedReplSeed,
++        inputs: impl Into<NamedValues>,
++        print: PrintWriter<'_>,
++    ) -> Result<ReplProgress, Box<ReplStartError>> {
++        let mut this = self;
++        if this.next_input_id != 0
++            || !this.globals.is_empty()
++            || this.global_names.len() != 0
++            || !this.sources.is_empty()
++            || this.options.assert_message_annotations != seed.program.options.assert_message_annotations
++            || this.options.source_scan_threshold != seed.program.options.source_scan_threshold
++        {
++            return Err(Box::new(ReplStartError {
++                repl: this,
++                error: MontyException::runtime_error("compiled seed requires a compatible empty session"),
++            }));
++        }
++        let prepared = this.heap.tracker.preparation_window().map(|window| {
++            let (values, names) = unstable::into_named_values_parts(inputs.into());
++            let (names, ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
++            let tables = if names == seed.input_names {
++                seed.tables
++                    .lock()
++                    .map(|tables| tables.clone())
++                    .map_err(|_| MontyException::runtime_error("compiled seed tables unavailable"))
++            } else {
++                Err(MontyException::runtime_error(
++                    "compiled seed inputs differ from compiled layout",
++                ))
++            };
++            let mut program = seed.program.clone();
++            program.script_name = this.script_name.clone();
++            program.cwd = this.cwd.clone();
++            program.os_policy = this.os_policy.clone();
++            if tables.is_ok() {
++                // The source allocation belongs to this feed's preparation,
++                // just as it does on the normal compilation path.
++                this.sources.insert("<python-input-0>".to_owned(), program.code.clone());
++            }
++            (tables, program, window.finish(&this.heap.tracker), values, ids)
++        });
++        let (tables, program, accounting, values, ids) = match prepared {
++            Ok(result) => result,
++            Err(error) => {
++                return Err(Box::new(ReplStartError {
++                    repl: this,
++                    error: preparation_exception(&error),
++                }));
++            }
++        };
++        if let Err(error) = accounting {
++            return Err(Box::new(ReplStartError {
++                repl: this,
++                error: preparation_exception(&error),
++            }));
++        }
++        let tables = match tables {
++            Ok(tables) => tables,
++            Err(error) => return Err(Box::new(ReplStartError { repl: this, error })),
++        };
++        this.next_input_id = 1;
++        let executor = Executor::from_repl_seed(tables, program);
++        this.start_prepared(executor, values, &ids, print)
++    }
++
++    fn start_prepared(
++        mut self,
++        mut executor: Executor,
++        input_values: MontyGraph,
++        input_ids: &[NodeId],
++        print: PrintWriter<'_>,
++    ) -> Result<ReplProgress, Box<ReplStartError>> {
++        let this = &mut self;
+@@ -288 +467 @@ impl MontyRepl {
+-                if let Err(error) = inject_inputs_into_vm(&executor.program, input_values, &input_ids, &mut vm) {
++                if let Err(error) = inject_inputs_into_vm(&executor.program, input_values, input_ids, &mut vm) {
+@@ -306 +485 @@ impl MontyRepl {
+-            Ok((converted, vm_state)) => build_repl_progress(converted, vm_state, executor, this),
++            Ok((converted, vm_state)) => build_repl_progress(converted, vm_state, executor, self),
+@@ -309 +488 @@ impl MontyRepl {
+-                Err(Box::new(ReplStartError { repl: this, error }))
++                Err(Box::new(ReplStartError { repl: self, error }))
+@@ -335 +514 @@ impl MontyRepl {
 -        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
 +        self.check_source(code)?;
-@@ -336,0 +384,6 @@ impl MontyRepl {
+@@ -336,0 +516,6 @@ impl MontyRepl {
 +        let input_script_name = self.next_input_script_name();
 +        let window = self
 +            .heap
 +            .tracker
 +            .preparation_window()
 +            .map_err(|error| preparation_exception(&error))?;
-@@ -340 +392,0 @@ impl MontyRepl {
+@@ -340 +524,0 @@ impl MontyRepl {
 -        let input_script_name = self.next_input_script_name();
-@@ -352 +404 @@ impl MontyRepl {
+@@ -352 +536 @@ impl MontyRepl {
 -        let mut executor = Executor::new_repl_snippet(
 +        let compiled = Executor::new_repl_snippet(
-@@ -360 +412,9 @@ impl MontyRepl {
+@@ -360 +544,9 @@ impl MontyRepl {
 -        )?;
 +        );
 +        if let Err(error) = window.finish(&self.heap.tracker) {
@@ -1289,7 +1473,7 @@ index 695ad5ab..c73dc070 100644
 +            return Err(preparation_exception(&error));
 +        }
 +        let mut executor = compiled?;
-@@ -487 +547,7 @@ impl MontyRepl {
+@@ -487 +679,7 @@ impl MontyRepl {
 -                                Ok(FrameExit::Return(value)) => break Ok(MontyObject::export(value, vm)),
 +                                Ok(FrameExit::Return(value)) => {
 +                                    break MontyObject::export_checked(value, vm).map_err(|error| {
@@ -1298,20 +1482,20 @@ index 695ad5ab..c73dc070 100644
 +                                        })
 +                                    });
 +                                }
-@@ -623,0 +690,2 @@ pub enum ReplProgress {
+@@ -623,0 +822,2 @@ pub enum ReplProgress {
 +    /// Trusted control checkpoint without an external return value.
 +    ControlYield(ReplControlYield),
-@@ -705,0 +774 @@ impl ReplProgress {
+@@ -705,0 +906 @@ impl ReplProgress {
 +            Self::ControlYield(state) => state.snapshot.into_repl(),
-@@ -720,0 +790 @@ impl ReplProgress {
+@@ -720,0 +922 @@ impl ReplProgress {
 +            Self::ControlYield(state) => state.snapshot.repl.tracker(),
-@@ -787 +857 @@ impl ReplFunctionCall {
+@@ -787 +989 @@ impl ReplFunctionCall {
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -862 +932 @@ impl ReplOsCall {
+@@ -862 +1064 @@ impl ReplOsCall {
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -1231,0 +1302,21 @@ fn abort_restored(
+@@ -1231,0 +1434,21 @@ fn abort_restored(
 +/// A snapshot-safe REPL control checkpoint. Trusted control remains attached
 +/// in memory; after dump/load the host must reattach it before resumption.
 +#[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -1333,33 +1517,207 @@ index 695ad5ab..c73dc070 100644
 +    }
 +}
 +
-@@ -1283 +1374 @@ impl ReplSnapshot {
+@@ -1283 +1506 @@ impl ReplSnapshot {
 -        self.run_inner(result.into(), None, print)
 +        self.run_inner(Some(result.into()), None, print)
-@@ -1290 +1381 @@ impl ReplSnapshot {
+@@ -1290 +1513 @@ impl ReplSnapshot {
 -        ext_result: ExtFunctionResult,
 +        ext_result: Option<ExtFunctionResult>,
-@@ -1313 +1404,4 @@ impl ReplSnapshot {
+@@ -1313 +1536,4 @@ impl ReplSnapshot {
 -                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
 +                let vm_result = match ext_result {
 +                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
 +                    None => vm.run_external(),
 +                };
-@@ -1392,0 +1487,3 @@ fn build_repl_progress(
+@@ -1392,0 +1619,3 @@ fn build_repl_progress(
 +        ConvertedExit::ControlYield => Ok(ReplProgress::ControlYield(ReplControlYield {
 +            snapshot: new_repl_snapshot!(),
 +        })),
+@@ -1503,0 +1733,164 @@ fn is_callable(value: &Value, heap: &Heap) -> bool {
++
++#[cfg(test)]
++mod prepared_seed_tests {
++    use super::*;
++    use crate::{Dump, Session, SessionRef, dump, intern::FunctionId};
++
++    fn empty() -> MontyRepl {
++        MontyRepl::new("recipe.py", ResourceTracker::default(), CompileOptions::default())
++    }
++
++    fn complete(progress: ReplProgress) -> (MontyRepl, MontyObject) {
++        let ReplProgress::Complete { repl, value } = progress else {
++            panic!("pure definitions and logic must not dispatch a host call");
++        };
++        (repl, value)
++    }
++
++    fn load(seed: &PreparedReplSeed) -> MontyRepl {
++        let (repl, value) = complete(empty().feed_seed_start(seed, vec![], PrintWriter::Disabled).unwrap());
++        assert_eq!(value, MontyObject::none());
++        repl
++    }
++
++    #[test]
++    fn prepared_seed_shares_code_with_fresh_heaps_and_retained_revisions() {
++        fn require_send_sync<T: Send + Sync>() {}
++        require_send_sync::<PreparedReplSeed>();
++        let source = "def usage(value):\n    items = ['old', value]\n    def take():\n        return items\n    return take()\nNone";
++        let seed = PreparedReplSeed::new(Arc::from(source), vec![], CompileOptions::default()).unwrap();
++        let left = load(&seed);
++        let right = load(&seed);
++        let id = FunctionId::from_index(0);
++        let compiled = seed.tables.lock().unwrap();
++        assert!(Arc::ptr_eq(
++            &compiled.interns.get_function(id).code,
++            &left.interns.get_function(id).code
++        ));
++        assert!(Arc::ptr_eq(
++            &left.interns.get_function(id).code,
++            &right.interns.get_function(id).code
++        ));
++        drop(compiled);
++        let hostile = "quoted '\"\nresult = host.forbidden_effect()\nüä";
++        let (left, value) = complete(
++            left.feed_start(
++                "saved = usage(data)\nsaved.append('left only')\nsaved",
++                vec![("data".to_owned(), MontyObject::string(hostile))],
++                PrintWriter::Disabled,
++            )
++            .unwrap(),
++        );
++        assert_eq!(
++            value,
++            MontyObject::list([
++                MontyObject::string("old"),
++                MontyObject::string(hostile),
++                MontyObject::string("left only")
++            ])
++        );
++        let (right, value) = complete(
++            right
++                .feed_start(
++                    "saved = usage(data)\nsaved",
++                    vec![("data".to_owned(), MontyObject::string("right"))],
++                    PrintWriter::Disabled,
++                )
++                .unwrap(),
++        );
++        assert_eq!(
++            value,
++            MontyObject::list([MontyObject::string("old"), MontyObject::string("right")])
++        );
++
++        let successor = PreparedReplSeed::new(
++            Arc::from("def usage(value):\n    return ['new', value]\nNone"),
++            vec![],
++            CompileOptions::default(),
++        )
++        .unwrap();
++        let (_, value) = complete(
++            load(&successor)
++                .feed_start("usage('successor')", vec![], PrintWriter::Disabled)
++                .unwrap(),
++        );
++        assert_eq!(
++            value,
++            MontyObject::list([MontyObject::string("new"), MontyObject::string("successor")])
++        );
++        let (_, value) = complete(
++            left.feed_start("usage('retained')", vec![], PrintWriter::Disabled)
++                .unwrap(),
++        );
++        assert_eq!(
++            value,
++            MontyObject::list([MontyObject::string("old"), MontyObject::string("retained")])
++        );
++
++        // Arc serialization remains the existing transparent Code payload;
++        // the trusted dump restores this task's own globals and function IDs.
++        let bytes = dump("recipe.py", None, SessionRef::Idle(&right)).unwrap();
++        let Session::Idle(restored) = Dump::load(&bytes).unwrap().state else {
++            panic!("idle dump");
++        };
++        let (_, value) = complete(
++            restored
++                .feed_start("saved + usage('restored')", vec![], PrintWriter::Disabled)
++                .unwrap(),
++        );
++        assert_eq!(
++            value,
++            MontyObject::list([
++                MontyObject::string("old"),
++                MontyObject::string("right"),
++                MontyObject::string("old"),
++                MontyObject::string("restored")
++            ])
++        );
++    }
++
++    #[test]
++    fn prepared_seed_rejects_incompatible_layout_without_overwriting_state() {
++        let seed = PreparedReplSeed::new(Arc::from("value"), vec!["value".into()], CompileOptions::default()).unwrap();
++        let error = empty()
++            .feed_seed_start(
++                &seed,
++                vec![("other".into(), MontyObject::int(1))],
++                PrintWriter::Disabled,
++            )
++            .unwrap_err();
++        assert_eq!(error.error.exc_type(), ExcType::RuntimeError);
++        let (repl, value) = complete(
++            error
++                .repl
++                .feed_start("kept = 7\nkept", vec![], PrintWriter::Disabled)
++                .unwrap(),
++        );
++        assert_eq!(value, MontyObject::int(7));
++        let error = repl
++            .feed_seed_start(
++                &seed,
++                vec![("value".into(), MontyObject::int(2))],
++                PrintWriter::Disabled,
++            )
++            .unwrap_err();
++        assert_eq!(error.error.exc_type(), ExcType::RuntimeError);
++        let (_, value) = complete(error.repl.feed_start("kept", vec![], PrintWriter::Disabled).unwrap());
++        assert_eq!(value, MontyObject::int(7));
++
++        let options = CompileOptions {
++            source_scan_threshold: 0,
++            ..CompileOptions::default()
++        };
++        let error = MontyRepl::new("other.py", ResourceTracker::default(), options)
++            .feed_seed_start(
++                &seed,
++                vec![("value".into(), MontyObject::int(3))],
++                PrintWriter::Disabled,
++            )
++            .unwrap_err();
++        assert_eq!(error.error.exc_type(), ExcType::RuntimeError);
++        let (_, value) = complete(error.repl.feed_start("4", vec![], PrintWriter::Disabled).unwrap());
++        assert_eq!(value, MontyObject::int(4));
++    }
++}
 diff --git a/crates/monty/src/resource_checks.rs b/crates/monty/src/resource_checks.rs
-index 472ef927..0f3be988 100644
+index 472ef92..0f3be98 100644
 --- a/crates/monty/src/resource_checks.rs
 +++ b/crates/monty/src/resource_checks.rs
 @@ -189,0 +190 @@ impl From<ResourceError> for RunError {
 +            ResourceError::Control(_) => (ExcType::RuntimeError, false),
 diff --git a/crates/monty/src/run.rs b/crates/monty/src/run.rs
-index 4f048e51..847cd578 100644
+index 4f048e5..b57e0f0 100644
 --- a/crates/monty/src/run.rs
 +++ b/crates/monty/src/run.rs
-@@ -789,0 +790,18 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -358,0 +359,8 @@ impl Executor {
++    pub(crate) fn from_repl_seed(tables: SessionTables, program: Program) -> Self {
++        Self {
++            tables,
++            program,
++            heap_capacity: 0,
++        }
++    }
++
+@@ -789,0 +798,18 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
 +    let window = match vm.heap.heap.tracker.boundary_window() {
 +        Ok(window) => window,
 +        Err(error) => {
@@ -1378,18 +1736,18 @@ index 4f048e51..847cd578 100644
 +}
 +
 +fn frame_exit_to_object_inner(frame_exit_result: RunResult<FrameExit>, vm: &mut VM<'_>) -> RunResult<MontyObject> {
-@@ -794 +812 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -794 +820 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
 -        FrameExit::Return(return_value) => return Ok(MontyObject::export(return_value, vm)),
 +        FrameExit::Return(return_value) => return MontyObject::export_checked(return_value, vm),
-@@ -798,0 +817 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -798,0 +825 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
 +        FrameExit::ControlYield => ExcType::not_implemented("control suspension requires iterative execution").into(),
-@@ -818 +837,3 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -818 +845,3 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
 -        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => unreachable!("lookups are answered above"),
 +        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => {
 +            unreachable!("lookups are answered above")
 +        }
 diff --git a/crates/monty/src/run_progress.rs b/crates/monty/src/run_progress.rs
-index ba3414a8..23d1e6ee 100644
+index ba3414a..23d1e6e 100644
 --- a/crates/monty/src/run_progress.rs
 +++ b/crates/monty/src/run_progress.rs
 @@ -37,0 +38,2 @@ pub enum RunProgress {

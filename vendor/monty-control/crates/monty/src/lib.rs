@@ -49,8 +49,8 @@ pub use crate::{
         SessionRef, dump,
     },
     repl::{
-        CheckedSource, MontyRepl, ReplContinuationMode, ReplControlYield, ReplFunctionCall, ReplNameLookup, ReplOsCall,
-        ReplProgress, ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
+        CheckedSource, MontyRepl, PreparedReplSeed, ReplContinuationMode, ReplControlYield, ReplFunctionCall,
+        ReplNameLookup, ReplOsCall, ReplProgress, ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
     },
     run::MontyRun,
     run_progress::{ControlYield, FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},

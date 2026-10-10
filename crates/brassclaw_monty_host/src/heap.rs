@@ -32,6 +32,45 @@ pub struct HeapUpdate {
     pub settings: HeapSettings,
 }
 
+/// Policy for new exchanges and capacity required by credited older exchanges.
+/// The transport owner supplies the latter from its retained-credit ledger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrameUpdate {
+    pub configured_frame_bytes: usize,
+    pub required_capacity_bytes: usize,
+}
+impl FrameUpdate {
+    pub(crate) fn valid(self) -> bool {
+        crate::process::valid_frame_limit(self.configured_frame_bytes)
+            && crate::process::valid_frame_limit(self.required_capacity_bytes)
+            && self.required_capacity_bytes >= self.configured_frame_bytes
+    }
+}
+
+/// Acknowledged worker framing, separate from the accepted bound of each RPC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrameStatus {
+    pub configured_frame_bytes: usize,
+    pub required_capacity_bytes: usize,
+    pub effective_capacity_bytes: usize,
+}
+impl FrameStatus {
+    pub fn pending_reduction(self) -> bool {
+        self.required_capacity_bytes < self.effective_capacity_bytes
+    }
+    pub(crate) fn valid(self) -> bool {
+        FrameUpdate {
+            configured_frame_bytes: self.configured_frame_bytes,
+            required_capacity_bytes: self.required_capacity_bytes,
+        }
+        .valid()
+            && crate::process::valid_frame_limit(self.effective_capacity_bytes)
+            && self.effective_capacity_bytes >= self.required_capacity_bytes
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HeapStatus {
@@ -48,6 +87,13 @@ pub struct AllocatorStatus {
     pub non_vm_reserve_bytes: usize,
     pub memory_budget_bytes: usize,
 }
+
+/// One parent-side publication of coupled worker framing and allocator geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkerMemoryStatus {
+    pub frame: FrameStatus,
+    pub allocator: AllocatorStatus,
+}
 impl HeapStatus {
     pub fn desired_revision(self) -> u64 {
         self.desired.map_or(0, |settings| settings.revision)
@@ -58,7 +104,7 @@ pub(crate) struct WorkerHeap {
     status: HeapStatus,
     initial_max_soft_bytes: usize,
     non_vm_reserve_bytes: usize,
-    frame_bytes: usize,
+    frame: FrameStatus,
     adapter_reserve_bytes: usize,
     memory_budget_bytes: usize,
 }
@@ -86,7 +132,11 @@ impl WorkerHeap {
             },
             initial_max_soft_bytes,
             non_vm_reserve_bytes,
-            frame_bytes: frame,
+            frame: FrameStatus {
+                configured_frame_bytes: frame,
+                required_capacity_bytes: frame,
+                effective_capacity_bytes: frame,
+            },
             adapter_reserve_bytes: adapter_reserve,
             memory_budget_bytes: physical,
         })
@@ -94,6 +144,10 @@ impl WorkerHeap {
 
     pub(crate) fn status(&self) -> HeapStatus {
         self.status
+    }
+
+    pub(crate) fn frame_status(&self) -> FrameStatus {
+        self.frame
     }
 
     pub(crate) fn allocator_status(&self) -> AllocatorStatus {
@@ -135,10 +189,17 @@ impl WorkerHeap {
         &self,
         update: Option<HeapUpdate>,
         reserve: Option<usize>,
+        frame: Option<FrameUpdate>,
     ) -> Result<(), VmError> {
-        if update.is_none() && reserve.is_none() {
+        if update.is_none() && reserve.is_none() && frame.is_none() {
             return Ok(());
         }
+        if frame.is_some_and(|frame| !frame.valid()) {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        let frame_bytes = frame.map_or(self.frame.effective_capacity_bytes, |frame| {
+            frame.required_capacity_bytes
+        });
         let reserve = reserve.unwrap_or(self.adapter_reserve_bytes);
         if let Some(update) = update {
             if update.expected_revision != self.status.desired_revision()
@@ -146,8 +207,7 @@ impl WorkerHeap {
             {
                 return Err(VmError::kind(VmFailure::SettingsRevisionConflict));
             }
-            let non_vm = self
-                .frame_bytes
+            let non_vm = frame_bytes
                 .checked_mul(2)
                 .and_then(|bytes| bytes.checked_add(reserve))
                 .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
@@ -163,7 +223,7 @@ impl WorkerHeap {
             self.validate_layout(
                 self.status.desired_revision(),
                 current.max_vm_bytes,
-                self.frame_bytes,
+                frame_bytes,
                 reserve,
             )
         }
@@ -175,14 +235,17 @@ impl WorkerHeap {
         &mut self,
         update: Option<HeapUpdate>,
         reserve: Option<usize>,
+        frame: Option<FrameUpdate>,
     ) -> Result<(), VmError> {
-        if update.is_none() && reserve.is_none() {
+        if update.is_none() && reserve.is_none() && frame.is_none() {
             return Ok(());
         }
-        self.validate_runtime_update(update, reserve)?;
+        self.validate_runtime_update(update, reserve, frame)?;
+        let frame_bytes = frame.map_or(self.frame.effective_capacity_bytes, |frame| {
+            frame.required_capacity_bytes
+        });
         let reserve = reserve.unwrap_or(self.adapter_reserve_bytes);
-        let non_vm = self
-            .frame_bytes
+        let non_vm = frame_bytes
             .checked_mul(2)
             .and_then(|frames| frames.checked_add(reserve))
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
@@ -206,7 +269,42 @@ impl WorkerHeap {
         self.non_vm_reserve_bytes = non_vm;
         self.adapter_reserve_bytes = reserve;
         self.memory_budget_bytes = capacity;
+        if let Some(frame) = frame {
+            self.frame = FrameStatus {
+                configured_frame_bytes: frame.configured_frame_bytes,
+                required_capacity_bytes: frame.required_capacity_bytes,
+                effective_capacity_bytes: frame.required_capacity_bytes,
+            };
+        }
         Ok(())
+    }
+
+    /// Release only transport capacity, retaining logical heap policy/revisions.
+    /// A physical reduction below actual live allocation stays pending. This
+    /// operation cannot pause admission or reset any task account.
+    pub(crate) fn reconcile_frame_capacity(
+        &mut self,
+        configured: usize,
+        required: usize,
+    ) -> Result<(), VmError> {
+        let target = FrameUpdate {
+            configured_frame_bytes: configured,
+            required_capacity_bytes: required,
+        };
+        if !target.valid()
+            || configured != self.frame.configured_frame_bytes
+            || required > self.frame.effective_capacity_bytes
+        {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        match self.publish_runtime_update(None, None, Some(target)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.failure == VmFailure::UnsafeHeapReduction => {
+                self.frame.required_capacity_bytes = required;
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub(crate) fn update(
@@ -258,7 +356,7 @@ impl WorkerHeap {
         Ok(())
     }
 
-    pub(crate) fn reconcile(&mut self) -> Result<(), VmError> {
+    pub(crate) fn reconcile(&mut self, retained_frame: usize) -> Result<(), VmError> {
         if self.status.pending_reduction {
             let desired = self
                 .status
@@ -281,6 +379,12 @@ impl WorkerHeap {
                     Err(error) => return Err(limit_error(error)),
                 }
             }
+        }
+        if self.frame.pending_reduction() && retained_frame <= self.frame.required_capacity_bytes {
+            self.reconcile_frame_capacity(
+                self.frame.configured_frame_bytes,
+                self.frame.required_capacity_bytes,
+            )?;
         }
         Ok(())
     }

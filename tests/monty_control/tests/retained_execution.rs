@@ -36,6 +36,107 @@ use brassclaw_skills::revision_store::PgComponentRevisionStore;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+#[tokio::test]
+async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
+    use brassclaw_turns::{
+        CancelRunRequest, DefaultTurnCoordinator, IdempotencyKey, SanitizedCancelReason,
+        TurnCoordinator, TurnStatus,
+    };
+    use std::time::Duration;
+
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let program = retained_program::program(&store, false).await;
+    let admitted = Arc::new(admission::reserve(rig.pool.clone(), "cancel held intent").await);
+    admitted
+        .admission
+        .retain_recipe_selection(program.inputs().instruction())
+        .await
+        .unwrap();
+    let mut lock_client = rig.pool.get().await.unwrap();
+    let lock = lock_client.transaction().await.unwrap();
+    lock.batch_execute("LOCK TABLE brassclaw_monty_tool_invocations IN SHARE MODE")
+        .await
+        .unwrap();
+    let writing = tokio::spawn({
+        let admission = admitted.admission.clone();
+        let program = program.clone();
+        async move {
+            admission
+                .begin_tool_invocation(&program, "0:2", &json!({"data":"{\"text\":\"held\"}"}))
+                .await
+        }
+    });
+    let observation = rig.pool.get().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let waiting: bool = observation
+                .query_one(
+                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' \
+                     AND query LIKE '%INSERT INTO brassclaw_monty_tool_invocations%' \
+                     AND pid<>pg_backend_pid())",
+                    &[],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let cancelled = tokio::time::timeout(
+        Duration::from_millis(500),
+        DefaultTurnCoordinator::new(admitted.state.clone()).cancel_run(CancelRunRequest {
+            scope: admitted.context.scope.clone(),
+            actor: admitted.context.actor.clone().unwrap(),
+            run_id: admitted.context.run_id,
+            reason: SanitizedCancelReason::UserRequested,
+            idempotency_key: IdempotencyKey::new("cancel-blocked-dispatch-intent").unwrap(),
+        }),
+    )
+    .await
+    .expect("effect-free journal preparation must not lock out cancellation")
+    .unwrap();
+    assert_eq!(cancelled.status, TurnStatus::CancelRequested);
+    assert!(!writing.is_finished());
+    lock.rollback().await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(2), writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_err()
+    );
+    let intents: i64 = observation
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(intents, 0);
+    // The earlier exact selection remains; cancellation cannot mutate it, and
+    // another call under the stale attempt cannot create an intent or effect.
+    assert!(
+        admitted
+            .admission
+            .begin_tool_invocation(&program, "0:2", &json!({"data":"{}"}))
+            .await
+            .is_err()
+    );
+    let selections: i64 = observation
+        .query_one(
+            "SELECT count(*) FROM brassclaw_monty_recipe_selections",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(selections, 1);
+}
+
 #[path = "support/admission.rs"]
 mod admission;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]

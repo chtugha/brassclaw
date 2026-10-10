@@ -159,9 +159,8 @@ impl MontyTaskHandoff {
 /// handoff must retain task identity and host access across waits, and must never
 /// imply a new global VM for a conversation or a turn.
 ///
-/// The current composition adapter still uses a conversation-keyed registry;
-/// that implementation gap remains until the Phase 3a hosting cutover. Changing
-/// the ownership contract alone does not establish global startup/readiness.
+/// The production composition adapter delivers admitted attempts to the
+/// supervised global service; hosts and retained selections stay attempt-local.
 #[async_trait]
 pub trait MontyTurnDriverPort: Send + Sync {
     /// Transfer one claimed task and await its exit. The service may retain the
@@ -172,10 +171,13 @@ pub trait MontyTurnDriverPort: Send + Sync {
 
     /// Stop one claimed attempt. A completed/missing attempt is an idempotent
     /// no-op; another claim of the same run must never receive this signal.
-    /// Success acknowledges termination of the driving future, not merely
-    /// acceptance or consumption of a stop signal. Adapters bound the wait;
-    /// supervisors independently enforce their stop deadline and quarantine
-    /// unacknowledged attempts. External effects still require reconciliation.
+    /// Success acknowledges actual owned attempt settlement, not merely
+    /// acceptance or consumption of a stop signal. The adapter must fence the
+    /// attempt before waiting and bound settlement with the acknowledged live
+    /// cancellation policy captured for this wait. Later policy changes apply
+    /// to new waits. Callers await this bounded result without another deadline;
+    /// failure stops worker admission and retains unacknowledged attempt/effect
+    /// evidence for reconciliation. It never proves an external effect absent.
     async fn stop_attempt(
         &self,
         _attempt: super::MontyTaskAttempt,

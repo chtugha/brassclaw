@@ -356,6 +356,14 @@ pub(crate) struct ReplSession<'a> {
 }
 
 impl Executor {
+    pub(crate) fn from_repl_seed(tables: SessionTables, program: Program) -> Self {
+        Self {
+            tables,
+            program,
+            heap_capacity: 0,
+        }
+    }
+
     /// Creates a new executor with the given code, filename, input names, and compile options.
     pub(crate) fn new(
         code: String,

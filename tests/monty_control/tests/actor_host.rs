@@ -43,6 +43,115 @@ async fn exchange(
 }
 
 #[tokio::test]
+async fn live_frame_policy_preserves_old_receipts_and_reclaims_capacity_after_last_refund() {
+    use brassclaw_monty_host::heap::FrameUpdate;
+    let (mut owner, ready) =
+        TransportOwner::start(worker(), boot(SOURCE), limits(), actor_limits())
+            .await
+            .unwrap();
+    let client = owner.client();
+    let clone = client.clone();
+    let initial = ready.vm_bounds.unwrap();
+    let update = |expected, configured, required| WorkerCommand::Recipe {
+        command: RecipeCommand::UpdateRuntimeSettings {
+            expected_revision: expected,
+            settings: TaskSettings {
+                revision: expected + 1,
+                max_compute_time: Duration::from_secs(600),
+                token_budgets_enabled: false,
+            },
+            values: initial,
+            max_recipe_contexts: None,
+            adapter_reserve_bytes: None,
+            heap_update: None,
+            frame_update: Some(FrameUpdate {
+                configured_frame_bytes: configured,
+                required_capacity_bytes: required,
+            }),
+        },
+    };
+    let grown = exchange(&client, update(1, 512 * 1024, 512 * 1024)).await;
+    assert_eq!(grown.root, ready.root);
+    assert_eq!(clone.capacity().unwrap().configured_frame_bytes, 512 * 1024);
+    let mut old_ids = Vec::new();
+    for _ in 0..2 {
+        let ticket = clone.try_submit(WorkerCommand::Inspect).unwrap();
+        old_ids.push(ticket.id);
+        drop(ticket);
+    }
+    for id in &old_ids {
+        client.completions().ready(*id).await.unwrap();
+    }
+    let shrunk = exchange(&client, update(2, 65536, 512 * 1024)).await;
+    assert_eq!(shrunk.frame.configured_frame_bytes, 65536);
+    assert_eq!(shrunk.frame.effective_capacity_bytes, 512 * 1024);
+    assert_eq!(client.frame_status(), shrunk.frame);
+    assert_eq!(clone.capacity().unwrap().configured_frame_bytes, 65536);
+    assert_eq!(
+        clone.capacity().unwrap().max_retained_frame_bytes,
+        512 * 1024
+    );
+    let new = clone
+        .try_submit(WorkerCommand::Inspect)
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert_eq!(new.max_frame_bytes, 65536);
+    assert_eq!(new.outcome.unwrap().root, ready.root);
+    let denied = client
+        .try_submit(WorkerCommand::ReconcileFrameCapacity {
+            expected_settings_revision: 3,
+            configured_frame_bytes: 65536,
+            required_capacity_bytes: 65536,
+        })
+        .err()
+        .expect("old credited responses still need their capacity");
+    assert_eq!(denied.kind, ActorFailure::InvalidLimits);
+    assert!(matches!(
+        *denied.command,
+        WorkerCommand::ReconcileFrameCapacity { .. }
+    ));
+    let first = client.completions().try_take(old_ids[0]).unwrap();
+    assert_eq!(first.max_frame_bytes, 512 * 1024);
+    assert_eq!(first.outcome.unwrap().root, ready.root);
+    assert_eq!(client.frame_status().effective_capacity_bytes, 512 * 1024);
+    let mut observed = client.live_worker_memory();
+    let before = *observed.borrow_and_update();
+    assert_eq!(before.frame.effective_capacity_bytes, 512 * 1024);
+    let last = client.completions().try_take(old_ids[1]).unwrap();
+    assert_eq!(last.max_frame_bytes, 512 * 1024);
+    assert_eq!(last.outcome.unwrap().root, ready.root);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if observed.borrow_and_update().frame.effective_capacity_bytes == 65536 {
+                break;
+            }
+            observed.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(client.capacity().unwrap().max_retained_frame_bytes, 0);
+    assert_eq!(client.capacity().unwrap().control_reserved_bytes, 0);
+    assert_eq!(
+        client.allocator_status().non_vm_reserve_bytes,
+        2 * 65536 + grown.allocator.adapter_reserve_bytes
+    );
+    let state = exchange(&clone, WorkerCommand::Inspect).await;
+    assert_eq!(state.root, ready.root);
+    assert_eq!(state.heap, ready.heap);
+    assert_eq!(state.effective_task_settings.unwrap().revision, 3);
+    let denied = clone
+        .try_submit_with_frame_limit(WorkerCommand::Inspect, 512 * 1024)
+        .err()
+        .expect("new exchanges use current policy");
+    assert_eq!(denied.kind, ActorFailure::InvalidLimits);
+    owner.request_termination();
+    assert_eq!(owner.join().await.unwrap().kind, StopKind::Requested);
+}
+
+#[tokio::test]
 async fn retained_frame_credits_survive_policy_changes_and_abandoned_tickets() {
     use brassclaw_monty_host::transport_actor::HostingDeadlines;
     let initial_limits = actor_limits();
@@ -227,6 +336,7 @@ async fn worker_ack_commits_rust_policy_before_child_progress_even_without_a_wai
                     max_recipe_contexts: None,
                     adapter_reserve_bytes: None,
                     heap_update: None,
+                    frame_update: None,
                 },
             },
             Box::new(move |snapshot| {

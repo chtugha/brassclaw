@@ -1,4 +1,4 @@
-//! Default [`McpListenerSpawner`] implementation for the host binary.
+//! Host-owned inbound MCP listener and legacy [`McpListenerSpawner`] adapter.
 //!
 //! This file lives in `brassclaw_reborn_webui_ingress` (the host-owned ingress
 //! crate) rather than `brassclaw_reborn_composition` because it calls
@@ -6,10 +6,10 @@
 //! crates under the `reborn_product_api_crates_do_not_bind_http_ingress`
 //! architecture contract.
 //!
-//! This legacy host adapter is not currently wired by production startup.
-//! Qualify the Recipe catalogue and ordinary-chat service, then install an
-//! authenticated ingress before starting it. Local binding is loopback-only;
-//! provider reachability must use an explicit authenticated transport.
+//! Production startup owns `InboundMcpListener` when `skills-db` is enabled.
+//! It serves the authenticated ordinary-chat bridge until instance shutdown.
+//! The legacy default spawner remains unwired. Binding is loopback-only; Kohai
+//! proxies advertised commands through the existing provider function-call API.
 
 use std::net::SocketAddr;
 

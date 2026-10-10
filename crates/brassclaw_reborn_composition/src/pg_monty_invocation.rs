@@ -67,9 +67,10 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))?;
-        self.verify_claim(&tx).await?;
+        self.preflight_claim(&tx).await?;
         self.retain_selection_in_transaction(&tx, instruction, &selection)
             .await?;
+        self.verify_claim(&tx).await?;
         tx.commit()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))
@@ -166,7 +167,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))?;
-        self.verify_claim(&tx).await?;
+        self.preflight_claim(&tx).await?;
         self.retain_selection_in_transaction(&tx, instruction, &workflow)
             .await?;
         let inserted = tx.execute(
@@ -181,6 +182,9 @@ impl PgMontyAdmission {
         if inserted != 1 {
             return Err(failed("monty_invocation_replay_requires_reconciliation"));
         }
+        // This final locked claim check is the commit/dispatch fence. Waiting
+        // for an effect-free intent insert must not block turn cancellation.
+        self.verify_claim(&tx).await?;
         tx.commit()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))?;

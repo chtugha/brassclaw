@@ -18,7 +18,8 @@ use brassclaw_monty_host::service::{
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_threads::SessionThreadService;
 use brassclaw_turns::{
-    LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopMessageRef,
+    LoopCancelled, LoopCancelledReasonKind, LoopCompleted, LoopCompletionKind, LoopExit,
+    LoopExitId, LoopMessageRef,
     run_profile::{AgentLoopDriverError, MontyTaskAttempt, MontyTaskHandoff, MontyTurnDriverPort},
 };
 use futures::{
@@ -418,17 +419,31 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             }
             entry.changed.notify_waiters();
         }
-        let receipt = ticket
-            .wait()
-            .await
-            .map_err(|_| failed("monty_service_reconciliation_required"))?;
+        let waiting = ticket.wait();
+        tokio::pin!(waiting);
+        let receipt = tokio::select! {
+            biased;
+            receipt = &mut waiting => receipt,
+            _ = host.cancellation_requested() => {
+                // Transport control only: fence this exact attempt and await
+                // its owned host futures/VM receipt under the captured live
+                // acknowledgement policy. No new sequencing or effect replay.
+                self.stop_attempt(host.attempt()).await?;
+                waiting.await
+            }
+        }
+        .map_err(|_| failed("monty_service_reconciliation_required"))?;
         match &receipt.outcome {
             TaskOutcome::InternalCompleted { .. } => Err(failed("monty_reply_reference_invalid")),
             TaskOutcome::Completed { reply_ref } => {
                 let reference = LoopMessageRef::new(reply_ref.clone())
                     .map_err(|_| failed("monty_reply_reference_invalid"))?;
-                host.published_reply_content(&reference)
-                    .map_err(|_| failed("monty_reply_not_published"))?;
+                // A completed receipt records an already verified publication.
+                // A later cancellation must not make this evidence read issue
+                // another fenced host call or erase the confirmed reply.
+                if host.finalized_reply_ref().as_ref() != Some(&reference) {
+                    return Err(failed("monty_reply_not_published"));
+                }
                 let exit = LoopExit::Completed(LoopCompleted {
                     completion_kind: LoopCompletionKind::FinalReply,
                     reply_message_refs: vec![reference],
@@ -450,6 +465,24 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             }
             TaskOutcome::Failed { reason_kind } => {
                 self.settle_attempt(&entry, receipt.clone()).await?;
+                if reason_kind == "task_cancelled"
+                    && entry
+                        .state
+                        .lock()
+                        .map_err(|_| failed("monty_attempt_state_failed"))?
+                        .cancelled
+                {
+                    // The trusted exit applier independently verifies the
+                    // durable cancellation request. Partial effect evidence
+                    // stays retained; cancellation never declares it absent.
+                    return Ok(LoopExit::Cancelled(LoopCancelled {
+                        reason_kind: LoopCancelledReasonKind::HostCancellation,
+                        checkpoint_id: None,
+                        interrupted_message_refs: Vec::new(),
+                        exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
+                            .map_err(|_| failed("monty_exit_reference_invalid"))?,
+                    }));
+                }
                 Err(failed(reason_kind))
             }
         }
@@ -480,6 +513,11 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         }
         entry.changed.notify_waiters();
         let policy = self.ports.cancellation_acknowledgement()?.validate()?;
+        tracing::debug!(
+            revision = policy.revision,
+            timeout_millis = policy.timeout.as_millis(),
+            "Monty attempt cancellation acknowledgement wait started"
+        );
         tokio::time::timeout(policy.timeout, async {
             loop {
                 let changed = entry.changed.notified();

@@ -32,21 +32,23 @@ use crate::{
     },
 };
 
-use crate::heap::{AllocatorStatus, HeapSettings, HeapStatus, HeapUpdate, WorkerHeap};
+use crate::heap::{
+    AllocatorStatus, FrameStatus, FrameUpdate, HeapSettings, HeapStatus, HeapUpdate, WorkerHeap,
+};
 use crate::process_recipe::WorkerRecipes;
 pub use crate::process_recipe::{
     RecipeBoundary, RecipeCommand, RecipeContextCapacity, RecipeContextId, RecipeEvent,
     ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 11;
+const PROTOCOL: u32 = 13;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
 const MAX_TRANSPORT_DEPTH: usize = 64;
 
 // The caller supplies the finite frame policy. Only wire and allocation
 // representations constrain it here; there is no second fixed 64 MiB policy.
-fn valid_frame_limit(limit: usize) -> bool {
+pub(crate) fn valid_frame_limit(limit: usize) -> bool {
     limit > 0 && u32::try_from(limit).is_ok() && limit <= isize::MAX as usize
 }
 
@@ -132,6 +134,7 @@ pub struct RuntimeSettingsCandidate {
     pub max_recipe_contexts: Option<u32>,
     pub adapter_reserve_bytes: Option<usize>,
     pub heap_update: Option<HeapUpdate>,
+    pub frame_update: Option<FrameUpdate>,
 }
 
 /// Exact mechanical VM operation. Payloads deliberately have no Debug output.
@@ -157,6 +160,13 @@ pub enum WorkerCommand {
         max_vm_bytes: usize,
         max_frame_bytes: usize,
         adapter_reserve_bytes: usize,
+    },
+    /// Release capacity after the owner refunds older exchange credits. This
+    /// preserves policy revision and may acknowledge pending physical uptake.
+    ReconcileFrameCapacity {
+        expected_settings_revision: u64,
+        configured_frame_bytes: usize,
+        required_capacity_bytes: usize,
     },
     UpdateHeap {
         expected_revision: u64,
@@ -259,6 +269,7 @@ impl From<GlobalBoundary> for ProcessBoundary {
 #[serde(deny_unknown_fields)]
 pub struct ProcessSnapshot {
     pub allocator: AllocatorStatus,
+    pub frame: FrameStatus,
     /// Real shared allocator ownership, never a serialized-frame estimate or
     /// process-baseline subtraction. Includes root and task-owned child state.
     pub vm_live_bytes: usize,
@@ -287,14 +298,23 @@ pub struct RuntimeSettingsObservation {
     pub values: Option<VmBounds>,
     pub max_recipe_contexts: Option<u32>,
     pub adapter_reserve_bytes: usize,
+    pub frame: FrameStatus,
 }
 impl ProcessSnapshot {
+    pub fn worker_memory(&self) -> crate::heap::WorkerMemoryStatus {
+        crate::heap::WorkerMemoryStatus {
+            frame: self.frame,
+            allocator: self.allocator,
+        }
+    }
+
     pub fn runtime_settings(&self) -> RuntimeSettingsObservation {
         RuntimeSettingsObservation {
             task: self.effective_task_settings,
             values: self.vm_bounds,
             max_recipe_contexts: self.recipe_context_capacity.map(|capacity| capacity.limit),
             adapter_reserve_bytes: self.allocator.adapter_reserve_bytes,
+            frame: self.frame,
         }
     }
 }
@@ -318,13 +338,158 @@ struct Request<C = WorkerCommand> {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Reply {
+struct Reply<S = ProcessSnapshot> {
     protocol: u32,
     sequence: u64,
     max_frame_bytes: usize,
-    snapshot: ProcessSnapshot,
+    snapshot: S,
     failure: Option<VmFailure>,
     diagnostic: Option<String>,
+}
+
+/// Size the actual control wire representation without changing VM state or
+/// publishing the proposed revision. This projection is never an observation.
+fn validate_candidate_frame(
+    root: &GlobalVm,
+    registry: &WorkerRecipes,
+    heap: &WorkerHeap,
+    candidate: RuntimeSettingsCandidate,
+    accepted_frame: usize,
+) -> Result<(), crate::VmError> {
+    registry.validate_runtime_settings(
+        candidate.expected_revision,
+        candidate.settings,
+        candidate.values,
+        candidate.max_recipe_contexts,
+    )?;
+    let before = heap.frame_status();
+    let frame = candidate.frame_update.map_or(before, |update| FrameStatus {
+        configured_frame_bytes: update.configured_frame_bytes,
+        required_capacity_bytes: update.required_capacity_bytes,
+        effective_capacity_bytes: update.required_capacity_bytes,
+    });
+    if !frame.valid()
+        || frame.effective_capacity_bytes < accepted_frame
+        || !runtime_bounds_supported(candidate.values, frame.configured_frame_bytes)
+    {
+        return Err(crate::VmError::kind(VmFailure::InvalidBounds));
+    }
+    heap.validate_runtime_update(
+        candidate.heap_update,
+        candidate.adapter_reserve_bytes,
+        candidate.frame_update,
+    )?;
+    let adapter = candidate
+        .adapter_reserve_bytes
+        .unwrap_or(heap.allocator_status().adapter_reserve_bytes);
+    let non_vm = frame
+        .effective_capacity_bytes
+        .checked_mul(2)
+        .and_then(|bytes| bytes.checked_add(adapter))
+        .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    let mut heap_status = heap.status();
+    if let Some(update) = candidate.heap_update {
+        heap_status = HeapStatus {
+            desired: Some(update.settings),
+            effective: Some(update.settings),
+            pending_reduction: false,
+        };
+    }
+    let effective = heap_status
+        .effective
+        .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    let capacity = effective
+        .max_vm_bytes
+        .checked_add(non_vm)
+        .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    let mut accounting = registry.accounting();
+    for account in &mut accounting {
+        account.effective_revision = candidate.settings.revision;
+        if account
+            .compute_time
+            .is_some_and(|usage| usage > candidate.settings.max_compute_time)
+        {
+            account.compute_time = None;
+            account.failure =
+                Some(brassclaw_resources::MontyTaskBudgetError::ComputeExceeded.to_string());
+        }
+    }
+    let mut contexts = registry.context_capacity();
+    if let Some(limit) = candidate.max_recipe_contexts {
+        contexts.limit = limit;
+    }
+    let mut projection = ProcessSnapshot {
+        allocator: AllocatorStatus {
+            adapter_reserve_bytes: adapter,
+            non_vm_reserve_bytes: non_vm,
+            memory_budget_bytes: capacity,
+        },
+        frame,
+        vm_live_bytes: usize::MAX,
+        root: Some(root.execution_identity()),
+        heap: heap_status,
+        lifecycle: root.lifecycle(),
+        boundary: None,
+        work_waits: root.work_waits(),
+        outstanding: root.outstanding(),
+        stdout: String::new(),
+        admitted_task: None,
+        recipe: Some(RecipeEvent::SettingsUpdated),
+        effective_task_settings: Some(candidate.settings),
+        vm_bounds: Some(candidate.values),
+        recipe_context_capacity: Some(contexts),
+        task_accounting: accounting,
+        withheld_answers: Vec::new(),
+    };
+    let check = |snapshot: &ProcessSnapshot| {
+        encode(
+            &Reply {
+                protocol: PROTOCOL,
+                sequence: u64::MAX,
+                max_frame_bytes: frame.configured_frame_bytes,
+                snapshot,
+                failure: None,
+                diagnostic: None,
+            },
+            frame.configured_frame_bytes,
+        )
+        .map(|_| ())
+        .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))
+    };
+    check(&projection)?;
+    // A pending automatic heap target can become feasible after the coupled
+    // reserve update. Validate both possible acknowledgements, without applying it.
+    if heap_status.pending_reduction
+        && let Some(desired) = heap_status.desired
+    {
+        projection.heap.effective = Some(desired);
+        projection.heap.pending_reduction = false;
+        projection.allocator.memory_budget_bytes = desired
+            .max_vm_bytes
+            .checked_add(non_vm)
+            .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBounds))?;
+        check(&projection)?;
+    }
+    for command in [
+        WorkerCommand::Inspect,
+        WorkerCommand::ReconcileFrameCapacity {
+            expected_settings_revision: candidate.settings.revision,
+            configured_frame_bytes: frame.configured_frame_bytes,
+            required_capacity_bytes: frame.required_capacity_bytes,
+        },
+    ] {
+        encode(
+            &Request {
+                protocol: PROTOCOL,
+                sequence: u64::MAX,
+                max_frame_bytes: frame.configured_frame_bytes,
+                command,
+            },
+            frame.configured_frame_bytes,
+        )
+        .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -385,6 +550,8 @@ pub struct GlobalProcess {
     stdin: Option<ChildStdin>,
     stdout: Option<ChildStdout>,
     limits: ProcessLimits,
+    frame: FrameStatus,
+    task_settings: Option<TaskSettings>,
     values: VmBounds,
     sequence: u64,
     terminal: bool,
@@ -431,6 +598,7 @@ impl GlobalProcess {
         let expected_heap = boot.heap_settings;
         let expected_adapter_reserve = boot.adapter_reserve_bytes;
         let expected_source = boot.checksum;
+        let expected_task_settings = boot.task_settings;
         let expected_aliases = root_aliases_checksum(&boot.aliases);
         let values = boot.bounds.values;
         let mut process = Self {
@@ -438,6 +606,12 @@ impl GlobalProcess {
             stdin,
             stdout,
             limits,
+            frame: FrameStatus {
+                configured_frame_bytes: limits.max_frame_bytes,
+                required_capacity_bytes: limits.max_frame_bytes,
+                effective_capacity_bytes: limits.max_frame_bytes,
+            },
+            task_settings: None,
             values,
             sequence: 0,
             terminal: false,
@@ -447,6 +621,7 @@ impl GlobalProcess {
             reap_error: None,
             root: None,
         };
+        let expected_frame = process.frame;
         let snapshot = match process.exchange(WorkerCommand::Boot { boot }).await {
             Ok(snapshot) => snapshot,
             Err(mut error) => {
@@ -457,7 +632,10 @@ impl GlobalProcess {
                 return Err(error);
             }
         };
-        if snapshot.allocator.adapter_reserve_bytes != expected_adapter_reserve
+        if snapshot.frame != expected_frame
+            || snapshot.effective_task_settings != Some(expected_task_settings)
+            || snapshot.vm_bounds != Some(values)
+            || snapshot.allocator.adapter_reserve_bytes != expected_adapter_reserve
             || snapshot.root.is_none_or(|root| {
                 root.vm_id().is_nil()
                     || root.source_checksum() != expected_source
@@ -499,6 +677,14 @@ impl GlobalProcess {
         self.child.id()
     }
 
+    pub(crate) fn frame_status(&self) -> FrameStatus {
+        self.frame
+    }
+
+    pub(crate) fn task_settings(&self) -> Option<TaskSettings> {
+        self.task_settings
+    }
+
     /// Evidence retained when a caller drops an in-flight exchange future.
     /// Taking it never authorizes replay or proves an external effect settled.
     pub fn take_interrupted_command(&mut self) -> Option<Box<WorkerCommand>> {
@@ -526,7 +712,7 @@ impl GlobalProcess {
         &mut self,
         command: WorkerCommand,
     ) -> Result<ProcessSnapshot, ProcessError> {
-        self.exchange_with_frame_limit(command, self.limits.max_frame_bytes)
+        self.exchange_with_frame_limit(command, self.frame.configured_frame_bytes)
             .await
     }
 
@@ -543,7 +729,9 @@ impl GlobalProcess {
             error.command = Some(Box::new(command));
             return Err(error);
         }
-        if !valid_frame_limit(max_frame_bytes) || max_frame_bytes > self.limits.max_frame_bytes {
+        if !valid_frame_limit(max_frame_bytes)
+            || max_frame_bytes > self.frame.effective_capacity_bytes
+        {
             let mut error = ProcessError::new(ProcessFailure::InvalidLimits);
             error.command = Some(Box::new(command));
             return Err(error);
@@ -658,13 +846,14 @@ impl GlobalProcess {
         // including errors, child operations and shutdown. Preserve a conflicting
         // real reply for reconciliation and contain the worker before more work.
         let allocator = reply.snapshot.allocator;
-        let allocator_valid = guard
-            .owner
-            .limits
-            .max_frame_bytes
-            .checked_mul(2)
-            .and_then(|frames| frames.checked_add(allocator.adapter_reserve_bytes))
-            == Some(allocator.non_vm_reserve_bytes)
+        let allocator_valid = reply.snapshot.frame.valid()
+            && reply
+                .snapshot
+                .frame
+                .effective_capacity_bytes
+                .checked_mul(2)
+                .and_then(|frames| frames.checked_add(allocator.adapter_reserve_bytes))
+                == Some(allocator.non_vm_reserve_bytes)
             && reply.snapshot.heap.effective.is_none_or(|heap| {
                 heap.max_vm_bytes
                     .checked_add(allocator.non_vm_reserve_bytes)
@@ -680,7 +869,7 @@ impl GlobalProcess {
                 .recipe_context_capacity
                 .is_some_and(|capacity| capacity.limit == 0)
             || reply.snapshot.vm_bounds.is_some_and(|values| {
-                !runtime_bounds_supported(values, guard.owner.limits.max_frame_bytes)
+                !runtime_bounds_supported(values, reply.snapshot.frame.configured_frame_bytes)
             })
         {
             guard.owner.interrupt();
@@ -697,6 +886,8 @@ impl GlobalProcess {
         if let Some(values) = reply.snapshot.vm_bounds {
             guard.owner.values = values;
         }
+        guard.owner.frame = reply.snapshot.frame;
+        guard.owner.task_settings = reply.snapshot.effective_task_settings;
         if reply.snapshot.lifecycle == Lifecycle::Failed {
             // A failed root is an instance failure, even when the framed VM
             // error arrived correctly. Fence further transport immediately;
@@ -868,9 +1059,18 @@ fn validate_command_data(
         return Err(ProcessFailure::InvalidLimits);
     }
     if let WorkerCommand::Recipe {
-        command: RecipeCommand::UpdateRuntimeSettings { values, .. },
+        command:
+            RecipeCommand::UpdateRuntimeSettings {
+                values,
+                frame_update,
+                ..
+            },
     } = command
-        && !runtime_bounds_supported(*values, limit)
+        && (!runtime_bounds_supported(
+            *values,
+            frame_update.map_or(limit, |frame| frame.configured_frame_bytes),
+        ) || frame_update
+            .is_some_and(|frame| !frame.valid() || frame.required_capacity_bytes < limit))
     {
         return Err(ProcessFailure::Vm(VmFailure::InvalidBounds));
     }
@@ -1055,10 +1255,10 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sequence = 0u64;
     loop {
         let (request, wire_bytes): (Request, _) =
-            read_frame_with_length(&mut input, max_frame_bytes)
+            read_frame_with_length(&mut input, heap.frame_status().effective_capacity_bytes)
                 .map_err(|_| io::Error::other("invalid worker request"))?;
         if !valid_frame_limit(request.max_frame_bytes)
-            || request.max_frame_bytes > max_frame_bytes
+            || request.max_frame_bytes > heap.frame_status().effective_capacity_bytes
             || wire_bytes > request.max_frame_bytes
         {
             return Err("invalid worker request".into());
@@ -1073,6 +1273,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             &request.command,
             WorkerCommand::ValidateMemoryLayout { .. }
                 | WorkerCommand::ValidateRuntimeSettings { .. }
+                | WorkerCommand::ReconcileFrameCapacity { .. }
         );
         let recipe_command = matches!(&request.command, WorkerCommand::Recipe { .. });
         let recipe_context = match &request.command {
@@ -1085,7 +1286,42 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             } => Some(*context),
             _ => None,
         };
-        let result = {
+        let candidate = match &request.command {
+            WorkerCommand::ValidateRuntimeSettings { candidate } => Some(*candidate),
+            WorkerCommand::Recipe {
+                command:
+                    RecipeCommand::UpdateRuntimeSettings {
+                        expected_revision,
+                        settings,
+                        values,
+                        max_recipe_contexts,
+                        adapter_reserve_bytes,
+                        heap_update,
+                        frame_update,
+                    },
+            } => Some(RuntimeSettingsCandidate {
+                expected_revision: *expected_revision,
+                settings: *settings,
+                values: *values,
+                max_recipe_contexts: *max_recipe_contexts,
+                adapter_reserve_bytes: *adapter_reserve_bytes,
+                heap_update: *heap_update,
+                frame_update: *frame_update,
+            }),
+            _ => None,
+        };
+        // Temporary sizing buffers are transport allocations, not VM heap.
+        // Drop the projection before the actual allocator feasibility/publication.
+        let preflight = match (candidate, vm.as_ref(), recipes.as_ref()) {
+            (Some(candidate), Some(root), Some(registry)) => {
+                validate_candidate_frame(root, registry, &heap, candidate, request.max_frame_bytes)
+            }
+            _ => Ok(()),
+        };
+        let candidate_rejected = preflight.is_err();
+        let result = if let Err(error) = preflight {
+            Err(error)
+        } else {
             // Only synchronous interpreter/hosting work enters the VM domain.
             // Frame decoding/encoding stays outside. Allocations retain their tags
             // through later destruction and suspended root/child execution.
@@ -1128,7 +1364,17 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                     (Some(root), Some(registry)) => match command {
                         WorkerCommand::Inspect => Ok(None),
                         WorkerCommand::ValidateRuntimeSettings { candidate } => {
-                            if !runtime_bounds_supported(candidate.values, max_frame_bytes) {
+                            if !runtime_bounds_supported(
+                                candidate.values,
+                                candidate
+                                    .frame_update
+                                    .map_or(heap.frame_status().configured_frame_bytes, |frame| {
+                                        frame.configured_frame_bytes
+                                    }),
+                            ) || candidate.frame_update.is_some_and(|frame| {
+                                !frame.valid()
+                                    || frame.required_capacity_bytes < request.max_frame_bytes
+                            }) {
                                 Err(crate::VmError::kind(VmFailure::InvalidBounds))
                             } else {
                                 registry
@@ -1142,6 +1388,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                         heap.validate_runtime_update(
                                             candidate.heap_update,
                                             candidate.adapter_reserve_bytes,
+                                            candidate.frame_update,
                                         )
                                     })
                                     .map(|()| None)
@@ -1175,17 +1422,29 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                         } => heap
                             .update(expected_revision, settings, automatic)
                             .map(|()| None),
+                        WorkerCommand::ReconcileFrameCapacity {
+                            expected_settings_revision,
+                            configured_frame_bytes,
+                            required_capacity_bytes,
+                        } => {
+                            if expected_settings_revision != registry.settings().revision {
+                                Err(crate::VmError::kind(VmFailure::SettingsRevisionConflict))
+                            } else if required_capacity_bytes < request.max_frame_bytes {
+                                Err(crate::VmError::kind(VmFailure::InvalidBounds))
+                            } else {
+                                heap.reconcile_frame_capacity(
+                                    configured_frame_bytes,
+                                    required_capacity_bytes,
+                                )
+                                .map(|()| None)
+                            }
+                        }
                         WorkerCommand::Admit { .. } if heap.status().pending_reduction => {
                             Err(crate::VmError::kind(VmFailure::HeapBackpressure))
                         }
                         WorkerCommand::Admit { key, task } => registry
                             .admit(root, key, task, &mut admitted_task)
                             .map(Some),
-                        WorkerCommand::Recipe {
-                            command: RecipeCommand::UpdateRuntimeSettings { values, .. },
-                        } if !runtime_bounds_supported(values, max_frame_bytes) => {
-                            Err(crate::VmError::kind(VmFailure::InvalidBounds))
-                        }
                         WorkerCommand::Recipe {
                             command:
                                 RecipeCommand::UpdateRuntimeSettings {
@@ -1195,18 +1454,32 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                     max_recipe_contexts,
                                     adapter_reserve_bytes,
                                     heap_update,
+                                    frame_update,
                                 },
                         } => {
-                            if let Err(error) = registry.validate_runtime_settings(
+                            if !runtime_bounds_supported(
+                                values,
+                                frame_update
+                                    .map_or(heap.frame_status().configured_frame_bytes, |frame| {
+                                        frame.configured_frame_bytes
+                                    }),
+                            ) || frame_update.is_some_and(|frame| {
+                                !frame.valid()
+                                    || frame.required_capacity_bytes < request.max_frame_bytes
+                            }) {
+                                Err(crate::VmError::kind(VmFailure::InvalidBounds))
+                            } else if let Err(error) = registry.validate_runtime_settings(
                                 expected_revision,
                                 settings,
                                 values,
                                 max_recipe_contexts,
                             ) {
                                 Err(error)
-                            } else if let Err(error) =
-                                heap.publish_runtime_update(heap_update, adapter_reserve_bytes)
-                            {
+                            } else if let Err(error) = heap.publish_runtime_update(
+                                heap_update,
+                                adapter_reserve_bytes,
+                                frame_update,
+                            ) {
                                 Err(error)
                             } else {
                                 let event = registry
@@ -1218,6 +1491,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                             max_recipe_contexts,
                                             adapter_reserve_bytes,
                                             heap_update: None,
+                                            frame_update: None,
                                         },
                                         root,
                                     )
@@ -1292,6 +1566,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
         let snapshot = match vm.as_mut() {
             Some(root) => ProcessSnapshot {
                 allocator: heap.allocator_status(),
+                frame: heap.frame_status(),
                 vm_live_bytes: 0,
                 root: Some(root.execution_identity()),
                 heap: heap.status(),
@@ -1310,6 +1585,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             },
             None => ProcessSnapshot {
                 allocator: heap.allocator_status(),
+                frame: heap.frame_status(),
                 vm_live_bytes: 0,
                 root: None,
                 heap: heap.status(),
@@ -1330,12 +1606,13 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = snapshot;
         // A feasibility probe must not apply a pending automatic target as a
         // side effect. Actual publication still rechecks under the owner fence.
-        if !memory_validation {
-            heap.reconcile()
+        if !memory_validation && !candidate_rejected {
+            heap.reconcile(request.max_frame_bytes)
                 .map_err(|_| "worker heap reconciliation failed")?;
         }
         snapshot.heap = heap.status();
         snapshot.allocator = heap.allocator_status();
+        snapshot.frame = heap.frame_status();
         snapshot.vm_live_bytes = monty_alloc::vm_live_bytes();
         let stopped = snapshot.lifecycle == Lifecycle::Stopped;
         write_frame(

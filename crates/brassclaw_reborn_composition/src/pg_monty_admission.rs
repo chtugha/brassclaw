@@ -89,7 +89,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
-        self.verify_claim(&transaction).await?;
+        self.preflight_claim(&transaction).await?;
         let scope = serde_json::to_value(&self.scope)
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
         let runner = serde_json::to_value(self.attempt.runner_id)
@@ -106,6 +106,7 @@ impl PgMontyAdmission {
         if inserted != 1 {
             return Err(failed("monty_admission_replay_requires_recovery"));
         }
+        self.verify_claim(&transaction).await?;
         transaction
             .commit()
             .await
@@ -126,7 +127,7 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
-        self.verify_claim(&transaction).await?;
+        self.preflight_claim(&transaction).await?;
         let changed = transaction.execute("UPDATE brassclaw_monty_task_admissions
             SET phase='started', started_at=COALESCE(started_at,clock_timestamp())
             WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3 AND phase IN ('reserved','started')",
@@ -135,6 +136,7 @@ impl PgMontyAdmission {
         if changed != 1 {
             return Err(failed("monty_admission_fenced"));
         }
+        self.verify_claim(&transaction).await?;
         transaction
             .commit()
             .await
@@ -205,15 +207,41 @@ impl PgMontyAdmission {
         &self,
         transaction: &Transaction<'_>,
     ) -> Result<(), AgentLoopDriverError> {
+        self.inspect_claim(transaction, true).await
+    }
+
+    /// Reject stale preparation without holding the cancellation/heartbeat
+    /// snapshot lock through effect-free journal writes. This is not the final
+    /// dispatch fence: every caller must verify again under lock before COMMIT.
+    async fn preflight_claim(
+        &self,
+        transaction: &Transaction<'_>,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.inspect_claim(transaction, false).await
+    }
+
+    async fn inspect_claim(
+        &self,
+        transaction: &Transaction<'_>,
+        retain_lock: bool,
+    ) -> Result<(), AgentLoopDriverError> {
         // Same snapshot key/lock as PgTurnStateStore. The snapshot row lock
-        // serializes claim/cancel/reclaim writes with this short admission check;
-        // it is released before external work or another VM boundary.
-        let row = transaction
-            .query_opt(
-                "SELECT payload FROM brassclaw_turns
+        // fences the final claim check and COMMIT, after all effect-free journal
+        // preparation. A blocked journal must not hold up cancellation or lease
+        // renewal. Cancellation that wins during preparation rolls back every
+        // provisional write; no Tool can run without the verified commit.
+        let query = "SELECT payload FROM brassclaw_turns
             WHERE tenant_id=$1 AND status='snapshot' AND turn_id=
             COALESCE((SELECT snapshot_thread_id FROM brassclaw_turn_snapshot_threads
-                WHERE tenant_id=$1 AND thread_id=$2),$2) FOR UPDATE",
+                WHERE tenant_id=$1 AND thread_id=$2),$2)";
+        let query = if retain_lock {
+            format!("{query} FOR UPDATE")
+        } else {
+            query.to_owned()
+        };
+        let row = transaction
+            .query_opt(
+                &query,
                 &[
                     &self.scope.tenant_id.as_str(),
                     &self.scope.thread_id.as_str(),
