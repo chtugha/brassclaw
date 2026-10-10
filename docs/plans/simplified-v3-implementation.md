@@ -6119,3 +6119,38 @@ observations and settings changes, not only manually incremented counters.
 No clock/resource behavior has been changed or accepted by this preload candidate.
 Complete dependency-chain compiler sharing, general catalogue activation, prefix/
 provider/recovery and full-platform acceptance remain open.
+
+### 2026-10-10 — CLI instance listener and shutdown repair (local acceptance)
+
+GitHub run 38080007851's CLI failures came from separate real instances sharing
+hardcoded loopback MCP port 9090. The failure path also let PostgreSQL's last-
+resort `pg_ctl` stop inherit reply-only stdout. `run` and `repl` now request port
+zero from the OS by default and expose `--mcp-port` for an explicit stable port.
+The host still binds only loopback and publishes the actual bound endpoint
+through the existing listener/provider observation. There is no free-port probe
+or bind fallback. `serve` retains its explicit port contract. Builds without
+`skills-db` reject a nonzero unsupported CLI port before startup.
+
+Listener startup/observation failure drains the already running runtime and
+then stops its owned database. Conversation-creation failure also reaches normal
+cleanup. Cleanup failures remain visible; ordinary PostgreSQL shutdown errors
+are returned instead of being hidden at debug level. The original startup
+failure remains primary when cleanup also fails. The last-resort blocking stop
+preserves both `pg_ctl` diagnostic streams on stderr, including warnings.
+
+The actual CLI smoke executable passed all 72 enabled cases with two concurrent
+test threads, including both originally failing Codex-auth startups, reply-only
+piped stdin and a real occupied-port regression. The latter holds an actual
+listener while a complete PostgreSQL/global-runtime instance starts and rejects
+the explicit port; it checks empty reply stdout and confirmed normal cleanup.
+Four preexisting config-init cases remain explicitly ignored; this result does
+not claim their acceptance. Strict all-target CLI/embedded-PostgreSQL lint passed.
+All 9,027 frozen source hashes remained fixed. Executables were protected on
+compiler-artifact events and the actual subprocess application was paired with
+the verified unchanged worker. No model reply or successful Tool was fabricated.
+
+Sources/commands/receipts: `target/validation/cli-listener-repair-20261010`,
+`/private/tmp/brassclaw-cli-listener-*`, and
+`/private/tmp/brassclaw-ci-repair-cli-listener*`. This batch excludes peers'
+activation/reconciliation and the subsequent clock correction. Cargo/cleanup
+held the common lock; a new GitHub product run remains required.

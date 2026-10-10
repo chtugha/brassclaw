@@ -994,6 +994,43 @@ fn repl_exit_command_exits_cleanly_without_touching_v1_state() {
     );
 }
 
+#[cfg(feature = "skills-db")]
+#[test]
+fn run_rejects_occupied_explicit_mcp_port_without_reply_stdout_or_abrupt_pg_shutdown() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("occupied MCP port");
+    let port = listener.local_addr().expect("listener addr").port();
+    let output = isolated_no_llm_command(temp.path(), &temp.path().join("reborn-home"))
+        .args([
+            "run",
+            "--mcp-port",
+            &port.to_string(),
+            "--message",
+            "never dispatched",
+        ])
+        .output()
+        .expect("actual CLI must report listener failure");
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.is_empty(),
+        "reply-only stdout: {stdout}; stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("failed to start authenticated instance MCP listener"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("ManagedPostgres dropped without calling shutdown"),
+        "startup must drain the runtime and database: {stderr}"
+    );
+    assert!(
+        !stderr.contains("shutdown failed"),
+        "cleanup failed: {stderr}"
+    );
+}
+
 #[test]
 fn repl_resolves_codex_auth_env_without_openai_api_key() {
     let temp = tempfile::tempdir().expect("tempdir");

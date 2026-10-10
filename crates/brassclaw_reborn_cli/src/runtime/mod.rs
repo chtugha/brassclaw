@@ -49,8 +49,13 @@ pub(crate) struct RuntimeInputOptions {
 pub(crate) fn execute(
     context: RebornCliContext,
     message: Option<String>,
+    mcp_port: u16,
     options: RuntimeInputOptions,
 ) -> anyhow::Result<()> {
+    #[cfg(not(feature = "skills-db"))]
+    if mcp_port != 0 {
+        anyhow::bail!("--mcp-port requires a build with skills-db enabled");
+    }
     let runtime_input =
         build_runtime_input_with_options(context.boot_config(), RuntimeInputCaller::Run, options)?;
     let boot_config = context.boot_config().clone();
@@ -79,46 +84,85 @@ pub(crate) fn execute(
         let runtime = std::sync::Arc::new(build_reborn_runtime(runtime_input).await?);
         #[cfg(feature = "skills-db")]
         let mcp_listener = {
-            let listener =
-                brassclaw_reborn_webui_ingress::mcp_listener_spawner::InboundMcpListener::start(
-                    9090,
+            let started = async {
+                let listener = brassclaw_reborn_webui_ingress::mcp_listener_spawner::InboundMcpListener::start(
+                    mcp_port,
                     runtime.mcp_chat_bridge()?,
                 )
                 .await
                 .context("failed to start authenticated instance MCP listener")?;
-            runtime.attach_mcp_listener_status(listener.status())?;
-            listener
+                if let Err(error) = runtime.attach_mcp_listener_status(listener.status()) {
+                    if let Err(error) = listener.shutdown().await {
+                        tracing::error!(%error, "MCP shutdown after observation attachment failure failed");
+                    }
+                    return Err(anyhow::Error::from(error));
+                }
+                tracing::info!(port = listener.status().status().port, "instance MCP listener ready");
+                Ok::<_, anyhow::Error>(listener)
+            }.await;
+            match started {
+                Ok(listener) => listener,
+                Err(error) => {
+                    // A failed socket bind must still drain the already started
+                    // global runtime before stopping its database.
+                    let shutdown = match std::sync::Arc::try_unwrap(runtime) {
+                        Ok(runtime) => runtime.shutdown().await.context("runtime shutdown after MCP startup failure failed"),
+                        Err(_) => Err(anyhow::anyhow!("MCP startup still owns the runtime")),
+                    };
+                    if let Err(error) = shutdown {
+                        tracing::error!(%error, "runtime shutdown after MCP startup failure failed");
+                    }
+                    #[cfg(feature = "postgres")]
+                    if let Some(pg) = &managed_pg
+                        && let Err(error) = pg.shutdown().await
+                    {
+                        tracing::error!(%error, "Postgres shutdown after MCP startup failure failed");
+                    }
+                    return Err(error);
+                }
+            }
         };
         print_runtime_banner(&boot_config);
 
-        let conversation = runtime.new_conversation().await?;
-        let cancellation = install_ctrl_c_cancellation();
-
-        let outcome = if let Some(text) = message {
-            send_once(&runtime, &conversation, &text, cancellation).await
-        } else {
-            run_repl_loop(&runtime, &conversation, cancellation).await
-        };
+        let outcome = async {
+            let conversation = runtime.new_conversation().await?;
+            let cancellation = install_ctrl_c_cancellation();
+            if let Some(text) = message {
+                send_once(&runtime, &conversation, &text, cancellation).await
+            } else {
+                run_repl_loop(&runtime, &conversation, cancellation).await
+            }
+        }.await;
 
         // Shut down the runtime first so the Postgres pool (owned by
         // RebornServices) is dropped before stopping the embedded PG server
         // (§2.2, §5.5: pool must be dropped before pg_ctl stop).
         #[cfg(feature = "skills-db")]
         let mcp_shutdown = mcp_listener.shutdown().await;
-        let runtime_shutdown = std::sync::Arc::try_unwrap(runtime)
-            .map_err(|_| anyhow::anyhow!("MCP chat transport still owns the runtime"))?
-            .shutdown()
-            .await;
+        let runtime_shutdown = match std::sync::Arc::try_unwrap(runtime) {
+            Ok(runtime) => runtime.shutdown().await.context("runtime shutdown failed (run path)"),
+            Err(_) => Err(anyhow::anyhow!("MCP chat transport still owns the runtime")),
+        };
         #[cfg(feature = "postgres")]
-        if let Some(pg) = managed_pg
-            && let Err(error) = pg.shutdown().await
-        {
-            // Use debug! — info!/warn! in a background task corrupts the terminal UI (AGENTS.md §67).
-            tracing::debug!(%error, "embedded Postgres shutdown failed (run path)");
+        let postgres_shutdown = if let Some(pg) = managed_pg {
+            pg.shutdown().await.context("embedded Postgres shutdown failed (run path)")
+        } else { Ok(()) };
+        if let Err(error) = &runtime_shutdown {
+            tracing::error!(%error, "runtime shutdown failed (run path)");
+        }
+        #[cfg(feature = "skills-db")]
+        if let Err(error) = &mcp_shutdown {
+            tracing::error!(%error, "MCP listener shutdown failed (run path)");
+        }
+        #[cfg(feature = "postgres")]
+        if let Err(error) = &postgres_shutdown {
+            tracing::error!(%error, "embedded Postgres shutdown failed (run path)");
         }
         runtime_shutdown?;
         #[cfg(feature = "skills-db")]
         mcp_shutdown.context("MCP listener shutdown failed")?;
+        #[cfg(feature = "postgres")]
+        postgres_shutdown?;
         outcome
     })?;
     Ok(())

@@ -93,10 +93,22 @@ impl PgCtl {
                 "-m",
                 "immediate",
             ])
-            .status();
+            .output();
+        // This fallback can run while the CLI is unwinding a startup error.
+        // PostgreSQL lifecycle diagnostics belong on stderr, never in the
+        // CLI's reply-only stdout. Preserve both streams, including warnings.
+        if let Ok(output) = &result {
+            eprint!("{}", String::from_utf8_lossy(&output.stdout));
+            eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        }
         match result {
-            Ok(s) if s.success() => debug!("embedded Postgres immediate stop succeeded"),
-            Ok(s) => warn!("embedded Postgres immediate stop exited with {s}"),
+            Ok(output) if output.status.success() => {
+                debug!("embedded Postgres immediate stop succeeded")
+            }
+            Ok(output) => warn!(
+                "embedded Postgres immediate stop exited with {}",
+                output.status
+            ),
             Err(e) => warn!("embedded Postgres immediate stop failed: {e}"),
         }
     }

@@ -62,6 +62,9 @@ remain in progress.
 
 ### Fixed
 
+- Give CLI `run`/`repl` instances independent loopback MCP ports by default,
+  permit explicit ports and drain runtime/database ownership on listener failure.
+  Keep PostgreSQL fallback diagnostics on stderr and surface shutdown failures.
 - Declare the Engine typed-input integration target's direct host-API dependency;
   verify its actual PostgreSQL/global-worker callers and affected strict lints.
 - Restore the isolated Monty harness build by retaining request-local provider
