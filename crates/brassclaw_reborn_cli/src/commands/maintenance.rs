@@ -51,29 +51,29 @@ impl MaintenanceCommand {
 struct PruneOldDataCommand {}
 
 impl PruneOldDataCommand {
-    fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            // Step 2: run schema migrations (idempotent) before any DB operation.
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        // Step 2: run schema migrations (idempotent) before any DB operation.
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+            println!("brassclaw maintenance prune-old-data: running retention sweep…");
+            brassclaw_reborn_composition::retention_sweep::run_sweep(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("retention sweep failed: {e}"))?;
+            println!("done.");
 
-        println!("brassclaw maintenance prune-old-data: running retention sweep…");
-        brassclaw_reborn_composition::retention_sweep::run_sweep(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("retention sweep failed: {e}"))?;
-        println!("done.");
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -93,57 +93,47 @@ struct BackfillEmbeddingsCommand {
 }
 
 impl BackfillEmbeddingsCommand {
-    fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            // Step 2: run schema migrations (idempotent) before any DB operation.
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        // Step 2: run schema migrations (idempotent) before any DB operation.
-        brassclaw_pg::migrations::run_migrations(&pool)
+            println!(
+                "brassclaw maintenance backfill-embeddings: tenant={}, batch_size={}",
+                self.tenant, self.batch_size
+            );
+
+            let result = brassclaw_reborn_composition::retention_sweep::run_backfill_embeddings(
+                pool,
+                &self.tenant,
+                self.batch_size,
+            )
             .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("backfill-embeddings failed: {e}"))?;
 
-        println!(
-            "brassclaw maintenance backfill-embeddings: tenant={}, batch_size={}",
-            self.tenant, self.batch_size
-        );
-
-        let result = brassclaw_reborn_composition::retention_sweep::run_backfill_embeddings(
-            pool,
-            &self.tenant,
-            self.batch_size,
-        )
+            println!(
+                "done — indexed: {}, failed: {}",
+                result.indexed, result.failed
+            );
+            Ok(())
+        })
         .await
-        .map_err(|e| anyhow::anyhow!("backfill-embeddings failed: {e}"))?;
-
-        println!(
-            "done — indexed: {}, failed: {}",
-            result.indexed, result.failed
-        );
-        Ok(())
     }
 
     #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
-    async fn run_async(self) -> anyhow::Result<()> {
+    async fn run_async(self, _context: RebornCliContext) -> anyhow::Result<()> {
         anyhow::bail!(
             "backfill-embeddings requires the `postgres` and `root-llm-provider` features"
         )
     }
-}
-
-// ---------------------------------------------------------------------------
-// shared helpers
-// ---------------------------------------------------------------------------
-
-/// Build a Postgres pool using the §6.4 lifecycle (embedded PG with
-/// orphaned-server detection, or external URL from env).
-async fn build_pg_pool() -> anyhow::Result<deadpool_postgres::Pool> {
-    crate::commands::config::pg_lifecycle::build_pg_pool().await
 }

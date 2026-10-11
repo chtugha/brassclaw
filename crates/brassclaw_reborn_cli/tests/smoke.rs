@@ -239,6 +239,7 @@ fn models_list_reports_reborn_provider_catalog_without_v1_state() {
         .arg("list")
         .env_clear()
         .env("HOME", temp.path())
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .output()
         .expect("brassclaw-reborn models list should run");
 
@@ -257,7 +258,10 @@ fn models_list_reports_reborn_provider_catalog_without_v1_state() {
         stdout.contains("active: not-configured"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("openai"), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("openai"),
+        "fresh database must not invent providers: {stdout}"
+    );
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -1610,71 +1614,6 @@ fn doctor_rejects_missing_home_for_default_reborn_home() {
         stderr.contains("HOME or USERPROFILE must be set"),
         "stderr: {stderr}"
     );
-}
-
-// ─── Boot-config TOML + provider catalog ─────────────────────────────────────
-//
-// `config init` now writes to PostgreSQL (requires embedded or external
-// Postgres). These tests are skipped in environments without `initdb`.
-
-#[test]
-#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
-fn config_init_writes_both_files() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    let output = Command::new(reborn_bin())
-        .args(["config", "init", "--yes", "--no-llm"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("brassclaw-reborn config init should run");
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-#[test]
-#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
-fn config_init_refuses_to_clobber_without_force() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-
-    let first = Command::new(reborn_bin())
-        .args(["config", "init", "--yes", "--no-llm"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("first init should run");
-    assert!(first.status.success());
-
-    // Second run without --yes should detect boot.initialized and refuse.
-    let second = Command::new(reborn_bin())
-        .args(["config", "init"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("second init should run");
-    let stdout = String::from_utf8_lossy(&second.stdout);
-    assert!(
-        stdout.contains("already initialized"),
-        "second init without --yes should report already initialized; got: {stdout}"
-    );
-}
-
-#[test]
-#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
-fn config_init_preflights_both_targets_before_writing() {
-    // Placeholder: preflight logic is now inside the Postgres-backed init.
-    // Integration test coverage lives in brassclaw_reborn_composition.
-}
-
-#[test]
-#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
-fn config_init_with_force_overwrites() {
-    // Placeholder: --force / overwrite is now --yes on the DB-backed wizard.
-    // Integration test coverage lives in brassclaw_reborn_composition.
 }
 
 #[test]

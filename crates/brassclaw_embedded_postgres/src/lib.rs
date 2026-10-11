@@ -93,28 +93,39 @@ impl ManagedPostgres {
             }
         }
 
-        // Step 4: run initdb if needed. PG_VERSION is written by initdb as the
-        // very first file — its absence means this is a fresh cluster.
-        let is_fresh_cluster = !config.data_dir.join("PG_VERSION").exists();
+        // Step 4: run initdb if needed.
         initdb::run_initdb(&config, &pg_bin_dir).await?;
 
         // Step 5: start the server.
         let ctl = pgctl::PgCtl::new(&pg_bin_dir, &config.data_dir, config.port);
         ctl.start().await?;
-        health::wait_for_ready(config.port).await?;
-
-        // Step 6: on a fresh cluster, create the role and database. initdb
-        // creates the superuser but not the application database/role.
-        if is_fresh_cluster {
-            create_app_db(&config).await?;
-        }
-
-        Ok(Self {
+        // Retain ownership as soon as pg_ctl confirms the start. Later health
+        // or bootstrap failures must not leave an unowned background server.
+        let managed = Self {
             config,
             pg_bin_dir,
             owns_server: true,
             shutdown_lock: Arc::new(Mutex::new(false)),
-        })
+        };
+        let initialization = async {
+            health::wait_for_ready(managed.config.port).await?;
+            // A failed earlier bootstrap can leave a valid PG_VERSION without
+            // an application database. Verify the idempotent bootstrap on
+            // every owned start so that retry can finish that initialization.
+            create_app_db(&managed.config).await?;
+            Ok::<_, EmbeddedPostgresError>(())
+        }
+        .await;
+        if let Err(source) = initialization {
+            return match managed.shutdown().await {
+                Ok(()) => Err(source),
+                Err(shutdown) => Err(EmbeddedPostgresError::StartupCleanup {
+                    source: Box::new(source),
+                    shutdown: Box::new(shutdown),
+                }),
+            };
+        }
+        Ok(managed)
     }
 
     /// The connection URL for the embedded Postgres server.
@@ -191,77 +202,94 @@ async fn resolve_pg_install_dir(
     Ok(config.bin_cache_dir.clone())
 }
 
-/// Create the application role and database on a freshly initialised cluster.
+/// Verify or finish application role/database initialization on an owned start.
 ///
 /// `initdb` creates only the superuser (named after `config.superuser`).
-/// The application connection URL uses a role and database both named
-/// `config.database` — these must be created before migrations can run.
+/// The application database and its owner role are named `config.database`.
+/// The connection URL authenticates as `config.superuser`.
 async fn create_app_db(config: &EmbeddedPostgresConfig) -> Result<(), EmbeddedPostgresError> {
     use tokio_postgres::NoTls;
 
     // Connect as the superuser to the default "postgres" maintenance database
     // (created by initdb). We cannot connect to config.database yet because
     // that is the database we are about to create.
-    let connect_url = format!(
-        "postgresql://{}@127.0.0.1:{}/postgres",
-        config.superuser, config.port
-    );
+    let mut connection_config = tokio_postgres::Config::new();
+    connection_config
+        .host("127.0.0.1")
+        .port(config.port)
+        .user(&config.superuser)
+        .dbname("postgres");
+    let (client, connection) = connection_config.connect(NoTls).await.map_err(|e| {
+        EmbeddedPostgresError::InitDb(format!("could not connect for init SQL: {e}"))
+    })?;
 
-    let (client, connection) = tokio_postgres::connect(&connect_url, NoTls)
-        .await
-        .map_err(|e| {
-            EmbeddedPostgresError::InitDb(format!("could not connect for init SQL: {e}"))
-        })?;
-
-    // Drive the connection in the background.
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
-
-    // CREATE ROLE … LOGIN is idempotent-guarded; skip if it already exists.
-    let role_exists: bool = client
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $1)",
-            &[&config.database],
-        )
-        .await
-        .map(|row| row.get(0))
-        .unwrap_or(false);
-
-    if !role_exists {
-        client
-            .execute(&format!("CREATE ROLE {} LOGIN", config.database), &[])
-            .await
-            .map_err(|e| EmbeddedPostgresError::InitDb(format!("CREATE ROLE failed: {e}")))?;
-        debug!(role = config.database, "created application role");
-    }
-
-    // CREATE DATABASE … is idempotent-guarded; skip if it already exists.
-    let db_exists: bool = client
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)",
-            &[&config.database],
-        )
-        .await
-        .map(|row| row.get(0))
-        .unwrap_or(false);
-
-    if !db_exists {
-        // CREATE DATABASE cannot run inside a transaction block; use execute directly.
-        client
-            .execute(
-                &format!(
-                    "CREATE DATABASE {} OWNER {}",
-                    config.database, config.database
-                ),
-                &[],
+    let driver = tokio::spawn(connection);
+    let initialization = async {
+        // CREATE ROLE … LOGIN is idempotent-guarded; skip if it already exists.
+        let role_exists: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $1)",
+                &[&config.database],
             )
             .await
-            .map_err(|e| EmbeddedPostgresError::InitDb(format!("CREATE DATABASE failed: {e}")))?;
-        debug!(database = config.database, "created application database");
-    }
+            .map(|row| row.get(0))
+            .map_err(|e| EmbeddedPostgresError::InitDb(format!("role lookup failed: {e}")))?;
 
-    Ok(())
+        // Identifiers cannot be query parameters. Quote the configured name as a
+        // single identifier; it must never become SQL syntax.
+        let identifier = format!("\"{}\"", config.database.replace('"', "\"\""));
+
+        if !role_exists {
+            client
+                .execute(&format!("CREATE ROLE {identifier} LOGIN"), &[])
+                .await
+                .map_err(|e| EmbeddedPostgresError::InitDb(format!("CREATE ROLE failed: {e}")))?;
+            debug!(role = config.database, "created application role");
+        }
+
+        // CREATE DATABASE … is idempotent-guarded; skip if it already exists.
+        let db_exists: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)",
+                &[&config.database],
+            )
+            .await
+            .map(|row| row.get(0))
+            .map_err(|e| EmbeddedPostgresError::InitDb(format!("database lookup failed: {e}")))?;
+
+        if !db_exists {
+            // CREATE DATABASE cannot run inside a transaction block; use execute directly.
+            client
+                .execute(
+                    &format!("CREATE DATABASE {identifier} OWNER {identifier}"),
+                    &[],
+                )
+                .await
+                .map_err(|e| {
+                    EmbeddedPostgresError::InitDb(format!("CREATE DATABASE failed: {e}"))
+                })?;
+            debug!(database = config.database, "created application database");
+        }
+
+        Ok(())
+    }
+    .await;
+    drop(client);
+    let connection_result = match driver.await {
+        Ok(result) => result.map_err(|e| {
+            EmbeddedPostgresError::InitDb(format!("bootstrap connection failed: {e}"))
+        }),
+        Err(error) => Err(EmbeddedPostgresError::InitDb(format!(
+            "bootstrap connection driver failed: {error}"
+        ))),
+    };
+    match (initialization, connection_result) {
+        (result, Ok(())) => result,
+        (Ok(()), Err(error)) => Err(error),
+        (Err(source), Err(error)) => Err(EmbeddedPostgresError::InitDb(format!(
+            "{source}; connection cleanup also failed: {error}"
+        ))),
+    }
 }
 
 #[cfg(test)]

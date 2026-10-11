@@ -30,6 +30,14 @@ pub enum EmbeddedPostgresError {
     #[error("failed to spawn child process: {0}")]
     Spawn(String),
 
+    #[error(
+        "embedded PostgreSQL initialization failed: {source}; shutdown also failed: {shutdown}"
+    )]
+    StartupCleanup {
+        source: Box<EmbeddedPostgresError>,
+        shutdown: Box<EmbeddedPostgresError>,
+    },
+
     #[error("pgvector library not found in {path}: {reason}")]
     PgvectorMissing { path: String, reason: String },
 }

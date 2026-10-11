@@ -57,14 +57,15 @@ pub fn spawn_retention_sweep(pool: Arc<PgPool>) -> tokio::task::JoinHandle<()> {
 
 /// Run one full retention sweep cycle.
 pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let client = pool.get().await?;
+    let mut pooled = pool.get().await?;
+    let client = pooled.transaction().await?;
 
     // brassclaw_checkpoints: prune rows older than N days (last-10-per-run
     // app-layer keep is handled by the loop runner, not here).
     client
         .execute(
             "DELETE FROM brassclaw_checkpoints \
-             WHERE created_at < now() - ($1 || ' days')::interval",
+             WHERE created_at < now() - ($1::bigint * interval '1 day')",
             &[&DEFAULT_CHECKPOINTS_DAYS],
         )
         .await?;
@@ -73,7 +74,7 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
     client
         .execute(
             "DELETE FROM brassclaw_events \
-             WHERE created_at < now() - ($1 || ' days')::interval",
+             WHERE occurred_at < now() - ($1::bigint * interval '1 day')",
             &[&DEFAULT_EVENTS_DAYS],
         )
         .await?;
@@ -82,7 +83,7 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
     client
         .execute(
             "DELETE FROM brassclaw_audit_log \
-             WHERE created_at < now() - ($1 || ' days')::interval",
+             WHERE occurred_at < now() - ($1::bigint * interval '1 day')",
             &[&DEFAULT_AUDIT_LOG_DAYS],
         )
         .await?;
@@ -92,7 +93,7 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
         .execute(
             "DELETE FROM brassclaw_runs \
              WHERE deleted_at IS NOT NULL \
-               AND deleted_at < now() - ($1 || ' days')::interval",
+               AND deleted_at < now() - ($1::bigint * interval '1 day')",
             &[&DEFAULT_RUNS_DELETED_DAYS],
         )
         .await?;
@@ -102,29 +103,23 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
         .execute(
             "DELETE FROM brassclaw_extensions \
              WHERE removed_at IS NOT NULL \
-               AND removed_at < now() - ($1 || ' days')::interval",
+               AND removed_at < now() - ($1::bigint * interval '1 day')",
             &[&DEFAULT_EXTENSIONS_REMOVED_DAYS],
         )
         .await?;
 
-    // brassclaw_forensic_packets: 90-day TTL.
+    // brassclaw_forensic_packets: 42-day TTL.
     // First null out any linked memory-chat-record references (preserving the
     // memory record itself per §4.21 spec).
     let packet_rows = client
         .query(
             "SELECT id FROM brassclaw_forensic_packets \
-             WHERE captured_at < now() - ($1 || ' days')::interval",
+             WHERE captured_at < now() - ($1::bigint * interval '1 day')",
             &[&DEFAULT_FORENSIC_PACKETS_DAYS],
         )
         .await?;
     for row in packet_rows {
-        let packet_id: String = match row.try_get("id") {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::debug!(error = %e, "retention sweep: bad forensic packet row — skipping");
-                continue;
-            }
-        };
+        let packet_id: String = row.try_get("id")?;
         // Null out links before deleting the packet.  Must succeed before the
         // DELETE so we never leave dangling forensic_packet_id references in
         // memory rows pointing to a packet that no longer exists.
@@ -148,6 +143,7 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
     // the operator has set retention.memory_chat_records_days in config.
     // Phase 5 factory wiring will pass the config value here; for now no-op.
 
+    client.commit().await?;
     Ok(())
 }
 

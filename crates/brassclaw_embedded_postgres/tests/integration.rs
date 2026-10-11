@@ -56,6 +56,63 @@ mod integration {
 
     // ─── T1: full boot cycle from scratch ─────────────────────────────────
 
+    #[tokio::test]
+    async fn failed_bootstrap_stops_server_and_retry_finishes_existing_cluster() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut config = isolated_config(&tmp).await;
+        // PostgreSQL reserves pg_* role names. This fails bootstrap SQL after
+        // a real server start, leaving the initialized cluster for a retry.
+        config.database = "pg_brassclaw_bootstrap_failure".into();
+        let error = ManagedPostgres::start(config.clone())
+            .await
+            .err()
+            .expect("reserved role must fail bootstrap");
+        assert!(error.to_string().contains("CREATE ROLE failed"), "{error}");
+        assert!(config.data_dir.join("PG_VERSION").exists());
+        assert!(!config.data_dir.join("postmaster.pid").exists());
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", config.port))
+                .await
+                .is_err()
+        );
+
+        // Retry must finish bootstrap even though initdb already succeeded.
+        // Quotes/URL metacharacters are one SQL identifier and one typed DSN
+        // value, never SQL syntax or a second URL authority/path component.
+        config.database = "retry\"/;@database".into();
+        let managed = ManagedPostgres::start(config.clone())
+            .await
+            .expect("retry start");
+        let pool = build_pool(&config.connection_url()).expect("encoded connection URL");
+        let client = pool.get().await.expect("actual configured database");
+        let name: String = client
+            .query_one("SELECT current_database()", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(name, config.database);
+        let network_trust: bool = client.query_one(
+            "SELECT EXISTS (SELECT 1 FROM pg_hba_file_rules WHERE auth_method='trust' AND address IN ('0.0.0.0', '::'))", &[],
+        ).await.unwrap().get(0);
+        assert!(
+            !network_trust,
+            "embedded bootstrap must not grant network trust"
+        );
+        let role: bool = client
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=$1)",
+                &[&config.database],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert!(role);
+        drop(client);
+        pool.close();
+        managed.shutdown().await.expect("confirmed shutdown");
+        assert!(!config.data_dir.join("postmaster.pid").exists());
+    }
+
     /// Embedded PG starts on a fresh data directory, migrations run, a query
     /// is served, then graceful `shutdown()` stops the server cleanly.
     ///

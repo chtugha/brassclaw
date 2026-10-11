@@ -79,77 +79,79 @@ pub(crate) struct ConfigInitCommand {
 }
 
 impl ConfigInitCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            // Step 2: run schema migrations (idempotent).
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        // Step 2: run schema migrations (idempotent).
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+            // §6.1 — detect already-initialized.
+            let existing_keys = list_config_keys(&pool, &self.tenant)
+                .await
+                .map_err(|e| anyhow::anyhow!("config read failed: {e}"))?;
+            let already_initialized = existing_keys
+                .iter()
+                .any(|(k, v)| k == "boot.initialized" && v == "true");
 
-        // §6.1 — detect already-initialized.
-        let existing_keys = list_config_keys(&pool, &self.tenant)
-            .await
-            .map_err(|e| anyhow::anyhow!("config read failed: {e}"))?;
-        let already_initialized = existing_keys
-            .iter()
-            .any(|(k, v)| k == "boot.initialized" && v == "true");
-
-        if already_initialized && !self.yes {
-            println!(
-                "BrassClaw Reborn is already initialized for tenant `{}`. \
+            if already_initialized && !self.yes {
+                println!(
+                    "BrassClaw Reborn is already initialized for tenant `{}`. \
                  Use --yes to re-run and overwrite existing settings.",
+                    self.tenant
+                );
+                return Ok(());
+            }
+
+            // §6.1 non-interactive guard: if stdin is not a TTY and boot.initialized
+            // is absent, we cannot run the interactive wizard.
+            if !already_initialized
+                && !self.yes
+                && !std::io::IsTerminal::is_terminal(&std::io::stdin())
+            {
+                anyhow::bail!(
+                    "brassclaw: first-run setup required. \
+                 Run 'brassclaw config init' before starting the service."
+                );
+            }
+
+            // Resolve wizard inputs either from flags (--yes) or interactive prompts.
+            let inputs = if self.yes {
+                self.resolve_from_flags()?
+            } else {
+                self.prompt_interactive().await?
+            };
+
+            // Step 3: write all config rows.
+            println!("\nWriting to PostgreSQL…");
+            inputs.write_to_db(&pool, &self.tenant).await?;
+
+            // Mark initialized.
+            save_config_key(
+                &pool,
+                &self.tenant,
+                "boot.initialized",
+                "true",
+                ConfigWriteContext::Operator,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to set boot.initialized: {e}"))?;
+
+            println!(
+                "✓  BrassClaw Reborn configured for tenant `{}`.",
                 self.tenant
             );
-            return Ok(());
-        }
-
-        // §6.1 non-interactive guard: if stdin is not a TTY and boot.initialized
-        // is absent, we cannot run the interactive wizard.
-        if !already_initialized && !self.yes && !std::io::IsTerminal::is_terminal(&std::io::stdin())
-        {
-            anyhow::bail!(
-                "brassclaw: first-run setup required. \
-                 Run 'brassclaw config init' before starting the service."
-            );
-        }
-
-        // Resolve wizard inputs either from flags (--yes) or interactive prompts.
-        let inputs = if self.yes {
-            self.resolve_from_flags()?
-        } else {
-            self.prompt_interactive().await?
-        };
-
-        // Step 3: write all config rows.
-        println!("\nWriting to PostgreSQL…");
-        inputs.write_to_db(&pool, &self.tenant).await?;
-
-        // Mark initialized.
-        save_config_key(
-            &pool,
-            &self.tenant,
-            "boot.initialized",
-            "true",
-            ConfigWriteContext::Operator,
-        )
+            println!("   Run `brassclaw serve` to start.");
+            Ok(())
+        })
         .await
-        .map_err(|e| anyhow::anyhow!("failed to set boot.initialized: {e}"))?;
-
-        println!(
-            "✓  BrassClaw Reborn configured for tenant `{}`.",
-            self.tenant
-        );
-        println!("   Run `brassclaw serve` to start.");
-        Ok(())
     }
 
     /// Resolve wizard inputs from CLI flags (non-interactive / --yes mode).

@@ -32,6 +32,7 @@ tracing = "0.1"
 libc = "0.2"
 flate2 = "1"
 tar = "0.4"
+url = "2"
 
 [build-dependencies]
 sha2 = "0.10"

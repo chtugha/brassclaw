@@ -8,7 +8,6 @@ use crate::error::EmbeddedPostgresError;
 
 /// Log queries that take longer than this many milliseconds (1 second).
 /// Matches the `log_min_duration_statement` value in the conf tuning template.
-#[allow(dead_code)]
 pub(crate) const LOG_MIN_DURATION_STATEMENT_MS: u32 = 1000;
 
 /// The tuned `postgresql.conf` appended after `initdb` generates the default.
@@ -46,53 +45,22 @@ log_rotation_age = 1d
 log_rotation_size = 50MB
 log_truncate_on_rotation = on
 # LOG_MIN_DURATION_STATEMENT_MS: log queries taking longer than 1000 ms (1 second).
-log_min_duration_statement = 1000
+log_min_duration_statement = {log_min_duration_statement}
 "#;
 
 /// Render the `postgresql.conf` tuning block for the given port and
 /// listen-addresses string.
 fn postgresql_conf_tuning(port: u16, listen_addresses: &str) -> String {
     POSTGRESQL_CONF_TUNING_TEMPLATE
-        .replace("{listen_addresses}", listen_addresses)
+        .replace(
+            "{listen_addresses}",
+            &listen_addresses.replace('\\', "\\\\").replace('\'', "''"),
+        )
+        .replace(
+            "{log_min_duration_statement}",
+            &LOG_MIN_DURATION_STATEMENT_MS.to_string(),
+        )
         .replace("{port}", &port.to_string())
-}
-
-/// Init SQL run once after `initdb` to create the role and database,
-/// and to write the loopback-only trust auth entry.
-#[allow(dead_code)]
-pub(crate) fn init_sql(config: &EmbeddedPostgresConfig) -> String {
-    format!(
-        r#"
-CREATE ROLE {db} LOGIN;
-CREATE DATABASE {db} OWNER {db};
-"#,
-        db = config.database
-    )
-}
-
-/// Build the `pg_hba.conf` entry (or entries) for the given listen configuration.
-///
-/// Always includes a loopback trust entry. When `BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES`
-/// is set to a non-loopback value (e.g. `0.0.0.0`), also adds a `md5`-auth entry
-/// for the `brassclaw` database role from any address. The brassclaw binary
-/// always connects via loopback (127.0.0.1) so the loopback trust entry
-/// is always present; the wider entry enables external tooling access.
-fn pg_hba_entries(config: &EmbeddedPostgresConfig) -> String {
-    let db = &config.database;
-    let listen_addresses = std::env::var("BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES")
-        .unwrap_or_else(|_| DEFAULT_EMBEDDED_PG_LISTEN_ADDRESSES.to_string());
-
-    // Loopback trust entry — always present.
-    let mut entries = format!("host  {db}  {db}  127.0.0.1/32  trust\n");
-
-    // When PG listens on a non-loopback address, add a trust entry for the
-    // entire IPv4 range so external psql/tooling can connect without a
-    // password. The embedded PG is only accessible from the local network
-    // segment; production deployments should use BRASSCLAW_PG_URL instead.
-    if listen_addresses != "127.0.0.1" && listen_addresses != "localhost" {
-        entries.push_str(&format!("host  {db}  {db}  0.0.0.0/0  trust\n"));
-    }
-    entries
 }
 
 /// Run `initdb` and set up `postgresql.conf` + `pg_hba.conf`.
@@ -172,27 +140,10 @@ pub async fn run_initdb(
             })?;
     }
 
-    // Append trust auth entries to pg_hba.conf.
-    let hba_path = data_dir.join("pg_hba.conf");
-    let existing = tokio::fs::read_to_string(&hba_path)
-        .await
-        .unwrap_or_default();
-    let entries = pg_hba_entries(config);
-    // Only append if the first (loopback) entry is not already there (idempotency guard).
-    let loopback_entry = format!(
-        "host  {}  {}  127.0.0.1/32  trust\n",
-        config.database, config.database
-    );
-    if !existing.contains(&loopback_entry) {
-        let mut updated = existing;
-        updated.push_str(&entries);
-        tokio::fs::write(&hba_path, updated)
-            .await
-            .map_err(|e| EmbeddedPostgresError::Io {
-                path: hba_path.display().to_string(),
-                reason: e.to_string(),
-            })?;
-    }
+    // Keep initdb's local/socket and loopback authentication rules. Listening
+    // on another interface must not create a password-free network grant.
+    // Operators needing remote database access configure authenticated rules
+    // explicitly or select an external server through BRASSCLAW_PG_URL.
 
     // Install pgvector shared library.
     install_pgvector(config, pg_bin_dir).await?;

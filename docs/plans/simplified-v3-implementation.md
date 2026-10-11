@@ -6337,3 +6337,47 @@ logs are retained in `target/validation/pg-policy-artifacts-20261011-r2`. Change
 source/dependency hashes match the accepted snapshot before submission. Concurrent
 authored-catalogue/review/export work present in that snapshot is not certified
 or submitted by this checkpoint.
+
+### 2026-10-11 — Management database ownership and retention acceptance
+
+Standalone config, maintenance, repair, secrets and model-list commands now
+retain their embedded PostgreSQL owner until their awaited database operation
+finishes. Success, early returns and errors explicitly close the utility pool
+and stop only a server owned by that command. External and reused servers remain
+under their original owner. Operation and shutdown errors are both preserved;
+shutdown failure does not authorize replay of a completed operation. Failed
+bootstrap after a confirmed server start explicitly stops it, and a subsequent
+owned start finishes idempotent role/database creation on the initialized cluster.
+Database names are quoted SQL identifiers and encoded DSN values. Newly initialized
+clusters retain initdb's loopback authentication rules; configuring another listen
+address no longer adds password-free network trust. Existing operator-managed
+clusters are not rewritten by this checkpoint.
+
+The actual `models list` caller loads authoritative provider definitions and
+active selection from PostgreSQL. Corrupt definitions and connection failures
+remain errors without a file/compiled-provider fallback. Other legacy provider
+administration paths still need their own DB-only cutover.
+
+The actual retention command exposed incorrectly typed interval parameters and
+nonexistent event/audit timestamp columns. Its sweep now uses bigint day values
+and `occurred_at`, and commits deletions/link updates in one transaction. A late
+forensic deletion failure rolls back earlier deletions and memory-link changes.
+Retention settings resolution, active checkpoint retention and the complete
+instance pool/listener shutdown and aggregate-capacity requirements remain open;
+this checkpoint does not certify them.
+
+Frozen candidate `target/validation/pg-lifecycle-20261011-r4` passed all four
+real CLI lifecycle/provider/retention cases, seven actual embedded integration
+cases, the embedded unit suite and the focused model-list smoke. Relevant
+library, caller and embedded integration strict lints passed without suppression
+on toolchain 1.96.0. No test in these suites was ignored. Retained executable
+artifacts, worker pair, source hashes, accepted receipt and failed predecessor
+logs are in `target/validation/pg-lifecycle-artifacts-20261011-r4`. Eighteen owned
+source/dependency files matched this candidate before submission. These are local
+macOS caller checks, not full-platform or whole-plan acceptance.
+
+The Monty settings form now supplies English/German explanations for all 29
+execution controls and five memory values, with accessible description links.
+Syntax checks and actual form rendering verified every translated description
+and input association. This establishes help-text rendering, not new runtime
+limit enforcement or a complete system-wide fixed-value audit.

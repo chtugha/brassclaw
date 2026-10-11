@@ -435,10 +435,11 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       <div>
         <label htmlFor=${`monty-setting-${key}`} className="text-sm font-medium text-[var(--v2-text-strong)]">${label}</label>
         ${desc &&
-          html`<p className="mt-0.5 text-xs text-[var(--v2-text-muted)]">${desc}</p>`}
+          html`<p id=${`monty-setting-${key}-help`} className="mt-0.5 text-xs text-[var(--v2-text-muted)]">${desc}</p>`}
       </div>
       <input
         id=${`monty-setting-${key}`}
+        aria-describedby=${desc ? `monty-setting-${key}-help` : undefined}
         type=${type}
         min=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "1" : undefined}
         max=${["max_duration_secs", "max_recipes_per_task"].includes(key) ? "2147483647" : undefined}
@@ -457,8 +458,12 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
 
   const memoryField = (key, label, factor = 1048576, policy = true) => html`
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
-      <label htmlFor=${`monty-memory-${key}`} className="text-sm">${label}</label>
+      <div>
+        <label htmlFor=${`monty-memory-${key}`} className="text-sm">${label}</label>
+        <p id=${`monty-memory-${key}-help`} className="mt-1 text-xs text-[var(--v2-text-muted)]">${t(`montyVm.memoryHelp.${key}`)}</p>
+      </div>
       <input id=${`monty-memory-${key}`} type="number" min=${key === "max_memory_bytes" ? "512" : key === "reserve_bytes" ? "0" : key === "sample_interval_secs" ? "60" : "1"} step="any"
+        aria-describedby=${`monty-memory-${key}-help`}
         className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
         value=${(policy ? settings.memory_policy?.[key] : settings[key]) / factor}
         disabled=${isSaving} onInput=${(event) => {
@@ -479,8 +484,9 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       ${field("max_recipes_per_task", t("montyVm.maxRecipes"), t("montyVm.maxRecipesDesc"))}
       <div className="py-3 border-t border-[var(--v2-panel-border)]">
         <label htmlFor="monty-memory-mode" className="text-sm font-medium">${t("montyVm.memoryTitle")}</label>
-        <p className="mt-1 mb-2 text-xs text-[var(--v2-text-muted)]">${t("montyVm.memoryDesc")}</p>
+        <p id="monty-memory-mode-help" className="mt-1 mb-2 text-xs text-[var(--v2-text-muted)]">${t("montyVm.memoryDesc")}</p>
         <select id="monty-memory-mode" value=${settings.memory_policy?.mode || "startup"} disabled=${isSaving}
+          aria-describedby="monty-memory-mode-help"
           className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 text-sm"
           onChange=${(event) => { const mode = event.target.value; onChange((previous) => ({ ...previous, memory_policy: { ...previous.memory_policy, mode } })); }}>
           ${["startup", "manual", "automatic"].map((mode) => html`<option key=${mode} value=${mode}>${t(`montyVm.memoryMode.${mode}`)}</option>`)}
@@ -514,8 +520,12 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
         <p className="mt-2 text-xs text-[var(--v2-text-muted)]">${t("montyVm.executionLimitsDesc")}</p>
         ${EXECUTION_FIELDS.map((key) => html`
           <div key=${key} className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
-            <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
+            <div>
+              <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
+              <p id=${`monty-${key}-help`} className="mt-1 text-xs text-[var(--v2-text-muted)]">${t(`montyVm.executionHelp.${key}`)}</p>
+            </div>
             <input id=${`monty-${key}`} type="number" min=${key === "worker_adapter_reserve_bytes" ? "0" : "1"} step="1"
+              aria-describedby=${`monty-${key}-help`}
               className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
               value=${settings.execution_limits?.[key] ?? ""} disabled=${isSaving}
               onInput=${(event) => {

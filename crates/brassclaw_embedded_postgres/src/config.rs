@@ -59,9 +59,14 @@ impl EmbeddedPostgresConfig {
 
     /// The PostgreSQL connection URL for the embedded server.
     pub fn connection_url(&self) -> String {
-        format!(
-            "postgresql://{}@127.0.0.1:{}/{}",
-            self.superuser, self.port, self.database
-        )
+        let mut url = url::Url::parse(&format!("postgresql://127.0.0.1:{}", self.port))
+            .expect("fixed loopback PostgreSQL URL is valid");
+        url.set_username(&self.superuser)
+            .expect("loopback URL supports a username");
+        url.path_segments_mut()
+            .expect("loopback URL supports database path segments")
+            .clear()
+            .push(&self.database);
+        url.into()
     }
 }

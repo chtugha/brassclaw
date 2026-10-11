@@ -99,12 +99,14 @@ impl RebornProviderAdmin {
     /// DB-backed variant of `list()`.
     ///
     /// Reads all active providers (builtin + custom) from `brassclaw_llm_providers`
-    /// via `pg_repo.load_all()`.  Used by the CLI `models list` command when a
-    /// Postgres pool is available.  The sync `list()` remains for offline use.
+    /// via `pg_repo.load_all()`, with the selection from the caller's database
+    /// config snapshot. The CLI uses this authoritative path; no file/registry
+    /// fallback applies to a failed database read.
     #[cfg(feature = "postgres")]
     pub async fn list_from_db(
         &self,
         pg_repo: &crate::pg_provider_repo::PgProviderRepo,
+        config: &RebornConfigFile,
         provider: Option<&str>,
         verbose: bool,
     ) -> Result<RebornProviderList, RebornProviderAdminError> {
@@ -117,16 +119,10 @@ impl RebornProviderAdmin {
                 reason: e.to_string(),
             })?;
 
-        // Read the active Kohai selection from config.toml as a fallback for
-        // CLi context where DB config may not yet be loaded.  Errors are ignored
-        // — the CLI can still list providers without an active selection.
-        let home = self.boot.home();
-        let config_path = home.path().join("config.toml");
-        let config = RebornConfigFile::load(&config_path).ok().flatten();
         // Build a minimal registry from DB rows to pass to active_llm_selection.
         let db_defs: Vec<ProviderDefinition> = all.iter().map(|(def, _)| def.clone()).collect();
         let registry = brassclaw_llm::ProviderRegistry::new(db_defs);
-        let active = active_llm_selection(config.as_ref(), &registry);
+        let active = active_llm_selection(Some(config), &registry);
 
         let providers: Vec<RebornProviderInfo> = if let Some(provider_id) = provider {
             let Some((def, _)) = all.iter().find(|(d, _)| d.id == provider_id) else {

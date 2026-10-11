@@ -1,81 +1,97 @@
-//! §6.4 CLI Postgres lifecycle helpers for DB-touching config commands.
+//! Owned PostgreSQL lifetime for one DB-touching management command.
 //!
-//! Every DB-touching CLI command (`config init`, `config get/set/unset/list/…`,
-//! `secrets rewrap`, `maintenance prune-old-data`, etc.) follows this lifecycle:
-//!
-//! 1. Start embedded Postgres **or** connect to an already-running instance.
-//!    Uses orphaned-server detection: check `postmaster.pid` PID liveness
-//!    (kill -0). If a live postmaster is found, reuse it — do not start a
-//!    second instance.
-//! 2. Run `brassclaw_pg::migrations::run_migrations` (idempotent) — **caller's
-//!    responsibility** after receiving the pool from `build_pg_pool`.
-//! 3. Perform the operation (caller's responsibility).
-//! 4. Conditional shutdown: shut down embedded PG **only if this command started
-//!    it**. If a running PG was detected and reused, leave it running.
-//!
-//! This module provides `build_pg_pool`, which implements step 1 only.
-//! Each calling command runs migrations itself (step 2) before use.
+//! Callers run migrations and their operation inside `with_postgres`. Every
+//! normal success/error path closes the pool before graceful embedded shutdown.
+//! A reused server or external URL is never stopped by this command. Operations
+//! must finish their database work inside the callback, returning owned data,
+//! without spawning detached database users or returning pooled clients.
 
-/// Build a Postgres connection pool for a DB-touching CLI command.
-///
-/// Priority order:
-/// 1. `BRASSCLAW_PG_URL` — connect directly (external PG, no embedded lifecycle).
-/// 2. `DATABASE_URL` — connect directly.
-/// 3. Embedded Postgres via `brassclaw_embedded_postgres` with §6.4
-///    orphaned-server detection (check `postmaster.pid` liveness before
-///    starting a new instance).
-///
-/// Returns a connected pool. On success the caller is responsible for calling
-/// migrations before use.
-pub(crate) async fn build_pg_pool() -> anyhow::Result<deadpool_postgres::Pool> {
-    // Prefer an explicit PG URL (external or already-running embedded instance).
-    if let Ok(url) = std::env::var("BRASSCLAW_PG_URL").or_else(|_| std::env::var("DATABASE_URL")) {
-        return connect_url(&url).await;
+use std::{future::Future, sync::Arc};
+
+use brassclaw_embedded_postgres::ManagedPostgres;
+
+use crate::context::RebornCliContext;
+
+pub(crate) async fn with_postgres<T, F, Fut>(
+    context: &RebornCliContext,
+    operation: F,
+) -> anyhow::Result<T>
+where
+    F: FnOnce(Arc<deadpool_postgres::Pool>) -> Fut,
+    Fut: Future<Output = anyhow::Result<T>>,
+{
+    let database = CommandPostgres::connect(context).await?;
+    let result = operation(Arc::clone(&database.pool)).await;
+    database.finish(result).await
+}
+
+struct CommandPostgres {
+    pool: Arc<deadpool_postgres::Pool>,
+    embedded: Option<ManagedPostgres>,
+}
+
+impl CommandPostgres {
+    async fn connect(context: &RebornCliContext) -> anyhow::Result<Self> {
+        // Explicit endpoints never acquire ownership of an embedded server.
+        if let Ok(url) =
+            std::env::var("BRASSCLAW_PG_URL").or_else(|_| std::env::var("DATABASE_URL"))
+        {
+            return Ok(Self {
+                pool: Arc::new(connect_url(&url).await?),
+                embedded: None,
+            });
+        }
+
+        let config = brassclaw_embedded_postgres::EmbeddedPostgresConfig::from_reborn_home(
+            context.boot_config().home().path(),
+        );
+        let managed = ManagedPostgres::start(config)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to start/connect to embedded Postgres: {e}"))?;
+        match connect_url(&managed.connection_url()).await {
+            Ok(pool) => Ok(Self {
+                pool: Arc::new(pool),
+                embedded: Some(managed),
+            }),
+            Err(error) => combine_result(Err(error), managed.shutdown().await.map_err(Into::into)),
+        }
     }
 
-    // Fall back to the embedded Postgres with §6.4 orphaned-server detection.
-    // The embedded PG data dir is resolved from `BRASSCLAW_REBORN_HOME` (or the
-    // default home). `brassclaw_embedded_postgres::ManagedPostgres::start`
-    // checks `postmaster.pid` liveness and reuses a live postmaster.
-    let home = brassclaw_reborn_config::RebornHome::resolve_from_env()
-        .map_err(|e| anyhow::anyhow!("cannot resolve BRASSCLAW_REBORN_HOME: {e}"))?;
+    async fn finish<T>(&self, result: anyhow::Result<T>) -> anyhow::Result<T> {
+        self.pool.close();
+        let shutdown = match &self.embedded {
+            Some(managed) => managed.shutdown().await.map_err(Into::into),
+            None => Ok(()),
+        };
+        combine_result(result, shutdown)
+    }
+}
 
-    let config = brassclaw_embedded_postgres::EmbeddedPostgresConfig::from_reborn_home(home.path());
+impl Drop for CommandPostgres {
+    fn drop(&mut self) {
+        // Also close on panic/cancellation before ManagedPostgres's visible
+        // emergency fallback. Normal returns use the explicit async finish.
+        self.pool.close();
+    }
+}
 
-    // `ManagedPostgres::start` implements §6.4 orphaned-server detection:
-    // it checks `postmaster.pid` PID liveness and reuses a live postmaster
-    // instead of starting a new instance.
-    let managed = brassclaw_embedded_postgres::ManagedPostgres::start(config)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to start/connect to embedded Postgres: {e}"))?;
-
-    let url = managed.connection_url();
-
-    // §6.4 conditional shutdown: leak `managed` so the server outlives the
-    // pool that `connect_url` returns. For CLI commands the process exits after
-    // the operation; the OS reclaims the process and `pg_ctl stop` is not
-    // needed. Without this `std::mem::forget`, `managed` would be dropped here
-    // (before the pool is even returned to the caller), causing `Drop` to call
-    // `stop_immediate_blocking` while no connections are established yet but
-    // also before any work is done — leaving the returned pool pointing at a
-    // dead server.
-    //
-    // If `owns_server == false` (live postmaster detected and reused), `Drop`
-    // is already a no-op, so `forget` is safe in both cases.
-    std::mem::forget(managed);
-
-    connect_url(&url).await
+fn combine_result<T>(result: anyhow::Result<T>, shutdown: anyhow::Result<()>) -> anyhow::Result<T> {
+    match (result, shutdown) {
+        (result, Ok(())) => result,
+        (Ok(_), Err(error)) => Err(error.context(
+            "database operation completed, but PostgreSQL shutdown failed; do not repeat the operation solely to retry shutdown",
+        )),
+        (Err(error), Err(shutdown)) => Err(error.context(format!(
+            "PostgreSQL shutdown also failed: {shutdown:#}"
+        ))),
+    }
 }
 
 async fn connect_url(url: &str) -> anyhow::Result<deadpool_postgres::Pool> {
     let pool = brassclaw_pg::pool::build_pool_with_max_size(url, 4)?;
-
-    // Probe connectivity before returning the pool. The acquired connection is
-    // immediately dropped; the only goal is to surface a clear error if the DB
-    // URL is unreachable at startup.
-    let _conn = pool
-        .get()
-        .await
-        .map_err(|e| anyhow::anyhow!("cannot connect to PostgreSQL: {e}"))?;
+    if let Err(error) = pool.get().await {
+        pool.close();
+        anyhow::bail!("cannot connect to PostgreSQL: {error}");
+    }
     Ok(pool)
 }

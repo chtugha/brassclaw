@@ -62,6 +62,17 @@ remain in progress.
 
 ### Fixed
 
+- Retain standalone CLI PostgreSQL ownership through completion and explicitly
+  shut down owned servers on success, early return and error. Failed bootstrap
+  can finish on retry without abandoning its server. New embedded clusters no
+  longer add password-free network trust for non-loopback listen addresses.
+- Use authoritative database provider selection in `models list`, preserving
+  corrupt-row and connection failures instead of returning a fallback catalogue.
+- Repair retention interval parameter types and event/audit timestamp columns;
+  roll back the entire sweep if a later deletion or memory-link update fails.
+- Explain every Monty execution and memory control in English and German, with
+  accessible help text beside the corresponding settings input.
+
 - Read the durable terminal turn outcome before reporting a stopped worker,
   preserving cancellation/recovery results when admission closes concurrently.
 - Share parsed PostgreSQL endpoint and certificate-validated TLS policy across

@@ -125,65 +125,67 @@ impl RewrapCommand {
         let reborn_home = context.boot_config().home().path().to_path_buf();
 
         // Step 1: Build PG pool and run schema migrations (§6.4).
-        let pool = build_pg_pool().await?;
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("schema migrations failed: {e}"))?;
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("schema migrations failed: {e}"))?;
 
-        // Step 2: Resolve tenant_id (§4.4 4-step resolution).
-        let tenant_id = resolve_tenant_id(self.tenant.as_deref(), &reborn_home, &pool).await?;
+            // Step 2: Resolve tenant_id (§4.4 4-step resolution).
+            let tenant_id = resolve_tenant_id(self.tenant.as_deref(), &reborn_home, &pool).await?;
 
-        // Step 3: Read the existing master key (key-source rule).
-        let master_key_bytes = resolve_master_key(
-            &tenant_id,
-            &reborn_home,
-            self.old_passphrase_file.as_deref(),
-            &pool,
-        )
-        .await?;
+            // Step 3: Read the existing master key (key-source rule).
+            let master_key_bytes = resolve_master_key(
+                &tenant_id,
+                &reborn_home,
+                self.old_passphrase_file.as_deref(),
+                &pool,
+            )
+            .await?;
 
-        // Step 4a: For raw-key strategy, write the hex key to the canonical
-        // on-disk file BEFORE the DB upsert.  If the upsert fails, the key
-        // file is still present and the operator can retry.
-        if matches!(strategy, RewrapStrategy::RawKey) {
-            let key_path = reborn_home.join(".secrets-master-key");
-            let hex_key = hex::encode(&master_key_bytes);
-            std::fs::write(&key_path, &hex_key)
-                .with_context(|| format!("failed to write key file {}", key_path.display()))?;
-            // Restrict permissions: owner read-only.
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt as _;
-                std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))
-                    .with_context(|| format!("failed to chmod 0600 {}", key_path.display()))?;
-            }
-        }
-
-        // Step 4b: Produce wrapped_key / algorithm for the chosen strategy.
-        let (wrapped_key, algorithm) = wrap_master_key(&master_key_bytes, &strategy)?;
-
-        // Step 5: Upsert brassclaw_secrets_master.
-        upsert_secrets_master(&pool, &tenant_id, &wrapped_key, &algorithm).await?;
-
-        // Step 6: After a successful passphrase-wrap upsert, zero and remove any
-        // raw key files that were read in step 3 (they are superseded by the DB
-        // row).  For raw-key strategy we just wrote the canonical file, so there
-        // is nothing to remove.  Only zero files that existed before this run.
-        if algorithm != "raw-key-on-disk" {
-            let legacy = reborn_home.join(".reborn-local-dev-secrets-master-key");
-            let canonical = reborn_home.join(".secrets-master-key");
-            for path in &[&legacy, &canonical] {
-                if path.exists() {
-                    zero_and_remove(path).with_context(|| {
-                        format!("failed to zero raw key file {}", path.display())
-                    })?;
-                    println!("Zeroed and removed: {}", path.display());
+            // Step 4a: For raw-key strategy, write the hex key to the canonical
+            // on-disk file BEFORE the DB upsert.  If the upsert fails, the key
+            // file is still present and the operator can retry.
+            if matches!(strategy, RewrapStrategy::RawKey) {
+                let key_path = reborn_home.join(".secrets-master-key");
+                let hex_key = hex::encode(&master_key_bytes);
+                std::fs::write(&key_path, &hex_key)
+                    .with_context(|| format!("failed to write key file {}", key_path.display()))?;
+                // Restrict permissions: owner read-only.
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))
+                        .with_context(|| format!("failed to chmod 0600 {}", key_path.display()))?;
                 }
             }
-        }
 
-        println!("brassclaw secrets rewrap: tenant={tenant_id} strategy={algorithm} — done.");
-        Ok(())
+            // Step 4b: Produce wrapped_key / algorithm for the chosen strategy.
+            let (wrapped_key, algorithm) = wrap_master_key(&master_key_bytes, &strategy)?;
+
+            // Step 5: Upsert brassclaw_secrets_master.
+            upsert_secrets_master(&pool, &tenant_id, &wrapped_key, &algorithm).await?;
+
+            // Step 6: After a successful passphrase-wrap upsert, zero and remove any
+            // raw key files that were read in step 3 (they are superseded by the DB
+            // row).  For raw-key strategy we just wrote the canonical file, so there
+            // is nothing to remove.  Only zero files that existed before this run.
+            if algorithm != "raw-key-on-disk" {
+                let legacy = reborn_home.join(".reborn-local-dev-secrets-master-key");
+                let canonical = reborn_home.join(".secrets-master-key");
+                for path in &[&legacy, &canonical] {
+                    if path.exists() {
+                        zero_and_remove(path).with_context(|| {
+                            format!("failed to zero raw key file {}", path.display())
+                        })?;
+                        println!("Zeroed and removed: {}", path.display());
+                    }
+                }
+            }
+
+            println!("brassclaw secrets rewrap: tenant={tenant_id} strategy={algorithm} — done.");
+            Ok(())
+        })
+        .await
     }
 
     #[cfg(not(feature = "postgres"))]
@@ -500,12 +502,4 @@ fn zero_and_remove(path: &std::path::Path) -> anyhow::Result<()> {
     drop(f);
     std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))?;
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Shared pool helper
-// ---------------------------------------------------------------------------
-
-async fn build_pg_pool() -> anyhow::Result<deadpool_postgres::Pool> {
-    crate::commands::config::pg_lifecycle::build_pg_pool().await
 }

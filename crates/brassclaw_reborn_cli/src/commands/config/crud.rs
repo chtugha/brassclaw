@@ -29,29 +29,30 @@ pub(crate) struct ConfigGetCommand {
 }
 
 impl ConfigGetCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        let rows = list_config_keys(&pool, &self.tenant)
-            .await
-            .map_err(|e| anyhow::anyhow!("config get failed: {e}"))?;
+            let rows = list_config_keys(&pool, &self.tenant)
+                .await
+                .map_err(|e| anyhow::anyhow!("config get failed: {e}"))?;
 
-        match rows.into_iter().find(|(k, _)| k == &self.key) {
-            Some((_, v)) => println!("{v}"),
-            None => anyhow::bail!("key `{}` not found for tenant `{}`", self.key, self.tenant),
-        }
-        Ok(())
+            match rows.into_iter().find(|(k, _)| k == &self.key) {
+                Some((_, v)) => println!("{v}"),
+                None => anyhow::bail!("key `{}` not found for tenant `{}`", self.key, self.tenant),
+            }
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -74,32 +75,33 @@ pub(crate) struct ConfigSetCommand {
 }
 
 impl ConfigSetCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+
+            save_config_key(
+                &pool,
+                &self.tenant,
+                &self.key,
+                &self.value,
+                ConfigWriteContext::Operator,
+            )
             .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("config set failed: {e}"))?;
 
-        save_config_key(
-            &pool,
-            &self.tenant,
-            &self.key,
-            &self.value,
-            ConfigWriteContext::Operator,
-        )
+            println!("set `{}` = `{}`", self.key, self.value);
+            Ok(())
+        })
         .await
-        .map_err(|e| anyhow::anyhow!("config set failed: {e}"))?;
-
-        println!("set `{}` = `{}`", self.key, self.value);
-        Ok(())
     }
 }
 
@@ -119,26 +121,27 @@ pub(crate) struct ConfigUnsetCommand {
 }
 
 impl ConfigUnsetCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        delete_config_key(&pool, &self.tenant, &self.key)
-            .await
-            .map_err(|e| anyhow::anyhow!("config unset failed: {e}"))?;
+            delete_config_key(&pool, &self.tenant, &self.key)
+                .await
+                .map_err(|e| anyhow::anyhow!("config unset failed: {e}"))?;
 
-        println!("unset `{}`", self.key);
-        Ok(())
+            println!("unset `{}`", self.key);
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -159,36 +162,37 @@ pub(crate) struct ConfigListCommand {
 }
 
 impl ConfigListCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        let rows = list_config_keys(&pool, &self.tenant)
-            .await
-            .map_err(|e| anyhow::anyhow!("config list failed: {e}"))?;
+            let rows = list_config_keys(&pool, &self.tenant)
+                .await
+                .map_err(|e| anyhow::anyhow!("config list failed: {e}"))?;
 
-        let prefix = self.section.as_deref().unwrap_or("");
-        let mut printed = false;
-        for (key, value) in &rows {
-            if prefix.is_empty() || key.starts_with(prefix) {
-                println!("{key} = {value}");
-                printed = true;
+            let prefix = self.section.as_deref().unwrap_or("");
+            let mut printed = false;
+            for (key, value) in &rows {
+                if prefix.is_empty() || key.starts_with(prefix) {
+                    println!("{key} = {value}");
+                    printed = true;
+                }
             }
-        }
-        if !printed && !prefix.is_empty() {
-            println!("(no keys found under section `{prefix}`)");
-        }
-        Ok(())
+            if !printed && !prefix.is_empty() {
+                println!("(no keys found under section `{prefix}`)");
+            }
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -205,30 +209,31 @@ pub(crate) struct ConfigShowAllCommand {
 }
 
 impl ConfigShowAllCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        // Render DB rows as flat TOML-style `key = "value"` lines.
-        // RebornConfigFile is Deserialize-only so we render the flat list.
-        let rows = list_config_keys(&pool, &self.tenant)
-            .await
-            .map_err(|e| anyhow::anyhow!("config show-all failed: {e}"))?;
+            // Render DB rows as flat TOML-style `key = "value"` lines.
+            // RebornConfigFile is Deserialize-only so we render the flat list.
+            let rows = list_config_keys(&pool, &self.tenant)
+                .await
+                .map_err(|e| anyhow::anyhow!("config show-all failed: {e}"))?;
 
-        for (key, value) in &rows {
-            println!("{key} = {value:?}");
-        }
-        Ok(())
+            for (key, value) in &rows {
+                println!("{key} = {value:?}");
+            }
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -247,29 +252,30 @@ pub(crate) struct ConfigExportCommand {
 }
 
 impl ConfigExportCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        // Export as flat `key = "value"` lines (TOML-compatible scalar format).
-        let rows = list_config_keys(&pool, &self.tenant)
-            .await
-            .map_err(|e| anyhow::anyhow!("config export failed: {e}"))?;
+            // Export as flat `key = "value"` lines (TOML-compatible scalar format).
+            let rows = list_config_keys(&pool, &self.tenant)
+                .await
+                .map_err(|e| anyhow::anyhow!("config export failed: {e}"))?;
 
-        for (key, value) in &rows {
-            println!("{key} = {value:?}");
-        }
-        Ok(())
+            for (key, value) in &rows {
+                println!("{key} = {value:?}");
+            }
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -291,52 +297,53 @@ pub(crate) struct ConfigImportCommand {
 }
 
 impl ConfigImportCommand {
-    pub(crate) fn execute(self, _context: RebornCliContext) -> anyhow::Result<()> {
+    pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        rt.block_on(self.run_async())
+        rt.block_on(self.run_async(context))
     }
 
-    async fn run_async(self) -> anyhow::Result<()> {
+    async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
         use std::io::Read as _;
 
-        let pool = crate::commands::config::pg_lifecycle::build_pg_pool().await?;
-        let pool = std::sync::Arc::new(pool);
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+        crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        let mut stdin_text = String::new();
-        std::io::stdin()
-            .read_to_string(&mut stdin_text)
-            .map_err(|e| anyhow::anyhow!("failed to read stdin: {e}"))?;
+            let mut stdin_text = String::new();
+            std::io::stdin()
+                .read_to_string(&mut stdin_text)
+                .map_err(|e| anyhow::anyhow!("failed to read stdin: {e}"))?;
 
-        // Parse as a raw TOML Value and flatten to dot-path key→value pairs.
-        // This avoids requiring `Serialize` on `RebornConfigFile` while still
-        // accepting the `config.toml` shape for operator-written files.
-        let config_value: toml::Value =
-            toml::from_str(&stdin_text).map_err(|e| anyhow::anyhow!("invalid config TOML: {e}"))?;
+            // Parse as a raw TOML Value and flatten to dot-path key→value pairs.
+            // This avoids requiring `Serialize` on `RebornConfigFile` while still
+            // accepting the `config.toml` shape for operator-written files.
+            let config_value: toml::Value = toml::from_str(&stdin_text)
+                .map_err(|e| anyhow::anyhow!("invalid config TOML: {e}"))?;
 
-        let mut count = 0usize;
-        for (key, value) in flatten_toml("", &config_value) {
-            save_config_key(
-                &pool,
-                &self.tenant,
-                &key,
-                &value,
-                ConfigWriteContext::Operator,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to import key `{key}`: {e}"))?;
-            count += 1;
-        }
+            let mut count = 0usize;
+            for (key, value) in flatten_toml("", &config_value) {
+                save_config_key(
+                    &pool,
+                    &self.tenant,
+                    &key,
+                    &value,
+                    ConfigWriteContext::Operator,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to import key `{key}`: {e}"))?;
+                count += 1;
+            }
 
-        println!(
-            "imported {count} config key(s) into tenant `{}`",
-            self.tenant
-        );
-        Ok(())
+            println!(
+                "imported {count} config key(s) into tenant `{}`",
+                self.tenant
+            );
+            Ok(())
+        })
+        .await
     }
 }
 

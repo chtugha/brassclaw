@@ -80,40 +80,25 @@ impl ModelsListCommand {
         let admin =
             brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
 
-        // Prefer DB-backed list when a pool is available — shows builtins + custom providers.
-        // Fall back to the compiled-in registry if the DB is unreachable.
-        let list = match crate::commands::config::pg_lifecycle::build_pg_pool().await {
-            Ok(raw_pool) => {
-                use std::sync::Arc;
-                let pool = Arc::new(raw_pool);
-                let tenant = "default";
+        let provider = self.provider.clone();
+        let verbose = self.verbose || provider.is_some();
+        let list =
+            crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+                brassclaw_pg::migrations::run_migrations(&pool).await?;
+                let config =
+                    brassclaw_reborn_composition::db_config::load_config_snapshot(&pool, "default")
+                        .await?;
                 let pg_repo = brassclaw_reborn_composition::PgProviderRepo::new(
                     (*pool).clone(),
-                    tenant.to_string(),
+                    "default".to_string(),
                 );
-                match admin
-                    .list_from_db(
-                        &pg_repo,
-                        self.provider.as_deref(),
-                        self.verbose || self.provider.is_some(),
-                    )
-                    .await
-                {
-                    Ok(list) => list,
-                    Err(e) => {
-                        tracing::debug!(error = %e, "DB provider list failed; falling back to registry");
-                        admin.list(
-                            self.provider.as_deref(),
-                            self.verbose || self.provider.is_some(),
-                        )?
-                    }
-                }
-            }
-            Err(_) => admin.list(
-                self.provider.as_deref(),
-                self.verbose || self.provider.is_some(),
-            )?,
-        };
+                // PostgreSQL is authoritative. An unavailable database or
+                // failed read must not invent a compiled provider catalogue.
+                Ok(admin
+                    .list_from_db(&pg_repo, &config, provider.as_deref(), verbose)
+                    .await?)
+            })
+            .await?;
 
         if self.json {
             println!("{}", serde_json::to_string_pretty(&list)?);
