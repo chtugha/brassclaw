@@ -62,6 +62,13 @@ remain in progress.
 
 ### Fixed
 
+- Request worker containment before closing IPC pipes and retain frame-read
+  failure kinds without exposing request data; truncated input remains a fatal
+  transport error rather than a successful shutdown.
+- Optimize SHA-256 compression in development/test builds and the composition
+  test harness while retaining integrity checks, debug checks and unwinding.
+  This removes the oversized native test unwind-table warning and reduces
+  measured local native startup time; release optimization remains unchanged.
 - Debit Monty task duration only for executing VM segments; retain compilation
   and value-adapter observations separately across children, feeds and live edits.
 - Give CLI `run`/`repl` instances independent loopback MCP ports by default,

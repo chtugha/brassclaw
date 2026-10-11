@@ -925,13 +925,15 @@ impl GlobalProcess {
 
     fn interrupt(&mut self) {
         self.terminal = true;
-        self.stdin = None;
-        self.stdout = None;
+        // Request containment before closing the pipes. Closing stdin first
+        // races the kill with an unexpected request EOF in the waiting worker.
         // Exit racing kill is normal; only a reaped exit below acknowledges
         // local termination. Never turn a failed kill into a stopped receipt.
         if let Err(error) = self.child.start_kill() {
             self.kill_error.get_or_insert(error);
         }
+        self.stdin = None;
+        self.stdout = None;
     }
 
     /// Fatal containment, not task cancellation or external-effect settlement.
@@ -1256,7 +1258,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let (request, wire_bytes): (Request, _) =
             read_frame_with_length(&mut input, heap.frame_status().effective_capacity_bytes)
-                .map_err(|_| io::Error::other("invalid worker request"))?;
+                .map_err(|error| io::Error::new(error.kind(), "invalid worker request"))?;
         if !valid_frame_limit(request.max_frame_bytes)
             || request.max_frame_bytes > heap.frame_status().effective_capacity_bytes
             || wire_bytes > request.max_frame_bytes

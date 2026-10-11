@@ -358,6 +358,18 @@ root-llm-provider = ["brassclaw_reborn/root-llm-provider"]
 # build with `cargo test --features skills-db`.
 skills-db = ["brassclaw_engine/skills-db"]
 
+# Native artifact integrity checks hash complete executable images. Keep the
+# cryptographic compression path efficient in development and inherited test
+# builds while retaining their debug assertions, overflow checks and unwinding.
+[profile.dev.package.sha2]
+opt-level = 3
+
+# This crate's native integration harness exceeds Mach-O's compact-unwind
+# offset range without optimization. Reduce generated code and unwind records;
+# keep the normal test panic/debug-check settings for actual failure coverage.
+[profile.test.package.brassclaw_reborn_composition]
+opt-level = 1
+
 [profile.release]
 strip = true          # Remove debug symbols from release binaries
 

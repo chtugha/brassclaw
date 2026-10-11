@@ -6202,3 +6202,90 @@ This warning remains unresolved; neither helper/native success nor lint claims
 its removal. Test-profile optimization must be measured against the affected
 retained source and real tests before any profile change is accepted; disabling
 unwinding or linker diagnostics is not a remedy.
+
+
+### 2026-10-11 — Native development startup and unwind repair (local acceptance)
+
+The composition CI command timed out without a failed assertion in run
+`38086683707`. Its unchanged command watchdog is 28 minutes inside a 30-minute
+job. Git attributes both values to `ab5a907628` (2026-06-06, CI scope split).
+No measured estimate justifying 28 minutes was found. The command includes
+compilation as well as all package tests; the failed run spent approximately
+eight minutes compiling. This is a CI watchdog, not a Monty task budget.
+
+Source inspection identified repeated retained executable copies and full
+SHA-256 integrity checks during native startup. A five-second sample of an
+already accepted actual composition startup found 379 of 396 samples on its
+active blocking thread in unoptimized SHA-256 compression. The sampled test
+completed successfully; concurrent peer compilation makes that first wall time
+unsuitable as a performance baseline.
+
+The root workspace now optimizes the `sha2` dependency at level 3 in the dev
+profile, inherited by tests. The composition test crate alone uses level 1 to
+reduce its native code/unwind records below Mach-O's compact-unwind offset range.
+Both preserve debug assertions, overflow checks and normal unwinding; compiler
+artifact events confirm those settings. Hashing, retained file identity,
+corruption rejection and exact artifact/approval checks remain in place. The
+release profile already optimizes SHA-256; this is not a release speed claim.
+No architecture-specific compiler flags, warning suppression or test exclusion
+was added, and the CI deadline has not been changed.
+
+A frozen 9,006-file candidate and protected baseline executable/worker pairs
+establish local macOS evidence. The baseline differs by the Cargo profiles and
+unrelated strengthened deployment-test assertions; the selected startup caller
+is unchanged. Under one serial validation window that caller completed in
+61.75 seconds before and 7.94 seconds after the combined profile change.
+This comparison does not attribute the improvement to either override alone,
+certify Linux/Windows timing or establish throughput under load.
+
+The baseline composition executable's `__eh_frame` section was 17,044,816 bytes;
+the candidate's is 14,408,320 bytes, below 16 MiB. The actual build emitted no
+oversized-unwind warning. Eight candidate cases passed: four native executable
+identity/copy/corruption/capacity cases, actual startup, retained global
+matched/unmatched execution, live WebUI/Rust/Monty settings and seed
+idempotency/tamper rejection. Affected strict library lints passed with
+`skills-db,root-llm-provider,test-support` and toolchain 1.96.0.
+
+Evidence is retained in `/private/tmp/brassclaw-native-profile-accepted.json`,
+its artifact and frozen-source receipts, and
+`target/validation/native-profile-artifacts-20261011`. Executables were captured
+at compiler-artifact events before Cargo exit; the exact paired worker was
+retained independently. The complete frozen composition library binary then passed with four test
+threads: 755 passed, zero failed, one preexisting live-provider case ignored,
+in 288.68 seconds. Its independently retained ordinary-provider evidence is
+not rerun or represented as part of this suite. This is local library evidence,
+not the GitHub all-target/platform gate. CI still requires a rerun, and this
+entry does not complete the v3 plan or its recovery/catalogue gates.
+
+
+### 2026-10-11 — Containment ordering and worker EOF diagnostics (local acceptance)
+
+The CI log's repeated generic `invalid worker request` diagnostics were also
+traced through actual containment. `GlobalProcess::interrupt` closed stdin
+before requesting a kill, allowing a waiting interpreter to observe an EOF
+first. It now requests containment before closing stdin/stdout. The process is
+still fenced immediately; kill failures, reaping failures and interrupted
+command evidence remain retained. Only an actual root shutdown acknowledgement
+and observed exit certify graceful shutdown. This does not classify pipe EOF
+as success or replace fatal-runtime reconciliation.
+
+Worker request-read failures now preserve their original I/O error kind behind
+the same constant diagnostic, instead of converting every failure to `Other`.
+The real malformed-frame regression includes a declared 128-byte body cut off
+after private sentinel bytes. The actual worker exits unsuccessfully with an
+`UnexpectedEof` diagnostic and no framed stdout, while the sentinel stays out
+of stderr. Invalid lengths and malformed records retain their classified
+errors. No request/source/provider text is emitted and no diagnostic is muted.
+
+All 21 actual contained process-host cases passed, including explicit graceful
+shutdown/reap, busy startup deadline, dropped busy exchange, allocation fatal
+containment, live memory/frame/settings changes and isolated child/task
+cancellation. Affected process-host/worker strict lints passed. The frozen
+9,006-file candidate was checked before/after compilation and acceptance;
+matching executable artifacts were retained before Cargo exit. Tests ran under
+the common Cargo lock while their compile-time worker pathname remained owned.
+
+Evidence: `/private/tmp/brassclaw-worker-containment-accepted.json`,
+`/private/tmp/brassclaw-ci-repair-worker-containment-artifacts.json` and the
+associated logs/source receipt. This targeted lifecycle repair does not certify
+full durable crash reconciliation, other platform acceptance or plan completion.

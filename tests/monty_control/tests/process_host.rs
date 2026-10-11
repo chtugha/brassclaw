@@ -922,10 +922,11 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
         "command": {"operation": "boot", "boot": boot(SOURCE)}});
     unknown["lease_token"] = json!("private-claim-never-log");
     let serialized = serde_json::to_vec(&unknown).unwrap();
-    for (length, body) in [
-        (0u32, Vec::new()),
-        (limits().max_frame_bytes as u32 + 1, Vec::new()),
-        (serialized.len() as u32, serialized),
+    for (length, body, diagnostic_kind) in [
+        (0u32, Vec::new(), "Other"),
+        (limits().max_frame_bytes as u32 + 1, Vec::new(), "Other"),
+        (serialized.len() as u32, serialized, "Other"),
+        (128u32, b"private-claim-never-log".to_vec(), "UnexpectedEof"),
     ] {
         let mut child = tokio::process::Command::new(worker())
             .arg(limits().hard_memory_bytes.to_string())
@@ -948,6 +949,7 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
         assert!(output.stdout.is_empty());
         let diagnostic = String::from_utf8(output.stderr).unwrap();
         assert!(diagnostic.contains("invalid worker request"));
+        assert!(diagnostic.contains(diagnostic_kind), "{diagnostic}");
         assert!(!diagnostic.contains("private-claim"));
     }
 }
