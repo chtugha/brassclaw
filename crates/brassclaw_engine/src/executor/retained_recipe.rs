@@ -36,8 +36,9 @@ use crate::memory::{
 // Loading definitions has no Tool binding/port. Invocation supplies the exact
 // retained usage together; the two modes cannot be confused by boolean arguments.
 enum StepFeedMode<'a> {
-    Preload,
+    Preload(Vec<SelectedPython>),
     Execute {
+        python: SelectedPython,
         binding: Option<&'a RetainedToolBinding>,
         tools: Option<&'a dyn RetainedToolPort>,
     },
@@ -641,41 +642,45 @@ impl RetainedRecipeExecution {
             );
         }
         let result = async {
-            while let Some(id) = self
-                .source_checks
-                .preload_order()
-                .get(self.preloaded)
-                .copied()
-            {
-                let source = selected.inputs().instruction().snapshot().revisions()[&id]
-                    .draft()
-                    .document()["content"]
-                    .as_str()
-                    .ok_or(RetainedExecutionError::Invalid(
-                        "qualified preload source missing",
-                    ))?;
-                let source = format!("{source}\nresult = None");
-                let preload = SelectedPython {
-                    checksum: Sha256::digest(source.as_bytes()).into(),
-                    source,
-                    aliases: BTreeSet::new(),
-                };
+            let library_count = self.source_checks.preload_order().len();
+            if self.preloaded == 0 && library_count != 0 {
+                let mut definitions = Vec::with_capacity(library_count);
+                for id in self.source_checks.preload_order() {
+                    let source = selected.inputs().instruction().snapshot().revisions()[id]
+                        .draft()
+                        .document()["content"]
+                        .as_str()
+                        .ok_or(RetainedExecutionError::Invalid(
+                            "qualified preload source missing",
+                        ))?
+                        .to_owned();
+                    definitions.push(SelectedPython {
+                        checksum: Sha256::digest(source.as_bytes()).into(),
+                        source,
+                        aliases: BTreeSet::new(),
+                    });
+                }
                 self.feed(
                     transport,
                     step_id,
                     serde_json::json!({}),
-                    preload,
-                    StepFeedMode::Preload,
+                    StepFeedMode::Preload(definitions),
                 )
                 .await?;
-                self.preloaded += 1;
+                // Advance only after the entire effect-free prefix completed.
+                // Failed or abandoned loads retain their original transport
+                // evidence and cannot retry a partly initialized context.
+                self.preloaded = library_count;
             }
             self.feed(
                 transport,
                 step_id,
                 inputs,
-                python,
-                StepFeedMode::Execute { binding, tools },
+                StepFeedMode::Execute {
+                    python,
+                    binding,
+                    tools,
+                },
             )
             .await
         }
@@ -712,13 +717,8 @@ impl RetainedRecipeExecution {
         transport: &TransportClient,
         step_id: &str,
         inputs: Value,
-        python: SelectedPython,
         mode: StepFeedMode<'_>,
     ) -> Result<Value, RetainedExecutionError> {
-        let (binding, tools, preloading) = match mode {
-            StepFeedMode::Preload => (None, None, true),
-            StepFeedMode::Execute { binding, tools } => (binding, tools, false),
-        };
         if self.context.is_none() {
             self.exchange(
                 transport,
@@ -746,15 +746,32 @@ impl RetainedRecipeExecution {
         let context = self
             .context
             .ok_or(RetainedExecutionError::Invalid("missing child context"))?;
-        self.exchange(
-            transport,
-            RecipeCommand::Start {
-                context,
-                selected: python,
-                inputs: inputs.clone(),
-            },
-        )
-        .await?;
+        let (binding, tools, preloading, command) = match mode {
+            StepFeedMode::Preload(definitions) => (
+                None,
+                None,
+                true,
+                RecipeCommand::Preload {
+                    context,
+                    definitions,
+                },
+            ),
+            StepFeedMode::Execute {
+                python,
+                binding,
+                tools,
+            } => (
+                binding,
+                tools,
+                false,
+                RecipeCommand::Start {
+                    context,
+                    selected: python,
+                    inputs: inputs.clone(),
+                },
+            ),
+        };
+        self.exchange(transport, command).await?;
         let mut dispatched = false;
         loop {
             let event = self

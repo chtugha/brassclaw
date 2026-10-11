@@ -6381,3 +6381,37 @@ execution controls and five memory values, with accessible description links.
 Syntax checks and actual form rendering verified every translated description
 and input association. This establishes help-text rendering, not new runtime
 limit enforcement or a complete system-wide fixed-value audit.
+
+### 2026-10-11 — Complete selected definition-prefix compiler reuse
+
+The retained Recipe loader now submits its complete, already-qualified,
+dependency-first definition set to the contained worker as one preload operation.
+The worker verifies each source checksum and live source bounds, rejects aliases,
+effectful initializers and duplicate/reserved names, and compiles one immutable
+prefix. Compatible empty contexts share its compiler seed; mutable globals,
+defaults, inputs, results and host bindings remain owned by each task context.
+Invocations remain separate pinned execution steps. No approval or Tool permission
+is inferred from a cache hit, and no runtime input becomes Python source.
+
+The worker retains the previous per-definition feed and compiled-source charges.
+The loader advances its definition cursor only after the entire prefix completes
+with the expected null result. Used or partially failed contexts cannot reload
+the prefix. Weak cache entries disappear when their owning contexts are released;
+there is no separate hidden cache-byte ceiling. The shared allocator still
+accounts actual live code. The private host/worker protocol is now 14, requiring
+a paired upgrade; interpreter extension and dump ABI remain unchanged.
+
+Frozen source `target/validation/preload-prefix-20261011-r2` passed three real
+cache cases, five retained PostgreSQL/IBS/kernel execution cases, 21 process-host
+cases and 11 child-host cases, with no ignored tests in these suites. Affected
+host/Engine libraries and host/contained tests passed strict linting on 1.96.0.
+Exact executables, paired workers, source hashes, accepted receipts and failed
+predecessor logs are retained in
+`target/validation/preload-prefix-artifacts-20261011-r2`. The separate contained
+workspace lockfile now includes the accepted PostgreSQL dependency edges.
+
+This establishes complete selected-definition compiler reuse through the retained
+worker path. It does not establish activation-time catalogue warmup, qualified
+imports, whole-library population, ordinary product performance, cross-platform
+runtime acceptance or full v3 completion. Global worker/pending-call constants,
+authoring utility limits and the wider fixed-value audit remain open.

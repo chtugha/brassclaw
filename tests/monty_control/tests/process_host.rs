@@ -957,7 +957,7 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
 #[tokio::test]
 async fn real_worker_rejects_invalid_exchange_frames_before_boot() {
     for accepted in [0, 1, limits().max_frame_bytes + 1] {
-        let request = json!({"protocol":13,"sequence":1,"max_frame_bytes":accepted,
+        let request = json!({"protocol":14,"sequence":1,"max_frame_bytes":accepted,
             "command":WorkerCommand::Boot { boot:boot(SOURCE) }});
         let body = serde_json::to_vec(&request).unwrap();
         assert!(body.len() < limits().max_frame_bytes);

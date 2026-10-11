@@ -81,6 +81,9 @@ pub struct PythonArtifact {
     checksum: [u8; 32],
     bindings: BTreeSet<String>,
     seed: PreparedReplSeed,
+    max_part_source_bytes: usize,
+    feed_count: usize,
+    compiled_source_bytes: usize,
 }
 impl fmt::Debug for PythonArtifact {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -98,6 +101,31 @@ impl PythonArtifact {
         bounds: VmBounds,
     ) -> Result<Self, VmError> {
         Self::validate(&body, expected_checksum, &bindings, bounds)?;
+        let max_part_source_bytes = body.len();
+        let compiled_source_bytes = body
+            .len()
+            .checked_add("\nresult\n".len())
+            .ok_or_else(|| VmError::kind(VmFailure::SourceLimit))?;
+        Self::compile(
+            body,
+            expected_checksum,
+            bindings,
+            max_part_source_bytes,
+            1,
+            compiled_source_bytes,
+        )
+    }
+
+    /// Definitions are already checked individually by the contained loader.
+    /// This shared module contains only immutable selected source, never data.
+    fn compile(
+        body: Arc<str>,
+        expected_checksum: [u8; 32],
+        bindings: BTreeSet<String>,
+        max_part_source_bytes: usize,
+        feed_count: usize,
+        compiled_source_bytes: usize,
+    ) -> Result<Self, VmError> {
         // Compiler metadata only: each child supplies fresh tables, heap,
         // values, host receiver and execution control when starting this seed.
         let seed = PreparedReplSeed::new(
@@ -116,6 +144,9 @@ impl PythonArtifact {
             checksum: expected_checksum,
             bindings,
             seed,
+            max_part_source_bytes,
+            feed_count,
+            compiled_source_bytes,
         })
     }
 
@@ -446,10 +477,12 @@ impl RecipeVm {
         })?;
         // A constant result expression supports the class-22 assignment contract.
         // No task values or source interpolation are involved.
-        let bytes = artifact.body.len().checked_add("\nresult\n".len());
-        let total = bytes.and_then(|bytes| self.compiled_bytes.checked_add(bytes));
-        if artifact.body.len() > self.bounds.max_source_bytes
-            || self.feeds >= self.bounds.max_feeds
+        let total = self
+            .compiled_bytes
+            .checked_add(artifact.compiled_source_bytes);
+        let feeds = self.feeds.checked_add(artifact.feed_count);
+        if artifact.max_part_source_bytes > self.bounds.max_source_bytes
+            || feeds.is_none_or(|feeds| feeds > self.bounds.max_feeds)
             || total.is_none_or(|total| total > self.bounds.max_compiled_source_bytes)
         {
             return Err(VmError::kind(VmFailure::SourceLimit));
@@ -459,7 +492,7 @@ impl RecipeVm {
         };
         let first_feed = self.feeds == 0;
         self.compiled_bytes = total.expect("checked above");
-        self.feeds += 1;
+        self.feeds = feeds.expect("checked above");
         self.artifact = Some(artifact.clone());
         if first_feed {
             self.seed_artifact = Some(artifact.clone());

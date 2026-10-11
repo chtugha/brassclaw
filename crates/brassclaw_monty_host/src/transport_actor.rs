@@ -740,7 +740,7 @@ impl TransportClient {
             WorkerCommand::Admit { .. }
                 | WorkerCommand::Boot { .. }
                 | WorkerCommand::Recipe {
-                    command: RecipeCommand::Start { .. }
+                    command: RecipeCommand::Start { .. } | RecipeCommand::Preload { .. }
                 }
         );
         let ledger = match self.inbox.ledger.lock() {

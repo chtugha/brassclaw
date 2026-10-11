@@ -540,9 +540,10 @@ fn preload_structure(body: &[Stmt]) -> Option<PreloadSource> {
     (!library.functions.is_empty() || !library.constants.is_empty()).then_some(library)
 }
 
-/// Only called in the contained utility worker after actual Monty compilation.
-/// Parser/traversal/native failure stays within its deadline/allocator boundary.
-/// No host receiver is installed and no opcode executes in this operation.
+/// Called inside contained workers: utility qualification after compilation,
+/// and definition-prefix preparation before compilation. Parser/traversal/native
+/// failure stays within the deadline/allocator boundary. This operation neither
+/// installs a host receiver nor executes an opcode.
 pub(crate) fn inspect(source: &str, bounds: VmBounds) -> Result<SourceStructure, VmError> {
     let parsed =
         ruff_python_parser::parse_module(source).map_err(|_| VmError::kind(VmFailure::Python))?;

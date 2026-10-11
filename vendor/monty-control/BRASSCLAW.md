@@ -180,3 +180,16 @@ Function bytecode's `Arc` serialization preserves the existing Code payload;
 neither the dump ABI nor the worker protocol changes. Interpreter, worker and
 ordinary product acceptance must establish isolation and retained selections
 before claiming this optimization is accepted.
+
+### Complete selected definition-prefix reuse (2026-10-11)
+
+The application worker now compiles the complete selected dependency-first
+definition set into one `PreparedReplSeed`. Empty contexts share immutable code
+and compiler tables while keeping their mutable heap, globals and host binding
+isolated. Loading rechecks every exact source and current bounds, preserves
+per-definition feed/source charges, rejects effects and symbol conflicts, and
+does not grant Tool authority. Weak cache ownership permits reclamation after
+the last context closes. This adds private worker protocol 14; pair host and
+worker artifacts. Extension `control.7` and dump ABI `0xBC05` remain unchanged.
+See the [retained-worker acceptance record](../../docs/plans/simplified-v3-implementation.md#2026-10-11--complete-selected-definition-prefix-compiler-reuse)
+for exact evidence and the remaining warmup, product and whole-plan gates.

@@ -39,6 +39,10 @@ remain in progress.
 
 ### Changed
 
+- Compile the complete qualified dependency-first preload definition set as one
+  shared immutable prefix. Each Recipe keeps its own mutable namespace and pinned
+  exports; loading retains per-definition source/feed charges and rechecks live
+  bounds. The paired installation worker now uses private protocol 14.
 - Order qualified preload dependencies with a stable UUID frontier and retain
   the acknowledged definition cursor, avoiding repeated graph and per-step scans
   while preserving task isolation and failure fencing.

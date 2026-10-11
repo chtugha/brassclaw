@@ -41,7 +41,7 @@ pub use crate::process_recipe::{
     ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 13;
+const PROTOCOL: u32 = 14;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
 const MAX_TRANSPORT_DEPTH: usize = 64;
@@ -1282,6 +1282,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             WorkerCommand::Recipe {
                 command:
                     RecipeCommand::Start { context, .. }
+                    | RecipeCommand::Preload { context, .. }
                     | RecipeCommand::ResumeHost { context, .. }
                     | RecipeCommand::ResumeControl { context, .. }
                     | RecipeCommand::CancelContext { context },

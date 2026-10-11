@@ -85,6 +85,12 @@ pub enum RecipeCommand {
         selected: SelectedPython,
         inputs: Value,
     },
+    /// One complete, already selected dependency-first library. The worker
+    /// accepts it only in an empty context; loading invokes no Tool usage.
+    Preload {
+        context: RecipeContextId,
+        definitions: Vec<SelectedPython>,
+    },
     ResumeHost {
         context: RecipeContextId,
         key: ContinuationKey,
@@ -417,6 +423,34 @@ impl WorkerRecipes {
                     record.root_opened = true;
                 }
                 Ok(RecipeEvent::Opened { task, context })
+            }
+            RecipeCommand::Preload {
+                context,
+                definitions,
+            } => {
+                let owner = self
+                    .contexts
+                    .get_mut(&context)
+                    .ok_or_else(|| VmError::kind(VmFailure::ForeignContinuation))?;
+                if owner.vm.feeds != 0 || !matches!(owner.vm.state, crate::VmState::Idle(_)) {
+                    return Err(VmError::kind(VmFailure::WrongBoundary));
+                }
+                let task = self
+                    .tasks
+                    .get(&owner.task)
+                    .ok_or_else(|| VmError::kind(VmFailure::Terminal))?;
+                if task.cancel_requested {
+                    return Err(VmError::kind(VmFailure::Terminal));
+                }
+                let artifact = prepare(&task.budget, || {
+                    self.artifacts.prepare_preload(&definitions, self.bounds)
+                })?;
+                let boundary = owner.vm.start_step(artifact, serde_json::json!({}))?;
+                Ok(RecipeEvent::Progress {
+                    context,
+                    boundary: boundary.into(),
+                    stdout: owner.vm.take_stdout(),
+                })
             }
             RecipeCommand::Start {
                 context,
