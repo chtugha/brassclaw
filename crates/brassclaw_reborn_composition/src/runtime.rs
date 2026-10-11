@@ -1516,9 +1516,7 @@ impl RebornRuntime {
     ) -> Result<TurnStatus, RebornRuntimeError> {
         let start = std::time::Instant::now();
         loop {
-            if self.worker_handle.is_finished() {
-                return Err(RebornRuntimeError::WorkerStopped);
-            }
+            let worker_stopped = self.worker_handle.is_finished();
             let state = self
                 .turn_coordinator
                 .get_run_state(GetRunStateRequest {
@@ -4580,6 +4578,7 @@ mod tests {
         let conversation = runtime.new_conversation().await.unwrap();
         let sending = {
             let runtime = runtime.clone();
+            let conversation = conversation.clone();
             tokio::spawn(async move {
                 runtime
                     .send_user_message(
@@ -4694,6 +4693,27 @@ mod tests {
         assert_eq!(
             runtime.global_monty_owner.client().root_identity(),
             identity
+        );
+        // Force the observer ordering that failed under Linux CI scheduling.
+        // Stopped admission cannot hide the already persisted terminal outcome.
+        runtime.worker_cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !runtime.worker_handle.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            runtime
+                .wait_for_terminal(
+                    &runtime.turn_scope_for(&conversation.0),
+                    run,
+                    &tokio_util::sync::CancellationToken::new(),
+                )
+                .await
+                .unwrap(),
+            result.status
         );
         drop((app, driver, factory));
         shutdown_shared_runtime(runtime).await.unwrap();

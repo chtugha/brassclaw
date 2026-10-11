@@ -2095,7 +2095,7 @@ dependencies = [
  "tokio-postgres",
  "tokio-postgres-rustls",
  "tracing",
- "url",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -2439,8 +2439,6 @@ dependencies = [
  "chrono",
  "deadpool-postgres",
  "hex",
- "rustls 0.23.44",
- "rustls-native-certs 0.8.4",
  "secrecy",
  "serde",
  "serde_json",
@@ -2449,10 +2447,8 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-postgres",
- "tokio-postgres-rustls",
  "tracing",
  "urlencoding",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]

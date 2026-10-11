@@ -56,7 +56,7 @@ Shared PostgreSQL pool management and schema migration runner for brassclaw.
 - Runs all `V000__`…`V026__` SQL migrations via `refinery`
 - Handles migration-history reconciliation for existing deployments (pre-seeding
   history rows for tables that pre-date refinery)
-- Warns at pool construction time when a non-loopback URL lacks `sslmode=`
+- Owns parsed endpoint/TLS policy for pools and dedicated sessions
 - Owns the canonical migration files in `migrations/`
 
 ## Migration files
@@ -94,9 +94,20 @@ for idempotency. Each migration is self-contained.
 | V025 | `brassclaw_memory_chat_records` |
 | V026 | `brassclaw_forensic_packets` |
 
-## SSL
+## SSL and dedicated sessions
 
-When `build_pool` is given a URL whose host is not loopback (`127.0.0.1` / `::1`
-/ `localhost`) and the URL does not contain `sslmode=`, a `warn!`-level message
-is emitted. The pool still connects — TLS may be enforced server-side via
-`pg_hba.conf` — but the warning is non-suppressible.
+`connection.rs` parses URL and keyword DSNs with `tokio_postgres::Config` and
+checks hosts, hostaddr overrides and every mixed endpoint. Remote or ambiguous
+endpoints require certificate-validated TLS: explicit `sslmode=disable` is
+rejected and `prefer` becomes `require`. Unspecified addresses do not prove
+loopback. Explicit local `require` uses TLS; ordinary loopback/Unix connections
+retain plaintext compatibility. Missing hosts are rejected: this driver has no
+implicit libpq socket-directory default. Native certificate roots are preferred,
+with bundled Mozilla roots only when the native store is empty.
+
+Use `pool::build_pool` for the instance's shared pool and
+`pool::build_pool_with_max_size` for separately owned utility/credential pools.
+Account for aggregate reservations and dedicated listeners; a per-pool default
+is not an instance-wide capacity limit. Use `connection::connect` for a genuinely
+session-local connection such as LISTEN, and own polling/shutdown explicitly.
+None of these helpers retries application SQL or an uncertain effect.

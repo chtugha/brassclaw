@@ -6289,3 +6289,51 @@ Evidence: `/private/tmp/brassclaw-worker-containment-accepted.json`,
 `/private/tmp/brassclaw-ci-repair-worker-containment-artifacts.json` and the
 associated logs/source receipt. This targeted lifecycle repair does not certify
 full durable crash reconciliation, other platform acceptance or plan completion.
+
+
+### 2026-10-11 — Shared PostgreSQL policy and terminal observer repair
+
+`brassclaw_pg::connection` now owns parsed URL/keyword endpoint classification,
+TLS enforcement and certificate roots for pools and dedicated sessions. All
+hosts/hostaddr overrides are examined; remote or ambiguous endpoints reject
+`sslmode=disable` and upgrade `prefer` to validated TLS. Explicit local `require`
+remains TLS. Hostaddr-only TLS supplies the actual IP as its certificate name.
+Missing endpoints and inconsistent host/port lists fail before connection.
+Native roots are preferred, with Mozilla fallback only for an empty native store.
+Configuration errors do not emit credentials. Shared instance pools default to
+16 connections; separately owned utility pools retain their four-connection
+reservation. These are per-pool bounds, not an aggregate capacity guarantee.
+
+The standalone Reborn event-store builder, config/migration CLI pools and
+document LISTEN session delegate to this policy. Ordinary composition already
+injects its shared pool into durable event/audit repositories. The listener
+retains its dedicated session because LISTEN is session-local; it is not another
+pool. No SQL retry or uncertain-effect replay was introduced. CLI embedded-owner
+retention and aggregate connection/lifecycle accounting remain open Phase-B work.
+
+GitHub run `38136361267` passed 753 composition tests and failed only
+`native_webui_cancellation_deadline_keeps_accepted_revision_and_evidence`, with
+one preexisting ignored live-provider case. The failure was `WorkerStopped`: an
+observer checked worker exit before reading the already durable terminal run
+outcome. It now samples worker state before the database read and returns the
+terminal disposition first. A finish during that read gets another authoritative
+poll. The regression additionally stops the worker and requires readback of the
+exact recorded result; recovery fencing and cancellation assertions are retained.
+
+A frozen 9,049-file candidate passed five parsed-policy cases, the event-store
+caller case, two public event-store profile cases and three real PostgreSQL
+integration cases. Three actual PostgreSQL 17.11 fixtures cover plaintext
+rejection, trusted TLS, untrusted issuer/wrong hostname rejection, encrypted
+server transport and LISTEN/NOTIFY. Actual CLI config and migration callers pass
+against certificate-validated TLS; remote plaintext is explicitly rejected. The
+native cancellation regression and global matched/unmatched multi-turn case
+pass with the retained worker pair. Relevant strict library and integration
+lints pass with toolchain 1.96.0 and no warning suppression. This is local macOS
+evidence; it does not establish other-platform runtime behavior or full v3
+completion. The corrected CI suite still needs its own result.
+
+The source receipt, compiler-artifact hashes, paired worker, accepted result and
+logs are retained in `target/validation/pg-policy-artifacts-20261011-r2`. Changed
+source/dependency hashes match the accepted snapshot before submission. Concurrent
+authored-catalogue/review/export work present in that snapshot is not certified
+or submitted by this checkpoint.

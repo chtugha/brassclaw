@@ -62,6 +62,12 @@ remain in progress.
 
 ### Fixed
 
+- Read the durable terminal turn outcome before reporting a stopped worker,
+  preserving cancellation/recovery results when admission closes concurrently.
+- Share parsed PostgreSQL endpoint and certificate-validated TLS policy across
+  Reborn pools, CLI utilities, event stores and dedicated document listeners.
+  Remote connections cannot silently downgrade to plaintext; explicit local TLS
+  and host-address certificate validation are preserved.
 - Request worker containment before closing IPC pipes and retain frame-read
   failure kinds without exposing request data; truncated input remains a fatal
   transport error rather than a successful shutdown.

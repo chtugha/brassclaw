@@ -111,14 +111,7 @@ async fn build_pg_pool(_context: &RebornCliContext) -> anyhow::Result<deadpool_p
             )
         })?;
 
-    let config: tokio_postgres::Config = url
-        .parse()
-        .map_err(|e| anyhow::anyhow!("invalid PostgreSQL URL: {e}"))?;
-    let manager = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(manager)
-        .max_size(4)
-        .build()
-        .map_err(|e| anyhow::anyhow!("failed to build PG pool: {e}"))?;
+    let pool = brassclaw_pg::pool::build_pool_with_max_size(&url, 4)?;
 
     // Verify connectivity.
     let _client = pool

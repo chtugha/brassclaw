@@ -40,7 +40,6 @@ use brassclaw_triggers::{
     TriggerSourceKind, TriggerState,
 };
 use notify::{Event, RecursiveMode, Watcher};
-use tokio_postgres::NoTls;
 
 /// Fixed ULID for the file-change trigger. Deterministic → idempotent upsert.
 const FILE_CHANGE_TRIGGER_ULID: &str = "00000000000000000000000001";
@@ -283,7 +282,7 @@ async fn pg_listener_session(
     watcher_ctx: Arc<DocSyncWatcher>,
     shutdown: tokio_util::sync::CancellationToken,
 ) -> ListenerExit {
-    let (client, mut connection) = match tokio_postgres::connect(pg_url, NoTls).await {
+    let (client, mut connection) = match brassclaw_pg::connection::connect(pg_url).await {
         Ok(pair) => pair,
         Err(e) => return ListenerExit::ConnectionError(e.to_string()),
     };

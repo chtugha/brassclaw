@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PgError {
+    #[error("invalid PostgreSQL configuration: {0}")]
+    Configuration(&'static str),
+
+    #[error("remote PostgreSQL requires TLS; sslmode=disable is rejected")]
+    RemoteClearTextDisabled,
+
     #[error("failed to connect to PostgreSQL: {0}")]
     Connect(String),
 
