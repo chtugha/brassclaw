@@ -25,13 +25,13 @@ pub(crate) struct SecretsCommand {
 enum SecretsSubcommand {
     /// Wrap the existing master key with a new strategy (passphrase or raw-key).
     ///
-    /// Updates `brassclaw_secrets_master` in-place (version = 1) — does NOT
+    /// Updates `brassclaw_secrets_master` in-place (retaining its current version) — does NOT
     /// generate a new key or re-encrypt existing secret rows.
     ///
-    /// KEY-SOURCE RULE: rewrap always reads an existing raw-key file if one is
-    /// present (`$REBORN_HOME/.reborn-local-dev-secrets-master-key` then
-    /// `.secrets-master-key`).  It never generates a new key when encrypted
-    /// rows already exist — that would orphan every stored credential.
+    /// KEY-SOURCE RULE: the current database ceremony is authoritative. Raw-key
+    /// ceremonies read existing installation key files; a wrapped ceremony
+    /// requires its passphrase, even if stale raw files remain. It never
+    /// generates a new key when encrypted rows already exist — that would orphan every stored credential.
     ///
     /// TENANT: must match the `boot_tenant` that `brassclaw serve` will check
     /// at next boot (see tenant resolution below).  Use `--tenant` explicitly
@@ -64,9 +64,8 @@ struct RewrapCommand {
     ///
     /// Priority order (highest → lowest):
     ///   1. this flag
-    ///   2. identity.tenant in $REBORN_HOME/config.toml
-    ///   3. identity.tenant in brassclaw_config DB
-    ///   4. "default"
+    ///   2. identity.tenant in brassclaw_config DB
+    ///   3. "default"
     #[arg(long)]
     tenant: Option<String>,
 
@@ -130,56 +129,87 @@ impl RewrapCommand {
                 .await
                 .map_err(|e| anyhow::anyhow!("schema migrations failed: {e}"))?;
 
-            // Step 2: Resolve tenant_id (§4.4 4-step resolution).
-            let tenant_id = resolve_tenant_id(self.tenant.as_deref(), &reborn_home, &pool).await?;
+            // Step 2: Resolve the database-owned tenant identity.
+            let tenant_id = resolve_tenant_id(self.tenant.as_deref(), &pool).await?;
+
+            // Serialize ceremony changes, including a missing initial row. This
+            // lock is transactional and released on every success/error path.
+            let mut client = pool.get().await.context("failed to get DB connection")?;
+            let transaction = client.transaction().await?;
+            transaction
+                .query_one(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 602))",
+                    &[&tenant_id],
+                )
+                .await
+                .context("failed to lock master-key ceremony")?;
 
             // Step 3: Read the existing master key (key-source rule).
-            let master_key_bytes = resolve_master_key(
+            let (master_key_bytes, version) = resolve_master_key(
                 &tenant_id,
                 &reborn_home,
                 self.old_passphrase_file.as_deref(),
-                &pool,
+                &transaction,
             )
             .await?;
+
+            // Finish passphrase/crypto validation before changing any file.
+            let (wrapped_key, algorithm) = wrap_master_key(&master_key_bytes, &strategy)?;
 
             // Step 4a: For raw-key strategy, write the hex key to the canonical
             // on-disk file BEFORE the DB upsert.  If the upsert fails, the key
             // file is still present and the operator can retry.
             if matches!(strategy, RewrapStrategy::RawKey) {
                 let key_path = reborn_home.join(".secrets-master-key");
-                let hex_key = hex::encode(&master_key_bytes);
-                std::fs::write(&key_path, &hex_key)
-                    .with_context(|| format!("failed to write key file {}", key_path.display()))?;
-                // Restrict permissions: owner read-only.
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt as _;
-                    std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))
-                        .with_context(|| format!("failed to chmod 0600 {}", key_path.display()))?;
-                }
+                write_raw_master_key(&key_path, &master_key_bytes)?;
             }
 
-            // Step 4b: Produce wrapped_key / algorithm for the chosen strategy.
-            let (wrapped_key, algorithm) = wrap_master_key(&master_key_bytes, &strategy)?;
-
-            // Step 5: Upsert brassclaw_secrets_master.
-            upsert_secrets_master(&pool, &tenant_id, &wrapped_key, &algorithm).await?;
+            // Step 5: Commit the exact ceremony while holding the lock.
+            upsert_secrets_master(&transaction, &tenant_id, version, &wrapped_key, &algorithm).await?;
+            transaction.commit().await?;
 
             // Step 6: After a successful passphrase-wrap upsert, zero and remove any
             // raw key files that were read in step 3 (they are superseded by the DB
             // row).  For raw-key strategy we just wrote the canonical file, so there
             // is nothing to remove.  Only zero files that existed before this run.
             if algorithm != "raw-key-on-disk" {
+                // Commit must precede deletion, but another ceremony may have
+                // acquired the lock after commit. Reacquire it and check the
+                // exact current row before removing material another command
+                // could now require. Cleanup failures leave the committed wrap.
+                let cleanup = client.transaction().await?;
+                cleanup
+                    .query_one(
+                        "SELECT pg_advisory_xact_lock(hashtextextended($1, 602))",
+                        &[&tenant_id],
+                    )
+                    .await?;
+                let current = cleanup
+                    .query_one(
+                        "SELECT wrapped_key, algorithm FROM brassclaw_secrets_master \
+                         WHERE tenant_id = $1 AND version = $2 FOR UPDATE",
+                        &[&tenant_id, &version],
+                    )
+                    .await?;
+                if current.try_get::<_, String>(0)? != wrapped_key
+                    || current.try_get::<_, String>(1)? != algorithm
+                {
+                    anyhow::bail!("master-key ceremony changed after commit; raw files were retained, inspect the current ceremony before retrying");
+                }
                 let legacy = reborn_home.join(".reborn-local-dev-secrets-master-key");
                 let canonical = reborn_home.join(".secrets-master-key");
                 for path in &[&legacy, &canonical] {
-                    if path.exists() {
+                    if let Some(key) = brassclaw_reborn_composition::secrets_master::read_raw_master_key(path)? {
+                        if key != master_key_bytes {
+                            anyhow::bail!("wrapped ceremony committed; raw key file {} differs and was retained for operator reconciliation", path.display());
+                        }
                         zero_and_remove(path).with_context(|| {
                             format!("failed to zero raw key file {}", path.display())
                         })?;
                         println!("Zeroed and removed: {}", path.display());
                     }
                 }
+                cleanup.commit().await?;
             }
 
             println!("brassclaw secrets rewrap: tenant={tenant_id} strategy={algorithm} — done.");
@@ -195,41 +225,29 @@ impl RewrapCommand {
 }
 
 // ---------------------------------------------------------------------------
-// Tenant resolution (§4.4 — 4-step priority)
+// Database-owned identity resolution
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "postgres")]
 async fn resolve_tenant_id(
     flag: Option<&str>,
-    reborn_home: &std::path::Path,
     pool: &deadpool_postgres::Pool,
 ) -> anyhow::Result<String> {
-    // 1. --tenant flag
-    if let Some(t) = flag {
-        return Ok(t.to_string());
-    }
-
-    // 2. identity.tenant from $REBORN_HOME/config.toml
-    let config_path = reborn_home.join("config.toml");
-    if let Ok(Some(cfg)) = brassclaw_reborn_config::RebornConfigFile::load(&config_path)
-        && let Some(tenant) = cfg.identity.and_then(|i| i.tenant)
-        && !tenant.trim().is_empty()
-    {
-        return Ok(tenant);
-    }
-
-    // 3. brassclaw_config DB key identity.tenant
-    let snapshot = brassclaw_reborn_composition::db_config::load_config_snapshot(pool, "default")
-        .await
-        .unwrap_or_default();
-    if let Some(tenant) = snapshot.identity.and_then(|i| i.tenant)
-        && !tenant.trim().is_empty()
-    {
-        return Ok(tenant);
-    }
-
-    // 4. Fallback
-    Ok("default".to_string())
+    let tenant = if let Some(tenant) = flag {
+        tenant.to_owned()
+    } else {
+        let snapshot =
+            brassclaw_reborn_composition::db_config::load_config_snapshot(pool, "default")
+                .await
+                .context("failed to resolve master-key identity from PostgreSQL")?;
+        snapshot
+            .identity
+            .and_then(|identity| identity.tenant)
+            .unwrap_or_else(|| "default".to_owned())
+    };
+    brassclaw_reborn_composition::host_api::TenantId::new(&tenant)
+        .context("invalid master-key tenant identity")?;
+    Ok(tenant)
 }
 
 // ---------------------------------------------------------------------------
@@ -239,11 +257,11 @@ async fn resolve_tenant_id(
 /// Resolve the raw plaintext master key bytes.
 ///
 /// Priority:
-///  1. If a raw key file exists (pre-migration name first, then canonical) →
-///     read and decode hex.  This is the "normal first run" path.
-///  2. If `brassclaw_secrets_master` already has a row with algorithm =
+///  1. If `brassclaw_secrets_master` already has a row with algorithm =
 ///     `aes256gcm-argon2id` → unwrap with the old passphrase (passphrase-change
 ///     path).
+///  2. A raw ceremony or a not-yet-initialized DB reads the existing key files.
+///     Canonical and legacy files must agree; unknown ceremonies remain errors.
 ///  3. If neither file nor DB row exists AND no encrypted rows are present →
 ///     generate a fresh 32-byte random key (fresh-install path).
 ///  4. Fail-closed: if neither file nor DB row and encrypted rows DO exist.
@@ -252,38 +270,32 @@ async fn resolve_master_key(
     tenant_id: &str,
     reborn_home: &std::path::Path,
     old_passphrase_file: Option<&std::path::Path>,
-    pool: &deadpool_postgres::Pool,
-) -> anyhow::Result<Vec<u8>> {
+    client: &deadpool_postgres::Transaction<'_>,
+) -> anyhow::Result<(Vec<u8>, i32)> {
     use secrecy::ExposeSecret as _;
 
-    // Check for raw key files (pre-migration name first).
     let legacy = reborn_home.join(".reborn-local-dev-secrets-master-key");
     let canonical = reborn_home.join(".secrets-master-key");
-
-    for path in &[&legacy, &canonical] {
-        if path.exists() {
-            let hex = std::fs::read_to_string(path)
-                .with_context(|| format!("failed to read raw key file {}", path.display()))?;
-            let key = hex::decode(hex.trim())
-                .with_context(|| format!("raw key file {} is not valid hex", path.display()))?;
-            return Ok(key);
-        }
-    }
-
-    // No raw key file — check the DB row.
-    let client = pool.get().await.context("failed to get DB connection")?;
+    // A successful wrapped DB ceremony wins over stale disk material left by
+    // interrupted cleanup. Never use such a file to bypass passphrase validation.
     let row = client
         .query_opt(
-            "SELECT wrapped_key, algorithm FROM brassclaw_secrets_master \
-             WHERE tenant_id = $1 ORDER BY version DESC LIMIT 1",
+            "SELECT wrapped_key, algorithm, version FROM brassclaw_secrets_master \
+             WHERE tenant_id = $1 ORDER BY version DESC LIMIT 1 FOR UPDATE",
             &[&tenant_id],
         )
         .await
         .context("failed to query brassclaw_secrets_master")?;
-
+    let version = row
+        .as_ref()
+        .map(|row| row.try_get::<_, i32>(2))
+        .transpose()?
+        .unwrap_or(1);
+    anyhow::ensure!(version > 0, "master-key version must be positive");
+    let raw_ceremony = row.is_some();
     if let Some(r) = row {
-        let wrapped_key: String = r.get(0);
-        let algorithm: String = r.get(1);
+        let wrapped_key: String = r.try_get(0)?;
+        let algorithm: String = r.try_get(1)?;
 
         if algorithm == "aes256gcm-argon2id" {
             // Passphrase-change path: read old passphrase and unwrap.
@@ -293,22 +305,39 @@ async fn resolve_master_key(
                 old_passphrase.expose_secret(),
             )
             .map_err(|e| anyhow::anyhow!("failed to unwrap current master key: {e}"))?;
-            return Ok(key);
+            return Ok((key, version));
         }
 
-        // algorithm = 'raw-key-on-disk' but no file on disk — this should not
-        // happen in normal operation (the serve path also enforces this).
+        if algorithm != "raw-key-on-disk" {
+            anyhow::bail!(
+                "unsupported master-key ceremony '{algorithm}'; existing key was not changed"
+            );
+        }
+    }
+
+    let mut selected = None;
+    for path in [&canonical, &legacy] {
+        if let Some(key) = brassclaw_reborn_composition::secrets_master::read_raw_master_key(path)?
+        {
+            if selected.as_ref().is_some_and(|selected| selected != &key) {
+                anyhow::bail!(
+                    "canonical and legacy master-key files disagree; reconcile the original key before rewrapping"
+                );
+            }
+            selected = Some(key);
+        }
+    }
+    if let Some(key) = selected {
+        return Ok((key, version));
+    }
+    if raw_ceremony {
         anyhow::bail!(
-            "brassclaw_secrets_master has algorithm='raw-key-on-disk' for tenant '{tenant_id}' \
-             but no raw key file was found at {} or {}. \
-             Restore the original key file and retry.",
-            legacy.display(),
-            canonical.display(),
+            "master-key ceremony requires an existing raw key file; restore the original file before retrying"
         );
     }
 
     // No DB row and no raw key file.  If encrypted rows exist, fail closed.
-    let encrypted_rows = count_encrypted_rows(pool, tenant_id).await?;
+    let encrypted_rows = count_encrypted_rows(client, tenant_id).await?;
     if encrypted_rows > 0 {
         anyhow::bail!(
             "raw key file not found but encrypted rows exist — cannot generate new key; \
@@ -317,12 +346,9 @@ async fn resolve_master_key(
     }
 
     // Truly fresh install: generate a new 32-byte key.
-    let mut key = vec![0u8; 32];
-    use std::io::Read as _;
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut key))
-        .context("failed to read random bytes from /dev/urandom")?;
-    Ok(key)
+    brassclaw_reborn_composition::secrets_master::generate_master_key_bytes()
+        .map(|key| (key, version))
+        .map_err(Into::into)
 }
 
 /// Read the "old passphrase" for a passphrase-change rewrap.
@@ -373,11 +399,11 @@ fn read_old_passphrase(
 /// Count rows in `brassclaw_secrets` and `brassclaw_root_filesystem` for `tenant_id`.
 #[cfg(feature = "postgres")]
 async fn count_encrypted_rows(
-    pool: &deadpool_postgres::Pool,
+    client: &deadpool_postgres::Transaction<'_>,
     tenant_id: &str,
 ) -> anyhow::Result<i64> {
-    let client = pool.get().await.context("failed to get DB connection")?;
-
+    // Migrations have completed before this check. Any missing table or query
+    // failure must abort; it is never evidence that encrypted data is absent.
     // brassclaw_secrets
     let row = client
         .query_one(
@@ -386,22 +412,20 @@ async fn count_encrypted_rows(
         )
         .await
         .context("failed to count brassclaw_secrets rows")?;
-    let secrets_count: i64 = row.get(0);
+    let secrets_count: i64 = row.try_get(0)?;
 
-    // brassclaw_root_filesystem (may not exist on a truly fresh install before
-    // any schema migrations — ignore if the table is absent).
     let fs_row = client
-        .query_opt(
-            "SELECT COUNT(*) FROM brassclaw_root_filesystem WHERE tenant_id = $1",
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_root_filesystem WHERE tenant_id = $1 \
+             AND contents IS NOT NULL AND kind = 'encrypted'",
             &[&tenant_id],
         )
-        .await;
-    let fs_count: i64 = match fs_row {
-        Ok(Some(r)) => r.get(0),
-        Ok(None) | Err(_) => 0,
-    };
-
-    Ok(secrets_count + fs_count)
+        .await
+        .context("failed to count encrypted filesystem rows")?;
+    let fs_count: i64 = fs_row.try_get(0)?;
+    secrets_count
+        .checked_add(fs_count)
+        .context("encrypted row count overflow")
 }
 
 // ---------------------------------------------------------------------------
@@ -456,22 +480,22 @@ fn wrap_master_key(
 
 #[cfg(feature = "postgres")]
 async fn upsert_secrets_master(
-    pool: &deadpool_postgres::Pool,
+    client: &deadpool_postgres::Transaction<'_>,
     tenant_id: &str,
+    version: i32,
     wrapped_key: &str,
     algorithm: &str,
 ) -> anyhow::Result<()> {
-    let client = pool.get().await.context("failed to get DB connection")?;
     client
         .execute(
             "INSERT INTO brassclaw_secrets_master \
              (tenant_id, version, wrapped_key, algorithm) \
-             VALUES ($1, 1, $2, $3) \
+             VALUES ($1, $2, $3, $4) \
              ON CONFLICT (tenant_id, version) DO UPDATE \
              SET wrapped_key = excluded.wrapped_key, \
                  algorithm   = excluded.algorithm, \
                  updated_at  = now()",
-            &[&tenant_id, &wrapped_key, &algorithm],
+            &[&tenant_id, &version, &wrapped_key, &algorithm],
         )
         .await
         .context("failed to upsert brassclaw_secrets_master")?;
@@ -482,9 +506,72 @@ async fn upsert_secrets_master(
 // Raw key file zeroing
 // ---------------------------------------------------------------------------
 
+/// Persist new raw material without overwriting an existing key. Restrict the
+/// empty temporary file before writing any secret and publish only after fsync.
+#[cfg(feature = "postgres")]
+fn write_raw_master_key(path: &std::path::Path, key: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write as _;
+    if let Some(existing) = brassclaw_reborn_composition::secrets_master::read_raw_master_key(path)?
+    {
+        if existing != key {
+            anyhow::bail!("existing canonical master key differs; it was not overwritten");
+        }
+        restrict_key_file(path)?;
+        return Ok(());
+    }
+    let parent = path.parent().context("master key path requires a parent")?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .context("failed to create private master-key temporary file")?;
+    restrict_key_file(temporary.path())?;
+    writeln!(temporary, "{}", hex::encode(key))?;
+    temporary.as_file().sync_all()?;
+    temporary.persist_noclobber(path).map_err(|error| {
+        anyhow::anyhow!(
+            "failed to publish master key without replacing an existing file: {}",
+            error.error
+        )
+    })?;
+    #[cfg(unix)]
+    std::fs::File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(feature = "postgres")]
+fn restrict_key_file(path: &std::path::Path) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(windows)]
+    {
+        // Restrict the empty file before writing. No shell interpolation and no
+        // guessed domain/account: whoami supplies the current Windows identity.
+        let identity = std::process::Command::new("whoami").output()?;
+        anyhow::ensure!(
+            identity.status.success(),
+            "cannot resolve Windows key owner"
+        );
+        let account = std::str::from_utf8(&identity.stdout)?.trim();
+        anyhow::ensure!(!account.is_empty(), "Windows key owner is empty");
+        let permissions = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .arg("/grant:r")
+            .arg(format!("{account}:F"))
+            .output()?;
+        anyhow::ensure!(
+            permissions.status.success(),
+            "cannot restrict Windows key permissions"
+        );
+    }
+    Ok(())
+}
+
 /// Overwrite `path` with zero bytes then remove it.
 ///
-/// This minimises the time the key material is on disk in residual form.
+/// This does not guarantee physical erasure on snapshots, SSDs or copy-on-write
+/// filesystems. The wrapped DB ceremony has already committed before cleanup.
 fn zero_and_remove(path: &std::path::Path) -> anyhow::Result<()> {
     use std::io::Write as _;
     let len = std::fs::metadata(path)
@@ -494,10 +581,15 @@ fn zero_and_remove(path: &std::path::Path) -> anyhow::Result<()> {
         .write(true)
         .open(path)
         .with_context(|| format!("open {} for zeroing", path.display()))?;
-    let zeros = vec![0u8; len as usize];
-    f.write_all(&zeros)
-        .with_context(|| format!("zero-write to {}", path.display()))?;
-    f.flush()
+    let zeros = [0u8; 4096];
+    let mut remaining = len;
+    while remaining != 0 {
+        let count = remaining.min(zeros.len() as u64) as usize;
+        f.write_all(&zeros[..count])
+            .with_context(|| format!("zero-write to {}", path.display()))?;
+        remaining -= count as u64;
+    }
+    f.sync_all()
         .with_context(|| format!("flush zero-write to {}", path.display()))?;
     drop(f);
     std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))?;

@@ -6415,3 +6415,36 @@ worker path. It does not establish activation-time catalogue warmup, qualified
 imports, whole-library population, ordinary product performance, cross-platform
 runtime acceptance or full v3 completion. Global worker/pending-call constants,
 authoring utility limits and the wider fixed-value audit remain open.
+
+### 2026-10-11 — Secret ceremony integrity and portable entropy
+
+Boot and `secrets rewrap` now validate exact AES-256 key material and use the
+operating system's secure random source through the existing cross-platform
+dependency, replacing direct `/dev/urandom` access. Raw sources must be regular
+files and fit the key-file format; canonical and legacy keys must agree.
+Management identity comes from PostgreSQL, and failed configuration or encrypted
+row queries remain errors. Only filesystem rows explicitly marked encrypted
+prevent initialization; ordinary plaintext VFS rows do not manufacture that gate.
+
+Rewrap holds a database transaction/advisory lock while resolving and updating
+the existing key ceremony and version. A wrapped ceremony requires the current
+passphrase even when stale raw files remain. New raw material is written to an
+empty, restricted temporary file, synced and published without overwriting an
+existing key. Windows applies account permissions before secret bytes are written.
+Wrapping validates its inputs before file mutation. A confirmed wrapped-key
+commit precedes cleanup; cleanup reacquires the lock and verifies the exact
+current ceremony before removing matching old material. Failures preserve the
+committed ceremony and report remaining reconciliation work. Physical erasure
+on SSDs, snapshots or copy-on-write filesystems is not promised.
+
+Frozen `target/validation/secret-ceremony-20261011-r1` passed the real subprocess/
+PostgreSQL ceremony regression, the existing owned-command lifecycle regression
+and seven key-source/crypto/boot tests. Cases include query failure, missing keys
+with encrypted data, plaintext VFS state, contradictory file identity, short and
+conflicting keys, rejected DB writes, wrong passphrases, stale raw material,
+version preservation and symlink rejection. Relevant libraries and caller tests
+passed strict linting on 1.96.0. Source hashes and retained artifacts/worker are
+in `target/validation/secret-ceremony-artifacts-20261011-r1`. This is local macOS
+acceptance; Windows permission execution and deployed Linux acceptance remain
+part of the platform/release gates. Concurrent rewrap conflict handling was
+reasoned through, not independently fault-injected by these tests.

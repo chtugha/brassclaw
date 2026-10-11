@@ -111,8 +111,8 @@ pub async fn resolve_pg_master_key(
     let (wrapped_key, algorithm) = match row {
         None => return Ok(ResolvedMasterKey::NotYetInitialized),
         Some(r) => {
-            let wk: String = r.get(0);
-            let alg: String = r.get(1);
+            let wk: String = r.try_get(0)?;
+            let alg: String = r.try_get(1)?;
             (wk, alg)
         }
     };
@@ -130,15 +130,13 @@ pub async fn resolve_pg_master_key(
             }
             // Read key from canonical raw-key file.
             let key_path = reborn_home.join(".secrets-master-key");
-            let hex = std::fs::read_to_string(&key_path).map_err(|e| {
+            let key = read_raw_master_key(&key_path)?.ok_or_else(|| {
                 MasterKeyResolveError::RawKeyFileRead {
                     path: key_path.display().to_string(),
-                    reason: e.to_string(),
+                    reason: "file not found".to_owned(),
                 }
             })?;
-            Ok(ResolvedMasterKey::Key(SecretString::from(
-                hex.trim().to_string(),
-            )))
+            Ok(ResolvedMasterKey::Key(SecretString::from(hex::encode(key))))
         }
 
         "aes256gcm-argon2id" => {
@@ -201,6 +199,92 @@ pub fn unwrap_master_key_argon2id(
     unwrap_key_argon2id(wrapped_key_b64, passphrase)
 }
 
+/// Decode the exact AES-256 key format used by boot and management commands.
+/// Invalid existing material must never become a request to generate a new key.
+pub fn decode_master_key_hex(value: &str) -> Result<Vec<u8>, MasterKeyResolveError> {
+    if value.len() != 64 {
+        return Err(MasterKeyResolveError::InvalidKey {
+            reason: "AES-256 master key must contain exactly 64 hexadecimal characters".to_owned(),
+        });
+    }
+    let key = hex::decode(value).map_err(|_| MasterKeyResolveError::InvalidKey {
+        reason: "raw master key is not valid hex".to_owned(),
+    })?;
+    validate_master_key(&key)?;
+    Ok(key)
+}
+
+/// Read one raw-key file in the installation-owned home. Missing is distinct
+/// from unreadable/corrupt; links and nonregular files are not key sources.
+pub fn read_raw_master_key(path: &Path) -> Result<Option<Vec<u8>>, MasterKeyResolveError> {
+    use std::io::Read as _;
+    let failure = |reason: String| MasterKeyResolveError::RawKeyFileRead {
+        path: path.display().to_string(),
+        reason,
+    };
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(failure(error.to_string())),
+    };
+    if !metadata.is_file() {
+        return Err(failure(
+            "key source must be a regular file, not a link".to_owned(),
+        ));
+    }
+    let file = std::fs::File::open(path).map_err(|error| failure(error.to_string()))?;
+    let opened = file
+        .metadata()
+        .map_err(|error| failure(error.to_string()))?;
+    if !opened.is_file() {
+        return Err(failure("key source changed while opening".to_owned()));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if metadata.dev() != opened.dev() || metadata.ino() != opened.ino() {
+            return Err(failure("key source changed while opening".to_owned()));
+        }
+    }
+    // This is the key-file format size, not an operator resource budget. Allow
+    // a trailing newline/whitespace, but never allocate from an arbitrary file.
+    let mut value = String::new();
+    file.take(129)
+        .read_to_string(&mut value)
+        .map_err(|error| failure(error.to_string()))?;
+    if value.len() > 128 {
+        return Err(failure(
+            "raw master key file exceeds its format size".to_owned(),
+        ));
+    }
+    decode_master_key_hex(value.trim()).map(Some)
+}
+
+fn validate_master_key(key: &[u8]) -> Result<(), MasterKeyResolveError> {
+    if key.len() != 32 {
+        return Err(MasterKeyResolveError::InvalidKey {
+            reason: "AES-256 master key must contain exactly 32 bytes".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// Use the operating system's secure random source on every supported platform.
+pub fn generate_master_key_bytes() -> Result<Vec<u8>, MasterKeyResolveError> {
+    let mut key = vec![0u8; 32];
+    fill_random(&mut key)?;
+    Ok(key)
+}
+
+fn fill_random(bytes: &mut [u8]) -> Result<(), MasterKeyResolveError> {
+    use rand::RngCore as _;
+    rand::rngs::OsRng
+        .try_fill_bytes(bytes)
+        .map_err(|error| MasterKeyResolveError::InvalidKey {
+            reason: format!("operating-system entropy unavailable: {error}"),
+        })
+}
+
 /// Wrap `master_key_bytes` with an Argon2id-derived AES-256-GCM key.
 ///
 /// Returns `base64(salt[32] || nonce[12] || ciphertext)` suitable for storing
@@ -213,18 +297,18 @@ pub fn wrap_master_key_argon2id(
     use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
     use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
+    validate_master_key(master_key_bytes)?;
+    if passphrase.is_empty() {
+        return Err(MasterKeyResolveError::InvalidKey {
+            reason: "master-key wrapping passphrase must not be empty".to_owned(),
+        });
+    }
+
     // Generate a random 32-byte salt and 12-byte nonce.
     let mut salt = [0u8; 32];
     let mut nonce_bytes = [0u8; 12];
-    use std::io::Read as _;
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| {
-            f.read_exact(&mut salt)?;
-            f.read_exact(&mut nonce_bytes)
-        })
-        .map_err(|e| MasterKeyResolveError::Unwrap {
-            reason: format!("failed to read random bytes: {e}"),
-        })?;
+    fill_random(&mut salt)?;
+    fill_random(&mut nonce_bytes)?;
 
     let wrapping_key = derive_wrapping_key(passphrase.as_bytes(), &salt)?;
     let cipher =
@@ -292,6 +376,7 @@ fn unwrap_key_argon2id(
                 reason: format!("AES-GCM decrypt: {e}"),
             })?;
 
+    validate_master_key(&plaintext)?;
     Ok(plaintext)
 }
 
@@ -322,6 +407,37 @@ fn derive_wrapping_key(passphrase: &[u8], salt: &[u8]) -> Result<[u8; 32], Maste
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn master_key_sources_reject_invalid_lengths_and_nonregular_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("key");
+        assert!(read_raw_master_key(&path).unwrap().is_none());
+        for value in ["", "00", &"ab".repeat(33), &"gh".repeat(32)] {
+            std::fs::write(&path, value).unwrap();
+            assert!(read_raw_master_key(&path).is_err());
+        }
+        std::fs::write(&path, format!("{}\n", "ab".repeat(32))).unwrap();
+        assert_eq!(read_raw_master_key(&path).unwrap().unwrap(), vec![0xab; 32]);
+        std::fs::write(&path, " ".repeat(1024)).unwrap();
+        assert!(read_raw_master_key(&path).is_err());
+        assert!(read_raw_master_key(directory.path()).is_err());
+        #[cfg(unix)]
+        {
+            let link = directory.path().join("link");
+            std::os::unix::fs::symlink(&path, &link).unwrap();
+            assert!(read_raw_master_key(&link).is_err());
+        }
+        for key in [vec![0; 31], vec![0; 33]] {
+            assert!(wrap_master_key_argon2id(&key, "passphrase").is_err());
+        }
+        assert!(wrap_master_key_argon2id(&[0; 32], "").is_err());
+        let first = generate_master_key_bytes().unwrap();
+        let second = generate_master_key_bytes().unwrap();
+        assert_eq!(first.len(), 32);
+        assert_eq!(second.len(), 32);
+        assert_ne!(first, second);
+    }
 
     #[test]
     fn passphrase_file_path_absent_when_env_unset() {

@@ -39,6 +39,11 @@ remain in progress.
 
 ### Changed
 
+- Master-key rewrapping uses cross-platform OS entropy and the authoritative
+  database ceremony, preserves the selected key version, rejects conflicting or
+  malformed key files, and fails on uncertain encrypted-data queries. New raw
+  files receive private permissions before content is written; wrapped-key
+  cleanup follows a confirmed commit and checks for concurrent ceremony changes.
 - Compile the complete qualified dependency-first preload definition set as one
   shared immutable prefix. Each Recipe keeps its own mutable namespace and pinned
   exports; loading retains per-definition source/feed charges and rechecks live
