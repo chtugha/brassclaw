@@ -6448,3 +6448,23 @@ in `target/validation/secret-ceremony-artifacts-20261011-r1`. This is local macO
 acceptance; Windows permission execution and deployed Linux acceptance remain
 part of the platform/release gates. Concurrent rewrap conflict handling was
 reasoned through, not independently fault-injected by these tests.
+
+### 2026-10-11 — Isolated upgrade lock graph and CI reconciliation
+
+CI run 38162471140 on `78d1bdf3e205c6a5f5e3e5817a6e7116dc798508`
+passed all 754 composition library cases (one existing ignored case), including
+the corrected native cancellation record observer. The full run still failed:
+both contained Monty jobs and the isolated upstream-upgrade job rejected stale
+lock graphs, and one budget-gate integration fixture failed during retained
+source inspection at boot. No full-CI success or resolved boot cause is claimed.
+
+The contained lock graph was repaired in `0c45a615b`. The upstream-upgrade lock
+now also reflects the accepted shared PostgreSQL TLS policy: trusted roots and
+the required ring edge, without unrelated dependency-version changes. Frozen
+`target/validation/upstream-lock-20261011-r2` built and executed all upstream
+upgrade test targets with `--locked`, then passed strict target linting on 1.96.0.
+The real allocator probe was retained with the test executables before Cargo
+exit. Receipts and original CI/failed lock-reconciliation evidence remain in
+`target/validation/upstream-lock-artifacts-20261011-r2` and the recorded logs.
+This establishes the local isolated graph/compatibility checks; the corrected
+cross-platform CI run and retained-source boot failure still require acceptance.
