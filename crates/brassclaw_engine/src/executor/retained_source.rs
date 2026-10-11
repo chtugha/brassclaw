@@ -22,7 +22,7 @@ pub enum RetainedSourceError {
         component: Uuid,
         reason: &'static str,
     },
-    #[error("retained source inspection failed for {component}")]
+    #[error("retained source inspection failed for {component}: {error}")]
     Inspection {
         component: Uuid,
         #[source]

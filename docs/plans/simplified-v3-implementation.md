@@ -6468,3 +6468,25 @@ exit. Receipts and original CI/failed lock-reconciliation evidence remain in
 `target/validation/upstream-lock-artifacts-20261011-r2` and the recorded logs.
 This establishes the local isolated graph/compatibility checks; the corrected
 cross-platform CI run and retained-source boot failure still require acceptance.
+
+### 2026-10-11 — Retained inspection diagnostics and terminal checkpoint repair
+
+The failed CI run's source-inspection error hid the disposable worker's safe
+classification. `RetainedSourceError::Inspection` now includes `UtilityError`'s
+classification, without source, stdout or private parser diagnostics. All six
+real native-PostgreSQL budget integration callers pass on the frozen committed
+candidate with this diagnostic change, and affected Engine library lint passes.
+Evidence: `target/validation/source-inspection-artifacts-20261011-r1`, receipt
+`/private/tmp/brassclaw-source-inspection-accepted.json`. Local success does not
+identify or resolve the intermittent Linux startup failure; CI must observe the
+classification before any timeout/allocator explanation is claimed.
+
+A checkpoint omitted the terminal observer's already validated `worker_stopped`
+branch while retaining its sample. Restore that exact branch: read durable state
+first, return a terminal disposition if present, otherwise reject stopped
+admission. Its real cancellation/late-settlement regression passed in the
+retained `pg-policy-20261011-r2` candidate (14.32 seconds), alongside strict
+affected-package lint; this unchanged evidence is reused. The omitted checkpoint
+had an unused-variable warning and incomplete observer behavior; it is not
+reported as a working cutover. Other unaccepted catalogue/review edits remain
+outside this checkpoint.

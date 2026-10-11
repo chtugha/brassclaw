@@ -1527,6 +1527,14 @@ impl RebornRuntime {
             if state.status.is_terminal() {
                 return Ok(state.status);
             }
+            // A worker closes admission only after recording its active run's
+            // terminal disposition. Preserve that durable result even when
+            // shutdown wins the race with this observer's next poll. Sample
+            // worker state before the DB read: if it stops during that read,
+            // the next poll must read the newly committed disposition first.
+            if worker_stopped {
+                return Err(RebornRuntimeError::WorkerStopped);
+            }
             // TurnStatus::RecoveryRequired is now terminal (is_terminal() returns true)
             // so the branch above handles it; no special cancel-to-release-lock is needed.
             if start.elapsed() > self.poll_settings.max_total {
