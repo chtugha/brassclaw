@@ -29,7 +29,7 @@ not completed runtime or database functionality.
   Python source. Monty owns each task's intermediate results; unrelated tasks
   and attempts stay isolated, including across child execution and waits.
 - Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
 Current code still has plain text substitution, fresh state in nested step

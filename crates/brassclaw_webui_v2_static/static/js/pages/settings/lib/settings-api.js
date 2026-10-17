@@ -37,9 +37,10 @@ export function upsertLlmProvider(payload) {
     body: JSON.stringify(payload),
   });
 }
-export function deleteLlmProvider(providerId) {
+export function deleteLlmProvider(providerId, expectedRevision) {
   return apiFetch(`/api/webchat/v2/llm/providers/${encodeURIComponent(providerId)}/delete`, {
     method: "POST",
+    body: JSON.stringify({ expected_revision: expectedRevision }),
   });
 }
 export function setActiveLlm(payload) {
@@ -83,16 +84,6 @@ export function fetchExtensions() {
 }
 export function fetchExtensionRegistry() {
   return apiFetch("/api/webchat/v2/extensions/registry");
-}
-// Tools/capabilities management — v2 native endpoints
-export function fetchTools() {
-  return apiFetch("/api/webchat/v2/tools");
-}
-export function updateToolPermission(toolId, mode) {
-  return apiFetch(`/api/webchat/v2/tools/${encodeURIComponent(toolId)}/permission`, {
-    method: "PUT",
-    body: JSON.stringify({ capability_id: toolId, permission_mode: mode }),
-  });
 }
 export function fetchUsers() {
   return Promise.resolve({ users: [], todo: true });
@@ -279,6 +270,9 @@ export function submitComponentReview(request) {
   return apiFetch("/api/webchat/v2/component-review-submissions",
     { method: "POST", body: JSON.stringify(request) });
 }
+export function fetchComponentRevisionHead(id) {
+  return apiFetch(`/api/webchat/v2/component-revision-heads/${encodeURIComponent(id)}`);
+}
 export function fetchComponentReviewSubmission(id) {
   return apiFetch(`/api/webchat/v2/component-review-submissions/${encodeURIComponent(id)}`);
 }
@@ -386,4 +380,55 @@ export function inspectPostTurnReview(attempt) {
 export function recordReviewDisposition(attempt, request) {
   return apiFetch(`/api/webchat/v2/post-turn-reviews/${encodeURIComponent(attempt)}/dispositions`,
     { method: "POST", body: request });
+}
+
+export function reconcilePostTurnReview(attempt, evidenceChecksum) {
+  return apiFetch(`/api/webchat/v2/post-turn-reviews/${encodeURIComponent(attempt)}/reconcile`, {
+    method: "POST", body: { evidence_checksum: evidenceChecksum },
+  });
+}
+
+export function fetchCatalogueActivationStatus() {
+  return apiFetch("/api/webchat/v2/catalogue");
+}
+export function prepareComponentDeployment(request) {
+  return apiFetch("/api/webchat/v2/component-deployment", { method: "POST", body: JSON.stringify(request) });
+}
+export function activateComponentDeployment(request) {
+  return apiFetch("/api/webchat/v2/catalogue", { method: "POST", body: JSON.stringify(request) });
+}
+
+// Immutable prefix artifacts; imports do not activate a serving selection.
+export function fetchPrefixGenerations(profile) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/generations`);
+}
+export function fetchPrefixGeneration(profile, generation) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/generations/${encodeURIComponent(generation)}`);
+}
+export function importPrefixGeneration(profile, request) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/generations`, {
+    method: "POST", body: JSON.stringify(request),
+  });
+}
+export function fetchPrefixSources(profile, generation = "") {
+  const query = generation ? `?generation=${encodeURIComponent(generation)}` : "";
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/sources${query}`);
+}
+export function registerPrefixSource(profile, request) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/sources`, {
+    method: "POST", body: JSON.stringify(request),
+  });
+}
+export function fetchPrefixModelDesigns() {
+  return apiFetch("/api/webchat/v2/prefix-model-designs");
+}
+export function capturePrefixModel(request) {
+  return apiFetch("/api/webchat/v2/prefix-model-specifications", { method: "POST", body: JSON.stringify(request) });
+}
+export function retainPrefixModelArtifacts(request) {
+  return apiFetch("/api/webchat/v2/prefix-model-artifacts", { method: "POST", body: JSON.stringify(request) });
+}
+
+export function retainPrefixDesignProposal(profile, request) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(profile)}/design-proposals`, { method: "POST", body: JSON.stringify(request) });
 }

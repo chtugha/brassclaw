@@ -18,7 +18,8 @@
 //! - [`append`](RootFilesystem::append)/[`tail`](RootFilesystem::tail) keep
 //!   one append log per path with monotonic [`SeqNo`].
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Bound::{Included, Unbounded};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -28,9 +29,9 @@ use tokio::sync::Mutex;
 use crate::backend::{EventRecord, StorageTxn};
 use crate::vector::{cosine_similarity, decode_embedding_blob};
 use crate::{
-    BackendCapabilities, CasExpectation, DirEntry, Entry, FileStat, FileType, FilesystemError,
-    FilesystemOperation, Filter, IndexKey, IndexKind, IndexName, IndexSpec, IndexValue, Page,
-    RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
+    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryIndexMetadata, EntryMetadata,
+    FileStat, FileType, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexKind,
+    IndexSpec, IndexValue, Page, RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
 };
 
 #[derive(Clone)]
@@ -47,7 +48,7 @@ struct State {
     // `list_dir` result. Paths originate as `VirtualPath` on `put`, so
     // they're already validated — re-parsing them on every read was
     // both wasted work and a sloppy invariant to assert via panic.
-    entries: HashMap<VirtualPath, StoredEntry>,
+    entries: BTreeMap<VirtualPath, StoredEntry>,
     indexes: HashMap<String, Vec<IndexSpec>>,
     event_logs: HashMap<String, Vec<EventRecord>>,
 }
@@ -61,7 +62,7 @@ impl InMemoryBackend {
     pub fn new() -> Self {
         Self {
             state: Mutex::new(State {
-                entries: HashMap::new(),
+                entries: BTreeMap::new(),
                 indexes: HashMap::new(),
                 event_logs: HashMap::new(),
             }),
@@ -88,21 +89,7 @@ impl RootFilesystem for InMemoryBackend {
         cas: CasExpectation,
     ) -> Result<RecordVersion, FilesystemError> {
         let mut state = self.state.lock().await;
-        // PR #3679 review fix: the SQL backends reject `put(/a)` when `/a/b`
-        // already exists. Mirror the SQL contract so cross-backend tests
-        // can't pass against impossible production state.
-        let prefix = with_trailing_slash(path.as_str());
-        if state
-            .entries
-            .keys()
-            .any(|k| k.as_str().starts_with(&prefix))
-        {
-            return Err(FilesystemError::Backend {
-                path: path.clone(),
-                operation: FilesystemOperation::WriteFile,
-                reason: "cannot overwrite a directory".to_string(),
-            });
-        }
+        validate_file_namespace(&state, path, FilesystemOperation::WriteFile)?;
         let current_version = state.entries.get(path).map(|stored| stored.version);
         check_cas(path, cas, current_version)?;
 
@@ -118,6 +105,80 @@ impl RootFilesystem for InMemoryBackend {
             },
         );
         Ok(next_version)
+    }
+
+    async fn get_metadata(
+        &self,
+        path: &VirtualPath,
+    ) -> Result<Option<EntryMetadata>, FilesystemError> {
+        let state = self.state.lock().await;
+        Ok(state
+            .entries
+            .get_key_value(path)
+            .map(|(path, stored)| EntryMetadata {
+                path: path.clone(),
+                kind: stored.entry.kind.clone(),
+            }))
+    }
+
+    async fn query_metadata(
+        &self,
+        path: &VirtualPath,
+        page: Page,
+    ) -> Result<Vec<EntryMetadata>, FilesystemError> {
+        let start = usize::try_from(page.offset).map_err(|_| FilesystemError::Backend {
+            path: path.clone(),
+            operation: FilesystemOperation::Query,
+            reason: "query offset exceeds the host representation".into(),
+        })?;
+        let state = self.state.lock().await;
+        let prefix = with_trailing_slash(path.as_str());
+        let exact = state.entries.get_key_value(path).into_iter();
+        let children = state
+            .entries
+            .range::<str, _>((Included(prefix.as_str()), Unbounded))
+            .take_while(|(path, _)| path.as_str().starts_with(&prefix));
+        Ok(exact
+            .chain(children)
+            .skip(start)
+            .take(page.limit.min(Page::MAX_LIMIT) as usize)
+            .map(|(path, stored)| EntryMetadata {
+                path: path.clone(),
+                kind: stored.entry.kind.clone(),
+            })
+            .collect())
+    }
+
+    async fn query_index_metadata(
+        &self,
+        path: &VirtualPath,
+        key: &IndexKey,
+        page: Page,
+    ) -> Result<Vec<EntryIndexMetadata>, FilesystemError> {
+        let start = usize::try_from(page.offset).map_err(|_| FilesystemError::Backend {
+            path: path.clone(),
+            operation: FilesystemOperation::Query,
+            reason: "query offset exceeds the host representation".into(),
+        })?;
+        let state = self.state.lock().await;
+        let prefix = with_trailing_slash(path.as_str());
+        let exact = state.entries.get_key_value(path).into_iter();
+        let children = state
+            .entries
+            .range::<str, _>((Included(prefix.as_str()), Unbounded))
+            .take_while(|(path, _)| path.as_str().starts_with(&prefix));
+        Ok(exact
+            .chain(children)
+            .skip(start)
+            .take(page.limit.min(Page::MAX_LIMIT) as usize)
+            .map(|(path, stored)| EntryIndexMetadata {
+                metadata: EntryMetadata {
+                    path: path.clone(),
+                    kind: stored.entry.kind.clone(),
+                },
+                value: stored.entry.indexed.get(key).cloned(),
+            })
+            .collect())
     }
 
     async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
@@ -397,18 +458,16 @@ impl RootFilesystem for InMemoryBackend {
 
     async fn append_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
         let mut state = self.state.lock().await;
+        validate_file_namespace(&state, path, FilesystemOperation::AppendFile)?;
         let existing = state.entries.get(path).cloned();
-        let mut entry = existing
-            .as_ref()
-            .map(|s| s.entry.clone())
-            .unwrap_or_else(|| Entry::bytes(Vec::new()));
-        if entry.kind.is_some() {
-            return Err(FilesystemError::Backend {
-                path: path.clone(),
-                operation: FilesystemOperation::AppendFile,
-                reason: "cannot append bytes to a record-shaped entry".to_string(),
-            });
-        }
+        // Like the PostgreSQL opaque-byte append, discard stale record/index
+        // metadata instead of leaving it attached to changed bytes.
+        let mut entry = Entry::bytes(
+            existing
+                .as_ref()
+                .map(|stored| stored.entry.body.clone())
+                .unwrap_or_default(),
+        );
         entry.body.extend_from_slice(bytes);
         let next_version = existing
             .map(|s| s.version.next())
@@ -423,6 +482,39 @@ impl RootFilesystem for InMemoryBackend {
         );
         Ok(())
     }
+}
+
+fn validate_file_namespace(
+    state: &State,
+    path: &VirtualPath,
+    operation: FilesystemOperation,
+) -> Result<(), FilesystemError> {
+    for ancestor in path
+        .prefixes()
+        .take_while(|prefix| *prefix != path.as_str())
+    {
+        if state.entries.contains_key(ancestor) {
+            return Err(FilesystemError::Backend {
+                path: path.clone(),
+                operation,
+                reason: "file exists where an ancestor directory is required".into(),
+            });
+        }
+    }
+    let prefix = with_trailing_slash(path.as_str());
+    if state
+        .entries
+        .range::<str, _>((Included(prefix.as_str()), Unbounded))
+        .next()
+        .is_some_and(|(key, _)| key.as_str().starts_with(&prefix))
+    {
+        return Err(FilesystemError::Backend {
+            path: path.clone(),
+            operation,
+            reason: "cannot overwrite a directory".into(),
+        });
+    }
+    Ok(())
 }
 
 fn check_cas(
@@ -561,15 +653,23 @@ fn join_path(parent: &str, child: &str) -> String {
     }
 }
 
-// Silence unused warning on `IndexName` import while keeping the symbol
-// available for documentation/test crates that re-export from this module.
-#[allow(dead_code)]
-const _: fn() -> Option<IndexName> = || None;
+#[cfg(test)]
+#[path = "../tests/support/metadata_contract.rs"]
+mod metadata_contract;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RecordKind, VersionedEntry};
+
+    #[tokio::test]
+    async fn in_memory_metadata_projection_is_complete_ordered_and_body_free() {
+        super::metadata_contract::assert_metadata_contract(std::sync::Arc::new(
+            InMemoryBackend::new(),
+        ))
+        .await;
+    }
+
+    use crate::{IndexName, RecordKind, VersionedEntry};
 
     fn vpath(s: &str) -> VirtualPath {
         VirtualPath::new(s).unwrap()
@@ -839,9 +939,9 @@ mod tests {
         // a File could shadow /a/b/c arriving later, leaving `b`
         // listed as a File even though it has children.
         let fs = InMemoryBackend::new();
-        // Insert /projects/x as a leaf file, then /projects/x/y as a
-        // file under x — `x` should now list as Directory because it
-        // has children, regardless of insertion order.
+        // New writes reject a file-under-file namespace. The listing must
+        // nevertheless remain defensive when loading an older stored state
+        // produced before that guard existed; do not erase its child data.
         fs.put(
             &vpath("/projects/x"),
             Entry::bytes(vec![1]),
@@ -849,13 +949,23 @@ mod tests {
         )
         .await
         .unwrap();
-        fs.put(
-            &vpath("/projects/x/y"),
-            Entry::bytes(vec![2]),
-            CasExpectation::Absent,
-        )
-        .await
-        .unwrap();
+        let child = vpath("/projects/x/y");
+        assert!(
+            fs.put(&child, Entry::bytes(vec![2]), CasExpectation::Absent)
+                .await
+                .is_err()
+        );
+        assert!(fs.get(&child).await.unwrap().is_none());
+        // This is the actual legacy backend representation, not a second
+        // implementation of list_dir or a bypass in the production writer.
+        fs.state.lock().await.entries.insert(
+            child,
+            StoredEntry {
+                entry: Entry::bytes(vec![2]),
+                version: RecordVersion::from_backend(1),
+                modified: SystemTime::now(),
+            },
+        );
         let entries = fs.list_dir(&vpath("/projects")).await.unwrap();
         let x = entries
             .iter()

@@ -95,8 +95,54 @@ jobs:
       - name: Test actual native counters and containment classification
         run: |
           cargo test -p brassclaw_host_runtime --locked --lib memory_probe:: -- --nocapture
+          cargo test -p brassclaw_host_runtime --locked --lib native_image:: -- --test-threads=1 --nocapture
       - name: Check portable host adapters
         run: cargo clippy -p brassclaw_host_runtime --locked --lib -- -D warnings
+
+  native-settings-browser:
+    name: Native WebUI settings in Chromium
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      RUST_MIN_STACK: 16777216
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.96.0"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          key: native-settings-browser
+      - name: Install the pinned browser CLI and Chromium
+        run: |
+          npm ci --prefix tests/browser
+          echo "$GITHUB_WORKSPACE/tests/browser/node_modules/.bin" >> "$GITHUB_PATH"
+          tests/browser/node_modules/.bin/agent-browser install --with-deps
+      - name: Build the actual Monty worker
+        run: cargo build -p brassclaw_monty_host --bin monty_worker --locked
+      - name: Test rendered controls through native PostgreSQL and global Monty
+        shell: bash
+        run: |
+          for script in instance-tool-policy.mjs monty-vm-resource-limits.mjs; do
+            node --check "tests/browser/$script"
+            BRASSCLAW_TOOL_POLICY_BROWSER_ACCEPTANCE="$GITHUB_WORKSPACE/tests/browser/$script" \
+              cargo test -p brassclaw_reborn_composition --locked \
+                --features skills-db,test-support,migrate-from-libsql --lib \
+                runtime::tests::native_global_runtime_retains_one_root_across_match_and_no_match \
+                -- --exact --test-threads=1 --nocapture
+          done
 
   monty-upgrade-gate:
     name: Monty 1.0 API and allocator isolation
@@ -188,16 +234,18 @@ jobs:
       - id: non_diff
         if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         run: |
-          echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          echo "has_reborn_tests=true" >> "$GITHUB_OUTPUT"
-          echo "has_core_code=true" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "has_runtime_heavy_risk=true" >> "$GITHUB_OUTPUT"
-            echo "has_engine_replay_risk=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_runtime_heavy_risk=false" >> "$GITHUB_OUTPUT"
-            echo "has_engine_replay_risk=false" >> "$GITHUB_OUTPUT"
-          fi
+          {
+            echo "docs_only=false"
+            echo "has_reborn_tests=true"
+            echo "has_core_code=true"
+            if [ "${{ github.event_name }}" = "workflow_call" ]; then
+              echo "has_runtime_heavy_risk=true"
+              echo "has_engine_replay_risk=true"
+            else
+              echo "has_runtime_heavy_risk=false"
+              echo "has_engine_replay_risk=false"
+            fi
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         with:

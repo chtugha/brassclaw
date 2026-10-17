@@ -95,6 +95,9 @@ impl PgToolStore {
         Self { pool }
     }
 
+    /// Store the caller's requested review state exactly. A system source label
+    /// never promotes pending metadata. This legacy projection is not v3 approval;
+    /// installation bootstrap and authored qualification retain separate evidence.
     /// Insert a new tool row idempotently.
     ///
     /// On a `(tenant_id, user_id, agent_id, project_id, name)` conflict the row
@@ -102,6 +105,21 @@ impl PgToolStore {
     /// existing id via [`Self::get_id_by_name`]. `class_code` defaults to 0,
     /// `prompt_uid` to the sequence, `validation_errors` to `'{}'`.
     pub(crate) async fn insert(&self, row: NewPgTool) -> Result<Option<Uuid>, PgToolStoreError> {
+        self.insert_with_id(row, None).await
+    }
+
+    /// Installation owners may preserve an already retained stable Tool UUID.
+    /// A name conflict preserves the existing row; identity conflicts fail.
+    pub(crate) async fn insert_with_id(
+        &self,
+        row: NewPgTool,
+        id: Option<Uuid>,
+    ) -> Result<Option<Uuid>, PgToolStoreError> {
+        if id.is_some_and(|id| id.is_nil()) {
+            return Err(PgToolStoreError::Db {
+                reason: "non-nil Tool identity required".into(),
+            });
+        }
         let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(
@@ -110,9 +128,9 @@ impl PgToolStore {
                      name, description, param_schema, param_template,
                      effect_type, preconditions, error_handling,
                      consumer_tags, source, validation_status,
-                     capability_id)
+                     capability_id,id)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-                         CASE WHEN $13 = 'system' THEN 'validated' ELSE $14 END,$15)
+                         $14,$15,COALESCE($16,gen_random_uuid()))
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",
@@ -132,6 +150,7 @@ impl PgToolStore {
                     &row.source,
                     &row.validation_status,
                     &row.capability_id,
+                    &id,
                 ],
             )
             .await

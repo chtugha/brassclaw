@@ -10,12 +10,80 @@ CONTROL.patch uses zero-context hunks so blank context markers do not create
 trailing-whitespace warnings when the patch is tracked. Apply it only to the
 verified upstream files, using `git apply --unidiff-zero`.
 
-Extension version: `1.0.0-brassclaw.control.7`. The application dependency graph uses
-these sources, including the Engine API migration, contained authoring utilities
-and global installation worker. The original seven composition regressions have
-passed through the ordinary runtime. Complete production lifecycle, adaptive
-settings and catalogue acceptance remain open; interpreter evidence alone does
-not establish completion of those gates.
+## Current compatibility and scope
+
+Source reconciliation: 2026-10-15. This document describes interpreter and worker
+primitives supporting v3. Application contracts and the full production acceptance
+matrix remain governed by the linked guides and plans below.
+
+| Surface | Current identity | Authority |
+| --- | --- | --- |
+| Vendored extension | `1.0.0-brassclaw.control.7` | [Cargo.toml](Cargo.toml) |
+| Interpreter dump ABI | Current and minimum supported version `0xBC05` | [dump_format.rs](crates/monty/src/dump_format.rs) |
+| Installation worker transport | Private protocol `19` | [process.rs](../../crates/brassclaw_monty_host/src/process.rs) |
+
+The dump ABI and process protocol are separate contracts. Pair compatible host
+and worker artifacts; an older protocol mentioned in a milestone below is not
+the current transport contract. Reconcile retained continuations before an
+incompatible upgrade; compatibility metadata never authorizes effect replay.
+
+The application dependency graph uses these sources, including the Engine API
+migration, contained authoring utilities and global installation worker.
+Recorded ordinary-runtime and first-feed acceptance is summarized below. It
+does not establish completion of every production lifecycle, catalogue or
+adaptive-settings gate.
+
+## Application-owned v3 boundaries
+
+[recipe.md](../../recipe.md), [skills.md](../../skills.md) and
+[validator_v3.md](../../validator_v3.md) define the workflow, preload and review
+contracts. Coordinate their implementation with
+[monty.composition.md](../../docs/plans/monty.composition.md) and
+[prefix_v3_upgrade.md](../../docs/plans/prefix_v3_upgrade.md). A compiled source
+checksum or a reusable seed establishes neither approval nor catalogue coherence.
+The following are binding application responsibilities, not a claim that these
+interpreter primitives complete their runtime/store enforcement.
+
+The application must select one activated, approved catalogue snapshot and retain
+exact Recipe/variant/step/input, Skill/interface/code/dependency, association
+approval and Tool implementation references for each task. It must resolve exports,
+reject conflicts and cycles, and load qualified definitions and immutable
+constants in deterministic dependency-first order without effects. Invoking the
+pinned export with typed inputs is a separate operation. Existing tasks, children,
+waits, retries and resumes retain their selected implementations and isolated
+mutable state when successors activate.
+
+Matching ToolSkill binding and current kernel policy remain required before each
+actual Tool dispatch. Neither bytecode sharing, a cached alias nor successful
+compilation enables a Tool. Trusted `system_seed` qualification requires exact
+integrity, Q1 and behavioral evidence through the installation owner; installed
+authored changes use their separate Q1/behavior/human-Q2 path. The interpreter
+does not manufacture that evidence or perform catalogue activation.
+
+`PreparedReplSeed` supports first-feed compiler reuse. It does not implement the
+complete Skill export loader, combination approval or library-prefix compiler.
+Production child contexts belong to the one supervised global instance service;
+this optimization must not introduce a per-task global VM or a second execution
+path. MCP commands retain ordinary chat/Recipe execution and its authority checks.
+
+## Task time and interpreter clocks
+
+Execution and preparation observations describe distinct costs. The combined
+ExecutionControl clock described in the historical milestones is not itself the
+v3 task-duration policy. The binding default is 600 seconds of executing VM time
+per task, excluding idle, queue and external waits; it never limits the global
+orchestrator's lifetime. Observe and account preparation separately through its
+qualified owner, preserving the existing task account and effective settings
+revision through children, waits and retries. Do not silently add preparation to
+that executing-time budget. See [validator resource rules](../../validator_v3.md#77--preserve-task-budgets-and-distinguish-terminal-engine-failures)
+and [simplified v3](../../simplified_v3.md).
+
+## Historical control milestones
+
+The following entries retain the implementation sequence and limitations observed
+at each milestone. Their protocol numbers and pending acceptance statements are
+historical; use the current compatibility table and recorded acceptance section
+for the later state. An earlier proof does not qualify unrelated v3 features.
 
 The atomic accounting updates use `try_update`, available before the declared
 Rust 1.96 minimum. This replaces the deprecated `fetch_update` alias while
@@ -33,9 +101,9 @@ coroutine: importing a host result can resume a different worker.
 
 `GlobalVm` partitions execution into a bounded coroutine map and retains actual
 pending-call/context correlation. This is telemetry, not an admitted task budget:
-persistent workers are reused. Admission association, preparation ownership,
-task-local interruption and safe finishing still require integration. Control
-errors remain interpreter-terminal; do not use them to enforce one task's limit
+persistent workers are reused. At this milestone, admission association,
+preparation ownership, task-local interruption and safe finishing required
+integration. Control errors remain interpreter-terminal; do not use them to enforce one task's limit
 in the global root. Coroutine and host-call identity counters reject exhaustion
 before mutation/dispatch or taking heap references. They never wrap; refused calls
 release their arguments/pending effects.
@@ -161,8 +229,11 @@ protocol 9 exposes a revision-checked candidate-layout observation without
 advancing Python, reconciling a pending automatic heap target or changing its
 configured frame. This is not a reservation or a durable settings transaction.
 The transport owner must retain the quiescent boundary through persistence and
-publication; full live frame uptake and queued-exchange retention remain open.
+publication. Full live frame uptake and queued-exchange retention were still open
+at this milestone; later recorded acceptance covers specific subsets below.
 Dump ABI stays `0xBC05`; the process protocol and interpreter dump are separate.
+
+## Current first-feed reuse
 
 `PreparedReplSeed` compiles a first feed against pristine compiler tables.
 Compatible empty child contexts copy those tables while sharing immutable module
@@ -177,9 +248,30 @@ source integrity and live source bounds on every lookup. Active child contexts
 retain their first seed; closing the contexts permits its reclamation. This is
 first-feed reuse, not complete dependency-chain or catalogue-prefix compilation.
 Function bytecode's `Arc` serialization preserves the existing Code payload;
-neither the dump ABI nor the worker protocol changes. Interpreter, worker and
-ordinary product acceptance must establish isolation and retained selections
-before claiming this optimization is accepted.
+neither the dump ABI nor the worker protocol changes.
+
+## Recorded acceptance and remaining limits
+
+These are summaries of recorded evidence, not checks rerun by this documentation
+update. The [2026-10-10 first-feed acceptance record](../../docs/plans/simplified-v3-implementation.md#2026-10-10--compatible-first-feed-compiler-sharing)
+reports 49 interpreter, 42 host/transport/service and 37 retained PostgreSQL/IBS/
+worker checks, strict linting and paired native builds. Its ordinary product
+cases exercise authenticated WebUI ingress, embedded PostgreSQL and pinned
+reply/history workflows in the same global VM, including waits and live settings
+edits. The record also states an integration worker-image retention limitation;
+retain that qualification when reusing the evidence.
+
+The [native host-progress record](../../docs/plans/simplified-v3-implementation.md#2026-10-10--host-progress-during-owned-settings-publication)
+closes the task/child and queued in-flight continuation subset of the earlier
+live-frame gap. These observations supersede the corresponding historical
+pending statements, not the full acceptance matrix.
+
+First-feed reuse remains narrower than complete dependency-chain/catalogue
+caching, activation-time warmup, complete authored/preload activation, provider
+waits, reconciled fatal recovery and platform/performance acceptance. No complete
+v3 cutover or speed improvement is established here. Track remaining gates in
+[the current implementation plan](../../docs/plans/simplified-v3-implementation.md),
+[validator_v3.md](../../validator_v3.md) and the composition/prefix plans above.
 
 ### Complete selected definition-prefix reuse (2026-10-11)
 
@@ -193,3 +285,153 @@ the last context closes. This adds private worker protocol 14; pair host and
 worker artifacts. Extension `control.7` and dump ABI `0xBC05` remain unchanged.
 See the [retained-worker acceptance record](../../docs/plans/simplified-v3-implementation.md#2026-10-11--complete-selected-definition-prefix-compiler-reuse)
 for exact evidence and the remaining warmup, product and whole-plan gates.
+
+
+### Host-selected internal entry envelope (2026-10-13)
+
+Private application/worker wire protocol 16 added acknowledged
+global pending host-call capacity, real occupancy observations and safe quiescent
+reduction checks to the complete runtime settings transaction. Older workers
+are rejected rather than reporting false uptake. Protocol 15 added an explicit
+host-owned chat or named internal Recipe entry while retaining legacy chat data
+envelopes on the same wire version. Pre-token and VM admission both validate the
+complete envelope. Internal selection bypasses public matching; Python still
+sequences the retained Recipe and its task owner verifies the durable receipt.
+Ordinary chat cannot select this entry by sending JSON-shaped text. This changes
+neither the upstream Monty version nor the v3 component architecture.
+
+Version mismatch fails before a worker can become ready. Application and worker
+must ship together; merely sharing a pathname is not protocol compatibility.
+This is not approval of a protected root, full validator qualification or recovery
+Gate A1 acceptance. Historical protocol observations above retain their scope.
+
+### Reusable owning-group coroutine slots (2026-10-15)
+
+The unreleased extension adds `asyncio._replace_sibling(slot, coroutine)`, a
+private BrassClaw scheduler operation, with no CPython equivalent. Only a
+currently executing gather child can use it. A slot equal to the group's length
+adds one new coroutine; a smaller slot must already have completed. Larger
+indices, booleans, negative indices, non-coroutines, reused coroutines and
+running slots are rejected. The original group waiter and ordinary error path
+remain in place. Replacing a completed slot releases its old coroutine and
+result; repeated replacement does not append permanent result slots. No task is
+detached and no other group's awaitable can be selected through this interface.
+
+The hosting kernel's context, admission, task and memory checks still apply.
+This is mechanical scheduling, not a Tool, a permission grant, Recipe execution
+or a live product worker-setting implementation. The Python root must own
+capacity sequencing; the product still needs coordinated admission publication,
+draining reductions and actual VM acknowledgements. Context-account retirement
+is covered by the subsequent prerequisite below; product resizing remains open.
+
+Suspended one-shot and REPL owners now release their VM stacks, scheduler,
+pending effects and globals on destruction without advancing Python. Resume and
+explicit REPL namespace recovery transfer their original state. Internal optional
+fields allow that transfer without dummy interpreters or heaps; serialized values
+retain their original shape and loading still requires non-null owned state.
+At this prerequisite, dump ABI remained `0xBC05` and the private application
+protocol remained `16`. The subsequent wire cutover below uses protocol `17`.
+
+The isolated [scheduler gate](../../tests/monty_scheduler/Cargo.toml) enables
+reference-count diagnostics and exercises 2,000 replacements, active-slot
+rejection, extension/failure propagation, actual host waits, dump/load,
+suspended-state destruction and namespace recovery. Its eight new cases and
+three existing coroutine-accounting cases pass with strict linting. These are
+interpreter prerequisite observations, not acceptance of live product resizing,
+fatal recovery or the complete v3 plan.
+
+### Actual coroutine exit accounting (2026-10-15)
+
+`ExecutionControl::context_exited` now observes a spawned coroutine's actual
+success or unhandled failure after its final clock interval closes. Suspending,
+dumping or destroying a snapshot emits no exit acknowledgement. The tracker
+latches callback rejection as an uncatchable control failure; it preserves all
+prior failure and cumulative clock state.
+
+The global host retires the exited context's execution, preparation and
+adaptation entries into separate cumulative totals. It refuses retirement while
+an admitted task still owns that context. A serialized answer import can still
+own preparation after the coroutine exits: its single pending retirement is
+held through the last sample and performed when that exact scope closes. This
+does not acknowledge a task finish, cancel a host effect or release durable
+attempt ownership.
+
+The actual `GlobalVm` gate now performs 2,000 owning-group replacements, reaches
+the real idle work waits, verifies live-map plus retired-total equality and shuts
+down with the same VM identity. An unexpected worker exit retains its unfinished
+task budget and fails closed. All 13 global-host cases, 10 scheduler/ownership
+cases and three coroutine-accounting cases pass, together with both strict
+test-target lints. These observations do not implement a live worker setting or
+qualify the paired product worker, recovery or the full v3 plan.
+
+### Observed pool transport (2026-10-15)
+
+Private protocol `17` introduced optional actual worker-pool membership and the
+coordinator continuation separately from the immutable boot identity. A pool
+root's extra control wait counts toward pending capacity. Receivers validate
+membership ordering, unique work-wait keys, coordinator ownership, generation
+and pending minimum; old protocol workers are rejected before readiness.
+Mechanical resize/drain/coordinator-close commands retain the same root process,
+and the retained task registry follows accepted admission targets while keeping
+existing task records and capacity debt.
+
+All 17 root-host, 24 actual-process, 27 service and 15 actor cases pass with strict
+linting. Process cases cover 20 grow/drain/reuse cycles and complete shutdown;
+three unresolved task scopes can be admitted beyond the boot count of two, then
+survive reduction and regrowth with their original futures and task records.
+These are paired private-worker observations. The shipped root still uses its
+static pool until the complete revision-held settings, service and WebUI cutover
+is implemented and accepted. No live product worker setting, full recovery or
+whole-plan completion is established here. Dump ABI remains `0xBC05`.
+
+Protocol `18` corrects pending/context sizing during regrowth with sparse draining
+IDs. The required worker set is the union of target IDs `0..desired` and retained
+active IDs, plus the coordinator wait. For example, target IDs0–6 with busy
+draining ID7 require eight workers plus one control wait. The host validates that
+union before mutation and reports it even before newly spawned workers park.
+The paired receiver uses the same contract; protocol17 workers are rejected.
+All84 affected root/process/service/actor cases and strict lint pass, including a
+real worker retaining ID7, refusing an insufficient eight-call budget unchanged,
+then safely regrowing with nine calls. This repairs a prerequisite; complete
+settings frame projection, publication and live product sizing remain open.
+
+Protocol `19` adds optional `max_workers` to the complete revision-checked settings
+candidate. `None` preserves current capacity; it does not disable a limit.
+Preflight streams the prospective membership/continuation arrays through a
+bounded byte counter without allocating arrays proportional to the requested
+count. The private worker advances only hosting waits/control yields during
+publication, verifies every target ID is actually present and retains extra
+draining workers. A missing target cannot produce a successful acknowledgement.
+All95 affected root/process/service/actor/Q1 checks and strict lint pass.
+The service's public settings API, persisted/WebUI worker field and shipped
+coordinator activation remain required; this is not full product sizing.
+
+
+Local product acceptance on 2026-10-15 now wires the public service API,
+PostgreSQL `execution_limits.max_workers`, startup and the shipped coordinator,
+and live WebUI control/help to protocol 19. Desired and actual membership remain
+separate while tasks drain. Unchanged target repetitions preserve CPU-active
+settings publication. The worker identity predicate was simplified without
+changing its three-case decision. See the r7/r8 evidence and limitations in
+`docs/plans/simplified-v3-implementation.md`; this does not certify general
+MCP child-admission saturation, fatal recovery or other-platform execution.
+
+Protocol `20` adds exact dependent-slot observations and explicit validate,
+reserve and release commands. Preflight leaves task/pool state unchanged and
+checks the prospective frame before reservation. Publication advances only
+hosting boundaries and acknowledges a real created coroutine; a coordinator
+that ignores its requested dependent ID fails closed. Child admission retains
+the parent's exact task/continuation and admits only the reserved child run.
+Release requires the real finish acknowledgement and registry context cleanup.
+Parent answers remain unconsumed until release. The shipped coordinator now
+handles borrowed IDs; ordinary capacity edits preserve their active state.
+This is a paired protocol upgrade: protocol19 workers are incompatible.
+
+The r2/r3 local evidence on 2026-10-15 covers21 global,15 actor,29 process,
+28 service,6 retained-execution and9 Q1 tests, native PostgreSQL migration,
+live WebUI settings and ordinary match/no-match/MCP/restart checks, with strict
+affected-package lint. The r3 subprocess regression additionally grows and
+shrinks ordinary capacity around a child retaining1 MiB, rejects an unsafe
+reduction unchanged and verifies the retained value after both edits. Ordinary
+service dependency admission and exact provider-surface/attempt correlation
+remain unwired; these checks do not certify saturated MCP ingress.

@@ -9,7 +9,7 @@
 //! ## Design notes
 //!
 //! - **One snapshot lock.** All cached metadata (`model_name`,
-//!   `active_model_name`, cost, cache multipliers, and the inner provider
+//!   `active_model_name`, catalogue identity, cost, cache multipliers, and the inner provider
 //!   itself) live in a single `RwLock<ProviderSnapshot>`. A reader always
 //!   observes a consistent slice of one provider — never a mix of old and
 //!   new after a swap.
@@ -100,6 +100,7 @@ fn intern_into(
 
 struct ProviderSnapshot {
     inner: Arc<dyn LlmProvider>,
+    provider_id: String,
     model_name: &'static str,
     active_model_name: Arc<str>,
     cost_per_token: (Decimal, Decimal),
@@ -118,6 +119,11 @@ impl std::fmt::Debug for ProviderSnapshot {
 
 impl ProviderSnapshot {
     fn capture(provider: Arc<dyn LlmProvider>) -> Self {
+        let identity = provider.model_name().to_owned();
+        Self::capture_named(provider, identity)
+    }
+
+    fn capture_named(provider: Arc<dyn LlmProvider>, provider_id: String) -> Self {
         let model_name = intern_model_name(provider.model_name());
         let active_model_name = Arc::from(provider.active_model_name());
         let cost_per_token = provider.cost_per_token();
@@ -125,6 +131,7 @@ impl ProviderSnapshot {
         let cache_read_discount = provider.cache_read_discount();
         Self {
             inner: provider,
+            provider_id,
             model_name,
             active_model_name,
             cost_per_token,
@@ -167,6 +174,28 @@ impl SwappableLlmProvider {
         }
     }
 
+    /// Construct an instance-role wrapper with its actual catalogue identity.
+    pub fn new_with_identity(inner: Arc<dyn LlmProvider>, provider_id: impl Into<String>) -> Self {
+        Self {
+            state: RwLock::new(ProviderSnapshot::capture_named(inner, provider_id.into())),
+        }
+    }
+
+    /// Publish identity and backend/model metadata under the same snapshot lock.
+    pub fn swap_with_identity(&self, inner: Arc<dyn LlmProvider>, provider_id: impl Into<String>) {
+        *write(&self.state) = ProviderSnapshot::capture_named(inner, provider_id.into());
+    }
+
+    /// Retain one coherent role selection before any await or provider dispatch.
+    pub fn retained_selection(&self) -> crate::RetainedLlmProvider {
+        let snapshot = read(&self.state);
+        crate::RetainedLlmProvider {
+            provider: snapshot.inner.clone(),
+            provider_id: snapshot.provider_id.clone(),
+            model: snapshot.active_model_name.to_string(),
+        }
+    }
+
     /// Replace the inner provider chain with a freshly rebuilt provider.
     /// Metadata is refreshed atomically in the same critical section.
     pub fn swap(&self, inner: Arc<dyn LlmProvider>) {
@@ -192,6 +221,10 @@ impl SwappableLlmProvider {
 
 #[async_trait]
 impl LlmProvider for SwappableLlmProvider {
+    fn retained_provider(&self) -> Option<crate::RetainedLlmProvider> {
+        Some(self.retained_selection())
+    }
+
     fn model_name(&self) -> &str {
         read(&self.state).model_name
     }
@@ -235,7 +268,8 @@ impl LlmProvider for SwappableLlmProvider {
         // std::sync lock across the call is safe.
         let mut guard = write(&self.state);
         guard.inner.set_model(model)?;
-        let refreshed = ProviderSnapshot::capture(Arc::clone(&guard.inner));
+        let refreshed =
+            ProviderSnapshot::capture_named(Arc::clone(&guard.inner), guard.provider_id.clone());
         *guard = refreshed;
         Ok(())
     }
@@ -259,9 +293,8 @@ impl LlmProvider for SwappableLlmProvider {
 pub struct LlmReloadHandle {
     primary: Arc<SwappableLlmProvider>,
     cheap: Option<Arc<SwappableLlmProvider>>,
-    /// Optional Sempai (teaching/auditing) provider slot.  When present,
-    /// `reload()` swaps it in lockstep with `primary` so the Sempai never
-    /// observes a stale chain after a settings change.
+    /// Optional independently selected Sempai slot. Primary reload retains it;
+    /// the role-aware settings owner publishes its own coherent selection.
     sempai: Option<Arc<SwappableLlmProvider>>,
     /// Serializes concurrent `reload()` calls so rapid setting toggles
     /// don't fire overlapping chain rebuilds (each rebuild can touch OAuth
@@ -314,8 +347,22 @@ impl LlmReloadHandle {
             .map(|provider| provider.clone() as Arc<dyn LlmProvider>)
     }
 
+    /// Publish an explicitly unconfigured primary backend using the same
+    /// serialization as reload. Existing calls retain their preceding Arc;
+    /// future primary and cheap calls receive the replacement. Sempai keeps
+    /// its independently selected backend.
+    pub async fn replace_primary(&self, replacement: Arc<dyn LlmProvider>) {
+        let _guard = self.reload_lock.lock().await;
+        self.primary
+            .swap_with_identity(Arc::clone(&replacement), "unconfigured");
+        if let Some(cheap) = &self.cheap {
+            cheap.swap(replacement);
+        }
+    }
+
     /// Rebuild the provider chain from `config` and atomically replace the
-    /// inner providers of the primary (and cheap/sempai, if present) wrappers.
+    /// inner providers of the primary and optional cheap wrappers. Sempai is
+    /// selected independently by the role-aware settings owner.
     ///
     /// Reloads are serialized so two concurrent callers cannot race.
     pub async fn reload(
@@ -327,7 +374,8 @@ impl LlmReloadHandle {
 
         let components = crate::build_provider_chain_components(config, session).await?;
 
-        self.primary.swap(components.primary);
+        self.primary
+            .swap_with_identity(components.primary, config.backend.clone());
 
         if let Some(ref cheap_handle) = self.cheap {
             let new_cheap = components
@@ -434,6 +482,34 @@ mod tests {
         fn cache_read_discount(&self) -> Decimal {
             self.cache_read
         }
+    }
+
+    #[test]
+    fn named_selection_retains_backend_and_identity_across_replacement() {
+        let a = Arc::new(TestProvider::new(
+            "cfg-a",
+            "active-a",
+            (Decimal::ONE, Decimal::ONE),
+        ));
+        let wrapper = SwappableLlmProvider::new_with_identity(a.clone(), "catalogue-a");
+        wrapper.set_model("selected-a").unwrap();
+        let retained = wrapper.retained_selection();
+        assert_eq!(retained.provider_id, "catalogue-a");
+        assert_eq!(retained.model, "selected-a");
+        let b = Arc::new(TestProvider::new(
+            "cfg-b",
+            "active-b",
+            (Decimal::ONE, Decimal::ONE),
+        ));
+        wrapper.swap_with_identity(b.clone(), "catalogue-b");
+        let current = wrapper.retained_selection();
+        assert_eq!(current.provider_id, "catalogue-b");
+        assert_eq!(current.model, "active-b");
+        assert_eq!(retained.provider.active_model_name(), "selected-a");
+        let a: Arc<dyn LlmProvider> = a;
+        let b: Arc<dyn LlmProvider> = b;
+        assert!(Arc::ptr_eq(&a, &retained.provider));
+        assert!(Arc::ptr_eq(&b, &current.provider));
     }
 
     #[test]

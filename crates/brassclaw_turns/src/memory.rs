@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    cmp::{Ordering, Reverse},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     hash::Hash,
     sync::{Arc, Condvar, Mutex, MutexGuard},
 };
@@ -70,7 +71,7 @@ impl Default for InMemoryTurnStateStore {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Inner {
     cursor: u64,
     turns: HashMap<crate::TurnId, TurnRecord>,
@@ -155,6 +156,50 @@ struct PersistedIdempotencyKey {
     operation: TurnIdempotencyOperationKind,
     run_id: Option<TurnRunId>,
     key: IdempotencyKey,
+}
+
+fn compare_idempotency_records(a: &TurnIdempotencyRecord, b: &TurnIdempotencyRecord) -> Ordering {
+    let operation = |value| match value {
+        TurnIdempotencyOperationKind::Submit => 0u8,
+        TurnIdempotencyOperationKind::Resume => 1,
+        TurnIdempotencyOperationKind::Cancel => 2,
+    };
+    a.created_at
+        .cmp(&b.created_at)
+        .then_with(|| a.scope.tenant_id.as_str().cmp(b.scope.tenant_id.as_str()))
+        .then_with(|| {
+            a.scope
+                .agent_id
+                .as_ref()
+                .map(|id| id.as_str())
+                .cmp(&b.scope.agent_id.as_ref().map(|id| id.as_str()))
+        })
+        .then_with(|| {
+            a.scope
+                .project_id
+                .as_ref()
+                .map(|id| id.as_str())
+                .cmp(&b.scope.project_id.as_ref().map(|id| id.as_str()))
+        })
+        .then_with(|| a.scope.thread_id.as_str().cmp(b.scope.thread_id.as_str()))
+        .then_with(|| {
+            a.scope
+                .has_explicit_thread_owner()
+                .cmp(&b.scope.has_explicit_thread_owner())
+        })
+        .then_with(|| {
+            a.scope
+                .explicit_owner_user_id()
+                .map(|id| id.as_str())
+                .cmp(&b.scope.explicit_owner_user_id().map(|id| id.as_str()))
+        })
+        .then_with(|| operation(a.operation).cmp(&operation(b.operation)))
+        .then_with(|| {
+            a.run_id
+                .map(|id| id.as_uuid())
+                .cmp(&b.run_id.map(|id| id.as_uuid()))
+        })
+        .then_with(|| a.key.as_str().cmp(b.key.as_str()))
 }
 
 fn profile_resolution_error_to_turn_error(error: RunProfileResolutionError) -> TurnError {
@@ -689,9 +734,91 @@ impl TurnStateStore for InMemoryTurnStateStore {
         if let Some(result) = inner.cancel_idempotency.get(&idempotency_key) {
             return result.clone();
         }
-        let result = inner.request_cancel_once(&request);
+        let result = inner.request_cancel_once(&request, true);
         inner.remember_cancel_idempotency(idempotency_key, result.clone(), Utc::now());
         result
+    }
+
+    async fn request_cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        let mut inner = self.lock_inner()?;
+        let root = inner
+            .records
+            .get(&request.run_id)
+            .filter(|record| record.scope == request.scope)
+            .ok_or(TurnError::ScopeNotFound)?;
+        if root.actor != request.actor {
+            return Err(TurnError::Unauthorized);
+        }
+        let cancel_descendants = !root.status.is_terminal() || root.status == TurnStatus::Cancelled;
+        let mut children: HashMap<TurnRunId, Vec<&RunRecord>> = HashMap::new();
+        for record in inner.records.values() {
+            if same_scope_envelope(&record.scope, &request.scope)
+                && let Some(parent) = record.parent_run_id
+            {
+                children.entry(parent).or_default().push(record);
+            }
+        }
+        let mut stack = if cancel_descendants {
+            vec![request.run_id]
+        } else {
+            Vec::new()
+        };
+        let mut visited = HashSet::from([request.run_id]);
+        let mut requests = Vec::new();
+        while let Some(parent) = stack.pop() {
+            if let Some(records) = children.get(&parent) {
+                for child in records {
+                    if !visited.insert(child.run_id) {
+                        return Err(invalid_lineage("cycle or duplicate in cancellation tree"));
+                    }
+                    stack.push(child.run_id);
+                    if child.status.is_terminal() && child.status != TurnStatus::Cancelled {
+                        continue;
+                    }
+                    requests.push(CancelRunRequest {
+                        scope: child.scope.clone(),
+                        actor: request.actor.clone(),
+                        run_id: child.run_id,
+                        reason: request.reason,
+                        idempotency_key: IdempotencyKey::new(format!(
+                            "{}-{}",
+                            request.idempotency_key.as_str(),
+                            child.run_id,
+                        ))
+                        .map_err(|reason| TurnError::InvalidRequest { reason })?,
+                    });
+                }
+            }
+        }
+        // Deterministic event ordering; no mutation is published if any run
+        // fails scope, actor or idempotency validation. Clone once per tree,
+        // instead of materializing a whole durable snapshot for each child.
+        requests.sort_by_key(|request| request.run_id.as_uuid());
+        requests.insert(0, request);
+        let mut candidate = inner.clone();
+        let mut responses = Vec::with_capacity(requests.len());
+        for request in requests {
+            let key = RunIdempotencyKey {
+                scope: request.scope.clone(),
+                run_id: request.run_id,
+                key: request.idempotency_key.clone(),
+            };
+            let response = match candidate.cancel_idempotency.get(&key) {
+                Some(result) => result.clone()?,
+                None => {
+                    let response = candidate.request_cancel_once(&request, false)?;
+                    candidate.remember_cancel_idempotency(key, Ok(response.clone()), Utc::now());
+                    response
+                }
+            };
+            responses.push((request, response));
+        }
+        candidate.prune_terminal_records();
+        *inner = candidate;
+        Ok(responses)
     }
 
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
@@ -762,6 +889,17 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
             };
             if !same_scope_envelope(&parent.scope, &request.child_scope) {
                 let response = Err(TurnError::Unauthorized);
+                inner.remember_submit_idempotency(
+                    idempotency_key.clone(),
+                    response.clone(),
+                    request.received_at,
+                );
+                inner.submit_idempotency_in_flight.remove(&idempotency_key);
+                self.submit_idempotency_ready.notify_all();
+                return response;
+            }
+            if let Err(error) = inner.ensure_uncancelled_ancestry(request.parent_run_id) {
+                let response = Err(error);
                 inner.remember_submit_idempotency(
                     idempotency_key.clone(),
                     response.clone(),
@@ -866,6 +1004,17 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
         };
         if !same_scope_envelope(&parent.scope, &request.child_scope) {
             let response = Err(TurnError::Unauthorized);
+            inner.remember_submit_idempotency(
+                idempotency_key.clone(),
+                response.clone(),
+                request.received_at,
+            );
+            inner.submit_idempotency_in_flight.remove(&idempotency_key);
+            self.submit_idempotency_ready.notify_all();
+            return response;
+        }
+        if let Err(error) = inner.ensure_uncancelled_ancestry(request.parent_run_id) {
+            let response = Err(error);
             inner.remember_submit_idempotency(
                 idempotency_key.clone(),
                 response.clone(),
@@ -1197,16 +1346,13 @@ impl TurnSpawnTreeStateStore for InMemoryTurnStateStore {
                 .records
                 .get(&canonical_root_run_id)
                 .is_some_and(|record| record.status.is_terminal())
-            && !inner.terminal_runs.contains(&canonical_root_run_id)
         {
-            if inner.terminal_runs.len() >= inner.limits.max_terminal_records {
-                inner.records.remove(&canonical_root_run_id);
-                inner.admission_reservations.remove(&canonical_root_run_id);
-                return Ok(());
+            if !inner.terminal_runs.contains(&canonical_root_run_id) {
+                inner.terminal_runs.push_back(canonical_root_run_id);
             }
-            inner.terminal_runs.push_back(canonical_root_run_id);
             inner.prune_terminal_records();
         }
+
         Ok(())
     }
 }
@@ -1414,6 +1560,29 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
 impl crate::store::TurnStateDriver for InMemoryTurnStateStore {}
 
 impl Inner {
+    /// Admission and this check share the state lock. Repeat it after profile
+    /// resolution, which may await while cancellation commits elsewhere.
+    fn ensure_uncancelled_ancestry(&self, parent_run_id: TurnRunId) -> Result<(), TurnError> {
+        let mut current = Some(parent_run_id);
+        let mut visited = HashSet::new();
+        while let Some(run_id) = current {
+            if !visited.insert(run_id) {
+                return Err(invalid_lineage("cycle in child admission ancestry"));
+            }
+            let record = self.records.get(&run_id).ok_or(TurnError::ScopeNotFound)?;
+            if matches!(
+                record.status,
+                TurnStatus::CancelRequested | TurnStatus::Cancelled
+            ) {
+                return Err(TurnError::InvalidRequest {
+                    reason: "cannot admit a child of a cancelled or cancelling ancestor".into(),
+                });
+            }
+            current = record.parent_run_id;
+        }
+        Ok(())
+    }
+
     fn from_persistence_snapshot(
         snapshot: TurnPersistenceSnapshot,
         limits: InMemoryTurnStateStoreLimits,
@@ -1486,7 +1655,7 @@ impl Inner {
         let mut cancel_idempotency_order = VecDeque::new();
         let mut idempotency_record_order = VecDeque::new();
         let mut ordered_idempotency_records = snapshot.idempotency_records;
-        ordered_idempotency_records.sort_by_key(|record| record.created_at);
+        ordered_idempotency_records.sort_by(compare_idempotency_records);
         for record in ordered_idempotency_records {
             let persisted_key = persisted_key_for_record(&record);
             idempotency_record_order.push_back(persisted_key.clone());
@@ -1659,15 +1828,15 @@ impl Inner {
 
     fn persistence_snapshot(&self) -> TurnPersistenceSnapshot {
         let mut turns = self.turns.values().cloned().collect::<Vec<_>>();
-        turns.sort_by_key(|record| record.created_at);
+        turns.sort_by_key(|record| (record.created_at, record.turn_id.as_uuid()));
         let mut runs = self
             .records
             .values()
             .map(RunRecord::persistence_record)
             .collect::<Vec<_>>();
-        runs.sort_by_key(|record| record.event_cursor);
+        runs.sort_by_key(|record| (record.event_cursor, record.run_id.as_uuid()));
         let mut active_locks = self.active_locks.values().cloned().collect::<Vec<_>>();
-        active_locks.sort_by_key(|record| record.acquired_at);
+        active_locks.sort_by_key(|record| (record.acquired_at, record.run_id.as_uuid()));
         let mut checkpoints = self.checkpoints.clone();
         checkpoints.sort_by(|a, b| {
             a.created_at
@@ -1685,7 +1854,7 @@ impl Inner {
             .values()
             .cloned()
             .collect::<Vec<_>>();
-        idempotency_records.sort_by_key(|record| record.created_at);
+        idempotency_records.sort_by(compare_idempotency_records);
         let mut admission_reservations = self
             .admission_reservations
             .values()
@@ -1955,6 +2124,7 @@ impl Inner {
     fn request_cancel_once(
         &mut self,
         request: &CancelRunRequest,
+        prune_terminal: bool,
     ) -> Result<CancelRunResponse, TurnError> {
         let mut record = self.take_record(request.run_id)?;
         let result = (|| {
@@ -2022,7 +2192,9 @@ impl Inner {
             Ok(response)
         })();
         self.records.insert(record.run_id, record);
-        self.prune_terminal_records();
+        if prune_terminal {
+            self.prune_terminal_records();
+        }
         result
     }
 
@@ -2540,23 +2712,62 @@ impl Inner {
     }
 
     fn prune_terminal_records(&mut self) {
-        while self.terminal_runs.len() > self.limits.max_terminal_records {
-            let Some(run_id) = self.terminal_runs.pop_front() else {
-                break;
-            };
-            if self
-                .records
-                .get(&run_id)
-                .is_some_and(|record| record.status.is_terminal())
-                && !self
-                    .tree_reservations
-                    .keys()
-                    .any(|reservation| reservation.root_run_id == run_id)
-            {
-                self.records.remove(&run_id);
-                self.admission_reservations.remove(&run_id);
+        if self.terminal_runs.len() <= self.limits.max_terminal_records {
+            return;
+        }
+        // Protected ancestors/reservations do not evict newer eligible
+        // records. Oldest eligible leaves are removed first; removing a leaf
+        // makes its terminal parent eligible without rescanning the tree.
+        let mut child_counts: HashMap<TurnRunId, usize> = HashMap::new();
+        for record in self.records.values() {
+            if let Some(parent) = record.parent_run_id {
+                *child_counts.entry(parent).or_default() += 1;
             }
         }
+        let reserved: HashSet<_> = self
+            .tree_reservations
+            .keys()
+            .map(|reservation| reservation.root_run_id)
+            .collect();
+        let terminal: HashSet<_> = self.terminal_runs.iter().copied().collect();
+        let mut eligible = BinaryHeap::new();
+        for run_id in &terminal {
+            if !reserved.contains(run_id)
+                && child_counts.get(run_id).copied().unwrap_or(0) == 0
+                && let Some(record) = self
+                    .records
+                    .get(run_id)
+                    .filter(|record| record.status.is_terminal())
+            {
+                eligible.push(Reverse((record.event_cursor, run_id.as_uuid())));
+            }
+        }
+        while eligible.len() > self.limits.max_terminal_records {
+            let Some(Reverse((_, uuid))) = eligible.pop() else {
+                break;
+            };
+            let run_id = TurnRunId::from_uuid(uuid);
+            if let Some(record) = self.records.remove(&run_id) {
+                self.admission_reservations.remove(&run_id);
+                if let Some(parent) = record.parent_run_id
+                    && let Some(count) = child_counts.get_mut(&parent)
+                {
+                    *count -= 1;
+                    if *count == 0
+                        && terminal.contains(&parent)
+                        && !reserved.contains(&parent)
+                        && let Some(record) = self
+                            .records
+                            .get(&parent)
+                            .filter(|record| record.status.is_terminal())
+                    {
+                        eligible.push(Reverse((record.event_cursor, parent.as_uuid())));
+                    }
+                }
+            }
+        }
+        self.terminal_runs
+            .retain(|run_id| self.records.contains_key(run_id));
     }
 }
 

@@ -83,9 +83,59 @@ V1 semantics intentionally mirror the current WASM network import policy checks 
 - `deny_private_ip_ranges` blocks literal private, loopback, link-local, documentation, broadcast, multicast, unspecified, carrier-grade NAT, IPv4-mapped IPv6 private ranges, and unique-local IP targets
 - `max_egress_bytes` requires a request-byte estimate and denies requests whose estimated bytes exceed the configured limit. Host-mediated HTTP estimates include the method, URL, headers, HTTP framing overhead, and body so large URLs or headers cannot bypass the limit.
 
-HTTP egress rejects URL userinfo before policy, DNS, or transport so credentials cannot be smuggled through an allowlisted host URL. It resolves hostnames before dispatch and denies the request before transport when `deny_private_ip_ranges` is true and any resolved address is private, loopback, link-local, documentation, multicast, broadcast, unspecified, carrier-grade NAT, unique-local, or an IPv4-mapped IPv6 address that maps to a non-public IPv4 address. The default transport disables redirects and pins the request to the vetted resolved address set so a later DNS answer cannot silently change the destination for that request, while still allowing connector-level fallback across alternate A/AAAA answers. Caller-provided `Host` headers are rejected before transport so virtual-host routing cannot diverge from the URL host that policy validated. Runtime-visible response bodies are always bounded: omitted and oversized explicit `response_body_limit` values clamp to the V1 default in-memory cap rather than reading unbounded data.
+HTTP egress rejects URL userinfo before policy, DNS, or transport so credentials cannot be smuggled through an allowlisted host URL. It resolves hostnames before dispatch and denies the request before transport when `deny_private_ip_ranges` is true and any resolved address is private, loopback, link-local, documentation, multicast, broadcast, unspecified, carrier-grade NAT, unique-local, or an IPv4-mapped IPv6 address that maps to a non-public IPv4 address. The default transport disables ambient proxies and redirects and pins the request to the vetted resolved address set so a later DNS answer cannot silently change the destination for that request, while still allowing connector-level fallback across alternate A/AAAA answers. Caller-provided `Host` headers are rejected before transport so virtual-host routing cannot diverge from the URL host that policy validated. Runtime-visible response bodies are always bounded. An omitted `response_body_limit` uses the acknowledged instance default; an explicit positive allocation-representable limit is retained exactly, including values above that default. Zero and nonrepresentable values fail before dispatch. Explicit positive request timeouts are retained without clamping to the instance default; zero or host-clock overflow fails before dispatch. Response buffer allocation failures return a sanitized transport failure. Current Tool policy and schema constraints remain independent; transport does not grant permission or silently weaken those checks.
 
 ---
+
+### Host HTTP client retention (v3)
+
+`max_http_client_cache_entries` is an instance execution setting (default 128).
+Zero disables retention. The same hardened transport supplies the cache control
+and actual host egress; replacing an egress port invalidates that attachment.
+Settings publish through the shared acknowledged runtime revision before the
+full effective view is exposed. This control grants no network permission and
+is separate from completed model-response caching.
+
+Cache lookup and least-recent eviction use randomized keys containing host,
+port, vetted addresses and request timeout. Full caches evict individual entries.
+Reductions remove cache ownership while active requests keep their captured
+clients. A client build admitted before a new settings revision cannot insert
+into its successor. Limits are ceilings, not up-front cache allocation.
+
+### Host HTTP request defaults (v3)
+
+`default_http_request_timeout_millis` (30,000 ms) and
+`default_http_response_body_bytes` (10 MiB) are live instance execution settings
+under Settings → Monty VM, with English and German explanations. They apply only
+to host HTTP requests that omit explicit bounds. Model-provider settings are
+separate. Defaults are positive and must fit the host clock/allocation types;
+invalid changes fail before persistence or runtime effects.
+
+The transport captures both defaults together before asynchronous work. An
+accepted request retains its timeout and response limit across later settings
+publication. New requests use the acknowledged successor. Cache capacity and
+both defaults publish atomically on the same transport under the shared
+settings revision. Oversized responses remain explicit failures, not successful
+truncated responses. Tool schemas and live network policy remain independent.
+
+### First-party HTTP Tool timeout
+
+`builtin.http` and `builtin.http.save` forward an omitted timeout to the actual
+host transport. Explicit positive `timeout_ms` values are retained exactly;
+the field is an unsigned 32-bit millisecond value because that is the current
+request representation. Values outside that representation, zero, malformed
+numbers, null and null strings are rejected before dispatch. No 30-second
+clamp or static HTTP wall-time ceiling is applied by the handler, its native
+input schema or resource manifest. The configured transport default remains
+finite. Task compute, live network policy and other resource constraints still
+apply independently.
+
+Packaged Tool/ToolSkill metadata describes this contract. Insert-only seeding
+preserves existing stored rows and operator overrides; this source change does
+not establish immutable successor activation on an upgraded instance. The first-party HTTP path now forwards omitted response bounds too, uses strict
+response-limit errors and returns complete sanitized output. Its former fixed
+body, request/header and output formatting ceilings are removed. Shared limits
+for other Tools and immutable seed upgrades remain separate work.
 
 ## 4. Current API flow
 
@@ -157,7 +207,11 @@ The crate tests cover:
 - caller-provided `Host` header denial before transport
 - default-port target matching for URL-derived requests
 - redirects are not followed by the default transport
+- ambient proxy environment variables cannot divert vetted-address transport
+- real send/body-transfer errors retain sanitized categories without request URLs, injected credentials or backend body data
 - streaming response body limits are enforced separately from request-byte accounting
-- omitted and oversized explicit response body limits clamp to a safe default instead of unbounded reads
+- omitted response body limits use a bounded default; actual responses above that default succeed with a larger explicit limit
+- explicit timeouts above the constructor default remain effective through actual delayed responses
+- zero/nonrepresentable limits fail before dispatch without copying sensitive URLs
 - fail-closed empty policy behavior
 - crate boundary remains low-level and does not depend on workflow/runtime/secret/observability crates

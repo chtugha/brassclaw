@@ -255,6 +255,7 @@ async fn nine_executed_recipes_settle_after_live_selection_capacity_is_reduced()
     let capacity = Arc::new(Capacity(tokio::sync::RwLock::new(RecipeCapacity {
         revision: 1,
         max_recipes: 9,
+        data_limits: brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
     })));
     let factory = Arc::new(NativeTaskPortsFactory::with_catalogue_capacity(
         database.pool.clone(),
@@ -306,6 +307,7 @@ async fn nine_executed_recipes_settle_after_live_selection_capacity_is_reduced()
     *capacity.0.write().await = RecipeCapacity {
         revision: 2,
         max_recipes: 1,
+        data_limits: brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
     };
     hold.released.notify_one();
     let result = tokio::time::timeout(Duration::from_secs(10), running)

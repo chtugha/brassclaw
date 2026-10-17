@@ -2039,6 +2039,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "brassclaw_host_api",
+ "lru 0.18.4",
  "percent-encoding",
  "reqwest 0.12.28",
  "thiserror 2.0.20",
@@ -2295,6 +2296,7 @@ dependencies = [
  "brassclaw_reborn_config",
  "brassclaw_reborn_traces",
  "brassclaw_reborn_webui_ingress",
+ "brassclaw_secrets",
  "chrono",
  "clap",
  "clap_complete",
@@ -2532,6 +2534,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-postgres",
  "tower 0.5.3",
  "tracing",
  "url",

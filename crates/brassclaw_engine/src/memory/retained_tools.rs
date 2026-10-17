@@ -91,9 +91,23 @@ impl RetainedToolBinding {
         step_inputs: &Value,
         arguments: &Value,
     ) -> Result<Value, RetainedToolError> {
+        self.bind_tool_arguments_with_limits(
+            step_inputs,
+            arguments,
+            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        )
+    }
+    pub fn bind_tool_arguments_with_limits(
+        &self,
+        step_inputs: &Value,
+        arguments: &Value,
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<Value, RetainedToolError> {
         self.association
-            .validate_arguments(step_inputs, arguments)?;
-        Ok(Value::Object(self.tool_inputs.bind(arguments)?))
+            .validate_arguments_with_limits(step_inputs, arguments, limits)?;
+        Ok(Value::Object(
+            self.tool_inputs.bind_with_limits(arguments, limits)?,
+        ))
     }
 }
 
@@ -287,7 +301,12 @@ pub fn prepare_retained_tool_program(
             return Err(invalid("selected usage association is ambiguous"));
         }
         let skill = candidates[0];
-        let association = skill.draft().association().expect("filtered usage").clone();
+        let association = skill
+            .draft()
+            .association()
+            .expect("filtered usage")
+            .clone()
+            .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         let code = &graph[&python.include[0]];
         let associated: Value = serde_json::from_str(association.exact_bytes())
             .map_err(|_| invalid("retained association integrity failed"))?;
@@ -298,13 +317,14 @@ pub fn prepare_retained_tool_program(
                 "PythonCode contracts differ from its usage association",
             ));
         }
-        let tool_inputs = InputContract::from_value(
+        let tool_inputs = InputContract::tool_parameters_from_value(
             tool.draft()
                 .document()
                 .get("input_contract")
                 .ok_or_else(|| invalid("retained Tool input contract required"))?,
             REVISION_LIMITS,
-        )?;
+        )?
+        .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         association.require_tool_input_contract(&tool_inputs)?;
         let combination = if let Some(retained) = combinations.get(&skill.reference().uuid) {
             retained.clone()

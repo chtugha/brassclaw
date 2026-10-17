@@ -137,8 +137,8 @@ restart-safe; idempotent. No `block_run()` hook required.
   projection fails closed for that row and emits a redacted projection error.
 - **Projection consumer** — lives in `crates/brassclaw_event_projections/`
   (the Reborn read-model boundary). Consumes `TurnLifecycleEvent`. Per event:
-  - `kind = Blocked` with `status` ∈ {`BlockedApproval`, `BlockedAuth`,
-    `BlockedResource`, `BlockedDependentRun` (new — from P1.A)} →
+  - `kind = Blocked` with `status` ∈ \{`BlockedApproval`, `BlockedAuth`,
+    `BlockedResource`, `BlockedDependentRun` (new — from P1.A)\} →
     upsert a neutral `PendingGateProjectionRow { tenant_id = scope.tenant_id,
     owner_user_id, thread_id = scope.thread_id, run_id, gate_kind, gate_ref,
     sanitized_reason, blocked_at }` through the projection sink.

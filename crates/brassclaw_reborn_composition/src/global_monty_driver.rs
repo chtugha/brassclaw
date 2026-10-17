@@ -13,7 +13,8 @@ use std::{
 use crate::monty_attempt_retention::{AttemptRetentionLease, AttemptRetentionRegistry};
 use async_trait::async_trait;
 use brassclaw_monty_host::service::{
-    ServiceClient, TaskControl, TaskInput, TaskOutcome, TaskPorts, TaskReceipt,
+    ServiceClient, TaskControl, TaskInput, TaskOutcome, TaskPorts, TaskReceipt, TaskSubmission,
+    TaskTicket, UnsubmittedReason, UnsubmittedTask,
 };
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_threads::SessionThreadService;
@@ -73,28 +74,47 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
         host: Arc<MontyTaskHost>,
         receipt: Arc<TaskReceipt>,
     ) -> Result<(), AgentLoopDriverError>;
+
+    /// Acknowledge proven pre-VM cancellation/rejection without inventing a VM
+    /// receipt. Retain the original proof/address through unknown DB outcomes.
+    async fn settle_unsubmitted(
+        &self,
+        host: Arc<MontyTaskHost>,
+        proof: Arc<UnsubmittedTask>,
+    ) -> Result<(), AgentLoopDriverError>;
 }
 
 enum Phase {
     Preparing,
+    AwaitingAdmission,
     PreparationStopped,
     Submitted(TaskControl),
+    Unsubmitted(Arc<UnsubmittedTask>),
 }
 struct AttemptState {
     cancelled: bool,
     phase: Phase,
 }
+type Acknowledgement = Shared<BoxFuture<'static, Result<(), AgentLoopDriverError>>>;
+enum AdmissionOutcome {
+    Accepted(Arc<TaskTicket>),
+    Unsubmitted(Arc<UnsubmittedTask>),
+}
+type AdmissionFuture =
+    Shared<BoxFuture<'static, Result<Arc<AdmissionOutcome>, AgentLoopDriverError>>>;
 struct Attempt {
     host: Arc<MontyTaskHost>,
     retention: Arc<AttemptRetentionLease>,
     state: Mutex<AttemptState>,
     changed: Notify,
     settlement: Mutex<Option<Settlement>>,
+    unsubmitted_ack: Mutex<Option<Acknowledgement>>,
+    submission: Mutex<Option<AdmissionFuture>>,
 }
 
 struct Settlement {
     receipt: Arc<TaskReceipt>,
-    acknowledgement: Shared<BoxFuture<'static, Result<(), AgentLoopDriverError>>>,
+    acknowledgement: Acknowledgement,
 }
 
 /// Retains attempts abandoned by runner waiters until actual service settlement.
@@ -174,6 +194,8 @@ impl GlobalMontyDriver {
             }),
             changed: Notify::new(),
             settlement: Mutex::new(None),
+            unsubmitted_ack: Mutex::new(None),
+            submission: Mutex::new(None),
         });
         attempts.insert(entry.host.attempt(), entry.clone());
         Ok(entry)
@@ -185,6 +207,135 @@ impl GlobalMontyDriver {
             .map_err(|_| failed("monty_attempt_registry_failed"))?
             .remove(&attempt);
         Ok(())
+    }
+
+    async fn acknowledge_unsubmitted(
+        &self,
+        entry: &Arc<Attempt>,
+        proof: Arc<UnsubmittedTask>,
+    ) -> Result<(), AgentLoopDriverError> {
+        let acknowledgement = {
+            let mut retained = entry
+                .unsubmitted_ack
+                .lock()
+                .map_err(|_| failed("monty_attempt_state_failed"))?;
+            if retained
+                .as_ref()
+                .is_none_or(|ack| ack.peek().is_some_and(Result::is_err))
+            {
+                let ports = self.ports.clone();
+                let host = entry.host.clone();
+                *retained = Some(
+                    async move { ports.settle_unsubmitted(host, proof).await }
+                        .boxed()
+                        .shared(),
+                );
+            }
+            retained
+                .as_ref()
+                .ok_or_else(|| failed("monty_attempt_state_failed"))?
+                .clone()
+        };
+        acknowledgement.await
+    }
+
+    /// Retain only the actual control's sealed pre-Admit rejection. A generic
+    /// failed service receipt, including uncertain worker transport, is not it.
+    fn retain_rejection(
+        &self,
+        entry: &Arc<Attempt>,
+        control: &TaskControl,
+    ) -> Result<Option<Arc<UnsubmittedTask>>, AgentLoopDriverError> {
+        let Some(proof) = control.unsubmitted_rejection() else {
+            return Ok(None);
+        };
+        if !matches!(proof.reason(), UnsubmittedReason::Rejected(_)) {
+            return Err(failed("monty_unsubmitted_identity_conflict"));
+        }
+        let mut state = entry
+            .state
+            .lock()
+            .map_err(|_| failed("monty_attempt_state_failed"))?;
+        let matches = match &state.phase {
+            Phase::Submitted(original) => original
+                .unsubmitted_rejection()
+                .is_some_and(|retained| Arc::ptr_eq(&retained, &proof)),
+            Phase::Unsubmitted(original) => Arc::ptr_eq(original, &proof),
+            _ => false,
+        };
+        if !matches {
+            return Err(failed("monty_unsubmitted_identity_conflict"));
+        }
+        state.phase = Phase::Unsubmitted(proof.clone());
+        drop(state);
+        entry.changed.notify_waiters();
+        Ok(Some(proof))
+    }
+
+    fn prepare_submission(
+        &self,
+        entry: &Arc<Attempt>,
+        input: TaskInput,
+        ports: Arc<dyn TaskPorts>,
+    ) -> Result<AdmissionFuture, AgentLoopDriverError> {
+        let mut pending = entry
+            .submission
+            .lock()
+            .map_err(|_| failed("monty_attempt_state_failed"))?;
+        if pending.is_some() {
+            return Err(failed("monty_admission_replay_requires_recovery"));
+        }
+        let service = self.service.clone();
+        let host = entry.host.clone();
+        let owner = Arc::downgrade(entry);
+        let submission = async move {
+            let result = service
+                .submit_unless_cancelled(input, ports, host.cancellation_requested())
+                .await;
+            let entry = owner
+                .upgrade()
+                .ok_or_else(|| failed("monty_attempt_state_failed"))?;
+            let mut state = entry
+                .state
+                .lock()
+                .map_err(|_| failed("monty_attempt_state_failed"))?;
+            let outcome = match result {
+                Ok(TaskSubmission::Accepted(ticket)) => {
+                    let ticket = Arc::new(ticket);
+                    state.phase = Phase::Submitted(ticket.control());
+                    if state.cancelled {
+                        ticket.control().cancel();
+                    }
+                    Ok(Arc::new(AdmissionOutcome::Accepted(ticket)))
+                }
+                Ok(TaskSubmission::Cancelled(proof) | TaskSubmission::Rejected(proof)) => {
+                    let proof = Arc::new(proof);
+                    if proof.reason() == UnsubmittedReason::Cancelled {
+                        state.cancelled = true;
+                    }
+                    state.phase = Phase::Unsubmitted(proof.clone());
+                    Ok(Arc::new(AdmissionOutcome::Unsubmitted(proof)))
+                }
+                Err(_) => {
+                    state.phase = Phase::PreparationStopped;
+                    Err(failed("monty_task_admission_failed"))
+                }
+            };
+            drop(state);
+            entry.changed.notify_waiters();
+            outcome
+        }
+        .boxed()
+        .shared();
+        entry
+            .state
+            .lock()
+            .map_err(|_| failed("monty_attempt_state_failed"))?
+            .phase = Phase::AwaitingAdmission;
+        *pending = Some(submission.clone());
+        drop(pending);
+        entry.changed.notify_waiters();
+        Ok(submission)
     }
 
     async fn settle_attempt(
@@ -257,9 +408,14 @@ impl GlobalMontyDriver {
                     attempts.remove(&attempt);
                     return Ok(None);
                 }
-                Phase::Preparing => {
+                Phase::Preparing | Phase::AwaitingAdmission => {
                     return Err(AgentLoopDriverError::Unavailable {
                         reason: "Monty task preparation is still active".into(),
+                    });
+                }
+                Phase::Unsubmitted(_) => {
+                    return Err(AgentLoopDriverError::Unavailable {
+                        reason: "Monty pre-VM settlement acknowledgement is pending".into(),
                     });
                 }
             }
@@ -310,7 +466,7 @@ impl Drop for DriveGuard {
             match &state.phase {
                 Phase::Preparing => state.phase = Phase::PreparationStopped,
                 Phase::Submitted(control) => control.cancel(),
-                Phase::PreparationStopped => {}
+                Phase::PreparationStopped | Phase::AwaitingAdmission | Phase::Unsubmitted(_) => {}
             }
         }
         self.0.changed.notify_waiters();
@@ -352,6 +508,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         // never Python source. Technical transport limits reject oversized work;
         // they must not silently turn history into an empty or truncated list.
         let input = TaskInput {
+            entry: brassclaw_monty_host::service::TaskEntry::Chat,
             conversation_id: context.thread_id.to_string(),
             message_id: input.message.message_id.to_string(),
             turn_id: context.turn_id.to_string(),
@@ -384,41 +541,44 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 return Err(error);
             }
         };
-        {
-            let state = entry
-                .state
-                .lock()
-                .map_err(|_| failed("monty_attempt_state_failed"))?;
-            if state.cancelled {
-                drop(state);
+        // Retain before polling: a dropped drive waiter must neither discard
+        // an accepted ticket nor strand a capacity-blocked preparation.
+        let submission = match self.prepare_submission(&entry, input, ports)?.await {
+            Ok(submission) => submission,
+            Err(error) => {
+                // No ticket was accepted. The factory retains its original
+                // private preparation evidence for explicit reconciliation.
                 drop(guard);
                 self.remove(host.attempt())?;
-                return Err(failed("monty_task_cancelled"));
-            }
-        }
-        let ticket = match self.service.submit_when_available(input, ports).await {
-            Ok(ticket) => ticket,
-            Err(_) => {
-                // No VM admission was issued. Release the registry entry just
-                // as for failed input/port preparation; do not leak capacity.
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(failed("monty_task_admission_failed"));
+                return Err(error);
             }
         };
-        {
-            let mut state = entry
-                .state
-                .lock()
-                .map_err(|_| failed("monty_attempt_state_failed"))?;
-            // Always retain an accepted control, including a cancellation racing
-            // with queue admission. Settlement must wait for its actual receipt.
-            state.phase = Phase::Submitted(ticket.control());
-            if state.cancelled {
-                ticket.control().cancel();
+        let ticket = match submission.as_ref() {
+            AdmissionOutcome::Accepted(ticket) => ticket.clone(),
+            AdmissionOutcome::Unsubmitted(proof) => {
+                let policy = self.ports.cancellation_acknowledgement()?.validate()?;
+                tokio::time::timeout(
+                    policy.timeout,
+                    self.acknowledge_unsubmitted(&entry, proof.clone()),
+                )
+                .await
+                .map_err(|_| AgentLoopDriverError::Unavailable {
+                    reason: "Monty unstarted settlement acknowledgement pending".into(),
+                })??;
+                drop(guard);
+                self.remove(host.attempt())?;
+                if matches!(proof.reason(), UnsubmittedReason::Rejected(_)) {
+                    return Err(failed(proof.reason().reason_kind()));
+                }
+                return Ok(LoopExit::Cancelled(LoopCancelled {
+                    reason_kind: LoopCancelledReasonKind::HostCancellation,
+                    checkpoint_id: None,
+                    interrupted_message_refs: Vec::new(),
+                    exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
+                        .map_err(|_| failed("monty_exit_reference_invalid"))?,
+                }));
             }
-            entry.changed.notify_waiters();
-        }
+        };
         let waiting = ticket.wait();
         tokio::pin!(waiting);
         let receipt = tokio::select! {
@@ -431,8 +591,27 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 self.stop_attempt(host.attempt()).await?;
                 waiting.await
             }
-        }
-        .map_err(|_| failed("monty_service_reconciliation_required"))?;
+        };
+        let receipt = match receipt {
+            Ok(receipt) => receipt,
+            Err(_) => {
+                let proof = self
+                    .retain_rejection(&entry, &ticket.control())?
+                    .ok_or_else(|| failed("monty_service_reconciliation_required"))?;
+                let policy = self.ports.cancellation_acknowledgement()?.validate()?;
+                tokio::time::timeout(
+                    policy.timeout,
+                    self.acknowledge_unsubmitted(&entry, proof.clone()),
+                )
+                .await
+                .map_err(|_| AgentLoopDriverError::Unavailable {
+                    reason: "Monty unstarted rejection acknowledgement pending".into(),
+                })??;
+                drop(guard);
+                self.remove(host.attempt())?;
+                return Err(failed(proof.reason().reason_kind()));
+            }
+        };
         match &receipt.outcome {
             TaskOutcome::InternalCompleted { .. } => Err(failed("monty_reply_reference_invalid")),
             TaskOutcome::Completed { reply_ref } => {
@@ -523,7 +702,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 let changed = entry.changed.notified();
                 tokio::pin!(changed);
                 changed.as_mut().enable();
-                let control = {
+                let (control, unsubmitted, awaiting_admission) = {
                     let mut state = entry
                         .state
                         .lock()
@@ -531,16 +710,41 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                     state.cancelled = true;
                     match &state.phase {
                         Phase::PreparationStopped => return Ok(()),
-                        Phase::Submitted(control) => Some(control.clone()),
-                        Phase::Preparing => None,
+                        Phase::Submitted(control) => (Some(control.clone()), None, false),
+                        Phase::Unsubmitted(proof) => (None, Some(proof.clone()), false),
+                        Phase::Preparing => (None, None, false),
+                        Phase::AwaitingAdmission => (None, None, true),
                     }
                 };
+                if awaiting_admission {
+                    let pending = entry
+                        .submission
+                        .lock()
+                        .map_err(|_| failed("monty_attempt_state_failed"))?
+                        .as_ref()
+                        .ok_or_else(|| failed("monty_attempt_state_failed"))?
+                        .clone();
+                    pending.await?;
+                    continue;
+                }
+                if let Some(proof) = unsubmitted {
+                    self.acknowledge_unsubmitted(&entry, proof).await?;
+                    self.remove(attempt)?;
+                    return Ok(());
+                }
                 if let Some(control) = control {
                     control.cancel();
-                    let receipt = control
-                        .wait()
-                        .await
-                        .map_err(|_| failed("monty_service_reconciliation_required"))?;
+                    let receipt = match control.wait().await {
+                        Ok(receipt) => receipt,
+                        Err(_) => {
+                            let proof = self
+                                .retain_rejection(&entry, &control)?
+                                .ok_or_else(|| failed("monty_service_reconciliation_required"))?;
+                            self.acknowledge_unsubmitted(&entry, proof).await?;
+                            self.remove(attempt)?;
+                            return Ok(());
+                        }
+                    };
                     self.settle_attempt(&entry, receipt).await?;
                     return Ok(());
                 }

@@ -2003,3 +2003,34 @@ the full component conversion plan, general authored activation, provider-native
 remote MCP integration or remote product deployment complete. Catalogue changes
 continue to require the supported coherent activation/qualification owner; no raw
 Skill insertion is advertised.
+
+## 35. General authored catalogue activation — implementation and acceptance
+
+The activation owner now consumes existing exact usage approvals rather than
+adding a second Recipe-step audit or behavioral review. The operator facade,
+GET/POST catalogue routes, immutable V136 generation/receipt retention, atomic
+active-pointer/routing publication, normal-match capture, retained per-binding
+native dispatchers and run-selected prefix hook are implemented. Existing
+component validation remains the prerequisite; activation cannot manufacture it.
+See [the activation API and support boundaries](../authored-catalogue-activation.md).
+
+The focused acceptance test is
+`runtime::tests::authored_catalogue_tests::native_authored_catalogue_activates_validated_usage_without_revalidation`.
+It uses the actual operator route, PostgreSQL, global Monty, matcher and native
+reply dispatcher. It passed on 2026-10-10 in 73.18 seconds: both authored
+variants executed with typed literal inputs, no new component-review evidence
+was produced, exact restoration caused no Tool effects, stale/forged activation
+failed atomically, retries were idempotent and a captured task finished using
+its original generation after withdrawal. The existing normal-match/No-Match/
+MCP ordinary-chat regression also passed (184.57 seconds), alongside four MCP
+discovery contract tests and both locked operator route-policy tests. Strict
+affected-library Clippy passed with `-D warnings`; no warnings were suppressed.
+Cross-chat Cargo and cleanup batches were serialized using the common lock.
+The ordinary chat capture boundary now fences durable MCP command receipts
+against changed/withdrawn advertising before matching, without executing MCP
+commands directly or re-auditing component usages. Authored command advertising
+still requires genuine full-command qualification; activation alone leaves its
+generation unadvertised until those observations exist. This is acceptance of
+the supported activation path, not completion of the wider v3 conversion plan.
+The protected installation workflows and executable components without a
+supported standalone approval contract remain explicit support boundaries.

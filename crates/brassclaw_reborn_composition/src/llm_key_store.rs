@@ -1,6 +1,6 @@
 //! Operator-scoped storage for LLM provider API-key **values**.
 //!
-//! The reborn provider catalog (`providers.json`) only ever references an
+//! The PostgreSQL provider catalogue only ever references an
 //! `api_key_env` *name* and the config selection only carries names — inline
 //! secret values are rejected. When the webui2 settings surface lets an
 //! operator paste an actual key, the value lands here instead: encrypted in the
@@ -22,12 +22,75 @@ use thiserror::Error;
 #[derive(Clone)]
 pub struct LlmKeyStore {
     store: Arc<dyn SecretStore>,
+    #[cfg(feature = "postgres")]
+    postgres: Option<Arc<brassclaw_secrets::PgSecretStore>>,
 }
 
 impl LlmKeyStore {
     /// Wrap the instance's shared secret store.
     pub fn new(store: Arc<dyn SecretStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            #[cfg(feature = "postgres")]
+            postgres: None,
+        }
+    }
+
+    /// Reuse the runtime's exact encrypted store for coordinated setup writes.
+    #[cfg(feature = "postgres")]
+    pub(crate) fn new_postgres(store: Arc<brassclaw_secrets::PgSecretStore>) -> Self {
+        Self {
+            store: store.clone(),
+            postgres: Some(store),
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn put_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        provider_id: &str,
+        material: SecretMaterial,
+    ) -> Result<(), LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        store
+            .put_in_transaction(transaction, scope(), handle_for(provider_id)?, material)
+            .await
+            .map_err(LlmKeyStoreError::Store)?;
+        Ok(())
+    }
+
+    /// Capture one authenticated credential in the same snapshot as its
+    /// provider definition. Consumption must commit before an external call.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn read_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        provider_id: &str,
+    ) -> Result<Option<SecretMaterial>, LlmKeyStoreError> {
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "coordinated key storage is unavailable".into(),
+            })
+        })?;
+        let owner = scope();
+        let lease = match store
+            .lease_once_in_transaction(transaction, &owner, &handle_for(provider_id)?)
+            .await
+        {
+            Ok(lease) => lease,
+            Err(error) if error.is_unknown_secret() => return Ok(None),
+            Err(error) => return Err(LlmKeyStoreError::Store(error)),
+        };
+        store
+            .consume_in_transaction(transaction, &owner, lease.id)
+            .await
+            .map(Some)
+            .map_err(LlmKeyStoreError::Store)
     }
 
     /// Store (or replace) the API-key value for `provider_id`.

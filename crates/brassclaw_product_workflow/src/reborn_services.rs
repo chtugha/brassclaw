@@ -103,9 +103,14 @@ pub trait CapabilityPermissionStore: Send + Sync {
 
 pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
 pub use interceptor_config::{
-    InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
-    PrefixEntry, PrefixListResponse, PrefixRegenerateResponse, UpdateInterceptorConfigRequest,
-    interceptor_config_unavailable, map_interceptor_config_error,
+    CapturePrefixModelRequest, ImportPrefixGenerationRequest, InterceptorConfigService,
+    InterceptorConfigServiceError, InterceptorConfigSnapshot, PrefixDesignProposal, PrefixEntry,
+    PrefixGenerationDetail, PrefixGenerationSummary, PrefixListResponse, PrefixModelArtifactDetail,
+    PrefixModelArtifactFile, PrefixModelArtifactSet, PrefixModelDesignCatalogue,
+    PrefixModelSpecification, PrefixModelTarget, PrefixRegenerateResponse, PrefixSourceInventory,
+    PrefixSourceRegistration, PrefixUsedSource, RegisterPrefixSourceRequest,
+    RetainPrefixDesignProposalRequest, RetainPrefixModelArtifactsRequest,
+    UpdateInterceptorConfigRequest, interceptor_config_unavailable, map_interceptor_config_error,
 };
 pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
@@ -815,13 +820,14 @@ pub trait RebornServicesApi: Send + Sync {
         Err(llm_config::llm_config_unavailable())
     }
 
-    /// Remove a custom LLM provider and any stored key for it.
+    /// Revision-checked deactivation; retain the definition and encrypted key.
     async fn delete_llm_provider(
         &self,
         caller: WebUiAuthenticatedCaller,
         provider_id: String,
+        expected_revision: u64,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
-        let _ = (caller, provider_id);
+        let _ = (caller, provider_id, expected_revision);
         Err(llm_config::llm_config_unavailable())
     }
 
@@ -898,6 +904,30 @@ pub trait RebornServicesApi: Send + Sync {
         caller: WebUiAuthenticatedCaller,
         request: RebornUpdateCapabilityPermissionRequest,
     ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError>;
+
+    /// Instance-wide policy management; caller scopes do not select permission rows.
+    async fn list_instance_tool_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<Vec<crate::instance_tools::InstanceToolSetting>, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::Unavailable,
+            503,
+            false,
+        ))
+    }
+    async fn update_instance_tool_setting(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _tool_id: Uuid,
+        _request: crate::instance_tools::UpdateInstanceToolSetting,
+    ) -> Result<crate::instance_tools::InstanceToolSetting, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::Unavailable,
+            503,
+            false,
+        ))
+    }
 
     /// Safety configuration methods - default to "not implemented" so facades that
     /// don't wire safety config inherit a safe surface.
@@ -1141,6 +1171,15 @@ pub trait RebornServicesApi: Send + Sync {
     ) -> Result<crate::recipes::PostTurnReviewInspection, RebornServicesError> {
         Err(recipe_store_unavailable())
     }
+    async fn reconcile_post_turn_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _attempt: &str,
+        _request: crate::recipes::ReviewReconciliationRequest,
+    ) -> Result<crate::recipes::ReviewReconciliationReceipt, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
     async fn record_review_disposition(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -1158,11 +1197,49 @@ pub trait RebornServicesApi: Send + Sync {
         Err(recipe_store_unavailable())
     }
 
+    async fn get_component_revision_head(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _component_id: &str,
+    ) -> Result<crate::recipes::ComponentRevisionHeadView, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
     async fn get_component_review_submission(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _submission_id: &str,
     ) -> Result<crate::recipes::ComponentReviewSubmissionView, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
+    async fn prepare_component_deployment(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::recipes::PrepareComponentDeploymentRequest,
+    ) -> Result<crate::recipes::ComponentDeploymentPlan, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
+    async fn export_catalogue_sources(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _generation: &str,
+    ) -> Result<crate::recipes::CatalogueSourceExport, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
+    async fn catalogue_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::recipes::CatalogueActivationStatus, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+    async fn activate_catalogue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::recipes::ActivateCatalogueRequest,
+    ) -> Result<crate::recipes::CatalogueActivationReceipt, RebornServicesError> {
         Err(recipe_store_unavailable())
     }
 
@@ -1373,6 +1450,83 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _request: UpdateInterceptorConfigRequest,
     ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+
+    /// List registered sources for a prefix profile and optional generation.
+    async fn prefix_model_design_catalogue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<PrefixModelDesignCatalogue, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn capture_prefix_model(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: CapturePrefixModelRequest,
+    ) -> Result<PrefixModelSpecification, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn get_prefix_model_artifacts(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _artifact_set: &str,
+    ) -> Result<PrefixModelArtifactDetail, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn retain_prefix_model_artifacts(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: RetainPrefixModelArtifactsRequest,
+    ) -> Result<PrefixModelArtifactSet, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn retain_prefix_design_proposal(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _request: RetainPrefixDesignProposalRequest,
+    ) -> Result<PrefixDesignProposal, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn list_prefix_sources(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _generation: Option<&str>,
+    ) -> Result<PrefixSourceInventory, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn register_prefix_source(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _request: RegisterPrefixSourceRequest,
+    ) -> Result<PrefixSourceRegistration, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn list_prefix_generations(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+    ) -> Result<Vec<PrefixGenerationSummary>, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn get_prefix_generation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _generation: &str,
+    ) -> Result<PrefixGenerationDetail, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+    async fn import_prefix_generation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _request: ImportPrefixGenerationRequest,
+    ) -> Result<PrefixGenerationDetail, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
@@ -1841,6 +1995,7 @@ pub struct RebornServices {
     thread_operation_locks: Arc<ThreadOperationLocks>,
     extension_registry: Option<Arc<dyn brassclaw_host_api::CapabilityRegistry>>,
     capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
+    instance_tool_settings: Option<Arc<dyn crate::instance_tools::InstanceToolSettings>>,
     safety_config_store: Option<Arc<dyn crate::safety_config_store::SafetyConfigStore>>,
     token_settings_store: Option<Arc<dyn crate::token_settings_store::TokenSettingsStore>>,
     /// Reduction-rule persistence port backing `/tokens/reduction-rules/*`.
@@ -1926,6 +2081,7 @@ impl RebornServices {
             thread_operation_locks: Arc::new(StdMutex::new(HashMap::new())),
             extension_registry: None,
             capability_permission_store: None,
+            instance_tool_settings: None,
             safety_config_store: None,
             token_settings_store: None,
             reduction_rule_store: None,
@@ -2050,6 +2206,14 @@ impl RebornServices {
     }
 
     /// Attach the capability permission store for managing permission overrides.
+    pub fn with_instance_tool_settings(
+        mut self,
+        service: Arc<dyn crate::instance_tools::InstanceToolSettings>,
+    ) -> Self {
+        self.instance_tool_settings = Some(service);
+        self
+    }
+
     pub fn with_capability_permission_store(
         mut self,
         capability_permission_store: Arc<dyn CapabilityPermissionStore>,
@@ -3015,13 +3179,14 @@ impl RebornServicesApi for RebornServices {
         &self,
         caller: WebUiAuthenticatedCaller,
         provider_id: String,
+        expected_revision: u64,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
         let service = self
             .llm_config
             .as_ref()
             .ok_or_else(llm_config::llm_config_unavailable)?;
         service
-            .delete_provider(caller, provider_id)
+            .delete_provider(caller, provider_id, expected_revision)
             .await
             .map_err(llm_config::map_llm_config_error)
     }
@@ -3256,6 +3421,39 @@ impl RebornServicesApi for RebornServices {
             permission_mode: request.permission_mode,
             updated: true,
         })
+    }
+
+    async fn list_instance_tool_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<Vec<crate::instance_tools::InstanceToolSetting>, RebornServicesError> {
+        self.instance_tool_settings
+            .as_ref()
+            .ok_or_else(|| {
+                instance_tool_settings_error(
+                    crate::instance_tools::InstanceToolSettingsError::Unavailable,
+                )
+            })?
+            .list()
+            .await
+            .map_err(instance_tool_settings_error)
+    }
+    async fn update_instance_tool_setting(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        tool_id: Uuid,
+        request: crate::instance_tools::UpdateInstanceToolSetting,
+    ) -> Result<crate::instance_tools::InstanceToolSetting, RebornServicesError> {
+        self.instance_tool_settings
+            .as_ref()
+            .ok_or_else(|| {
+                instance_tool_settings_error(
+                    crate::instance_tools::InstanceToolSettingsError::Unavailable,
+                )
+            })?
+            .update(tool_id, &request)
+            .await
+            .map_err(instance_tool_settings_error)
     }
 
     async fn get_safety_sensitive_paths(
@@ -4002,6 +4200,20 @@ impl RebornServicesApi for RebornServices {
             .await
             .map_err(map_recipe_store_error)
     }
+    async fn reconcile_post_turn_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        attempt: &str,
+        request: crate::recipes::ReviewReconciliationRequest,
+    ) -> Result<crate::recipes::ReviewReconciliationReceipt, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .reconcile_post_turn_review(attempt, request)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
     async fn record_review_disposition(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -4029,6 +4241,19 @@ impl RebornServicesApi for RebornServices {
             .map_err(map_recipe_store_error)
     }
 
+    async fn get_component_revision_head(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        component_id: &str,
+    ) -> Result<crate::recipes::ComponentRevisionHeadView, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .get_component_revision_head(component_id)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
     async fn get_component_review_submission(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -4038,6 +4263,56 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(recipe_store_unavailable)?
             .get_component_review_submission(submission_id)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn prepare_component_deployment(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: crate::recipes::PrepareComponentDeploymentRequest,
+    ) -> Result<crate::recipes::ComponentDeploymentPlan, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .prepare_component_deployment(request)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn export_catalogue_sources(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        generation: &str,
+    ) -> Result<crate::recipes::CatalogueSourceExport, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .export_catalogue_sources(generation)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn catalogue_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::recipes::CatalogueActivationStatus, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .catalogue_status()
+            .await
+            .map_err(map_recipe_store_error)
+    }
+    async fn activate_catalogue(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::recipes::ActivateCatalogueRequest,
+    ) -> Result<crate::recipes::CatalogueActivationReceipt, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .activate_catalogue(&caller.user_id.to_string(), request)
             .await
             .map_err(map_recipe_store_error)
     }
@@ -4348,6 +4623,134 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
             .update(caller, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+
+    async fn prefix_model_design_catalogue(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<PrefixModelDesignCatalogue, RebornServicesError> {
+        let snapshot = self.get_llm_config(caller.clone()).await?;
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .model_design_catalogue(caller, prefix_model_targets(&snapshot))
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn capture_prefix_model(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: CapturePrefixModelRequest,
+    ) -> Result<PrefixModelSpecification, RebornServicesError> {
+        let snapshot = self.get_llm_config(caller.clone()).await?;
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .capture_model(caller, request, prefix_model_targets(&snapshot))
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn get_prefix_model_artifacts(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        artifact_set: &str,
+    ) -> Result<PrefixModelArtifactDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_model_artifacts(caller, specification, artifact_set)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn retain_prefix_model_artifacts(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: RetainPrefixModelArtifactsRequest,
+    ) -> Result<PrefixModelArtifactSet, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .retain_model_artifacts(caller, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn retain_prefix_design_proposal(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        request: RetainPrefixDesignProposalRequest,
+    ) -> Result<PrefixDesignProposal, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .retain_design_proposal(caller, profile, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn list_prefix_sources(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        generation: Option<&str>,
+    ) -> Result<PrefixSourceInventory, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .list_sources(caller, profile, generation)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn register_prefix_source(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        request: RegisterPrefixSourceRequest,
+    ) -> Result<PrefixSourceRegistration, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .register_source(caller, profile, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn list_prefix_generations(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+    ) -> Result<Vec<PrefixGenerationSummary>, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .list_generations(caller, profile)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn get_prefix_generation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        generation: &str,
+    ) -> Result<PrefixGenerationDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .get_generation(caller, profile, generation)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+    async fn import_prefix_generation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        request: ImportPrefixGenerationRequest,
+    ) -> Result<PrefixGenerationDetail, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .import_generation(caller, profile, request)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
@@ -6271,4 +6674,68 @@ fn map_config_store_error(error: crate::settings::ConfigStoreError) -> RebornSer
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         }
     }
+}
+
+// Project registered role selections; display names never supply architecture,
+// tokenizer identity or a context window for another overridden model.
+fn prefix_model_targets(snapshot: &LlmConfigSnapshot) -> Vec<PrefixModelTarget> {
+    [
+        ("kohai", snapshot.kohai_active.as_ref()),
+        ("sempai", snapshot.sempai_active.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(consumer, active)| {
+        let active = active?;
+        let provider = snapshot
+            .providers
+            .iter()
+            .find(|p| p.id == active.provider_id)?;
+        let model = active
+            .model
+            .as_ref()
+            .filter(|model| !model.trim().is_empty())
+            .unwrap_or(&provider.default_model);
+        if model.trim().is_empty() {
+            return None;
+        }
+        Some(PrefixModelTarget {
+            provider_id: provider.id.clone(),
+            provider_revision: provider.revision,
+            model: model.clone(),
+            consumer: consumer.into(),
+            configured_context_window: (model == &provider.default_model)
+                .then_some(provider.context_window_tokens)
+                .flatten(),
+        })
+    })
+    .collect()
+}
+
+fn instance_tool_settings_error(
+    error: crate::instance_tools::InstanceToolSettingsError,
+) -> RebornServicesError {
+    use crate::instance_tools::InstanceToolSettingsError;
+    let (code, kind, status) = match error {
+        InstanceToolSettingsError::Invalid => (
+            RebornServicesErrorCode::InvalidRequest,
+            RebornServicesErrorKind::Validation,
+            400,
+        ),
+        InstanceToolSettingsError::NotFound => (
+            RebornServicesErrorCode::NotFound,
+            RebornServicesErrorKind::NotFound,
+            404,
+        ),
+        InstanceToolSettingsError::Conflict => (
+            RebornServicesErrorCode::Conflict,
+            RebornServicesErrorKind::Conflict,
+            409,
+        ),
+        InstanceToolSettingsError::Unavailable => (
+            RebornServicesErrorCode::Unavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+        ),
+    };
+    RebornServicesError::from_status_kind(code, kind, status, false)
 }

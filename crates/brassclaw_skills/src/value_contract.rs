@@ -18,6 +18,15 @@ pub struct ContractLimits {
     pub max_bytes: usize,
 }
 
+/// Technical bound for executing typed values, distinct from the smaller
+/// immutable component/schema document bound. VM/transport/kernel limits still
+/// apply; this never changes an authored schema or grants Tool authority.
+pub const EXECUTION_DATA_LIMITS: ContractLimits = ContractLimits {
+    max_depth: 64,
+    max_nodes: 262_144,
+    max_bytes: 64 * 1024 * 1024,
+};
+
 impl ContractLimits {
     fn validate(self) -> Result<Self, ContractError> {
         if !(1..=64).contains(&self.max_depth) || self.max_nodes == 0 || self.max_bytes == 0 {
@@ -103,6 +112,7 @@ struct Schema {
 #[derive(Clone, Copy)]
 enum Position {
     Input,
+    Parameter,
     Field,
     Value,
     Computed,
@@ -112,6 +122,7 @@ enum Position {
 /// inputs fail rather than accidentally becoming code-accessible authority.
 #[derive(Clone)]
 pub struct InputContract {
+    omit_missing_parameters: bool,
     schemas: BTreeMap<String, Schema>,
     limits: ContractLimits,
 }
@@ -220,6 +231,24 @@ impl InputContract {
     /// Use only with already decoded, duplicate-checked trusted records. An
     /// ordinary `serde_json::Value` cannot prove duplicate-key rejection.
     pub fn from_value(value: &Value, limits: ContractLimits) -> Result<Self, ContractError> {
+        Self::parse_mapping(value, limits, Position::Input)
+    }
+
+    /// Registered Tool parameters may be genuinely omitted. Unlike Recipe
+    /// consumer inputs, an optional parameter needs no invented default/null.
+    /// Supplied values, recursive contracts and explicit defaults remain checked.
+    pub fn tool_parameters_from_value(
+        value: &Value,
+        limits: ContractLimits,
+    ) -> Result<Self, ContractError> {
+        Self::parse_mapping(value, limits, Position::Parameter)
+    }
+
+    fn parse_mapping(
+        value: &Value,
+        limits: ContractLimits,
+        position: Position,
+    ) -> Result<Self, ContractError> {
         let limits = limits.validate()?;
         check_size(value, limits)?;
         let object = object(value, "$")?;
@@ -230,7 +259,7 @@ impl InputContract {
             }
             schemas.insert(
                 name.clone(),
-                parse_schema(schema, Position::Input, true, &field("$", name), limits)?,
+                parse_schema(schema, position, true, &field("$", name), limits)?,
             );
         }
         for (name, schema) in &schemas {
@@ -248,30 +277,53 @@ impl InputContract {
                 }
             }
         }
-        Ok(Self { schemas, limits })
+        Ok(Self {
+            schemas,
+            limits,
+            omit_missing_parameters: matches!(position, Position::Parameter),
+        })
+    }
+
+    /// Preserve the exact schema/defaults while selecting a finite technical
+    /// value bound for execution. Parsing the schema retains its original bound.
+    pub fn with_data_limits(mut self, limits: ContractLimits) -> Result<Self, ContractError> {
+        self.limits = limits.validate()?;
+        Ok(self)
     }
 
     /// Materialize independent task-owned defaults only after bounded input
     /// validation. Explicit null and invalid supplied values never use defaults.
     pub fn bind(&self, supplied: &Value) -> Result<Map<String, Value>, ContractError> {
-        check_size(supplied, self.limits)?;
+        self.bind_with_limits(supplied, self.limits)
+    }
+
+    /// Borrow the immutable schema; override only this invocation's finite
+    /// data bounds without copying defaults or replacing reviewed contracts.
+    pub fn bind_with_limits(
+        &self,
+        supplied: &Value,
+        limits: ContractLimits,
+    ) -> Result<Map<String, Value>, ContractError> {
+        let limits = limits.validate()?;
+        check_size(supplied, limits)?;
         let supplied = object(supplied, "$")?;
         if supplied.keys().any(|name| !self.schemas.contains_key(name)) {
             return Err(error("$", "undeclared input"));
         }
         let mut bound = Map::new();
         let mut budget = SizeBudget {
-            limits: self.limits,
+            limits,
             nodes: 0,
             bytes: 0,
         };
         budget.enter(0, 0)?;
         for (name, schema) in &self.schemas {
             let path = field("$", name);
-            let value = supplied
-                .get(name)
-                .or(schema.default.as_ref())
-                .ok_or_else(|| error(&path, "required value is missing"))?;
+            let value = match supplied.get(name).or(schema.default.as_ref()) {
+                Some(value) => value,
+                None if self.omit_missing_parameters && schema.required == Some(false) => continue,
+                None => return Err(error(&path, "required value is missing")),
+            };
             budget.enter(1, name.len())?;
             let value = schema.bind_value(value, &path, &mut budget, 1)?;
             bound.insert(name.clone(), value);
@@ -279,13 +331,19 @@ impl InputContract {
         // Defaults can increase the combined payload. Check their aggregate,
         // rather than allowing every separately small default to evade a cap.
         let result = Value::Object(bound);
-        check_size(&result, self.limits)?;
+        check_size(&result, limits)?;
         let bound = result.as_object().expect("constructed object");
         for (name, schema) in &self.schemas {
             for check in &schema.checks {
                 if let Check::MaxField(target) = check {
-                    let left = bound[name].as_number().expect("validated numeric input");
-                    let right = bound[target].as_number().expect("validated numeric target");
+                    let Some(left) = bound.get(name) else {
+                        continue;
+                    };
+                    let right = bound
+                        .get(target)
+                        .ok_or_else(|| error(&field("$", name), "cross-input target is missing"))?;
+                    let left = left.as_number().expect("validated numeric input");
+                    let right = right.as_number().expect("validated numeric target");
                     if number_cmp(left, right) == Ordering::Greater {
                         return Err(error(&field("$", name), "cross-input maximum exceeded"));
                     }
@@ -315,6 +373,12 @@ impl fmt::Debug for ValueContract {
 }
 
 impl ValueContract {
+    /// Change only technical execution bounds, never result meaning or defaults.
+    pub fn with_data_limits(mut self, limits: ContractLimits) -> Result<Self, ContractError> {
+        self.limits = limits.validate()?;
+        Ok(self)
+    }
+
     pub fn result_from_json(source: &str, limits: ContractLimits) -> Result<Self, ContractError> {
         let limits = limits.validate()?;
         let value = strict_json(source, limits)?;
@@ -364,7 +428,15 @@ impl ValueContract {
     }
 
     pub fn validate(&self, value: &Value) -> Result<(), ContractError> {
-        check_size(value, self.limits)?;
+        self.validate_with_limits(value, self.limits)
+    }
+
+    pub fn validate_with_limits(
+        &self,
+        value: &Value,
+        limits: ContractLimits,
+    ) -> Result<(), ContractError> {
+        check_size(value, limits.validate()?)?;
         self.schema.validate_value(value, "$")
     }
 
@@ -528,7 +600,10 @@ fn parse_schema(
         Some("object") => Kind::Object,
         _ => return Err(error(path, "invalid schema type")),
     };
-    let present = matches!(position, Position::Input | Position::Field);
+    let present = matches!(
+        position,
+        Position::Input | Position::Parameter | Position::Field
+    );
     let mut allowed = vec!["type", "checks"];
     if kind != Kind::Null {
         allowed.push("nullable");
@@ -682,7 +757,11 @@ fn parse_checks(
         Some(value) => value
             .as_array()
             .ok_or_else(|| error(path, "checks must be list"))?,
-        None if matches!(position, Position::Input | Position::Computed) => {
+        None if matches!(
+            position,
+            Position::Input | Position::Parameter | Position::Computed
+        ) =>
+        {
             return Err(error(path, "explicit checks required"));
         }
         None => return Ok(Vec::new()),
@@ -721,7 +800,9 @@ fn parse_checks(
             ),
             "min" => Check::Min(numeric()?),
             "max" => Check::Max(numeric()?),
-            "max_field" if kind.numeric() && matches!(position, Position::Input) => {
+            "max_field"
+                if kind.numeric() && matches!(position, Position::Input | Position::Parameter) =>
+            {
                 let input = check
                     .get("input")
                     .and_then(Value::as_str)

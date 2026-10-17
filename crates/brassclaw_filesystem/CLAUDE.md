@@ -5,7 +5,8 @@ There is one trait (`RootFilesystem`), one entry type (`Entry`), one mount
 table (`CompositeRootFilesystem`). Every persistence concern in the workspace
 (secrets, leases, processes, memory documents, project files, event logs,
 engine state, settings, …) lives behind a single set of ops: `put` / `get` /
-`delete` / `list_dir` / `query` / `ensure_index` / `stat` / `begin` /
+`delete` / `list_dir` / `query` / `get_metadata` / `query_metadata` /
+`ensure_index` / `stat` / `begin` /
 `append` / `tail`.
 
 This supersedes the earlier "bytes mount; structured records stay typed"
@@ -33,7 +34,7 @@ codified in `docs/reborn/2026-05-14-universal-fs-dispatch.md` (the new ADR).
   higher-level stores accept in their constructor. Performs the permission
   check against `MountView` before any backend dispatch.
 - Backends: `LocalFilesystem`, `PostgresRootFilesystem`,
-  `LibSqlRootFilesystem`, `InMemoryBackend`. All implement
+  `InMemoryBackend`, `HsmBackend`. All implement
   `RootFilesystem`.
 - Backend containment checks (symlink traversal, mount escape, raw-host
   path prevention).
@@ -111,3 +112,28 @@ consumers of the legacy methods — new code should call `put`/`get`/
 - Any change to the trait surface needs an accompanying
   `InMemoryBackend` test demonstrating the new op in
   `src/in_memory.rs::tests`.
+
+
+## Body-free structural projection
+
+`EntryMetadata` is a read projection containing only canonical path and optional
+record kind. It is not another stored Entry or proof of payload validity.
+`get_metadata` is exact; `query_metadata` returns live pages of entries at/below
+the requested prefix, excluding directories, ordered by UTF-8 path bytes.
+Neither reads/clones bodies or indexed values. Consumers retain domain filtering
+and complete pagination. There is no default full-body fallback.
+
+The separate appended `Capability::EntryMetadata` advertises both methods.
+PostgreSQL and in-memory implement it; CompositeRootFilesystem forwards through
+the existing longest matching mount, as ordinary query does. This does not add
+cross-mount query federation. Scoped reads require read permission; metadata
+queries require both read and list. Byte-only/HSM and legacy memory adapters do
+not claim this record projection. A future encryption decorator can forward it
+without decrypting payloads. The existing indexed Filter contract is unchanged.
+
+`query_index_metadata(prefix, key, page)` additionally projects one selected
+index field as `EntryIndexMetadata { metadata, value }`. Its separate appended
+`Capability::EntryIndexMetadata` does not imply permission. Missing fields are
+`None`; malformed selected JSON/container data is an error. Unrequested fields
+and bodies are not returned or validated. It uses the same page order, selected
+mount and read+list gate; there is no materialized-entry fallback.

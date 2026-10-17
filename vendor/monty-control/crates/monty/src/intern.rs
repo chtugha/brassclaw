@@ -1606,6 +1606,9 @@ pub enum StaticStrings {
     Repl,
     /// `replace()` method, shared by `str` and `bytes`.
     Replace,
+    /// BrassClaw-only reusable coroutine slot in the caller's gather group.
+    #[strum(serialize = "_replace_sibling")]
+    ReplaceSibling,
     /// `@dataclass(repr=...)`.
     Repr,
     /// `resolution` class constant of the `datetime` classes.

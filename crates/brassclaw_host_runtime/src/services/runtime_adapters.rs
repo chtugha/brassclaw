@@ -315,19 +315,19 @@ where
             }
         };
 
-        let output_bytes = serde_json::to_vec(&result.output)
-            .map(|bytes| bytes.len() as u64)
-            .map_err(|_| {
-                tracing::debug!(
-                    reservation_id = %reservation.id,
-                    "first-party runtime adapter output serialization failed"
-                );
-                release_first_party_reservation(request.governor, reservation.id);
-                DispatchError::FirstParty {
-                    kind: RuntimeDispatchErrorKind::OutputDecode,
-                    safe_summary: None,
-                }
-            })?;
+        let output_bytes =
+            crate::first_party_tools::bounded_output_bytes(&result.output, isize::MAX as u64)
+                .map_err(|_| {
+                    tracing::debug!(
+                        reservation_id = %reservation.id,
+                        "first-party runtime adapter output serialization failed"
+                    );
+                    release_first_party_reservation(request.governor, reservation.id);
+                    DispatchError::FirstParty {
+                        kind: RuntimeDispatchErrorKind::OutputDecode,
+                        safe_summary: None,
+                    }
+                })?;
         let mut usage = result.usage;
         usage.output_bytes = usage.output_bytes.max(output_bytes);
         let receipt = match request.governor.reconcile(reservation.id, usage.clone()) {

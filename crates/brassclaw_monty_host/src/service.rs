@@ -43,9 +43,13 @@ use crate::{
     },
 };
 
+/// Chosen only by the host task owner, never decoded from a chat message.
+pub use crate::task_entry::TaskEntry;
+
 /// Opaque product identities are data. Claims and credentials have no field here.
 #[derive(Serialize)]
 pub struct TaskInput {
+    pub entry: TaskEntry,
     pub conversation_id: String,
     pub message_id: String,
     pub turn_id: String,
@@ -97,6 +101,13 @@ fn valid_reason(reason: &str) -> bool {
 /// Child hosting may use the supplied transport to execute one selected feed;
 /// it cannot select or change the root's next Recipe step.
 pub trait TaskPorts: Send + Sync + 'static {
+    /// Trusted correlation to the actual retained parent port owner. This is
+    /// scheduling metadata, never a Tool grant or a replacement task workflow.
+    /// The service resolves it against its own live task/continuation inventory.
+    fn dependency_parent(&self) -> Option<Arc<dyn TaskPorts>> {
+        None
+    }
+
     fn call(
         self: Arc<Self>,
         task: TaskHandle,
@@ -139,6 +150,8 @@ struct TaskSettingsPublication {
     settings: TaskSettings,
     values: Option<crate::VmBounds>,
     max_recipe_contexts: Option<u32>,
+    max_pending_host_calls: Option<u32>,
+    max_workers: Option<u32>,
     admission_limits: Option<AdmissionLimits>,
     max_pending_settings: Option<u32>,
     max_retained_attempts: Option<u32>,
@@ -152,6 +165,8 @@ struct TaskSettingsPublication {
 }
 #[derive(Default)]
 struct HostingPolicyPatch {
+    workers: Option<u32>,
+    pending_host_calls: Option<u32>,
     admission: Option<AdmissionLimits>,
     pending_settings: Option<u32>,
     retained_attempts: Option<u32>,
@@ -204,6 +219,11 @@ impl SettingsCapacityObservation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceHostingLimits {
+    /// None preserves the pool target. Requires a pool-enabled global root.
+    /// A reduction retains busy workers until their tasks have been released.
+    pub max_workers: Option<u32>,
+    /// None preserves the actual global VM's current pending-call policy.
+    pub max_pending_host_calls: Option<u32>,
     /// None preserves the configured frame policy, including legacy callers.
     pub max_frame_bytes: Option<usize>,
     /// None preserves the worker's current adapter headroom.
@@ -275,6 +295,8 @@ impl From<&ProcessSnapshot> for HeapObservation {
     }
 }
 pub struct SettingsReceipt {
+    /// Actual membership at acknowledgement; reductions may still be draining.
+    pub worker_pool: Option<crate::process::WorkerPoolSnapshot>,
     pub heap: HeapObservation,
     pub allocator: crate::heap::AllocatorStatus,
     pub frame: crate::heap::FrameStatus,
@@ -296,10 +318,12 @@ struct SettingsInbox {
 }
 
 struct Control {
+    root: RootExecutionIdentity,
     cancelled: AtomicBool,
     changed: Arc<Notify>,
     ports: Arc<dyn TaskPorts>,
     result: watch::Sender<Option<Result<Arc<TaskReceipt>, ServiceFailure>>>,
+    unsubmitted: watch::Sender<Option<Arc<UnsubmittedTask>>>,
 }
 /// Actual task completion plus any root answers withheld after fencing.
 /// Payloads stay private to the trusted caller, never ordinary Python state.
@@ -316,6 +340,11 @@ pub struct TaskReceipt {
 #[derive(Clone)]
 pub struct TaskControl(Arc<Control>);
 impl TaskControl {
+    /// Sealed proof of an explicit queue rejection before any Admit exchange.
+    /// None on uncertain transport/worker failures; an error alone is no proof.
+    pub fn unsubmitted_rejection(&self) -> Option<Arc<UnsubmittedTask>> {
+        self.0.unsubmitted.borrow().clone()
+    }
     /// Nonblocking observation of the actual service receipt. No synthetic
     /// settlement is inferred from cancellation or a dropped turn waiter.
     pub fn receipt(&self) -> Option<Result<Arc<TaskReceipt>, ServiceFailure>> {
@@ -351,6 +380,56 @@ impl TaskControl {
 pub struct TaskTicket {
     control: TaskControl,
 }
+
+/// The service never submitted this input to the VM. This is not a VM receipt
+/// or an authorization grant. Private fields bind it to the original instance,
+/// run, cause and port owner. Queued proof is issued only before an Admit exchange.
+pub struct UnsubmittedTask {
+    root: RootExecutionIdentity,
+    run_id: String,
+    ports: Arc<dyn TaskPorts>,
+    reason: UnsubmittedReason,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnsubmittedReason {
+    Cancelled,
+    Rejected(ServiceFailure),
+}
+impl UnsubmittedReason {
+    pub fn reason_kind(self) -> &'static str {
+        match self {
+            Self::Cancelled => "task_cancelled",
+            Self::Rejected(ServiceFailure::InvalidInput) => "monty_input_rejected",
+            Self::Rejected(ServiceFailure::Backpressure) => "monty_admission_backpressure",
+            Self::Rejected(ServiceFailure::Closed) => "monty_service_closed",
+            Self::Rejected(_) => "monty_admission_rejected",
+        }
+    }
+}
+impl UnsubmittedTask {
+    pub fn reason(&self) -> UnsubmittedReason {
+        self.reason
+    }
+    pub fn matches(
+        &self,
+        root: RootExecutionIdentity,
+        run_id: &str,
+        ports: &Arc<dyn TaskPorts>,
+    ) -> bool {
+        self.root == root && self.run_id == run_id && Arc::ptr_eq(&self.ports, ports)
+    }
+}
+
+pub enum TaskSubmission {
+    Accepted(TaskTicket),
+    Cancelled(UnsubmittedTask),
+    Rejected(UnsubmittedTask),
+}
+
+struct PreparedInput {
+    input: Value,
+    credit: AdmissionCredit,
+}
 impl TaskTicket {
     pub fn control(&self) -> TaskControl {
         self.control.clone()
@@ -369,6 +448,7 @@ impl Drop for TaskTicket {
 struct Admission {
     input: Value,
     control: TaskControl,
+    parent: Option<Arc<dyn TaskPorts>>,
     // Covers the channel, the local FIFO and an uncertain Admit exchange.
     // Draining the channel must not increase the configured queue capacity.
     _credit: AdmissionCredit,
@@ -384,6 +464,7 @@ pub struct ServiceClient {
     closed_wake: Arc<Notify>,
     values: watch::Receiver<crate::VmBounds>,
     recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
+    pending_calls: watch::Receiver<crate::global::PendingCallCapacity>,
     root_source_bytes: usize,
     root: RootExecutionIdentity,
     worker_process_id: Option<u32>,
@@ -436,6 +517,18 @@ impl ServiceClient {
 
     pub fn vm_bounds(&self) -> crate::VmBounds {
         *self.values.borrow()
+    }
+
+    pub fn live_worker_pool(&self) -> watch::Receiver<Option<crate::process::WorkerPoolSnapshot>> {
+        self.transport.live_worker_pool()
+    }
+
+    pub fn worker_pool(&self) -> Option<crate::process::WorkerPoolSnapshot> {
+        self.transport.live_worker_pool().borrow().clone()
+    }
+
+    pub fn pending_call_capacity(&self) -> crate::global::PendingCallCapacity {
+        *self.pending_calls.borrow()
     }
 
     pub fn recipe_context_capacity(&self) -> crate::process::RecipeContextCapacity {
@@ -708,6 +801,8 @@ impl ServiceClient {
             || !hosting.admission.valid()
             || hosting.max_pending_settings == 0
             || hosting.max_retained_attempts == 0
+            || hosting.max_pending_host_calls == Some(0)
+            || hosting.max_workers == Some(0)
         {
             return Err(ServiceFailure::InvalidLimits);
         }
@@ -717,6 +812,8 @@ impl ServiceClient {
             Some(values),
             Some(max_recipe_contexts),
             HostingPolicyPatch {
+                workers: hosting.max_workers,
+                pending_host_calls: hosting.max_pending_host_calls,
                 admission: Some(hosting.admission),
                 pending_settings: Some(hosting.max_pending_settings),
                 retained_attempts: Some(hosting.max_retained_attempts),
@@ -819,6 +916,8 @@ impl ServiceClient {
                 settings,
                 values,
                 max_recipe_contexts,
+                max_pending_host_calls: hosting.pending_host_calls,
+                max_workers: hosting.workers,
                 admission_limits: hosting.admission,
                 max_pending_settings: hosting.pending_settings,
                 max_retained_attempts: hosting.retained_attempts,
@@ -926,6 +1025,68 @@ impl ServiceClient {
         input: TaskInput,
         ports: Arc<dyn TaskPorts>,
     ) -> Result<TaskTicket, ServiceFailure> {
+        let prepared = if ports.dependency_parent().is_some() {
+            self.prepare_available_input(input)?
+        } else {
+            self.wait_for_input_capacity(input).await?
+        };
+        self.submit_with_credit(prepared.input, ports, prepared.credit)
+    }
+
+    /// All waits precede enqueue. Cancellation drops the input and any queue
+    /// credit before returning proof; an accepted ticket is never discarded.
+    pub async fn submit_unless_cancelled(
+        &self,
+        input: TaskInput,
+        ports: Arc<dyn TaskPorts>,
+        cancellation: impl Future<Output = ()>,
+    ) -> Result<TaskSubmission, ServiceFailure> {
+        let run_id = input.run_id.clone();
+        let related = ports.dependency_parent().is_some();
+        let prepared = tokio::select! {
+            biased;
+            () = cancellation => {
+                ports.fence();
+                return Ok(TaskSubmission::Cancelled(UnsubmittedTask {
+                    root: self.root, run_id, ports, reason: UnsubmittedReason::Cancelled,
+                }));
+            },
+            prepared = async {
+                if related { self.prepare_available_input(input) }
+                else { self.wait_for_input_capacity(input).await }
+            } => prepared,
+        };
+        let prepared = match prepared {
+            Ok(prepared) => prepared,
+            Err(reason) => {
+                ports.fence();
+                return Ok(TaskSubmission::Rejected(UnsubmittedTask {
+                    root: self.root,
+                    run_id,
+                    ports,
+                    reason: UnsubmittedReason::Rejected(reason),
+                }));
+            }
+        };
+        // No await separates preparation from enqueue and ticket ownership.
+        match self.submit_with_credit(prepared.input, ports.clone(), prepared.credit) {
+            Ok(ticket) => Ok(TaskSubmission::Accepted(ticket)),
+            Err(reason) => {
+                ports.fence();
+                Ok(TaskSubmission::Rejected(UnsubmittedTask {
+                    root: self.root,
+                    run_id,
+                    ports,
+                    reason: UnsubmittedReason::Rejected(reason),
+                }))
+            }
+        }
+    }
+
+    async fn wait_for_input_capacity(
+        &self,
+        input: TaskInput,
+    ) -> Result<PreparedInput, ServiceFailure> {
         self.admission_credits.wait_available().await?;
         let (input, bytes) = self.prepare_input(input)?;
         let credit = self.admission_credits.reserve(bytes).await?;
@@ -941,7 +1102,7 @@ impl ServiceClient {
             let blocked = memory.borrow_and_update().backpressure;
             let pending = heap.borrow_and_update().status.pending_reduction;
             if !blocked && !pending {
-                return self.submit_with_credit(input, ports, credit);
+                return Ok(PreparedInput { input, credit });
             }
             tokio::select! {
                 result = memory.changed() => { result.map_err(|_| ServiceFailure::Closed)?; }
@@ -986,6 +1147,14 @@ impl ServiceClient {
         input: TaskInput,
         ports: Arc<dyn TaskPorts>,
     ) -> Result<TaskTicket, ServiceFailure> {
+        let prepared = self.prepare_available_input(input)?;
+        self.submit_with_credit(prepared.input, ports, prepared.credit)
+    }
+
+    /// A dependent must not wait for queue credits held by a sibling which
+    /// cannot run until this dependent's parent finishes. Reject bounded
+    /// overload explicitly; never invent extra capacity or replay a task.
+    fn prepare_available_input(&self, input: TaskInput) -> Result<PreparedInput, ServiceFailure> {
         if self.closed.load(Ordering::Acquire) {
             return Err(ServiceFailure::Closed);
         }
@@ -997,7 +1166,7 @@ impl ServiceClient {
         self.admission_credits.available()?;
         let (input, bytes) = self.prepare_input(input)?;
         let credit = self.admission_credits.try_reserve(bytes)?;
-        self.submit_with_credit(input, ports, credit)
+        Ok(PreparedInput { input, credit })
     }
 
     fn prepare_input(&self, input: TaskInput) -> Result<(Value, usize), ServiceFailure> {
@@ -1010,6 +1179,9 @@ impl ServiceClient {
         .iter()
         .any(|id| id.is_empty())
         {
+            return Err(ServiceFailure::InvalidInput);
+        }
+        if !input.entry.valid() {
             return Err(ServiceFailure::InvalidInput);
         }
         let observed_values = self.vm_bounds();
@@ -1062,16 +1234,21 @@ impl ServiceClient {
             return Err(ServiceFailure::Closed);
         }
         let (result, _) = watch::channel(None);
+        let (unsubmitted, _) = watch::channel(None);
+        let parent = ports.dependency_parent();
         let control = TaskControl(Arc::new(Control {
+            root: self.root,
             cancelled: AtomicBool::new(false),
             changed: Arc::clone(&self.changed),
             ports,
             result,
+            unsubmitted,
         }));
         self.admissions
             .send(Admission {
                 input,
                 control: control.clone(),
+                parent,
                 _credit: credit,
             })
             .map_err(|_| ServiceFailure::Closed)?;
@@ -1164,6 +1341,8 @@ impl ServiceOwner {
             process,
             actor,
             ServiceHostingLimits {
+                max_workers: None,
+                max_pending_host_calls: None,
                 max_frame_bytes: None,
                 adapter_reserve_bytes: None,
                 admission: admission_limits,
@@ -1196,6 +1375,13 @@ impl ServiceOwner {
         if !hosting.admission.valid()
             || hosting.max_pending_settings == 0
             || hosting.max_retained_attempts == 0
+            || hosting.max_pending_host_calls == Some(0)
+            || hosting.max_workers.is_some_and(|workers| {
+                workers != boot.bounds.workers || !boot.aliases.contains("await_pool_update")
+            })
+            || hosting
+                .max_pending_host_calls
+                .is_some_and(|limit| limit as usize != boot.bounds.max_pending_calls)
         {
             return Err(StartError::Actor(
                 crate::transport_actor::ActorFailure::InvalidLimits,
@@ -1229,7 +1415,6 @@ impl ServiceOwner {
             return Err(StartError::Actor(ActorFailure::InvalidLimits));
         }
         let root_source_bytes = boot.source.len();
-        let workers = boot.bounds.workers;
         let (owner, ready) = TransportOwner::start(executable, boot, process, actor).await?;
         let worker_process_id = owner.worker_process_id();
         let root = ready.root.expect("transport verified root identity");
@@ -1271,6 +1456,7 @@ impl ServiceOwner {
             closed_wake: closed_wake.clone(),
             values: owner.client().live_vm_bounds(),
             recipe_contexts: owner.client().live_recipe_contexts(),
+            pending_calls: owner.client().live_pending_calls(),
             root_source_bytes,
             root,
             worker_process_id,
@@ -1292,7 +1478,6 @@ impl ServiceOwner {
                 admission_credits,
                 retained_credits,
                 closed_wake,
-                workers,
                 settings: SettingsInbox {
                     requests: settings_rx,
                     credits: settings_credits,
@@ -1335,6 +1520,9 @@ impl Drop for ServiceOwner {
 
 struct TaskRecord {
     worker: u32,
+    parent: Option<TaskHandle>,
+    pending: Option<ContinuationKey>,
+    finishing: bool,
     control: TaskControl,
     cancellation_sent: bool,
     outcome: Option<TaskOutcome>,
@@ -1391,12 +1579,41 @@ async fn next_host_result(
     }
 }
 
+/// A finished parent host future remains owned while a related child is alive.
+/// Select another ready answer without polling an all-blocked queue.
+async fn next_unblocked_host_result(
+    calls: &mut Calls,
+    ready: &mut VecDeque<PortResult>,
+    blocked: &std::collections::BTreeSet<TaskHandle>,
+) -> Option<PortResult> {
+    if let Some(index) = ready
+        .iter()
+        .position(|result| !blocked.contains(&result.task))
+    {
+        return ready.remove(index);
+    }
+    calls.next().await
+}
+
+fn parent_task(
+    parent: &Arc<dyn TaskPorts>,
+    tasks: &BTreeMap<TaskHandle, TaskRecord>,
+) -> Result<TaskHandle, ServiceFailure> {
+    let mut matching = tasks
+        .iter()
+        .filter(|(_, task)| Arc::ptr_eq(parent, &task.control.0.ports));
+    let (id, _) = matching.next().ok_or(ServiceFailure::InvalidInput)?;
+    if matching.next().is_some() {
+        return Err(ServiceFailure::Protocol);
+    }
+    Ok(*id)
+}
+
 struct ShutdownBounds {
     root: RootExecutionIdentity,
     admission_credits: Arc<AdmissionCapacity>,
     retained_credits: Arc<AdmissionCapacity>,
     closed_wake: Arc<Notify>,
-    workers: u32,
     settings: SettingsInbox,
 }
 
@@ -1421,6 +1638,66 @@ async fn exchange(
     }
     // Preserve successful withheld answers in the owning task receipt below.
     receipt.outcome.map_err(|_| ServiceFailure::Transport)
+}
+
+/// Effect-free feasibility denial must not terminate the instance. Only the
+/// worker's explicit resource rejection is recoverable here; an uncertain
+/// reservation or protocol failure retains its original transport evidence.
+async fn check_dependent_capacity(
+    client: &TransportClient,
+    evidence: &mut ExchangeEvidence,
+    snapshot: &mut ProcessSnapshot,
+    parent: ContinuationKey,
+    parent_task: TaskHandle,
+    child_run: uuid::Uuid,
+) -> Result<bool, ServiceFailure> {
+    let ticket = client
+        .try_submit(WorkerCommand::ValidateDependentWorker {
+            parent,
+            parent_task,
+            child_run,
+        })
+        .map_err(|error| {
+            evidence.rejected.push(*error.command);
+            ServiceFailure::Transport
+        })?;
+    let receipt = ticket.wait().await.map_err(|_| ServiceFailure::Transport)?;
+    let mut next = match receipt.outcome {
+        Ok(next) => next,
+        Err(ref error)
+            if matches!(
+                error.kind,
+                ProcessFailure::Vm(
+                    crate::VmFailure::InvalidBounds | crate::VmFailure::ResourceLimit
+                )
+            ) && error.snapshot.as_deref().is_some_and(|next| {
+                next.boundary.is_none()
+                    && next.recipe.is_none()
+                    && next.admitted_task.is_none()
+                    && next.withheld_answers.is_empty()
+                    && next.worker_pool == snapshot.worker_pool
+                    && next.outstanding == snapshot.outstanding
+            }) =>
+        {
+            return Ok(false);
+        }
+        Err(_) => {
+            evidence.failed.push(receipt);
+            return Err(ServiceFailure::Transport);
+        }
+    };
+    if next.boundary.is_some()
+        || next.recipe.is_some()
+        || next.admitted_task.is_some()
+        || !next.withheld_answers.is_empty()
+        || next.worker_pool != snapshot.worker_pool
+        || next.outstanding != snapshot.outstanding
+    {
+        return Err(ServiceFailure::Protocol);
+    }
+    next.boundary = snapshot.boundary.take();
+    *snapshot = next;
+    Ok(true)
 }
 
 /// Expected pre-publication resource denials leave the task policy and worker
@@ -1493,6 +1770,8 @@ fn runtime_commit(
     let settings = publication.settings;
     let values = publication.values;
     let contexts = publication.max_recipe_contexts;
+    let pending_calls = publication.max_pending_host_calls;
+    let workers = publication.max_workers;
     let reserve = publication.adapter_reserve_bytes;
     let frame = publication.frame_bytes;
     let heap_update = publication.heap_update;
@@ -1512,6 +1791,19 @@ fn runtime_commit(
             || receipt.effective_task_settings != Some(settings)
             || values.is_some_and(|values| receipt.vm_bounds != Some(values))
             || receipt.vm_bounds.is_none()
+            || receipt.pending_call_capacity.is_none()
+            || pending_calls.is_some_and(|limit| {
+                receipt
+                    .pending_call_capacity
+                    .is_none_or(|capacity| capacity.limit != limit)
+            })
+            || workers.is_some_and(|workers| {
+                receipt.worker_pool.as_ref().is_none_or(|pool| {
+                    pool.capacity.desired != workers
+                        || !pool.capacity.target_present()
+                        || !pool.capacity.coordinator_waiting
+                })
+            })
             || receipt.recipe_context_capacity.is_none()
             || contexts.is_some_and(|limit| {
                 receipt
@@ -1660,8 +1952,27 @@ async fn run(
     let mut queued_evidence = Vec::new();
     let mut heap_inspection: Option<tokio::time::Instant> = None;
     let mut settings_turn = true;
+    let mut pending_settings: Option<CreditedPublication> = None;
     let result = async {
         loop {
+            // A dependency cannot outlive a cancelled ancestor. Use actual
+            // service controls, including nested dependants, rather than run IDs.
+            loop {
+                let descendants: Vec<_> = tasks.values().filter(|task|
+                    !task.control.0.cancelled.load(Ordering::Acquire)
+                        && task.parent.is_some_and(|parent| tasks.get(&parent)
+                            .is_none_or(|record| record.control.0.cancelled.load(Ordering::Acquire))))
+                    .map(|task| task.control.clone()).collect();
+                if descendants.is_empty() { break; }
+                for control in descendants { control.cancel(); }
+            }
+            for admission in &queued {
+                if let Some(parent) = &admission.parent
+                    && parent_task(parent, &tasks).ok().and_then(|id| tasks.get(&id))
+                        .is_some_and(|task| task.control.0.cancelled.load(Ordering::Acquire)) {
+                    admission.control.cancel();
+                }
+            }
             // These inputs have never entered the VM. Cancellation can therefore
             // acknowledge no VM account without waiting for a free worker or
             // an unrelated external host future. FIFO survivors retain order.
@@ -1714,7 +2025,30 @@ async fn run(
             // yielding CPU slices. No host dispatch/admission occurs between
             // the worker's acknowledgement and publication to Rust consumers.
             shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
-            if settings_turn && let Ok(CreditedPublication { publication, _credit }) = shutdown.settings.requests.try_recv() {
+            if settings_turn && pending_settings.is_none() {
+                pending_settings = shutdown.settings.requests.try_recv().ok();
+            }
+            // A complete product settings object repeats the worker target.
+            // Preserve the ordinary live-budget path when that target already
+            // matches this serialized root/revision; CPU-active tasks must not
+            // delay an unrelated duration edit until global quiescence.
+            if let Some(CreditedPublication {
+                publication: SettingsPublication::Task(publication), ..
+            }) = pending_settings.as_mut()
+                && publication.expected == shutdown.settings.live.current().revision
+                && publication.max_workers.is_some_and(|workers|
+                    snapshot.worker_pool.as_ref().is_some_and(|pool| pool.capacity.desired == workers)) {
+                publication.max_workers = None;
+            }
+            // Pool changes consume the parked coordinator. Retain the original
+            // credited request while real root calls/control yields are settled
+            // below; never restore a consumed boundary or discard queue credits.
+            let needs_quiescence = pending_settings.as_ref().is_some_and(|pending|
+                matches!(&pending.publication, SettingsPublication::Task(publication)
+                    if publication.max_workers.is_some()))
+                && matches!(snapshot.boundary,
+                    Some(ProcessBoundary::HostCall { .. } | ProcessBoundary::ControlYield { .. }));
+            if !needs_quiescence && let Some(CreditedPublication { publication, _credit }) = pending_settings.take() {
                 settings_turn = false;
                 if shutting_down {
                     publication.reject(ServiceFailure::Closed);
@@ -1747,6 +2081,8 @@ async fn run(
                             let update = with_host_progress(update_runtime(&transport, &mut exchanges, WorkerCommand::Recipe {
                                 command: match publication.values {
                                     Some(values) => RecipeCommand::UpdateRuntimeSettings {
+                                        max_pending_host_calls: publication.max_pending_host_calls,
+                                        max_workers: publication.max_workers,
                                         expected_revision: publication.expected, settings: publication.settings, values,
                                         max_recipe_contexts: publication.max_recipe_contexts,
                                         adapter_reserve_bytes: publication.adapter_reserve_bytes,
@@ -1776,12 +2112,15 @@ async fn run(
                             // UpdateSettings does not advance the root. Preserve its
                             // actual unconsumed call/control boundary; replacing it
                             // with the side-command's None would strand execution.
-                            receipt.boundary = snapshot.boundary.take();
+                            if publication.max_workers.is_none() {
+                                receipt.boundary = snapshot.boundary.take();
+                            }
                             snapshot = receipt;
                             // Rust policy and worker observations were published
                             // before the actor released this successful ACK or
                             // allowed any subsequent child RPC to execute.
                             publication.result.send_replace(Some(Ok(Arc::new(SettingsReceipt {
+                                worker_pool: snapshot.worker_pool.clone(),
                                 heap: HeapObservation::from(&snapshot),
                                 allocator: snapshot.allocator,
                                 frame: snapshot.frame,
@@ -1881,7 +2220,13 @@ async fn run(
             // correlation; otherwise preserve the evidence and fail containment.
             let releasable: Vec<_> = tasks.iter().filter_map(|(id, task)| {
                 (task.outcome.is_some() && snapshot.work_waits.iter()
-                    .any(|(worker, _)| *worker == task.worker)).then_some(*id)
+                    .any(|(worker, _)| *worker == task.worker)
+                    // The work-wait call must be deferred before releasing a
+                    // dependent slot: the pool coordinator is not quiescent
+                    // while that unconsumed Python boundary is still current.
+                    && snapshot.worker_pool.as_ref().is_none_or(|pool|
+                        pool.capacity.coordinator_waiting || !pool.dependents.iter()
+                            .any(|loan| loan.worker == task.worker))).then_some(*id)
             }).collect();
             for id in releasable {
                 let accounting = snapshot.task_accounting.iter().find(|account| account.task == id)
@@ -1903,6 +2248,22 @@ async fn run(
                 // An idle instance must not keep reporting freed task memory.
                 receipt.boundary = snapshot.boundary.take();
                 snapshot = receipt;
+                if snapshot.worker_pool.as_ref().is_some_and(|pool|
+                    pool.dependents.iter().any(|loan| loan.worker == tasks[&id].worker)) {
+                    let mut released = exchange(&transport, &mut exchanges,
+                        WorkerCommand::ReleaseDependentWorker {
+                            worker: tasks[&id].worker, child_task: Some(id),
+                        }).await?;
+                    if released.boundary.is_some() || released.recipe.is_some()
+                        || released.admitted_task.is_some() || !released.withheld_answers.is_empty()
+                        || released.worker_pool.as_ref().is_none_or(|pool|
+                            pool.dependents.iter().any(|loan| loan.worker == tasks[&id].worker)) {
+                        snapshot = released;
+                        return Err(ServiceFailure::Protocol);
+                    }
+                    released.boundary = snapshot.boundary.take();
+                    snapshot = released;
+                }
                 shutdown.settings.heap.send_replace(HeapObservation::from(&snapshot));
                 let task = tasks.remove(&id).expect("selected task");
                 task.control.0.result.send_replace(Some(Ok(Arc::new(TaskReceipt {
@@ -1923,15 +2284,24 @@ async fn run(
                         if !snapshot.work_waits.iter().any(|(_, waiting)| *waiting == key) {
                             return Err(ServiceFailure::Protocol);
                         }
+                    } else if name == "await_pool_update" {
+                        if !args.is_empty() || !kwargs.is_empty()
+                            || snapshot.worker_pool.as_ref().and_then(|pool| pool.coordinator) != Some(key) {
+                            return Err(ServiceFailure::Protocol);
+                        }
                     } else {
                         let task: TaskHandle = serde_json::from_value(
                             args.first().cloned().ok_or(ServiceFailure::Protocol)?)
                             .map_err(|_| ServiceFailure::Protocol)?;
-                        let record = tasks.get(&task).ok_or(ServiceFailure::Protocol)?;
+                        let record = tasks.get_mut(&task).ok_or(ServiceFailure::Protocol)?;
+                        if record.pending.replace(key).is_some() {
+                            return Err(ServiceFailure::Protocol);
+                        }
                         args.remove(0);
                         let ports = record.control.0.ports.clone();
                         let transport = transport.clone();
                         if name == "finish_task" {
+                            record.finishing = true;
                             if args.len() != 1 || !kwargs.is_empty() {
                                 return Err(ServiceFailure::Protocol);
                             }
@@ -1972,46 +2342,146 @@ async fn run(
                 // Pending admissions never ran. Their callers get an explicit
                 // stopped result instead of an invented successful task.
                 snapshot = exchange(&transport, &mut exchanges, WorkerCommand::BeginShutdown).await?;
-                for _ in 0..shutdown.workers {
+                loop {
                     settle_shutdown_boundary(&transport, &mut exchanges, &mut snapshot,
                         transport.hosting_deadlines().map_err(|_| ServiceFailure::Transport)?.response_timeout).await?;
-                    let key = snapshot.work_waits.first().ok_or(ServiceFailure::Protocol)?.1;
+                    let Some((_, key)) = snapshot.work_waits.first().copied() else { break; };
                     snapshot = exchange(&transport, &mut exchanges, WorkerCommand::CloseWorker { key }).await?;
                 }
                 settle_shutdown_boundary(&transport, &mut exchanges, &mut snapshot,
                     transport.hosting_deadlines().map_err(|_| ServiceFailure::Transport)?.response_timeout).await?;
+                if snapshot.worker_pool.as_ref().and_then(|pool| pool.coordinator).is_some() {
+                    snapshot = exchange(&transport, &mut exchanges, WorkerCommand::ClosePoolCoordinator).await?;
+                    settle_shutdown_boundary(&transport, &mut exchanges, &mut snapshot,
+                        transport.hosting_deadlines().map_err(|_| ServiceFailure::Transport)?.response_timeout).await?;
+                }
                 if snapshot.lifecycle != Lifecycle::Stopped { return Err(ServiceFailure::Protocol); }
                 return Ok(());
             }
 
-            let available = snapshot.work_waits.iter().find(|(worker, _)|
-                !tasks.values().any(|task| task.worker == *worker)).copied();
-            let memory_backpressure = shutdown.settings.memory_admission.borrow().backpressure;
-            if !shutting_down && !snapshot.heap.pending_reduction
-                && !memory_backpressure
-                && let Some((worker, key)) = available
-                && let Some(admission) = queued.pop_front() {
-                // Recheck the complete typed input at the actual dispatch boundary:
-                // queued input retains its original history; it is never truncated.
-                let probe = WorkerCommand::Admit { key, task: admission.input.clone() };
-                let mut values = transport.live_vm_bounds().borrow().to_owned();
-                values.max_value_nodes = values.max_value_nodes.saturating_sub(2);
-                values.max_value_bytes = values.max_value_bytes.saturating_sub(64);
-                if crate::process::retain_command(&probe, values, transport.frame_limit()).is_err() {
-                    drop(reject(admission, ServiceFailure::InvalidInput));
-                    continue;
-                }
-                pending_admission = Some(admission);
-                snapshot = exchange(&transport, &mut exchanges, WorkerCommand::Admit {
-                    key, task: pending_admission.as_ref().expect("retained admission").input.clone(),
-                }).await?;
-                let task = snapshot.admitted_task.ok_or(ServiceFailure::Protocol)?;
-                if tasks.contains_key(&task) { return Err(ServiceFailure::Protocol); }
-                let admission = pending_admission.take().expect("retained admission");
-                tasks.insert(task, TaskRecord { worker, control: admission.control,
-                    cancellation_sent: false, outcome: None, retained: Vec::new(), withheld: Vec::new() });
+            // Completion above releases task-owned heaps and delivers receipts
+            // before a surplus worker can disappear from the work-wait inventory.
+            let pool = snapshot.worker_pool.as_ref();
+            if !shutting_down && pool.is_some_and(|pool| pool.capacity.coordinator_waiting)
+                && let Some((_, key)) = snapshot.work_waits.iter().find(|(worker, _)|
+                    pool.is_some_and(|pool| *worker >= pool.capacity.desired
+                        && pool.capacity.borrowed_ids.binary_search(worker).is_err())
+                        && !tasks.values().any(|task| task.worker == *worker)).copied() {
+                snapshot = exchange(&transport, &mut exchanges, WorkerCommand::DrainWorker { key }).await?;
                 continue;
             }
+            let available = snapshot.work_waits.iter().find(|(worker, _)|
+                pool.is_none_or(|pool| *worker < pool.capacity.desired
+                    && pool.capacity.borrowed_ids.binary_search(worker).is_err()
+                    && tasks.values().filter(|task|
+                        pool.capacity.borrowed_ids.binary_search(&task.worker).is_err()).count()
+                        < pool.capacity.desired as usize)
+                    && !tasks.values().any(|task| task.worker == *worker)).copied();
+            let memory_backpressure = shutdown.settings.memory_admission.borrow().backpressure;
+            if snapshot.heap.pending_reduction || memory_backpressure {
+                // A queued sibling must not hold its parent's ready answer
+                // behind a new admission pause. Accepted active children keep
+                // running; unstarted dependent work gets an explicit denial.
+                let mut index = 0;
+                while index < queued.len() {
+                    if queued[index].parent.is_some() {
+                        drop(reject(queued.remove(index).expect("selected admission"), ServiceFailure::Backpressure));
+                    } else {
+                        index += 1;
+                    }
+                }
+            }
+            if !shutting_down && !snapshot.heap.pending_reduction && !memory_backpressure {
+                // Resolve private parent ownership before selecting work. A stale
+                // or ambiguous relationship is an admission error, never No-Match
+                // and never a fabricated cancellation acknowledgement.
+                if let Some(index) = queued.iter().position(|admission|
+                    admission.parent.as_ref().is_some_and(|parent|
+                        parent_task(parent, &tasks).ok().and_then(|id| tasks.get(&id))
+                            .is_none_or(|task| task.pending.is_none() || task.finishing || task.outcome.is_some()))) {
+                    drop(reject(queued.remove(index).expect("selected admission"), ServiceFailure::InvalidInput));
+                    continue;
+                }
+                let related = queued.iter().enumerate().find_map(|(index, admission)| {
+                    let parent = parent_task(admission.parent.as_ref()?, &tasks).ok()?;
+                    let record = tasks.get(&parent)?;
+                    let key = record.pending?;
+                    (!record.control.0.cancelled.load(Ordering::Acquire)
+                        && record.outcome.is_none()
+                        && pool.is_none_or(|pool| !pool.dependents.iter()
+                            .any(|loan| loan.parent == key)))
+                        .then_some((index, parent, key))
+                });
+                let selection = related.map(|(index, parent, key)| (index, Some((parent, key))))
+                    .or_else(|| available.and_then(|_| queued.iter().position(|item| item.parent.is_none()))
+                        .map(|index| (index, None)));
+                if let Some((index, dependency)) = selection {
+                    let mut target = available;
+                    if target.is_none() && let Some((parent_task, parent)) = dependency
+                        && pool.is_some_and(|pool| pool.capacity.coordinator_waiting && pool.capacity.target_present()) {
+                        let child_run = queued[index].input.get("run_id").and_then(Value::as_str)
+                            .and_then(|run| uuid::Uuid::parse_str(run).ok()).filter(|run| !run.is_nil());
+                        let Some(child_run) = child_run else {
+                            drop(reject(queued.remove(index).expect("selected admission"), ServiceFailure::InvalidInput));
+                            continue;
+                        };
+                        if !check_dependent_capacity(&transport, &mut exchanges, &mut snapshot,
+                            parent, parent_task, child_run).await? {
+                            drop(reject(queued.remove(index).expect("selected admission"), ServiceFailure::Backpressure));
+                            continue;
+                        }
+                        snapshot = exchange(&transport, &mut exchanges, WorkerCommand::ReserveDependentWorker {
+                            parent, parent_task, child_run,
+                        }).await?;
+                        let loan = snapshot.worker_pool.as_ref().and_then(|pool| pool.dependents.iter()
+                            .find(|loan| loan.parent == parent && loan.parent_task == parent_task.to_string()
+                                && loan.child_run == child_run && loan.child_task.is_none()))
+                            .ok_or(ServiceFailure::Protocol)?;
+                        target = snapshot.work_waits.iter().find(|(worker, _)| *worker == loan.worker).copied();
+                        if target.is_none() { return Err(ServiceFailure::Protocol); }
+                    }
+                    if let Some((worker, key)) = target {
+                        let admission = queued.remove(index).expect("selected admission");
+                        // Recheck the complete typed input at actual dispatch.
+                        // Queue priority does not truncate history or expand limits.
+                        let probe = WorkerCommand::Admit { key, task: admission.input.clone() };
+                        let mut values = transport.live_vm_bounds().borrow().to_owned();
+                        values.max_value_nodes = values.max_value_nodes.saturating_sub(2);
+                        values.max_value_bytes = values.max_value_bytes.saturating_sub(64);
+                        if crate::process::retain_command(&probe, values, transport.frame_limit()).is_err() {
+                            // The value rejection is already definitive and
+                            // predates Admit. Retain its proof even if releasing
+                            // an unused loan subsequently fails containment.
+                            drop(reject(admission, ServiceFailure::InvalidInput));
+                            // A live resource reduction may invalidate this input.
+                            // No reservation is allowed to survive rejection.
+                            if let Some(loan) = snapshot.worker_pool.as_ref().and_then(|pool|
+                                pool.dependents.iter().find(|loan| loan.worker == worker)) {
+                                if loan.child_task.is_some() { return Err(ServiceFailure::Protocol); }
+                                let mut released = exchange(&transport, &mut exchanges,
+                                    WorkerCommand::ReleaseDependentWorker { worker, child_task: None }).await?;
+                                released.boundary = snapshot.boundary.take();
+                                snapshot = released;
+                            }
+                            continue;
+                        }
+                        pending_admission = Some(admission);
+                        snapshot = exchange(&transport, &mut exchanges, WorkerCommand::Admit {
+                            key, task: pending_admission.as_ref().expect("retained admission").input.clone(),
+                        }).await?;
+                        let task = snapshot.admitted_task.ok_or(ServiceFailure::Protocol)?;
+                        if tasks.contains_key(&task) { return Err(ServiceFailure::Protocol); }
+                        let admission = pending_admission.take().expect("retained admission");
+                        tasks.insert(task, TaskRecord { worker, parent: dependency.map(|(parent, _)| parent),
+                            pending: None, finishing: false, control: admission.control,
+                            cancellation_sent: false, outcome: None, retained: Vec::new(), withheld: Vec::new() });
+                        continue;
+                    }
+                }
+            }
+            let blocked: std::collections::BTreeSet<_> = tasks.values().filter_map(|task| task.parent)
+                .chain(queued.iter().filter_map(|item| item.parent.as_ref()
+                    .and_then(|parent| parent_task(parent, &tasks).ok()))).collect();
             tokio::select! {
                 // Notify permits coalesce. Remaining owned publications are
                 // already ready work; yield once and revisit without polling
@@ -2038,10 +2508,18 @@ async fn run(
                     };
                     queued.push_back(admission);
                 }
-                Some(result) = next_host_result(&mut calls, &mut ready_calls),
-                    if !calls.is_empty() || !ready_calls.is_empty() => {
+                Some(result) = next_unblocked_host_result(&mut calls, &mut ready_calls, &blocked),
+                    if !calls.is_empty() || ready_calls.iter().any(|result| !blocked.contains(&result.task)) => {
+                    if result.panicked {
+                        ready_calls.push_back(result);
+                        return Err(ServiceFailure::InvalidPortResult);
+                    }
+                    if blocked.contains(&result.task) {
+                        ready_calls.push_back(result);
+                        continue;
+                    }
                     let record = tasks.get_mut(&result.task).ok_or(ServiceFailure::Protocol)?;
-                    if result.panicked { return Err(ServiceFailure::InvalidPortResult); }
+                    if record.pending.take() != Some(result.key) { return Err(ServiceFailure::Protocol); }
                     if let Some(finished) = result.finished {
                         record.outcome = Some(finished.map_err(|_| ServiceFailure::InvalidPortResult)?);
                         if record.control.0.cancelled.load(Ordering::Acquire) {
@@ -2086,6 +2564,9 @@ async fn run(
     shutdown.retained_credits.close();
     shutdown.settings.credits.close();
     shutdown.settings.requests.close();
+    if let Some(pending) = pending_settings.take() {
+        pending.publication.reject(ServiceFailure::Closed);
+    }
     while let Ok(publication) = shutdown.settings.requests.try_recv() {
         publication.publication.reject(ServiceFailure::Closed);
     }
@@ -2170,6 +2651,21 @@ async fn run(
 
 fn reject(admission: Admission, reason: ServiceFailure) -> AdmissionEvidence {
     admission.control.0.ports.fence();
+    // This input is still in the host queue, never pending_admission. Publish
+    // exact proof before waking the error waiter. Fatal/uncertain Admit paths
+    // deliberately do not call this function or issue this proof.
+    if let Some(run_id) = admission.input.get("run_id").and_then(Value::as_str) {
+        admission
+            .control
+            .0
+            .unsubmitted
+            .send_replace(Some(Arc::new(UnsubmittedTask {
+                root: admission.control.0.root,
+                run_id: run_id.to_owned(),
+                ports: admission.control.0.ports.clone(),
+                reason: UnsubmittedReason::Rejected(reason),
+            })));
+    }
     admission.control.0.result.send_replace(Some(Err(reason)));
     AdmissionEvidence {
         input: admission.input,
@@ -2200,6 +2696,22 @@ async fn settle_shutdown_boundary(
                             .work_waits
                             .iter()
                             .any(|(_, waiting)| *waiting == key) =>
+                {
+                    *snapshot = exchange(transport, evidence, WorkerCommand::Defer { key }).await?;
+                }
+                Some(ProcessBoundary::HostCall {
+                    key,
+                    name,
+                    args,
+                    kwargs,
+                }) if name == "await_pool_update"
+                    && args.is_empty()
+                    && kwargs.is_empty()
+                    && snapshot
+                        .worker_pool
+                        .as_ref()
+                        .and_then(|pool| pool.coordinator)
+                        == Some(key) =>
                 {
                     *snapshot = exchange(transport, evidence, WorkerCommand::Defer { key }).await?;
                 }
@@ -2234,11 +2746,9 @@ fn parse_finish(value: Value) -> Result<TaskOutcome, ServiceFailure> {
         {
             Ok(TaskOutcome::Completed { reply_ref })
         }
-        ("internal_completed", None, None, Some(receipt_ref))
-            if receipt_ref.strip_prefix("review:").is_some_and(|id| {
-                uuid::Uuid::parse_str(id).is_ok_and(|uuid| !uuid.is_nil() && uuid.to_string() == id)
-            }) =>
-        {
+        // Internal receipt namespaces belong to the selected task owner, not
+        // the mechanical service. Its finish hook verifies the actual record.
+        ("internal_completed", None, None, Some(receipt_ref)) if !receipt_ref.is_empty() => {
             Ok(TaskOutcome::InternalCompleted { receipt_ref })
         }
         ("failed", None, Some(reason_kind), None) if valid_reason(&reason_kind) => {

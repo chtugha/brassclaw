@@ -69,6 +69,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress,
+            http_client_cache_control,
             tool_call_http_egress,
             process_port,
             managed_process_port,
@@ -110,6 +111,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress,
+            http_client_cache_control,
             tool_call_http_egress,
             process_port,
             managed_process_port,
@@ -164,6 +166,7 @@ where
             secret_injection_store,
             process_lifecycle_store: _,
             runtime_http_egress,
+            http_client_cache_control,
             tool_call_http_egress,
             process_port,
             managed_process_port,
@@ -215,6 +218,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress,
+            http_client_cache_control,
             tool_call_http_egress,
             process_port,
             managed_process_port,
@@ -679,6 +683,7 @@ where
     where
         T: RuntimeHttpEgress + 'static,
     {
+        self.http_client_cache_control = None;
         self.component_types.runtime_http_egress = Some(ProductionComponentType::of::<T>());
         self.component_types.runtime_http_egress_verified = false;
         let runtime_http_egress: Arc<dyn RuntimeHttpEgress> = runtime_http_egress;
@@ -706,10 +711,11 @@ where
     /// Use this when the tool-call path intentionally differs from the strict
     /// runtime HTTP path, such as tests that assert `builtin.http.save` does not
     /// route through model-visible output handling.
-    pub fn with_tool_call_http_egress<T>(self, tool_call_http_egress: Arc<T>) -> Self
+    pub fn with_tool_call_http_egress<T>(mut self, tool_call_http_egress: Arc<T>) -> Self
     where
         T: crate::ToolCallHttpEgress + 'static,
     {
+        self.http_client_cache_control = None;
         let tool_call_http_egress: Arc<dyn crate::ToolCallHttpEgress> = tool_call_http_egress;
         set_tool_call_http_egress(&self.tool_call_http_egress, tool_call_http_egress);
         self
@@ -773,6 +779,7 @@ where
         N: NetworkHttpEgress + 'static,
         SecretBackend: SecretStore + 'static,
     {
+        self.http_client_cache_control = None;
         self.component_types.runtime_http_egress = Some(ProductionComponentType::of::<
             crate::HostHttpEgressService<N, SecretBackend>,
         >());
@@ -849,6 +856,37 @@ where
     {
         let body_store: Arc<dyn RuntimeHttpBodyStore> = body_store;
         self.try_with_host_http_egress_internal(network, body_store)
+    }
+
+    /// Attach the hardened transport and its actual cache control together.
+    /// Replacing either egress port later invalidates that control attachment.
+    /// Hardened transport with no response-file store. Saved-body operations
+    /// remain unsupported; inline requests share the actual resource control.
+    pub fn try_with_hardened_http_transport(
+        self,
+        transport: brassclaw_network::ReqwestNetworkTransport,
+    ) -> Result<Self, ProductionWiringReport> {
+        self.try_with_hardened_http_transport_with_body_store(
+            transport,
+            Arc::new(UnsupportedRuntimeHttpBodyStore),
+        )
+    }
+
+    pub fn try_with_hardened_http_transport_with_body_store<T>(
+        self,
+        transport: brassclaw_network::ReqwestNetworkTransport,
+        body_store: Arc<T>,
+    ) -> Result<Self, ProductionWiringReport>
+    where
+        T: RuntimeHttpBodyStore + 'static,
+    {
+        let control = transport.client_cache_control();
+        let mut services = self.try_with_host_http_egress_with_body_store(
+            brassclaw_network::PolicyNetworkHttpEgress::new(transport),
+            body_store,
+        )?;
+        services.http_client_cache_control = Some(control);
+        Ok(services)
     }
 
     fn try_with_host_http_egress_internal<N>(

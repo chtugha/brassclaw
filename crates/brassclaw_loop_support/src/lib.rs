@@ -87,6 +87,12 @@ pub use pg_checkpoint_state_store::PgCheckpointStateStore;
 #[async_trait]
 pub trait SystemBundleSource: Send + Sync {
     async fn get_system_bundle(&self, user_id: &str, project_id: &str) -> String;
+    /// A retained run may keep an older approved catalogue after activation.
+    /// Existing immutable sources need no additional selection mechanism.
+    async fn get_system_bundle_for_run(&self, user_id: &str, project_id: &str, _run_id: &str) -> String {
+        self.get_system_bundle(user_id, project_id).await
+    }
+
 }
 
 pub use subagent_prompt_port::{
@@ -394,9 +400,10 @@ where
                 .as_ref()
                 .map(|p| p.as_str())
                 .unwrap_or("default");
+            let run_id = self.run_context.run_id.to_string();
             let bundle = self
                 .selected_system_bundle
-                .get_or_init(|| source.get_system_bundle(user_id, project_id))
+                .get_or_init(|| source.get_system_bundle_for_run(user_id, project_id, &run_id))
                 .await;
             vec![brassclaw_turns::run_profile::LoopContextSnippet {
                 snippet_ref: "prefix:bundle:v1".to_string(),

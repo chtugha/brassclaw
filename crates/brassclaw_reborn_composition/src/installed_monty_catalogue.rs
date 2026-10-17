@@ -1,6 +1,6 @@
-//! Installation-owned catalogue of the packaged typed workflows. Authored
-//! additions use their separate validation/activation owner; row labels never
-//! enter this catalogue. The immutable package generation is pinned per task.
+//! Coherent catalogue of packaged workflows and explicitly activated authored
+//! workflows. Row labels never establish approval. Each ordinary task captures
+//! its immutable generation before matching or execution.
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 use async_trait::async_trait;
@@ -14,9 +14,7 @@ use brassclaw_engine::{
             IntentResolution, IntentScope, RetainedIntentEligibility,
             resolve_catalogue_intent_in_transaction, seed_retained_recipe_intents_in_transaction,
         },
-        retained_instruction::{
-            WorkflowClass, compile_matched_retained_recipe, compile_retained_recipe,
-        },
+        retained_instruction::{WorkflowClass, compile_retained_recipe},
         retained_tools::{RetainedToolBinding, RetainedToolProgram, prepare_retained_tool_program},
     },
 };
@@ -71,10 +69,7 @@ fn failed() -> AgentLoopDriverError {
     }
 }
 pub(crate) fn id(name: &str) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::from_u128(0x19ddf38d_487e_4732_b008_5a1ec57d2ef9),
-        name.as_bytes(),
-    )
+    brassclaw_skills::global_bootstrap_components::packaged_component_id(name)
 }
 
 fn reference_value(
@@ -84,25 +79,195 @@ fn reference_value(
         "version":reference.version,"checksum":hex::encode(reference.checksum)})
 }
 
+pub(crate) enum BootstrapUsageApproval<'a> {
+    Reply(&'a crate::bootstrap_reply_approval::BootstrapReplyApproval),
+    Generation(&'a crate::bootstrap_generation_approval::BootstrapGenerationApproval),
+}
+impl BootstrapUsageApproval<'_> {
+    pub(crate) fn approval_id(&self) -> Uuid {
+        match self {
+            Self::Reply(a) => a.approval_id(),
+            Self::Generation(a) => a.approval_id(),
+        }
+    }
+    pub(crate) fn usage_approval(
+        &self,
+        binding: &brassclaw_engine::memory::retained_tools::RetainedToolBinding,
+    ) -> Option<&brassclaw_skills::association_contract::AssociationApprovalDeclaration> {
+        match self {
+            Self::Reply(a) => a.usage_approval(binding),
+            Self::Generation(a) => a.usage_approval(binding),
+        }
+    }
+    pub(crate) async fn verify_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+    ) -> Result<(), RebornBuildError> {
+        match self {
+            Self::Reply(a) => a.verify_in_transaction(tx).await,
+            Self::Generation(a) => a.verify_in_transaction(tx).await,
+        }
+    }
+}
+
 pub(crate) struct InstalledMontyCatalogue {
-    pool: Arc<PgPool>,
-    kernel: Arc<dyn MontyKernelSnapshot>,
-    reply: Arc<InspectedRetainedProgram>,
-    history: Arc<InspectedRetainedProgram>,
-    memory_mounts: MountView,
-    generation: Uuid,
-    generation_bytes: String,
-    prefix: String,
-    mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
-    qualification_scope: IntentScope,
+    initial_preparation: brassclaw_host_api::MontyExecutionLimits,
+    preparation_settings:
+        std::sync::RwLock<Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>>,
+    pub(crate) pool: Arc<PgPool>,
+    pub(crate) kernel: Arc<dyn MontyKernelSnapshot>,
+    pub(crate) reply: Arc<InspectedRetainedProgram>,
+    pub(crate) history: Arc<InspectedRetainedProgram>,
+    pub(crate) memory_mounts: MountView,
+    pub(crate) generation: Uuid,
+    pub(crate) root_reference: brassclaw_skills::association_contract::ComponentRevisionRef,
+    pub(crate) mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
+    pub(crate) qualification_scope: IntentScope,
+    pub(crate) worker: std::path::PathBuf,
+    pub(crate) active:
+        tokio::sync::RwLock<Arc<crate::authored_monty_catalogue::CatalogueGeneration>>,
+    pub(crate) activation: tokio::sync::Mutex<()>,
+    #[cfg(test)]
+    pub(crate) capture_gate:
+        tokio::sync::Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
+    captured_prefixes: std::sync::Mutex<BTreeMap<String, std::sync::Weak<TaskCatalogue>>>,
+    pub(crate) discovery_publication: tokio::sync::Mutex<()>,
     // Retain the bootstrap subject independently of its approved active selection.
     _public_reply_candidate: Arc<InspectedRetainedProgram>,
-    reply_approval: Option<crate::bootstrap_reply_approval::BootstrapReplyApproval>,
+    pub(super) _generation_candidates: [Arc<InspectedRetainedProgram>; 2],
+    pub(super) _source_compiler_candidates: crate::prefix_compiler_candidates::CompilerCandidates,
+    pub(crate) generation_approvals:
+        Vec<crate::bootstrap_generation_approval::BootstrapGenerationApproval>,
+    pub(crate) reply_approval: Option<crate::bootstrap_reply_approval::BootstrapReplyApproval>,
     // Retain the actual executable, independently of a mutable source pathname.
-    _image: Arc<NativeExecutableImage>,
+    pub(crate) _image: Arc<NativeExecutableImage>,
 }
 
 impl InstalledMontyCatalogue {
+    pub(crate) fn bootstrap_usage(
+        &self,
+        binding: &brassclaw_engine::memory::retained_tools::RetainedToolBinding,
+    ) -> Option<BootstrapUsageApproval<'_>> {
+        if let Some(approval) = self
+            .reply_approval
+            .as_ref()
+            .filter(|a| a.usage_approval(binding).is_some())
+        {
+            return Some(BootstrapUsageApproval::Reply(approval));
+        }
+        self.generation_approvals
+            .iter()
+            .find(|a| a.usage_approval(binding).is_some())
+            .map(BootstrapUsageApproval::Generation)
+    }
+
+    pub(crate) fn bind_preparation_settings(
+        &self,
+        source: Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>,
+    ) -> Result<(), RebornBuildError> {
+        let mut slot = self
+            .preparation_settings
+            .write()
+            .map_err(|_| invalid("preparation settings unavailable"))?;
+        if slot.is_some() {
+            return Err(invalid("preparation settings already bound"));
+        }
+        *slot = Some(source);
+        Ok(())
+    }
+
+    pub(crate) async fn preparation_limits(
+        &self,
+    ) -> Result<brassclaw_monty_host::utility::UtilityLimits, RebornBuildError> {
+        brassclaw_monty_host::utility::UtilityLimits::from_execution(
+            self.preparation_policy().await?,
+        )
+        .map_err(invalid)
+    }
+
+    pub(crate) async fn preparation_policy(
+        &self,
+    ) -> Result<brassclaw_host_api::MontyExecutionLimits, RebornBuildError> {
+        let source = self
+            .preparation_settings
+            .read()
+            .map_err(|_| invalid("preparation settings unavailable"))?
+            .clone();
+        let Some(source) = source else {
+            return Ok(self.initial_preparation);
+        };
+        let settings = source
+            .get("default", "default")
+            .await
+            .map_err(|_| invalid("effective preparation settings unavailable"))?;
+        settings.execution_limits.validate().map_err(invalid)?;
+        Ok(settings.execution_limits)
+    }
+    /// Same database integrity/usage checks for capture and source projection.
+    /// Caller holds activation serialization and a read-only repeatable snapshot.
+    pub(crate) async fn verify_source_selection(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        view: &crate::authored_monty_catalogue::CatalogueGeneration,
+    ) -> Result<(), AgentLoopDriverError> {
+        let row = tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&view.generation])
+            .await.map_err(|_| failed())?;
+        if row.get::<_, String>(0) != view.bytes
+            || row.get::<_, String>(1) != hex::encode(Sha256::digest(view.bytes.as_bytes()))
+        {
+            return Err(failed());
+        }
+        let active_generation: Uuid = tx
+            .query_one(
+                "SELECT catalogue_id FROM brassclaw_monty_active_catalogue WHERE singleton",
+                &[],
+            )
+            .await
+            .map_err(|_| failed())?
+            .get(0);
+        if active_generation != view.generation {
+            return Err(failed());
+        }
+        if let Some(approval) = &self.reply_approval {
+            approval
+                .verify_in_transaction(tx)
+                .await
+                .map_err(|_| failed())?;
+        }
+        for approval in &self.generation_approvals {
+            approval
+                .verify_in_transaction(tx)
+                .await
+                .map_err(|_| failed())?;
+        }
+
+        for selected in std::iter::once(&self.reply)
+            .chain(std::iter::once(&self.history))
+            .chain(view.programs.iter())
+        {
+            let instruction = selected.program().inputs().instruction();
+            let refs: Vec<_> = instruction
+                .snapshot()
+                .revisions()
+                .values()
+                .map(|revision| revision.reference())
+                .collect();
+            PgComponentRevisionStore::read_exact_in_transaction(
+                tx,
+                &[instruction.recipe().uuid],
+                &refs,
+            )
+            .await
+            .map_err(|_| failed())?;
+        }
+        for selected in &view.programs {
+            self.verify_selected_approvals(tx, selected)
+                .await
+                .map_err(|_| failed())?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn mcp_discovery(&self) -> Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery> {
         self.mcp_discovery.clone()
     }
@@ -114,10 +279,21 @@ impl InstalledMontyCatalogue {
         scope: &IntentScope,
         memory_mounts: MountView,
         root: brassclaw_skills::association_contract::ComponentRevisionRef,
+        preparation_policy: brassclaw_host_api::MontyExecutionLimits,
     ) -> Result<Arc<Self>, RebornBuildError> {
-        let image = NativeExecutableImage::capture(1024 * 1024 * 1024)
-            .await
-            .map_err(|error| invalid(error.to_string()))?;
+        let preparation =
+            brassclaw_monty_host::utility::UtilityLimits::from_execution(preparation_policy)
+                .map_err(invalid)?;
+        let image = NativeExecutableImage::capture_with_verification(
+            preparation.max_native_artifact_bytes,
+            brassclaw_host_runtime::NativeVerificationLimits::new(
+                preparation.bounds.max_stdout_bytes,
+                preparation.process.response_timeout,
+            )
+            .map_err(|error| invalid(error.to_string()))?,
+        )
+        .await
+        .map_err(|error| invalid(error.to_string()))?;
         let memory = kernel
             .builtin(&CapabilityId::new("builtin.memory_write")?, None)
             .map_err(|error| invalid(error.to_string()))?;
@@ -128,6 +304,39 @@ impl InstalledMontyCatalogue {
             .verify_native_artifact()
             .await
             .map_err(|error| invalid(error.to_string()))?;
+        crate::prefix_profile_seeds::retain(pool.as_ref()).await?;
+        let generation_tool =
+            crate::builtin_bootstrap::seed_prefix_generation_tool(pool.clone(), &scope.tenant_id)
+                .await
+                .map_err(|error| invalid(error.to_string()))?;
+        let generation_candidates = crate::prefix_generation_candidates::retain(
+            pool.clone(),
+            kernel.as_ref(),
+            generation_tool,
+            worker,
+            preparation,
+        )
+        .await?;
+        let json_tool =
+            crate::builtin_bootstrap::seed_json_primitive_tool(pool.clone(), &scope.tenant_id)
+                .await
+                .map_err(|error| invalid(error.to_string()))?;
+        let source_compiler_candidates = crate::prefix_compiler_candidates::retain(
+            pool.clone(),
+            kernel.as_ref(),
+            json_tool,
+            generation_tool,
+            worker,
+            preparation,
+        )
+        .await?;
+        let generation_approvals = Box::pin(crate::bootstrap_generation_approval::qualify(
+            pool.clone(),
+            kernel.clone(),
+            &generation_candidates,
+            worker,
+        ))
+        .await?;
         let store = PgComponentRevisionStore::new(pool.clone());
         let client = pool
             .get()
@@ -220,9 +429,13 @@ impl InstalledMontyCatalogue {
                 .map_err(|error| invalid(error.to_string()))?,
             );
             let inspected = Arc::new(
-                InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), worker)
-                    .await
-                    .map_err(|error| invalid(error.to_string()))?,
+                InspectedRetainedProgram::inspect_with_limits(
+                    RetainedProgram::Tools(program),
+                    worker,
+                    preparation,
+                )
+                .await
+                .map_err(|error| invalid(error.to_string()))?,
             );
             prepared.push(inspected);
         }
@@ -401,10 +614,30 @@ impl InstalledMontyCatalogue {
             }
             Err(error) => return Err(invalid(error.to_string())),
         }
-        Ok(Arc::new(Self {
+        let active = Arc::new(crate::authored_monty_catalogue::CatalogueGeneration {
+            generation,
+            bytes: generation_bytes.clone(),
+            prefix: prefix.clone(),
+            programs: Vec::new(),
+            recipes: Vec::new(),
+            disabled_recipes: Default::default(),
+        });
+        let catalogue = Arc::new(Self {
+            initial_preparation: preparation_policy,
+            preparation_settings: std::sync::RwLock::new(None),
+            captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
+            #[cfg(test)]
+            capture_gate: tokio::sync::Mutex::new(None),
+            worker: worker.to_owned(),
+            active: tokio::sync::RwLock::new(active),
+            activation: tokio::sync::Mutex::new(()),
+            discovery_publication: tokio::sync::Mutex::new(()),
             mcp_discovery,
             qualification_scope: scope.clone(),
             _public_reply_candidate: public_reply_candidate,
+            _generation_candidates: generation_candidates,
+            _source_compiler_candidates: source_compiler_candidates,
+            generation_approvals,
             reply_approval: public_reply_approval,
             pool,
             kernel,
@@ -412,54 +645,43 @@ impl InstalledMontyCatalogue {
             history,
             memory_mounts,
             generation,
-            generation_bytes,
-            prefix,
+            root_reference: root,
             _image: image,
-        }))
+        });
+        catalogue
+            .restore_authored()
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
+        Ok(catalogue)
     }
 }
 
 #[async_trait]
 impl SystemBundleSource for InstalledMontyCatalogue {
+    async fn get_system_bundle_for_run(&self, user: &str, project: &str, run: &str) -> String {
+        let pinned = self
+            .captured_prefixes
+            .lock()
+            .ok()
+            .and_then(|p| p.get(run).and_then(std::sync::Weak::upgrade));
+        match pinned {
+            Some(task) => task.view.prefix.clone(),
+            None => self.get_system_bundle(user, project).await,
+        }
+    }
     async fn get_system_bundle(&self, _user_id: &str, _project_id: &str) -> String {
-        self.prefix.clone()
+        self.active.read().await.prefix.clone()
     }
 }
 
 struct TaskCatalogue {
-    pool: Arc<PgPool>,
-    host: Arc<MontyTaskHost>,
     reply: SelectedMontyRecipe,
     history: SelectedMontyRecipe,
-    // Pins the qualification/artifact owner with all its exact task selections.
+    incoming: Vec<SelectedMontyRecipe>,
+    resolution: IntentResolution,
+    query: String,
+    view: Arc<crate::authored_monty_catalogue::CatalogueGeneration>,
     _package: Arc<InstalledMontyCatalogue>,
-}
-
-impl TaskCatalogue {
-    fn intent_scope(&self) -> Result<IntentScope, PortFailure> {
-        let context = self.host.run_context();
-        Ok(IntentScope {
-            tenant_id: context.scope.tenant_id.to_string(),
-            user_id: context
-                .actor
-                .as_ref()
-                .ok_or_else(failure)?
-                .user_id
-                .to_string(),
-            agent_id: context
-                .scope
-                .agent_id
-                .as_ref()
-                .ok_or_else(failure)?
-                .to_string(),
-            project_id: context
-                .scope
-                .project_id
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "default".into()),
-        })
-    }
 }
 
 #[async_trait]
@@ -468,8 +690,32 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         &self,
         host: Arc<MontyTaskHost>,
         admission: Arc<PgMontyAdmission>,
-        _input: &TaskInput,
+        input: &TaskInput,
     ) -> Result<Arc<dyn MontyTaskCatalogue>, AgentLoopDriverError> {
+        let _serial = self.activation.lock().await;
+        let view = self.active.read().await.clone();
+        let context = host.run_context();
+        let scope = IntentScope {
+            tenant_id: context.scope.tenant_id.to_string(),
+            user_id: context
+                .actor
+                .as_ref()
+                .ok_or_else(failed)?
+                .user_id
+                .to_string(),
+            agent_id: context
+                .scope
+                .agent_id
+                .as_ref()
+                .ok_or_else(failed)?
+                .to_string(),
+            project_id: context
+                .scope
+                .project_id
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "default".into()),
+        };
         let mut client = self.pool.get().await.map_err(|_| failed())?;
         let tx = client
             .build_transaction()
@@ -478,91 +724,118 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             .start()
             .await
             .map_err(|_| failed())?;
-        let row = tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&self.generation])
-            .await.map_err(|_| failed())?;
-        if row.get::<_, String>(0) != self.generation_bytes
-            || row.get::<_, String>(1)
-                != hex::encode(Sha256::digest(self.generation_bytes.as_bytes()))
+        self.verify_source_selection(&tx, &view)
+            .await
+            .map_err(|_| failed())?;
+        // MCP still enters through ordinary chat. Its durable transport receipt
+        // fences the gap between command admission and this task's matching;
+        // stale commands must not become a different Recipe or a Tier-2 prompt.
+        if let Some(call) = tx
+            .query_opt(
+                "SELECT tool_name,command,command_checksum,phase FROM brassclaw_mcp_chat_calls WHERE call_id=$1",
+                &[&context.run_id.as_uuid()],
+            )
+            .await
+            .map_err(|_| failed())?
         {
-            return Err(failed());
+            let discovery = self.mcp_discovery.snapshot().map_err(|_| failed())?;
+            if discovery.generation() != view.generation
+                || call.get::<_, String>(1) != input.user_input
+                || call.get::<_, i16>(3) != 1
+                || hex::encode(
+                    discovery
+                        .validate_command(&call.get::<_, String>(0), &input.user_input)
+                        .map_err(|_| failed())?,
+                ) != call.get::<_, String>(2)
+            {
+                return Err(failed());
+            }
         }
-        if let Some(approval) = &self.reply_approval {
-            approval
-                .verify_in_transaction(&tx)
+        let instructions: Vec<_> = std::iter::once(&self.reply)
+            .chain(view.programs.iter())
+            .filter(|p| view.routing_enabled(p))
+            .map(|p| p.program().inputs().instruction())
+            .collect();
+        if scope == self.qualification_scope {
+            crate::mcp_command_qualification::verify_routing_metadata(&tx, &scope, &instructions)
                 .await
                 .map_err(|_| failed())?;
         }
-        for selected in [&self.reply, &self.history] {
-            let instruction = selected.program().inputs().instruction();
-            let refs: Vec<_> = instruction
-                .snapshot()
-                .revisions()
-                .values()
-                .map(|revision| revision.reference())
-                .collect();
-            PgComponentRevisionStore::read_exact_in_transaction(
-                &tx,
-                &[instruction.recipe().uuid],
-                &refs,
-            )
-            .await
-            .map_err(|_| failed())?;
-        }
+        let eligible =
+            RetainedIntentEligibility::from_instructions(&instructions).map_err(|_| failed())?;
+        let resolution =
+            resolve_catalogue_intent_in_transaction(&tx, &scope, &input.user_input, &eligible)
+                .await
+                .map_err(|_| failed())?;
         tx.commit().await.map_err(|_| failed())?;
         drop(client);
+        drop(_serial);
+        #[cfg(test)]
+        if let Some((captured, release)) = self.capture_gate.lock().await.take() {
+            captured.notify_one();
+            release.notified().await;
+        }
         let mut selections = Vec::new();
-        for selected in [&self.reply, &self.history] {
+        for selected in std::iter::once(&self.reply)
+            .chain(std::iter::once(&self.history))
+            .chain(view.programs.iter())
+        {
             let RetainedProgram::Tools(program) = selected.program() else {
                 return Err(failed());
             };
-            let binding = program.bindings().values().next().ok_or_else(failed)?;
-            let capability = CapabilityId::new(binding.capability_id()).map_err(|_| failed())?;
-            let descriptor = if capability.as_str() == "host.post_reply" {
-                crate::monty_kernel::reply_package()
-                    .map_err(|_| failed())?
-                    .capabilities
-                    .into_iter()
-                    .next()
-                    .ok_or_else(failed)?
-            } else {
-                self.kernel
-                    .builtin(&capability, None)
-                    .map_err(|_| failed())?
-                    .descriptor()
-                    .clone()
-            };
-            let policy = Arc::new(PgSelectedToolPolicy {
-                host: host.clone(),
-                pool: self.pool.clone(),
-                tool: binding.tool().uuid,
-                capability: capability.clone(),
-                effects: descriptor.effects.clone(),
-                mounts: if capability.as_str() == "host.post_reply" {
-                    MountView::default()
+            let mut runtimes = BTreeMap::new();
+            for (step, binding) in program.bindings() {
+                let capability =
+                    CapabilityId::new(binding.capability_id()).map_err(|_| failed())?;
+                let descriptor = if capability.as_str() == "host.post_reply" {
+                    crate::monty_kernel::reply_package()
+                        .map_err(|_| failed())?
+                        .capabilities
+                        .into_iter()
+                        .next()
+                        .ok_or_else(failed)?
                 } else {
-                    self.memory_mounts.clone()
-                },
-            });
-            let runtime = if capability.as_str() == "host.post_reply" {
-                self.kernel
-                    .reply(host.clone(), policy)
-                    .map_err(|_| failed())?
-            } else {
-                let doc = program.inputs().instruction().snapshot().revisions()
-                    [&binding.tool().uuid]
-                    .draft()
-                    .document();
-                let expected = serde_json::from_value(doc["implementation"]["identity"].clone())
-                    .map_err(|_| failed())?;
-                self.kernel
-                    .builtin_with_policy(&capability, expected, policy)
-                    .map_err(|_| failed())?
-            };
+                    self.kernel
+                        .builtin(&capability, None)
+                        .map_err(|_| failed())?
+                        .descriptor()
+                        .clone()
+                };
+                let policy = Arc::new(PgSelectedToolPolicy {
+                    host: host.clone(),
+                    pool: self.pool.clone(),
+                    tool: binding.tool().uuid,
+                    capability: capability.clone(),
+                    effects: descriptor.effects.clone(),
+                    mounts: if capability.as_str() == "host.post_reply" {
+                        MountView::default()
+                    } else {
+                        self.memory_mounts.clone()
+                    },
+                });
+                let runtime = if capability.as_str() == "host.post_reply" {
+                    self.kernel
+                        .reply(host.clone(), policy)
+                        .map_err(|_| failed())?
+                } else {
+                    let doc = program.inputs().instruction().snapshot().revisions()
+                        [&binding.tool().uuid]
+                        .draft()
+                        .document();
+                    let expected =
+                        serde_json::from_value(doc["implementation"]["identity"].clone())
+                            .map_err(|_| failed())?;
+                    self.kernel
+                        .builtin_with_policy(&capability, expected, policy)
+                        .map_err(|_| failed())?
+                };
+                runtimes.insert(step.clone(), Arc::new(runtime));
+            }
             let tools = Arc::new(SelectedTools {
                 host: host.clone(),
                 admission: admission.clone(),
                 program: program.clone(),
-                runtime: Arc::new(runtime),
+                runtimes,
                 mounts: self.memory_mounts.clone(),
                 answers: tokio::sync::Mutex::new(BTreeMap::new()),
             });
@@ -573,15 +846,24 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                 tools: Some(tools),
             });
         }
+        let incoming = selections.split_off(2);
         let history = selections.pop().ok_or_else(failed)?;
         let reply = selections.pop().ok_or_else(failed)?;
-        Ok(Arc::new(TaskCatalogue {
-            pool: self.pool.clone(),
-            host,
+        let task = Arc::new(TaskCatalogue {
             reply,
             history,
+            incoming,
+            resolution,
+            query: input.user_input.clone(),
+            view,
             _package: self.clone(),
-        }))
+        });
+        {
+            let mut pinned = self.captured_prefixes.lock().map_err(|_| failed())?;
+            pinned.retain(|_, task| task.strong_count() > 0);
+            pinned.insert(host.run_context().run_id.to_string(), Arc::downgrade(&task));
+        }
+        Ok(task)
     }
 }
 
@@ -633,143 +915,147 @@ pub(crate) fn bootstrap_reply_tools(
         host,
         admission,
         program,
-        runtime: Arc::new(runtime),
+        runtimes: BTreeMap::from([("0:2".to_owned(), Arc::new(runtime))]),
         mounts: MountView::default(),
         answers: tokio::sync::Mutex::new(BTreeMap::new()),
     }))
 }
 
+// Closed generation qualification shares the actual dispatcher, journal and
+// live policy. The caller must first verify the exact packaged subject.
+pub(crate) fn bootstrap_generation_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    let (_step, binding) = program
+        .bindings()
+        .iter()
+        .next()
+        .filter(|_| program.bindings().len() == 1)
+        .ok_or_else(|| invalid("generation qualification requires one usage"))?;
+    if binding.capability_id() != brassclaw_host_runtime::PREFIX_GENERATION_CAPABILITY_ID {
+        return Err(invalid("generation qualification binding differs"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
+}
+
+// Transport/policy construction only. The closed producer above checks its exact
+// subject; development tests below cannot manufacture bootstrap approval.
+fn bootstrap_builtin_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    let mut runtimes = BTreeMap::new();
+    for (step, binding) in program.bindings() {
+        let capability = CapabilityId::new(binding.capability_id())
+            .map_err(|error| invalid(error.to_string()))?;
+        let descriptor = kernel
+            .builtin(&capability, None)
+            .map_err(|error| invalid(error.to_string()))?
+            .descriptor()
+            .clone();
+        let policy = Arc::new(PgSelectedToolPolicy {
+            host: host.clone(),
+            pool: pool.clone(),
+            tool: binding.tool().uuid,
+            capability: capability.clone(),
+            effects: descriptor.effects,
+            mounts: MountView::default(),
+        });
+        let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
+            live: policy,
+            denied,
+        });
+        let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
+            .draft()
+            .document();
+        let expected = serde_json::from_value(document["implementation"]["identity"].clone())
+            .map_err(|error| invalid(error.to_string()))?;
+        let runtime = kernel
+            .builtin_with_policy(&capability, expected, policy)
+            .map_err(|error| invalid(error.to_string()))?;
+        runtimes.insert(step.clone(), Arc::new(runtime));
+    }
+    Ok(Arc::new(SelectedTools {
+        host,
+        admission,
+        program,
+        runtimes,
+        mounts: MountView::default(),
+        answers: tokio::sync::Mutex::new(BTreeMap::new()),
+    }))
+}
+
+#[cfg(test)]
+pub(crate) fn prefix_compiler_test_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    if program.bindings().len() != 5
+        || program
+            .bindings()
+            .values()
+            .filter(|binding| binding.capability_id() == "builtin.json")
+            .count()
+            != 4
+        || program
+            .bindings()
+            .values()
+            .filter(|binding| {
+                binding.capability_id() == brassclaw_host_runtime::PREFIX_GENERATION_CAPABILITY_ID
+            })
+            .count()
+            != 1
+    {
+        return Err(invalid("compiler development fixture bindings differ"));
+    }
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, denied)
+}
+
 #[async_trait]
 impl MontyTaskCatalogue for TaskCatalogue {
     async fn refresh_command_qualification(&self) {
-        let package = &self._package;
-        if package
-            .mcp_discovery
-            .snapshot()
-            .is_ok_and(|snapshot| snapshot.qualification_checksum().is_some())
-        {
-            return;
-        }
-        let result = async {
-            let qualified = crate::mcp_command_qualification::qualify_installed_commands(
-                &package.pool,
-                &package.qualification_scope,
-                package.generation,
-                &[&package.reply, &package.history],
-                &[&package.reply],
-                package.reply_approval.as_ref(),
-            )
-            .await?;
-            package.mcp_discovery.publish_qualified_installed(
-                package
-                    .mcp_discovery
-                    .snapshot()
-                    .ok()
-                    .map(|snapshot| snapshot.generation()),
-                package.generation,
-                &[&package.reply, &package.history],
-                &qualified,
-            )
-        }
-        .await;
-        match result {
-            Ok(()) | Err(crate::mcp_recipe_catalogue::McpDiscoveryError::Unqualified) => {}
-            Err(crate::mcp_recipe_catalogue::McpDiscoveryError::Conflict)
-                if package.mcp_discovery.snapshot().is_ok() => {}
-            Err(error) => {
-                tracing::warn!(%error, "MCP command qualification refresh failed; discovery remains unavailable")
-            }
+        if let Err(error) = self._package.refresh_active_discovery().await {
+            tracing::warn!(%error, "MCP qualification refresh failed");
         }
     }
     async fn resolve_intent(&self, query: &str) -> Result<MontyIntentSelection, PortFailure> {
-        let scope = self.intent_scope()?;
-        let mut client = self.pool.get().await.map_err(|_| failure())?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(|_| failure())?;
-        let instruction = self.reply.inspected.program().inputs().instruction();
-        let eligible =
-            RetainedIntentEligibility::from_instructions(&[instruction]).map_err(|_| failure())?;
-        // A public command must not fall into Tier 2 after its physical route
-        // disappears or changes. This initial check retains the task selection;
-        // it never rematches a begun execution or consults latest components.
-        if scope == self._package.qualification_scope
-            && [&self._package.reply, &self._package.history]
-                .iter()
-                .any(|selected| {
-                    let instruction = selected.program().inputs().instruction();
-                    instruction.snapshot().revisions()[&instruction.recipe().uuid]
-                        .draft()
-                        .document()
-                        .get("mcp_call")
-                        .is_some()
-                })
-        {
-            crate::mcp_command_qualification::verify_routing_metadata(&tx, &scope, &[instruction])
-                .await
-                .map_err(|_| failure())?;
+        // Matching was committed with capture, before any activation can change
+        // physical routing. Child execution never looks up latest or rematches.
+        if query != self.query {
+            return Err(failure());
         }
-        let matched = resolve_catalogue_intent_in_transaction(&tx, &scope, query, &eligible)
-            .await
-            .map_err(|_| failure())?;
-        let mut result = match &matched {
-            IntentResolution::NoMatch => MontyIntentSelection::NoMatch,
-            IntentResolution::Disambiguation { .. } => MontyIntentSelection::Disambiguation,
+        match &self.resolution {
+            IntentResolution::NoMatch => Ok(MontyIntentSelection::NoMatch),
+            IntentResolution::Disambiguation { .. } => Ok(MontyIntentSelection::Disambiguation),
             IntentResolution::Match {
                 component_id,
+                step_link,
                 input_text,
                 ..
             } => {
-                let refs: Vec<_> = instruction
-                    .snapshot()
-                    .revisions()
-                    .values()
-                    .map(|r| r.reference())
-                    .collect();
-                let snapshot = Arc::new(
-                    PgComponentRevisionStore::read_exact_in_transaction(
-                        &tx,
-                        &[*component_id],
-                        &refs,
-                    )
-                    .await
-                    .map_err(|_| failure())?,
-                );
-                let actual = compile_matched_retained_recipe(
-                    snapshot,
-                    &matched,
-                    WorkflowClass::Deterministic,
-                )
-                .map_err(|_| failure())?;
-                let actual = prepare_retained_tool_program(actual).map_err(|_| failure())?;
-                let actual = match &self._package.reply_approval {
-                    Some(approval) => {
-                        approval
-                            .verify_in_transaction(&tx)
-                            .await
-                            .map_err(|_| failure())?;
-                        approval.pin_program(actual).map_err(|_| failure())?
-                    }
-                    None => actual,
-                };
-                if actual
-                    .inputs()
-                    .instruction()
-                    .retained_selection()
-                    .map_err(|_| failure())?
-                    .checksum()
-                    != instruction
-                        .retained_selection()
-                        .map_err(|_| failure())?
-                        .checksum()
-                {
-                    return Err(failure());
-                }
-                let mut selected = copy_selection(&self.reply);
+                let original = std::iter::once(&self.reply)
+                    .chain(self.incoming.iter())
+                    .find(|p| {
+                        let i = p.inspected.program().inputs().instruction();
+                        i.recipe().uuid == *component_id
+                            && i.variant().step_link == *step_link
+                            && i.variant().intent_examples.contains(input_text)
+                    })
+                    .ok_or_else(failure)?;
+                let mut selected = copy_selection(original);
                 selected.inputs = Some(
                     selected
                         .inspected
@@ -778,23 +1064,19 @@ impl MontyTaskCatalogue for TaskCatalogue {
                         .bind_variant_example(input_text, query, &json!({}))
                         .map_err(|_| failure())?,
                 );
-                MontyIntentSelection::Match(selected)
+                selected.normal_match = Some(Box::new(
+                    crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
+                        self.view.generation,
+                        query,
+                        &self.resolution,
+                        selected.inspected.program().inputs().instruction(),
+                        selected.inputs.as_ref().ok_or_else(failure)?,
+                    )
+                    .ok_or_else(failure)?,
+                ));
+                Ok(MontyIntentSelection::Match(selected))
             }
-        };
-        tx.commit().await.map_err(|_| failure())?;
-        if let MontyIntentSelection::Match(selected) = &mut result {
-            selected.normal_match = Some(Box::new(
-                crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
-                    self._package.generation,
-                    query,
-                    &matched,
-                    selected.inspected.program().inputs().instruction(),
-                    selected.inputs.as_ref().ok_or_else(failure)?,
-                )
-                .ok_or_else(failure)?,
-            ));
         }
-        Ok(result)
     }
     async fn resolve_named_recipe(&self, name: &str) -> Result<SelectedMontyRecipe, PortFailure> {
         // These exact artifacts and qualification owner were retained at task
@@ -811,7 +1093,7 @@ struct SelectedTools {
     host: Arc<MontyTaskHost>,
     admission: Arc<PgMontyAdmission>,
     program: Arc<RetainedToolProgram>,
-    runtime: Arc<RetainedFirstPartyCapability>,
+    runtimes: BTreeMap<String, Arc<RetainedFirstPartyCapability>>,
     mounts: MountView,
     // A lost answer commit retains the actual result; it cannot justify replay.
     answers: tokio::sync::Mutex<BTreeMap<String, Value>>,
@@ -830,9 +1112,12 @@ impl RetainedToolPort for SelectedTools {
         let Some(selected) = self.program.bindings().get(invocation.step_id()) else {
             return error();
         };
+        let Some(runtime) = self.runtimes.get(invocation.step_id()) else {
+            return error();
+        };
         if selected.tool() != binding.tool()
             || selected.python() != binding.python()
-            || self.runtime.descriptor().id.as_str() != binding.capability_id()
+            || runtime.descriptor().id.as_str() != binding.capability_id()
         {
             return error();
         }
@@ -861,7 +1146,12 @@ impl RetainedToolPort for SelectedTools {
         execution.resource_scope.thread_id = execution.thread_id.clone();
         let record = match self
             .admission
-            .begin_tool_invocation(&self.program, invocation.step_id(), &arguments)
+            .begin_tool_invocation(
+                &self.program,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
             .await
         {
             Ok(record) => record,
@@ -870,7 +1160,7 @@ impl RetainedToolPort for SelectedTools {
         let trust = TrustDecision {
             effective_trust: EffectiveTrustClass::user_trusted(),
             authority_ceiling: AuthorityCeiling {
-                allowed_effects: self.runtime.descriptor().effects.clone(),
+                allowed_effects: runtime.descriptor().effects.clone(),
                 max_resource_ceiling: None,
             },
             provenance: TrustProvenance::AdminConfig,
@@ -879,10 +1169,10 @@ impl RetainedToolPort for SelectedTools {
         let answer = match self
             .host
             .invoke_retained_tool(
-                &self.runtime,
+                runtime,
                 RuntimeCapabilityRequest::new(
                     execution,
-                    self.runtime.descriptor().id.clone(),
+                    runtime.descriptor().id.clone(),
                     ResourceEstimate::default(),
                     arguments,
                     trust,

@@ -1,75 +1,244 @@
-//! Reborn provider-admin facade.
-//!
-//! This is the read side of the provider/model administration surface shared
-//! by the standalone CLI and product command workflow. It reads the boot
-//! `config.toml` for the current Kohai slot selection and the shared provider
-//! catalog through `brassclaw_llm`. Writes go through the DB-backed
-//! `PgProviderRepo` / `db_config::save_config_key` in the composition root.
+//! PostgreSQL-backed provider/model administration read facade.
+//! Selection and active definitions are read from one repeatable-read snapshot.
+//! File configuration and compiled provider catalogues are never fallback sources.
 
-use std::{fmt, path::PathBuf};
+use std::fmt;
 
-use brassclaw_reborn_config::{LlmSlotSelection, RebornBootConfig, RebornConfigFile};
+use brassclaw_pg::PgPool;
+use brassclaw_reborn_config::{LlmSlotSelection, RebornConfigFile};
 use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RebornProviderAdmin {
-    boot: RebornBootConfig,
+    pool: PgPool,
+    tenant_id: String,
+}
+
+/// An explicit operator draft or an independently selected persisted role.
+/// This is model selection data, never an invocation permission.
+pub(crate) enum ProviderSelectionSource {
+    Role(brassclaw_llm::ProviderRole),
+    Explicit(LlmSlotSelection),
+}
+
+pub(crate) struct CapturedProviderSelection {
+    pub selection: LlmSlotSelection,
+    pub definition: brassclaw_llm::registry::ProviderDefinition,
+    pub credential: Option<secrecy::SecretString>,
 }
 
 impl RebornProviderAdmin {
-    pub fn new(boot: RebornBootConfig) -> Self {
-        Self { boot }
+    pub fn new(pool: PgPool, tenant_id: impl Into<String>) -> Self {
+        Self {
+            pool,
+            tenant_id: tenant_id.into(),
+        }
     }
 
-    pub fn list(
+    pub(crate) async fn snapshot(
+        &self,
+    ) -> Result<(RebornConfigFile, brassclaw_llm::ProviderRegistry), RebornProviderAdminError> {
+        crate::PgProviderRepo::new(self.pool.clone(), &self.tenant_id)
+            .initialize()
+            .await
+            .map_err(|error| RebornProviderAdminError::LoadDatabase {
+                reason: error.to_string(),
+            })?;
+        let mut client =
+            self.pool
+                .get()
+                .await
+                .map_err(|error| RebornProviderAdminError::LoadDatabase {
+                    reason: error.to_string(),
+                })?;
+        let transaction = tokio_postgres::Client::build_transaction(&mut client)
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(|error| RebornProviderAdminError::LoadDatabase {
+                reason: error.to_string(),
+            })?;
+        let snapshot = self.snapshot_from_client(&transaction).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| RebornProviderAdminError::LoadDatabase {
+                reason: error.to_string(),
+            })?;
+        Ok(snapshot)
+    }
+
+    /// Reuse catalogue validation for reads made inside an owning transaction.
+    async fn snapshot_from_client<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        client: &C,
+    ) -> Result<(RebornConfigFile, brassclaw_llm::ProviderRegistry), RebornProviderAdminError> {
+        let config = crate::db_config::load_config_snapshot_from_client(client, &self.tenant_id)
+            .await
+            .map_err(|error| RebornProviderAdminError::LoadDatabase {
+                reason: error.to_string(),
+            })?;
+        let repo =
+            crate::pg_provider_repo::PgProviderRepo::new(self.pool.clone(), self.tenant_id.clone());
+        let definitions = repo.load_all_from_client(client).await.map_err(|error| {
+            RebornProviderAdminError::LoadRegistry {
+                reason: error.to_string(),
+            }
+        })?;
+        // Registry lookup accepts aliases, but cannot silently let one active
+        // provider hide another provider's canonical identity or alias.
+        let mut identities = std::collections::HashMap::new();
+        for (definition, _) in &definitions {
+            for name in std::iter::once(&definition.id).chain(&definition.aliases) {
+                if name.trim().is_empty() {
+                    return Err(RebornProviderAdminError::LoadRegistry {
+                        reason: "active provider contains an empty identity or alias".into(),
+                    });
+                }
+                if let Some(previous) = identities.insert(name.to_lowercase(), &definition.id)
+                    && previous != &definition.id
+                {
+                    return Err(RebornProviderAdminError::LoadRegistry {
+                        reason: "active provider identities or aliases conflict".into(),
+                    });
+                }
+            }
+        }
+        Ok((
+            config,
+            brassclaw_llm::ProviderRegistry::new(
+                definitions
+                    .into_iter()
+                    .map(|(definition, _)| definition)
+                    .collect(),
+            ),
+        ))
+    }
+
+    /// Capture role/model, exact definition and authenticated one-shot secret
+    /// together. Never retain a pool connection during provider/network work.
+    pub(crate) async fn capture_selection(
+        &self,
+        source: ProviderSelectionSource,
+        keys: &crate::LlmKeyStore,
+    ) -> Result<Option<CapturedProviderSelection>, RebornProviderAdminError> {
+        crate::PgProviderRepo::new(self.pool.clone(), &self.tenant_id)
+            .initialize()
+            .await
+            .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                reason: "provider initialization is unavailable".into(),
+            })?;
+        let mut client =
+            self.pool
+                .get()
+                .await
+                .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                    reason: "provider snapshot is unavailable".into(),
+                })?;
+        // Secret lease consumption and authenticated legacy upgrades are writes.
+        let transaction = tokio_postgres::Client::build_transaction(&mut client)
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                reason: "provider snapshot is unavailable".into(),
+            })?;
+        let (config, registry) = self.snapshot_from_client(&transaction).await?;
+        let selection = match source {
+            ProviderSelectionSource::Explicit(selection) => Some(selection),
+            ProviderSelectionSource::Role(brassclaw_llm::ProviderRole::Kohai) => {
+                config.default_llm_slot().cloned()
+            }
+            ProviderSelectionSource::Role(brassclaw_llm::ProviderRole::Sempai) => config
+                .llm
+                .as_ref()
+                .and_then(|roles| roles.get("sempai"))
+                .cloned(),
+            ProviderSelectionSource::Role(brassclaw_llm::ProviderRole::Embedding) => {
+                config.embedding.map(|embedding| LlmSlotSelection {
+                    provider_id: embedding.provider_id,
+                    model: embedding.model,
+                    api_key_env: None,
+                    base_url: None,
+                })
+            }
+        };
+        let captured = match selection.filter(|selection| {
+            selection
+                .provider_id
+                .as_deref()
+                .is_some_and(|id| !id.is_empty())
+        }) {
+            None => None,
+            Some(mut selection) => {
+                crate::llm_catalog::validate_catalog(&registry).map_err(|_| {
+                    RebornProviderAdminError::LoadRegistry {
+                        reason: "provider catalogue is invalid".into(),
+                    }
+                })?;
+                let requested = selection.provider_id.as_deref().unwrap_or_default();
+                let definition = registry.find(requested).cloned().ok_or_else(|| {
+                    RebornProviderAdminError::UnknownProvider {
+                        provider: requested.into(),
+                        known: known_provider_ids(&registry),
+                    }
+                })?;
+                let credential = keys
+                    .read_in_transaction(&transaction, &definition.id)
+                    .await
+                    .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                        reason: "provider credential snapshot is unavailable".into(),
+                    })?;
+                selection.provider_id = Some(definition.id.clone());
+                Some(CapturedProviderSelection {
+                    selection,
+                    definition,
+                    credential,
+                })
+            }
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(|_| RebornProviderAdminError::LoadDatabase {
+                reason: "provider credential snapshot could not be committed".into(),
+            })?;
+        drop(client);
+        Ok(captured)
+    }
+
+    pub async fn list(
         &self,
         provider: Option<&str>,
         verbose: bool,
     ) -> Result<RebornProviderList, RebornProviderAdminError> {
-        let home = self.boot.home();
-        let config_path = home.path().join("config.toml");
-        let registry = self.load_registry()?;
-        let config = RebornConfigFile::load(&config_path).map_err(|source| {
-            RebornProviderAdminError::LoadConfig {
-                path: config_path.clone(),
-                source: Box::new(source),
-            }
-        })?;
-        let active = active_llm_selection(config.as_ref(), &registry);
-
+        let (config, registry) = self.snapshot().await?;
+        let active = active_llm_selection(Some(&config), &registry);
         let providers = if let Some(provider) = provider {
-            let def = registry.find(provider).ok_or_else(|| {
+            let definition = registry.find(provider).ok_or_else(|| {
                 RebornProviderAdminError::UnknownProvider {
                     provider: provider.to_string(),
                     known: known_provider_ids(&registry),
                 }
             })?;
-            vec![provider_info(def, active.as_ref(), true)]
+            vec![provider_info(definition, active.as_ref(), true)]
         } else {
             unique_provider_definitions(&registry)
                 .into_iter()
-                .map(|def| provider_info(def, active.as_ref(), verbose))
+                .map(|definition| provider_info(definition, active.as_ref(), verbose))
                 .collect()
         };
-
         Ok(RebornProviderList {
             providers,
             v1_state: RebornV1State::NotUsed,
         })
     }
 
-    pub fn status(&self) -> Result<RebornProviderStatus, RebornProviderAdminError> {
-        let home = self.boot.home();
-        let config_path = home.path().join("config.toml");
-        let registry = self.load_registry()?;
-        let config = RebornConfigFile::load(&config_path).map_err(|source| {
-            RebornProviderAdminError::LoadConfig {
-                path: config_path.clone(),
-                source: Box::new(source),
-            }
-        })?;
-        let active = active_llm_selection(config.as_ref(), &registry);
+    pub async fn status(&self) -> Result<RebornProviderStatus, RebornProviderAdminError> {
+        let (config, registry) = self.snapshot().await?;
+        let active = active_llm_selection(Some(&config), &registry);
         Ok(RebornProviderStatus {
             routes: if active.is_some() {
                 RebornModelRoutesState::Configured
@@ -83,63 +252,6 @@ impl RebornProviderAdmin {
                 api_key_env: selection.api_key_env,
                 base_url: selection.base_url,
             }),
-            v1_state: RebornV1State::NotUsed,
-        })
-    }
-
-    fn load_registry(&self) -> Result<brassclaw_llm::ProviderRegistry, RebornProviderAdminError> {
-        // Built-ins only; custom providers are now in brassclaw_llm_providers (DB).
-        brassclaw_llm::ProviderRegistry::try_load_from_path(None).map_err(|error| {
-            RebornProviderAdminError::LoadRegistry {
-                reason: error.to_string(),
-            }
-        })
-    }
-
-    /// DB-backed variant of `list()`.
-    ///
-    /// Reads all active providers (builtin + custom) from `brassclaw_llm_providers`
-    /// via `pg_repo.load_all()`, with the selection from the caller's database
-    /// config snapshot. The CLI uses this authoritative path; no file/registry
-    /// fallback applies to a failed database read.
-    #[cfg(feature = "postgres")]
-    pub async fn list_from_db(
-        &self,
-        pg_repo: &crate::pg_provider_repo::PgProviderRepo,
-        config: &RebornConfigFile,
-        provider: Option<&str>,
-        verbose: bool,
-    ) -> Result<RebornProviderList, RebornProviderAdminError> {
-        use brassclaw_llm::registry::ProviderDefinition;
-
-        let all = pg_repo
-            .load_all()
-            .await
-            .map_err(|e| RebornProviderAdminError::LoadRegistry {
-                reason: e.to_string(),
-            })?;
-
-        // Build a minimal registry from DB rows to pass to active_llm_selection.
-        let db_defs: Vec<ProviderDefinition> = all.iter().map(|(def, _)| def.clone()).collect();
-        let registry = brassclaw_llm::ProviderRegistry::new(db_defs);
-        let active = active_llm_selection(Some(config), &registry);
-
-        let providers: Vec<RebornProviderInfo> = if let Some(provider_id) = provider {
-            let Some((def, _)) = all.iter().find(|(d, _)| d.id == provider_id) else {
-                return Err(RebornProviderAdminError::UnknownProvider {
-                    provider: provider_id.to_string(),
-                    known: all.iter().map(|(d, _)| d.id.clone()).collect(),
-                });
-            };
-            vec![provider_info(def, active.as_ref(), true)]
-        } else {
-            all.iter()
-                .map(|(def, _)| provider_info(def, active.as_ref(), verbose))
-                .collect()
-        };
-
-        Ok(RebornProviderList {
-            providers,
             v1_state: RebornV1State::NotUsed,
         })
     }
@@ -242,11 +354,8 @@ impl fmt::Display for RebornModelRoutesState {
 pub enum RebornProviderAdminError {
     #[error("load Reborn provider catalog: {reason}")]
     LoadRegistry { reason: String },
-    #[error("load Reborn config `{}`: {source}", path.display())]
-    LoadConfig {
-        path: PathBuf,
-        source: Box<brassclaw_reborn_config::RebornConfigFileError>,
-    },
+    #[error("load Reborn provider/config database: {reason}")]
+    LoadDatabase { reason: String },
     #[error("unknown Reborn LLM provider `{provider}`; available providers: {}", known.join(", "))]
     UnknownProvider {
         provider: String,

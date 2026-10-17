@@ -205,3 +205,108 @@ fn filesystem_root() -> std::path::PathBuf {
     }
     path
 }
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_startup_registration_obeys_persisted_artifact_capacity() {
+    use brassclaw_product_workflow::MontyVmSettingsStore;
+    use serde_json::json;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+        rig.pool.clone(),
+        "default",
+        "default",
+    );
+    let before = store.get("default", "default").await.unwrap();
+    let mut limits = before.execution_limits;
+    limits.max_native_artifact_bytes = 1;
+    let update = serde_json::from_value(
+        json!({"expected_revision":before.revision,"execution_limits":limits}),
+    )
+    .unwrap();
+    let small = store.upsert("default", "default", &update).await.unwrap();
+    let input = || {
+        rig.build_input("native-capacity-owner", home.path())
+            .with_runtime_policy(local_dev_policy())
+    };
+    let rejected = Box::pin(build_reborn_services(input())).await;
+    assert!(
+        matches!(rejected, Err(RebornBuildError::InvalidConfig { ref reason })
+        if reason == "native builtin registration failed: native executable exceeds artifact capacity")
+    );
+    assert_eq!(
+        store.get("default", "default").await.unwrap().revision,
+        small.revision
+    );
+    // The actual retained native image comes from the real factory once the
+    // operator restores an adequate value. It is not a fabricated registration.
+    limits.max_native_artifact_bytes = before.execution_limits.max_native_artifact_bytes;
+    // macOS invokes an actual identity verifier. Its captured output must use
+    // the same settings snapshot, rather than the constructor's default bound.
+    #[cfg(target_os = "macos")]
+    let restore_revision = {
+        limits.max_stdout_bytes = 1;
+        let update = serde_json::from_value(json!({
+            "expected_revision":small.revision,"execution_limits":limits,
+        }))
+        .unwrap();
+        let too_small_output = store.upsert("default", "default", &update).await.unwrap();
+        assert!(matches!(Box::pin(build_reborn_services(input())).await,
+            Err(RebornBuildError::InvalidConfig { ref reason })
+            if reason == "native builtin registration failed: native executable verification did not complete"));
+        limits.max_stdout_bytes = before.execution_limits.max_stdout_bytes;
+        too_small_output.revision
+    };
+    #[cfg(not(target_os = "macos"))]
+    let restore_revision = small.revision;
+    let update = serde_json::from_value(
+        json!({"expected_revision":restore_revision,"execution_limits":limits}),
+    )
+    .unwrap();
+    let restored = store.upsert("default", "default", &update).await.unwrap();
+    let services = Box::pin(build_reborn_services(input())).await.unwrap();
+    assert!(!services.readiness.workers.turn_runner);
+    assert!(!services.readiness.workers.trigger_poller);
+    let selected = services
+        .monty_kernel
+        .as_ref()
+        .unwrap()
+        .builtin(
+            &brassclaw_host_api::CapabilityId::new(brassclaw_host_runtime::JSON_CAPABILITY_ID)
+                .unwrap(),
+            None,
+        )
+        .unwrap();
+    let identity = selected
+        .native_identity()
+        .expect("actual native registration");
+    selected.verify_native_artifact().await.unwrap();
+    limits.max_native_artifact_bytes = 1;
+    let update = serde_json::from_value(
+        json!({"expected_revision":restored.revision,"execution_limits":limits}),
+    )
+    .unwrap();
+    let lowered = store.upsert("default", "default", &update).await.unwrap();
+    assert!(matches!(Box::pin(build_reborn_services(input())).await,
+        Err(RebornBuildError::InvalidConfig { ref reason })
+        if reason == "native builtin registration failed: native executable exceeds artifact capacity"));
+    assert_eq!(selected.native_identity(), Some(identity));
+    selected.verify_native_artifact().await.unwrap();
+    // Deliberate persisted corruption exercises a failed source read. Startup
+    // must report it before retention, rather than silently using a default.
+    let client = rig.pool.get().await.unwrap();
+    client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"unexpected_native_setting\":1}'::jsonb,revision=revision+1 WHERE tenant_id='default' AND user_id='default' AND agent_id='default' AND project_id='default'", &[]).await.unwrap();
+    assert!(matches!(Box::pin(build_reborn_services(input())).await,
+        Err(RebornBuildError::InvalidConfig { ref reason })
+        if reason == "native registration settings are unavailable or invalid"));
+    client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=$1,revision=revision+1 WHERE tenant_id='default' AND user_id='default' AND agent_id='default' AND project_id='default'", &[&serde_json::to_value(limits).unwrap()]).await.unwrap();
+    assert_eq!(
+        store.get("default", "default").await.unwrap().revision,
+        lowered.revision + 2
+    );
+    assert_eq!(selected.native_identity(), Some(identity));
+    selected.verify_native_artifact().await.unwrap();
+}

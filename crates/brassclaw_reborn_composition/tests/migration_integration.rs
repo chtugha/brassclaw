@@ -1,375 +1,209 @@
-//! Integration test: seed a libSQL DB, run migration, verify rows land in PG.
-//!
-//! This is the CI gate `seed_libsql_then_migrate_asserts_all_rows_in_pg` from
-//! S12 of the upgrade plan. It requires a reachable PostgreSQL server via
-//! `DATABASE_URL` or `BRASSCLAW_PG_URL`. Without a DB URL the test skips
-//! (passing), matching the env-gated pattern used elsewhere.
-
+//! Real embedded SQLite/PostgreSQL upgrade acceptance. No environment-based skip.
 #![cfg(feature = "migrate-from-libsql")]
+
+#[path = "common/native_pg.rs"]
+mod native_pg;
 
 use brassclaw_reborn_composition::migration;
 use brassclaw_reborn_config::RebornHome;
-use tempfile::tempdir;
 
-/// Build a test Postgres pool from env. Returns `None` when no URL is set.
-async fn test_pg_pool() -> Option<deadpool_postgres::Pool> {
-    let url = std::env::var("BRASSCLAW_PG_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .ok()?;
-    let config: tokio_postgres::Config = url.parse().ok()?;
-    let manager = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(manager)
-        .max_size(4)
-        .build()
-        .ok()?;
-    // Verify connectivity.
-    let _ = pool.get().await.ok()?;
-    Some(pool)
-}
-
-/// Seed a minimal libSQL database with one row in each migratable table,
-/// run the migration, and assert the rows appear in Postgres.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn seed_libsql_then_migrate_asserts_all_rows_in_pg() {
-    let Some(pool) = test_pg_pool().await else {
-        eprintln!(
-            "seed_libsql_then_migrate_asserts_all_rows_in_pg: SKIPPED \
-             (no DATABASE_URL / BRASSCLAW_PG_URL)"
-        );
-        return;
-    };
-
-    // Create an isolated Postgres schema for this test run.
-    let schema = format!(
-        "migration_test_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_micros())
-            .unwrap_or(0)
-    );
-    {
-        let client = pool.get().await.unwrap();
-        client
-            .batch_execute(&format!("CREATE SCHEMA IF NOT EXISTS {schema}"))
-            .await
-            .unwrap();
-        client
-            .batch_execute(&format!("SET search_path TO {schema}"))
-            .await
-            .unwrap();
-    }
-
-    // Build a pool that always sets search_path to the test schema.
-    let schema_for_hook = schema.clone();
-    let config: tokio_postgres::Config = std::env::var("BRASSCLAW_PG_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .unwrap()
-        .parse()
-        .unwrap();
-    let manager = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let scoped_pool = deadpool_postgres::Pool::builder(manager)
-        .max_size(4)
-        .post_create(deadpool_postgres::Hook::async_fn(move |client, _| {
-            let s = schema_for_hook.clone();
-            Box::pin(async move {
-                client
-                    .batch_execute(&format!("SET search_path TO {s}"))
-                    .await
-                    .map_err(|e| deadpool_postgres::HookError::message(e.to_string()))?;
-                Ok(())
-            })
-        }))
-        .build()
-        .unwrap();
-
-    // Run schema migrations so PG tables exist.
-    brassclaw_pg::migrations::run_migrations(&scoped_pool)
-        .await
-        .expect("pg migrations failed");
-
-    // Build a temp home dir with a minimal libSQL DB and config.toml.
-    let home_dir = tempdir().unwrap();
+    let rig = native_pg::NativePostgres::start().await;
+    let directory = tempfile::tempdir().unwrap();
     let home = RebornHome::resolve_from_env_parts(
-        Some(home_dir.path().as_os_str().to_os_string()),
+        Some(directory.path().as_os_str().to_os_string()),
         None,
         None,
     )
     .unwrap();
-
-    // Write a minimal config.toml.
     std::fs::write(
         home.path().join("config.toml"),
-        b"[identity]\ntenant = \"test-tenant\"\ndefault_owner = \"test-user\"\n",
+        "[identity]\ntenant='test-tenant'\ndefault_owner='test-user'\n",
     )
     .unwrap();
-
-    // Write a minimal providers.json.
+    let provider = serde_json::json!({"id":"legacy-custom","protocol":"open_ai_completions","default_base_url":"http://127.0.0.1:8000/v1","base_url_required":true,"api_key_required":false,"model_env":"UNUSED_IMPORT_MODEL","default_model":"legacy-model","description":"Explicit import fixture"});
     std::fs::write(
         home.path().join("providers.json"),
-        br#"[{"id":"test-provider","protocol":"openai","model_env":"TEST_MODEL","default_model":"gpt-4o"}]"#,
+        serde_json::to_vec(&vec![provider]).unwrap(),
     )
     .unwrap();
-
-    // Seed a minimal libSQL DB.
-    seed_libsql_db(home.path()).await;
-
-    // Run migration.
-    let report = migration::run_migration(&scoped_pool, &home, "test-tenant", false)
+    std::fs::write(
+        home.path().join("sempai_provider.json"),
+        br#"{"provider_id":"legacy-custom","model":"legacy-model"}"#,
+    )
+    .unwrap();
+    let key: Vec<u8> = (0..32).collect();
+    std::fs::write(
+        home.path().join(".reborn-local-dev-secrets-master-key"),
+        format!("{}\n", hex::encode(&key)),
+    )
+    .unwrap();
+    let source = home.path().join("reborn-local-dev.db");
+    let database = libsql::Builder::new_local(&source).build().await.unwrap();
+    let connection = database.connect().unwrap();
+    connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
+      CREATE TABLE safety_config(id TEXT,user_id TEXT,category TEXT,pattern TEXT,is_enabled INTEGER,is_default INTEGER,created_at TEXT,updated_at TEXT);
+      INSERT INTO safety_config VALUES('safety-1','test-user','blocked_paths','/private',1,0,'2026-10-12T00:00:00Z','2026-10-12T00:00:00Z');
+      CREATE TABLE settings(user_id TEXT,key TEXT,value TEXT,updated_at TEXT);
+      INSERT INTO settings VALUES('test-user','provider_tokens:legacy-custom','{\"total_input\":1234}','2026-10-12T00:00:00Z');
+      CREATE TABLE memory_docs(user_id TEXT,project_id TEXT,id TEXT,doc_type TEXT,title TEXT,content TEXT,source_thread_id TEXT,tags_json TEXT,metadata_json TEXT,created_at TEXT,updated_at TEXT);
+      INSERT INTO memory_docs VALUES('test-user','default','doc-1','note','Retained title','Retained content',NULL,'[\"legacy\"]','{\"source\":\"legacy\"}','2026-10-12T00:00:00Z','2026-10-12T00:00:00Z');
+      CREATE TABLE root_filesystem_entries(path TEXT,contents BLOB,is_dir INTEGER,content_type TEXT,kind TEXT,indexed TEXT,version INTEGER,created_at TEXT,updated_at TEXT);
+      INSERT INTO root_filesystem_entries VALUES('/file',X'6869',0,'text/plain',NULL,'{}',3,'2026-10-12T00:00:00Z','2026-10-12T00:00:00Z');
+      CREATE TABLE root_filesystem_index_specs(prefix TEXT,name TEXT,keys TEXT,kind TEXT);
+      INSERT INTO root_filesystem_index_specs VALUES('/','legacy-index','[]','btree');
+      CREATE TABLE root_filesystem_events(id INTEGER,path TEXT,payload BLOB,created_at TEXT);
+      INSERT INTO root_filesystem_events VALUES(7,'/file',X'657674','2026-10-12T00:00:00Z');
+      CREATE TABLE capability_permissions(tenant_id TEXT,capability_id TEXT,permission_mode TEXT,updated_at TEXT);
+      INSERT INTO capability_permissions VALUES('test-tenant','legacy-capability','deny','2026-10-12T00:00:00Z');
+      CREATE TABLE hooks_predicate_invocations(key_hash BLOB,scope_hash BLOB,event_id TEXT,recorded_at INTEGER);
+      INSERT INTO hooks_predicate_invocations VALUES(zeroblob(32),zeroblob(32),'event-1',0);
+      CREATE TABLE hooks_predicate_values(key_hash BLOB,scope_hash BLOB,event_id TEXT,value TEXT,recorded_at INTEGER);
+      INSERT INTO hooks_predicate_values VALUES(zeroblob(32),zeroblob(32),'event-1','12.5',0);
+      CREATE TABLE trigger_records(id TEXT,tenant_id TEXT,creator_user_id TEXT,name TEXT,trigger_kind TEXT,trigger_config TEXT,status TEXT,created_at TEXT);
+      INSERT INTO trigger_records VALUES('trigger-1','test-tenant','test-user','Legacy trigger','cron','{}','active','2026-10-12T00:00:00Z');").await.unwrap();
+    let report = migration::run_migration(&rig.pool, &home, "test-tenant", false)
         .await
-        .expect("migration failed");
-
+        .unwrap();
     assert!(
-        report.config_migrated,
-        "config.toml should have been migrated"
+        report.config_migrated
+            && report.providers_migrated
+            && report.sempai_migrated
+            && report.secrets_master_migrated
+            && report.libsql_db_migrated
+            && report.boot_initialized_set
     );
-    assert!(
-        report.providers_migrated,
-        "providers.json should have been migrated"
-    );
-    assert!(
-        report.libsql_db_migrated,
-        "reborn-local-dev.db should have been migrated"
-    );
-    assert!(
-        report.boot_initialized_set,
-        "boot.initialized should have been set"
-    );
-
-    // Verify rows landed in PG.
-    let client = scoped_pool.get().await.unwrap();
-
-    // config row
-    let tenant_row: i64 = client
-        .query_one(
-            "SELECT COUNT(*) FROM brassclaw_config WHERE tenant_id = 'test-tenant' AND key = 'identity.tenant'",
-            &[],
+    assert_eq!(report.paused_legacy_triggers, 1);
+    let pg = rig.pool.get().await.unwrap();
+    assert_eq!(pg.query_one("SELECT value FROM brassclaw_config WHERE tenant_id='test-tenant' AND key='identity.tenant'",&[]).await.unwrap().get::<_,String>(0),"test-tenant");
+    assert_eq!(pg.query_one("SELECT value FROM brassclaw_config WHERE tenant_id='test-tenant' AND key='llm.sempai.model'",&[]).await.unwrap().get::<_,String>(0),"legacy-model");
+    assert_eq!(pg.query_one("SELECT definition->>'default_model' FROM brassclaw_llm_providers WHERE tenant_id='test-tenant' AND id='legacy-custom'",&[]).await.unwrap().get::<_,String>(0),"legacy-model");
+    assert_eq!(
+        pg.query_one(
+            "SELECT pattern FROM brassclaw_safety_config WHERE id='safety-1'",
+            &[]
         )
         .await
         .unwrap()
-        .get(0);
-    assert_eq!(tenant_row, 1, "identity.tenant config row should be in PG");
-
-    // boot.initialized
-    let boot_row: i64 = client
-        .query_one(
-            "SELECT COUNT(*) FROM brassclaw_config WHERE tenant_id = 'test-tenant' AND key = 'boot.initialized'",
-            &[],
+        .get::<_, String>(0),
+        "/private"
+    );
+    assert_eq!(pg.query_one("SELECT settings->>'total_input' FROM brassclaw_token_settings WHERE provider_id='legacy-custom'",&[]).await.unwrap().get::<_,String>(0),"1234");
+    let doc=pg.query_one("SELECT title,content,tags,metadata,source_thread_id FROM brassclaw_memory_docs WHERE id='doc-1'",&[]).await.unwrap();
+    assert_eq!(doc.get::<_, String>(0), "Retained title");
+    assert_eq!(doc.get::<_, String>(1), "Retained content");
+    assert_eq!(doc.get::<_, Vec<String>>(2), vec!["legacy"]);
+    assert_eq!(
+        doc.get::<_, serde_json::Value>(3),
+        serde_json::json!({"source":"legacy"})
+    );
+    assert_eq!(doc.get::<_, Option<String>>(4), None);
+    assert_eq!(
+        pg.query_one(
+            "SELECT contents FROM brassclaw_root_filesystem WHERE path='/file'",
+            &[]
         )
         .await
         .unwrap()
-        .get(0);
-    assert_eq!(boot_row, 1, "boot.initialized should be in PG");
-
-    // provider row
-    let provider_row: i64 = client
-        .query_one(
-            "SELECT COUNT(*) FROM brassclaw_llm_providers WHERE tenant_id = 'test-tenant' AND id = 'test-provider'",
-            &[],
+        .get::<_, Vec<u8>>(0),
+        b"hi"
+    );
+    assert_eq!(
+        pg.query_one(
+            "SELECT count(*) FROM brassclaw_root_filesystem_index_specs WHERE name='legacy-index'",
+            &[]
         )
         .await
         .unwrap()
-        .get(0);
-    assert_eq!(provider_row, 1, "provider row should be in PG");
-
-    // safety_config row (seeded from libSQL)
-    let safety_row: i64 = client
-        .query_one(
-            "SELECT COUNT(*) FROM brassclaw_safety_config WHERE tenant_id = 'test-tenant'",
-            &[],
+        .get::<_, i64>(0),
+        1
+    );
+    assert_eq!(
+        pg.query_one(
+            "SELECT seq FROM brassclaw_root_filesystem_events WHERE path='/file'",
+            &[]
         )
         .await
         .unwrap()
-        .get(0);
-    assert_eq!(safety_row, 1, "safety_config row should be in PG");
-
-    // trigger row (seeded from libSQL)
-    let trigger_row: i64 = client
-        .query_one(
-            "SELECT COUNT(*) FROM brassclaw_triggers WHERE tenant_id = 'test-tenant'",
-            &[],
+        .get::<_, i64>(0),
+        7
+    );
+    assert_eq!(pg.query_one("SELECT permission_mode FROM brassclaw_capability_permissions WHERE capability_id='legacy-capability'",&[]).await.unwrap().get::<_,String>(0),"deny");
+    assert_eq!(pg.query_one("SELECT extract(epoch FROM occurred_at)::bigint FROM hooks_predicate_invocations WHERE event_id='event-1'",&[]).await.unwrap().get::<_,i64>(0),0);
+    assert_eq!(
+        pg.query_one(
+            "SELECT value::text FROM hooks_predicate_values WHERE event_id='event-1'",
+            &[]
         )
         .await
         .unwrap()
-        .get(0);
-    assert_eq!(trigger_row, 1, "trigger row should be in PG");
-
-    // Source file renamed to .migrated
-    assert!(
-        !home.path().join("config.toml").exists(),
-        "config.toml should be renamed after migration"
+        .get::<_, String>(0),
+        "12.5"
     );
-    assert!(
-        home.path().join("config.toml.migrated").exists(),
-        "config.toml.migrated should exist after migration"
+    assert_eq!(
+        pg.query_one(
+            "SELECT state FROM brassclaw_triggers WHERE trigger_id='trigger-1'",
+            &[]
+        )
+        .await
+        .unwrap()
+        .get::<_, String>(0),
+        "paused"
     );
-    assert!(
-        !home.path().join("reborn-local-dev.db").exists(),
-        "reborn-local-dev.db should be renamed after migration"
-    );
-    assert!(
-        home.path().join("reborn-local-dev.db.migrated").exists(),
-        "reborn-local-dev.db.migrated should exist after migration"
-    );
-
-    // Cleanup schema.
-    {
-        let client = pool.get().await.unwrap();
-        let _ = client
-            .execute(&format!("DROP SCHEMA {schema} CASCADE"), &[])
-            .await;
+    for name in [
+        "config.toml",
+        "providers.json",
+        "sempai_provider.json",
+        "reborn-local-dev.db",
+        ".reborn-local-dev-secrets-master-key",
+    ] {
+        assert!(
+            home.path().join(name).exists(),
+            "source {name} must be retained"
+        );
     }
+    drop(pg);
 }
 
-/// Dry-run migration asserts no files are renamed and no DB rows are written.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dry_run_migration_writes_nothing() {
-    let Some(pool) = test_pg_pool().await else {
-        eprintln!("dry_run_migration_writes_nothing: SKIPPED (no DB URL)");
-        return;
-    };
-
-    let schema = format!(
-        "migration_dry_test_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_micros())
-            .unwrap_or(0)
-    );
-    {
-        let client = pool.get().await.unwrap();
-        client
-            .batch_execute(&format!("CREATE SCHEMA IF NOT EXISTS {schema}"))
-            .await
-            .unwrap();
-    }
-    let schema_for_hook = schema.clone();
-    let config: tokio_postgres::Config = std::env::var("BRASSCLAW_PG_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .unwrap()
-        .parse()
-        .unwrap();
-    let manager = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let scoped_pool = deadpool_postgres::Pool::builder(manager)
-        .max_size(4)
-        .post_create(deadpool_postgres::Hook::async_fn(move |client, _| {
-            let s = schema_for_hook.clone();
-            Box::pin(async move {
-                client
-                    .batch_execute(&format!("SET search_path TO {s}"))
-                    .await
-                    .map_err(|e| deadpool_postgres::HookError::message(e.to_string()))?;
-                Ok(())
-            })
-        }))
-        .build()
-        .unwrap();
-    brassclaw_pg::migrations::run_migrations(&scoped_pool)
-        .await
-        .expect("pg migrations");
-
-    let home_dir = tempdir().unwrap();
+    let rig = native_pg::NativePostgres::start().await;
+    let directory = tempfile::tempdir().unwrap();
     let home = RebornHome::resolve_from_env_parts(
-        Some(home_dir.path().as_os_str().to_os_string()),
+        Some(directory.path().as_os_str().to_os_string()),
         None,
         None,
     )
     .unwrap();
     std::fs::write(
         home.path().join("config.toml"),
-        b"[identity]\ntenant = \"dry-tenant\"\n",
+        "[identity]\ntenant='dry-tenant'\n",
     )
     .unwrap();
-
-    let report = migration::run_migration(&scoped_pool, &home, "dry-tenant", true)
-        .await
-        .expect("dry-run migration failed");
-
-    // Dry-run: no files renamed.
     assert!(
-        home.path().join("config.toml").exists(),
-        "config.toml should NOT be renamed in dry-run"
+        migration::run_migration(&rig.pool, &home, "dry-tenant", true)
+            .await
+            .unwrap()
+            .config_migrated
     );
-    assert!(!home.path().join("config.toml.migrated").exists());
-
-    // Dry-run: nothing written to DB.
-    let client = scoped_pool.get().await.unwrap();
-    let row_count: i64 = client
-        .query_one(
-            "SELECT COUNT(*) FROM brassclaw_config WHERE tenant_id = 'dry-tenant'",
-            &[],
+    let pg = rig.pool.get().await.unwrap();
+    assert_eq!(
+        pg.query_one(
+            "SELECT count(*) FROM brassclaw_config WHERE tenant_id='dry-tenant'",
+            &[]
         )
         .await
         .unwrap()
-        .get(0);
-    assert_eq!(row_count, 0, "dry-run should write no config rows");
-
-    // boot_initialized_set is false in dry-run (no write happened).
-    assert!(!report.boot_initialized_set);
-
-    // Cleanup.
-    let client = pool.get().await.unwrap();
-    let _ = client
-        .execute(&format!("DROP SCHEMA {schema} CASCADE"), &[])
-        .await;
-}
-
-// ---------------------------------------------------------------------------
-// libSQL seeding helper
-// ---------------------------------------------------------------------------
-
-async fn seed_libsql_db(home_path: &std::path::Path) {
-    let db_path = home_path.join("reborn-local-dev.db");
-    let db = libsql::Builder::new_local(db_path.to_string_lossy().to_string())
-        .build()
-        .await
-        .expect("build libsql db");
-    let conn = db.connect().expect("connect libsql");
-
-    // Create and seed the tables the migration reads.
-    // Note: hooks_predicate_invocations/values use `recorded_at` in libSQL
-    // (epoch-ms INTEGER or TEXT); the migration maps this to `occurred_at`
-    // (TIMESTAMPTZ) in PG.
-    // trigger_records uses the OLD libSQL schema (id/trigger_kind/trigger_config/
-    // status); the migration maps these to the new PG brassclaw_triggers columns.
-    // local_reborn_access is intentionally skipped — its schema is incompatible
-    // with brassclaw_local_access (token-hash store vs role/status/source grants).
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS safety_config (key TEXT NOT NULL, value TEXT NOT NULL);
-         INSERT INTO safety_config (key, value) VALUES ('some_rule', 'enabled');
-
-         CREATE TABLE IF NOT EXISTS settings (section TEXT, key TEXT, value TEXT);
-
-         CREATE TABLE IF NOT EXISTS memory_docs
-             (id TEXT, path TEXT, content TEXT, metadata TEXT, created_at TEXT, updated_at TEXT);
-
-         CREATE TABLE IF NOT EXISTS root_filesystem_entries
-             (id TEXT, path TEXT, kind TEXT, content TEXT, metadata TEXT, created_at TEXT, updated_at TEXT);
-
-         CREATE TABLE IF NOT EXISTS root_filesystem_index_specs
-             (id TEXT, entry_id TEXT, kind TEXT, dimension INTEGER);
-
-         CREATE TABLE IF NOT EXISTS root_filesystem_events
-             (id TEXT, entry_id TEXT, kind TEXT, payload TEXT, created_at TEXT);
-
-         CREATE TABLE IF NOT EXISTS capability_permissions
-             (id TEXT, capability TEXT, effect TEXT, created_at TEXT);
-
-         CREATE TABLE IF NOT EXISTS hooks_predicate_invocations
-             (key_hash BLOB, scope_hash BLOB, event_id TEXT, recorded_at TEXT);
-
-         CREATE TABLE IF NOT EXISTS hooks_predicate_values
-             (key_hash BLOB, scope_hash BLOB, event_id TEXT, value TEXT, recorded_at TEXT);
-
-         CREATE TABLE IF NOT EXISTS trigger_records
-             (id TEXT, tenant_id TEXT, creator_user_id TEXT, name TEXT,
-              trigger_kind TEXT, trigger_config TEXT, status TEXT, created_at TEXT);
-         INSERT INTO trigger_records
-             (id, tenant_id, creator_user_id, name, trigger_kind, trigger_config, status, created_at)
-         VALUES ('tr-1', 'test-tenant', 'user-1', 'test', 'webhook', '{}', 'active', '');
-
-         CREATE TABLE IF NOT EXISTS local_reborn_access
-             (id TEXT, tenant_id TEXT, user_id TEXT, token_hash TEXT, created_at TEXT, updated_at TEXT);",
-    )
-    .await
-    .expect("seed libsql db");
+        .get::<_, i64>(0),
+        0
+    );
+    assert!(std::fs::read_dir(home.path()).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains(".migrated")
+    }));
+    drop(pg);
 }

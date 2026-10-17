@@ -1032,11 +1032,11 @@ plumbing.
   rust_steps).
 - **C.2 SLICE 7 — 27.7.4 `host.validate_component` 4-COMPONENT LEAF-TOOL STACK (DONE + shipped).** The
   kohai/sempai → Q1 pending queue intercept. Tool `host.validate_component` effect_type `write`;
-  param_schema {title (string,req), content (string,req), doc_type (string, opt:
-  skill|recipe|tool_skill|lesson|spec|plan|note), metadata (object, opt)}; param_template
+  param_schema `{title (string,req), content (string,req), doc_type (string, opt:
+  skill|recipe|tool_skill|lesson|spec|plan|note), metadata (object, opt)}`; param_template
   `{"title":"","content":"","doc_type":"note","metadata":{}}`; preconditions "Store wired." +
-  error_handling "Empty payload → {queued:false,reason:'empty payload'}; no store →
-  {queued:false,reason:'no_store'}." (both Some). **Tool consumer_tags =
+  error_handling "Empty payload → `{queued:false,reason:'empty payload'}`; no store →
+  `{queued:false,reason:'no_store'}`." (both Some). **Tool consumer_tags =
   `["00:rusty","02:orchestrator","05:validator"]` — KEEPS `05:validator`** (the only seeded host.*
   Tool that does): greyed OUT of the LLM tool list via `NOT ('05:validator'=ANY(consumer_tags))`
   because validate_component is a kohai/sempai-path tool not advertised to the LLM, yet bindable BY

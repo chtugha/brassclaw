@@ -435,6 +435,8 @@ pub struct TransportClient {
     inbox: CompletionInbox,
     values: watch::Receiver<VmBounds>,
     recipe_contexts: watch::Receiver<crate::process::RecipeContextCapacity>,
+    pending_calls: watch::Receiver<crate::global::PendingCallCapacity>,
+    worker_pool: watch::Receiver<Option<crate::process::WorkerPoolSnapshot>>,
     memory: watch::Receiver<crate::heap::WorkerMemoryStatus>,
     frame: watch::Receiver<FrameRequirements>,
     stopped: watch::Receiver<Option<StopKind>>,
@@ -584,6 +586,14 @@ impl TransportClient {
     }
     pub fn live_vm_bounds(&self) -> watch::Receiver<VmBounds> {
         self.values.clone()
+    }
+
+    pub fn live_pending_calls(&self) -> watch::Receiver<crate::global::PendingCallCapacity> {
+        self.pending_calls.clone()
+    }
+
+    pub fn live_worker_pool(&self) -> watch::Receiver<Option<crate::process::WorkerPoolSnapshot>> {
+        self.worker_pool.clone()
     }
 
     pub fn live_recipe_contexts(&self) -> watch::Receiver<crate::process::RecipeContextCapacity> {
@@ -944,6 +954,7 @@ impl TransportOwner {
             .map_err(|_| StartError::Actor(ActorFailure::RuntimeUnavailable))?;
         let values = boot.bounds.values;
         let context_limit = boot.max_recipe_contexts;
+        let pending_call_limit = boot.bounds.max_pending_calls;
         let deadlines = HostingDeadlines {
             startup_timeout: boot.startup_timeout,
             response_timeout: process_limits.response_timeout,
@@ -953,6 +964,15 @@ impl TransportOwner {
             .map_err(StartError::Worker)?;
         let context_capacity = match ready.recipe_context_capacity {
             Some(capacity) if capacity.limit == context_limit && capacity.active == 0 => capacity,
+            _ => {
+                process.terminate().await;
+                return Err(StartError::Actor(ActorFailure::InvalidLimits));
+            }
+        };
+        let pending_capacity = match ready.pending_call_capacity {
+            Some(capacity) if capacity.valid() && capacity.limit as usize == pending_call_limit => {
+                capacity
+            }
             _ => {
                 process.terminate().await;
                 return Err(StartError::Actor(ActorFailure::InvalidLimits));
@@ -982,6 +1002,8 @@ impl TransportOwner {
         };
         let (values_tx, values_rx) = watch::channel(values);
         let (contexts_tx, contexts_rx) = watch::channel(context_capacity);
+        let (pending_tx, pending_rx) = watch::channel(pending_capacity);
+        let (pool_tx, pool_rx) = watch::channel(ready.worker_pool.clone());
         let (memory_tx, memory_rx) = watch::channel(ready.worker_memory());
         let client = TransportClient {
             tx,
@@ -989,6 +1011,8 @@ impl TransportOwner {
             inbox: inbox.clone(),
             values: values_rx,
             recipe_contexts: contexts_rx,
+            pending_calls: pending_rx,
+            worker_pool: pool_rx,
             memory: memory_rx,
             frame: observed_frame,
             stopped: observed_stop,
@@ -1003,6 +1027,8 @@ impl TransportOwner {
             RuntimeObservations {
                 values: values_tx,
                 recipe_contexts: contexts_tx,
+                pending_calls: pending_tx,
+                worker_pool: pool_tx,
                 memory: memory_tx,
             },
         ));
@@ -1053,6 +1079,8 @@ impl Drop for TransportOwner {
 struct RuntimeObservations {
     values: watch::Sender<VmBounds>,
     recipe_contexts: watch::Sender<crate::process::RecipeContextCapacity>,
+    pending_calls: watch::Sender<crate::global::PendingCallCapacity>,
+    worker_pool: watch::Sender<Option<crate::process::WorkerPoolSnapshot>>,
     memory: watch::Sender<crate::heap::WorkerMemoryStatus>,
 }
 
@@ -1256,6 +1284,16 @@ async fn run(
         {
             observed.recipe_contexts.send_replace(capacity);
         }
+        if let Ok(snapshot) = &outcome
+            && let Some(capacity) = snapshot.pending_call_capacity
+        {
+            observed.pending_calls.send_replace(capacity);
+        }
+        if let Ok(snapshot) = &outcome {
+            observed
+                .worker_pool
+                .send_replace(snapshot.worker_pool.clone());
+        }
         let graceful = outcome
             .as_ref()
             .is_ok_and(|snapshot| snapshot.lifecycle == Lifecycle::Stopped);
@@ -1341,11 +1379,22 @@ async fn runtime_transaction(
     command: WorkerCommand,
     durable: DurableSettingsCommit,
 ) -> ExchangeResult {
-    let (expected, settings, values, contexts, reserve, heap_update, frame_update) = match &command
-    {
+    let (
+        expected,
+        settings,
+        values,
+        contexts,
+        pending_calls,
+        workers,
+        reserve,
+        heap_update,
+        frame_update,
+    ) = match &command {
         WorkerCommand::Recipe {
             command:
                 RecipeCommand::UpdateRuntimeSettings {
+                    max_pending_host_calls,
+                    max_workers,
                     expected_revision,
                     settings,
                     values,
@@ -1359,6 +1408,8 @@ async fn runtime_transaction(
             *settings,
             Some(*values),
             *max_recipe_contexts,
+            *max_pending_host_calls,
+            *max_workers,
             *adapter_reserve_bytes,
             *heap_update,
             *frame_update,
@@ -1369,7 +1420,17 @@ async fn runtime_transaction(
                     expected_revision,
                     settings,
                 },
-        } => (*expected_revision, *settings, None, None, None, None, None),
+        } => (
+            *expected_revision,
+            *settings,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
         _ => return Err(ProcessError::new(ProcessFailure::Protocol)),
     };
     // Child commands can have updated the heap since the service's last root
@@ -1393,6 +1454,8 @@ async fn runtime_transaction(
     let probe = process
         .exchange(WorkerCommand::ValidateRuntimeSettings {
             candidate: crate::process::RuntimeSettingsCandidate {
+                max_pending_host_calls: pending_calls,
+                max_workers: workers,
                 expected_revision: expected,
                 settings,
                 values,

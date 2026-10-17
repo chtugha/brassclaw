@@ -27,7 +27,7 @@ is_docs_only_path() {
 is_shared_test_path() {
   local path="$1"
   case "$path" in
-    Cargo.toml|Cargo.lock|build.rs|providers.json|Dockerfile)
+    Cargo.toml|Cargo.lock|build.rs|Dockerfile)
       return 0
       ;;
     scripts/ci/classify-test-scope.sh|scripts/ci/test-classify-test-scope.sh|scripts/ci/package-feature-flags.sh)
@@ -66,7 +66,7 @@ is_shared_test_path() {
 is_reborn_test_path() {
   local path="$1"
   case "$path" in
-    docs/reborn/*|scripts/reborn-e2e-rust.sh|scripts/ci/run-reborn-root-partition.sh|tests/reborn_*|tests/support/reborn/*|tests/e2e/scenarios/test_reborn_*)
+    docs/reborn/*|scripts/reborn-e2e-rust.sh|scripts/ci/run-reborn-root-partition.sh|tests/reborn_*|tests/support/reborn/*|tests/browser/*|tests/e2e/scenarios/test_reborn_*)
       return 0
       ;;
     crates/brassclaw_architecture/*|crates/brassclaw_engine/*|tests/monty_v1_upgrade/*|tests/monty_legacy_baseline/*)
@@ -99,7 +99,7 @@ is_code_path() {
     src/*|crates/*|channels-src/*|tools-src/*|tests/*|migrations/*|vendor/monty-control/*)
       return 0
       ;;
-    Cargo.toml|Cargo.lock|Dockerfile|build.rs|providers.json)
+    Cargo.toml|Cargo.lock|Dockerfile|build.rs)
       return 0
       ;;
     scripts/check_no_panics.py|scripts/check_gateway_boundaries.py|scripts/check-version-bumps.sh|scripts/reborn-e2e-rust.sh|scripts/ci/*)

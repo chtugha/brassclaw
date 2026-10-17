@@ -241,7 +241,7 @@ PythonCode (class 22):
 - `pc-plan-status-update` — reads plan from memory, updates a step marker ([ ] → [x]), writes back; this is two operations so it must be split into two recipe steps: one read + one write (step isolation invariant)
 
 Leaf Skills (class 1):
-- `skill-plan-create` — narrative: format plan doc with slug, goal, success criteria, steps list, risks; write to plans/<slug>.md
+- `skill-plan-create` — narrative: format plan doc with slug, goal, success criteria, steps list, risks; write to `plans/<slug>.md`
 - `skill-plan-track-progress` — narrative: read plan, mark current step done, mark next step in-progress, write back
 - `skill-plan-list` — narrative: memory_search for "plan " prefix, list plans with status
 - `skill-plan-revise` — narrative: read plan, apply feedback, reset failed steps to pending, rewrite

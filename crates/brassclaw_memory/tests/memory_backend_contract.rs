@@ -1199,21 +1199,44 @@ async fn repository_memory_backend_search_fails_closed_until_provider_is_supplie
 }
 
 #[test]
-fn memory_search_request_clamps_limits_to_db_safe_bounds() {
+fn memory_search_request_preserves_explicit_counts_and_rejects_invalid_ranges() {
     let request = MemorySearchRequest::new("needle")
         .unwrap()
-        .with_limit(usize::MAX)
-        .with_pre_fusion_limit(usize::MAX);
-
-    assert_eq!(request.limit(), 1_000);
-    assert_eq!(request.pre_fusion_limit(), 5_000);
+        .with_limit(1_500)
+        .with_pre_fusion_limit(6_000);
+    assert_eq!(request.limit(), 1_500);
+    assert_eq!(request.pre_fusion_limit(), 6_000);
+    request.validate_result_limits().unwrap();
 
     let request = MemorySearchRequest::new("needle")
         .unwrap()
-        .with_limit(900)
-        .with_pre_fusion_limit(10);
-    assert_eq!(request.limit(), 900);
-    assert_eq!(request.pre_fusion_limit(), 900);
+        .with_pre_fusion_limit(10)
+        .with_limit(1_500);
+    assert_eq!(request.pre_fusion_limit(), 1_500);
+    request.validate_result_limits().unwrap();
+    assert!(
+        MemorySearchRequest::new("needle")
+            .unwrap()
+            .with_limit(0)
+            .validate_result_limits()
+            .is_err()
+    );
+    if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
+        assert!(
+            MemorySearchRequest::new("needle")
+                .unwrap()
+                .with_limit(overflow)
+                .validate_result_limits()
+                .is_err()
+        );
+        assert!(
+            MemorySearchRequest::new("needle")
+                .unwrap()
+                .with_pre_fusion_limit(overflow)
+                .validate_result_limits()
+                .is_err()
+        );
+    }
 }
 
 #[tokio::test]

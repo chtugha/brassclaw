@@ -297,7 +297,7 @@ The IBS **caches compiled `BuildInstruction`** in-process:
 - Invalidated when: any `include`d component's `updated_at` changes
 
 **Risk mitigation:** The cache avoids YAML parsing + formula parsing on every turn for
-high-traffic intents. Cache miss is acceptable (<5ms for a simple recipe).
+high-traffic intents. Cache miss is acceptable (`<5ms` for a simple recipe).
 
 ---
 

@@ -240,6 +240,7 @@ async fn start_postgres_for_run(
         SecretMaterial::from(pg_url),
         reborn_home,
     )
+    .with_tenant_id(input.identity.tenant_id.clone())
     .with_runtime_policy(runtime_policy);
 
     // Replace the local-dev build input with the Postgres-backed one while
@@ -446,29 +447,8 @@ pub(crate) fn build_runtime_input_with_options(
         runtime_input = runtime_input.with_inbound_mcp_required(true);
     }
 
-    #[cfg(feature = "root-llm-provider")]
-    {
-        match brassclaw_reborn_composition::resolve_reborn_runtime_llm(
-            config,
-            runtime_services.config_file.as_ref(),
-        )? {
-            Some(llm) => {
-                tracing::debug!(
-                    provider_id = %llm.provider_id(),
-                    model = %llm.model(),
-                    "resolved LLM selection for Reborn runtime"
-                );
-                runtime_input = runtime_input.with_resolved_llm(llm);
-            }
-            None => {
-                tracing::warn!(
-                    "no LLM selection configured; set `[llm.default]` in config.toml or configure \
-                     LLM_BACKEND / provider environment variables. Runs will fail until an \
-                     LLM is wired."
-                );
-            }
-        }
-    }
+    // Provider construction belongs to composition after PostgreSQL bootstrap.
+    // No file/environment provider resolution before the DB catalogue exists.
 
     Ok(runtime_input)
 }
@@ -735,7 +715,7 @@ pub(crate) fn read_config_file(
 
 // CLI-local operator config only. Product/WebUI identity must come from
 // trusted host installation/binding resolution, not inbound payloads.
-fn runtime_identity(
+pub(crate) fn runtime_identity(
     config_file: Option<&brassclaw_reborn_config::RebornConfigFile>,
 ) -> RebornRuntimeIdentity {
     let default = RebornRuntimeIdentity::reborn_cli();

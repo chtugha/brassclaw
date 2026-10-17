@@ -93,6 +93,16 @@ pub trait TurnCoordinator: Send + Sync {
 
     async fn cancel_run(&self, request: CancelRunRequest) -> Result<CancelRunResponse, TurnError>;
 
+    /// Atomically cancel a run and its admitted descendants.
+    async fn cancel_tree(
+        &self,
+        _request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "atomic tree cancellation is unavailable".into(),
+        })
+    }
+
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError>;
 }
 
@@ -113,7 +123,7 @@ pub struct DefaultTurnCoordinator<S: ?Sized> {
     wake_notifier: Arc<dyn TurnRunWakeNotifier>,
     publication_error_port: Arc<dyn LifecyclePublicationErrorPort>,
     // Per-coordinator binding of run ids handed out by `prepare_turn` to the
-    // scope they were prepared under. `submit_turn` consumes the reservation
+    // scope they were prepared under. Successful submission consumes the reservation
     // when `requested_run_id` is set and rejects cross-scope submission so a
     // prepared id cannot be used to inject lineage into a different scope.
     prepared_run_id_scopes: Mutex<HashMap<TurnRunId, TurnScope>>,
@@ -158,10 +168,12 @@ where
     }
 
     fn record_prepared_run_id(&self, run_id: TurnRunId, scope: TurnScope) -> Result<(), TurnError> {
-        let mut prepared = match self.prepared_run_id_scopes.lock() {
-            Ok(prepared) => prepared,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut prepared =
+            self.prepared_run_id_scopes
+                .lock()
+                .map_err(|_| TurnError::Unavailable {
+                    reason: "prepared run identity state unavailable".into(),
+                })?;
         if prepared.len() >= MAX_PREPARED_RUN_IDS {
             return Err(TurnError::CapacityExceeded {
                 resource: TurnCapacityResource::SubmitTurn,
@@ -172,12 +184,33 @@ where
         Ok(())
     }
 
-    fn consume_prepared_run_id(&self, run_id: TurnRunId) -> Option<TurnScope> {
-        let mut prepared = match self.prepared_run_id_scopes.lock() {
-            Ok(prepared) => prepared,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        prepared.remove(&run_id)
+    fn check_prepared_run_scope(
+        &self,
+        run_id: TurnRunId,
+        allowed: &[&TurnScope],
+    ) -> Result<(), TurnError> {
+        let prepared = self
+            .prepared_run_id_scopes
+            .lock()
+            .map_err(|_| TurnError::Unavailable {
+                reason: "prepared run identity state unavailable".into(),
+            })?;
+        if let Some(origin) = prepared.get(&run_id)
+            && !allowed.contains(&origin)
+        {
+            return Err(TurnError::Unauthorized);
+        }
+        Ok(())
+    }
+
+    fn consume_prepared_run_id(&self, run_id: TurnRunId) -> Result<Option<TurnScope>, TurnError> {
+        let mut prepared =
+            self.prepared_run_id_scopes
+                .lock()
+                .map_err(|_| TurnError::Unavailable {
+                    reason: "prepared run identity state unavailable".into(),
+                })?;
+        Ok(prepared.remove(&run_id))
     }
 }
 
@@ -194,11 +227,6 @@ fn submit_wake(scope: TurnScope, response: &SubmitTurnResponse) -> TurnRunWake {
         status: *status,
         event_cursor: *event_cursor,
     }
-}
-
-fn submit_event_cursor(response: &SubmitTurnResponse) -> EventCursor {
-    let SubmitTurnResponse::Accepted { event_cursor, .. } = response;
-    *event_cursor
 }
 
 fn resume_wake(scope: TurnScope, response: &ResumeTurnResponse) -> TurnRunWake {
@@ -229,9 +257,9 @@ fn notify_queued_run_best_effort(notifier: &dyn TurnRunWakeNotifier, wake: TurnR
 
 fn deferred_publication_error(
     port: &dyn LifecyclePublicationErrorPort,
-    cursor: EventCursor,
+    wake: &TurnRunWake,
 ) -> Result<(), TurnError> {
-    match port.take_lifecycle_publication_error(cursor) {
+    match port.lifecycle_publication_error(&wake.scope, wake.run_id, wake.event_cursor) {
         Some(error) => Err(error),
         None => Ok(()),
     }
@@ -249,7 +277,7 @@ where
     }
 
     async fn abort_prepared_turn(&self, run_id: TurnRunId) -> Result<(), TurnError> {
-        self.consume_prepared_run_id(run_id);
+        self.consume_prepared_run_id(run_id)?;
         Ok(())
     }
 
@@ -257,19 +285,17 @@ where
         &self,
         request: SubmitTurnRequest,
     ) -> Result<SubmitTurnResponse, TurnError> {
+        let prepared_id = request.requested_run_id;
         // If the caller passed a run id that came out of prepare_turn, verify
         // it is being submitted under the same scope it was prepared under,
         // unless this is a child run (parent_run_id set). Subagent spawn
         // legitimately prepares a run id in the parent scope and submits it
         // under a different child scope. Reservations are consumed on the
-        // first submit attempt; a second attempt with the same id falls back
-        // to the store's duplicate-bound check.
+        // successful submit; a rejected request must not erase its scope fence.
         if let Some(requested) = request.requested_run_id
-            && let Some(prepared_scope) = self.consume_prepared_run_id(requested)
             && request.parent_run_id.is_none()
-            && prepared_scope != request.scope
         {
-            return Err(TurnError::Unauthorized);
+            self.check_prepared_run_scope(requested, &[&request.scope])?;
         }
         let scope = request.scope.clone();
         let response = self
@@ -294,11 +320,12 @@ where
             resolved_run_profile_version = resolved_run_profile_version.as_u64(),
             "turn coordinator accepted turn with resolved run profile"
         );
-        notify_queued_run_best_effort(self.wake_notifier.as_ref(), submit_wake(scope, &response));
-        deferred_publication_error(
-            self.publication_error_port.as_ref(),
-            submit_event_cursor(&response),
-        )?;
+        let wake = submit_wake(scope, &response);
+        notify_queued_run_best_effort(self.wake_notifier.as_ref(), wake.clone());
+        if let Some(id) = prepared_id {
+            self.consume_prepared_run_id(id)?;
+        }
+        deferred_publication_error(self.publication_error_port.as_ref(), &wake)?;
         Ok(response)
     }
 
@@ -312,7 +339,10 @@ where
             self.wake_notifier.as_ref(),
             resume_wake(scope.clone(), &response),
         );
-        deferred_publication_error(self.publication_error_port.as_ref(), response.event_cursor)?;
+        deferred_publication_error(
+            self.publication_error_port.as_ref(),
+            &resume_wake(scope, &response),
+        )?;
         Ok(response)
     }
 
@@ -332,10 +362,38 @@ where
         if !response.already_terminal {
             deferred_publication_error(
                 self.publication_error_port.as_ref(),
-                response.event_cursor,
+                &cancel_wake(scope, &response),
             )?;
         }
         Ok(response)
+    }
+
+    async fn cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        let responses = self.store.request_cancel_tree(request).await?;
+        let mut failure = None;
+        for (request, response) in &responses {
+            if response.status == TurnStatus::CancelRequested || response.status.is_terminal() {
+                notify_queued_run_best_effort(
+                    self.wake_notifier.as_ref(),
+                    cancel_wake(request.scope.clone(), response),
+                );
+            }
+            if !response.already_terminal
+                && let Err(error) = deferred_publication_error(
+                    self.publication_error_port.as_ref(),
+                    &cancel_wake(request.scope.clone(), response),
+                )
+            {
+                failure.get_or_insert(error);
+            }
+        }
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(responses),
+        }
     }
 
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
@@ -352,6 +410,13 @@ where
         &self,
         request: SubmitChildRunRequest,
     ) -> Result<SubmitTurnResponse, TurnError> {
+        let prepared_id = request.requested_run_id;
+        if let Some(requested) = request.requested_run_id {
+            self.check_prepared_run_scope(
+                requested,
+                &[&request.parent_scope, &request.child_scope],
+            )?;
+        }
         let child_scope = request.child_scope.clone();
         let response = self
             .store
@@ -361,14 +426,12 @@ where
                 self.run_profile_resolver.as_ref(),
             )
             .await?;
-        notify_queued_run_best_effort(
-            self.wake_notifier.as_ref(),
-            submit_wake(child_scope, &response),
-        );
-        deferred_publication_error(
-            self.publication_error_port.as_ref(),
-            submit_event_cursor(&response),
-        )?;
+        let wake = submit_wake(child_scope, &response);
+        notify_queued_run_best_effort(self.wake_notifier.as_ref(), wake.clone());
+        if let Some(id) = prepared_id {
+            self.consume_prepared_run_id(id)?;
+        }
+        deferred_publication_error(self.publication_error_port.as_ref(), &wake)?;
         Ok(response)
     }
 }
@@ -402,6 +465,13 @@ where
 
     async fn cancel_run(&self, request: CancelRunRequest) -> Result<CancelRunResponse, TurnError> {
         self.as_ref().cancel_run(request).await
+    }
+
+    async fn cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        self.as_ref().cancel_tree(request).await
     }
 
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {

@@ -3,17 +3,16 @@
 //! Independent dispatches and unsupported dependent-chain binding layouts must
 //! fail before execution, rather than partly running and discovering a mismatch.
 
-use std::{collections::BTreeMap, path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path};
 
 use brassclaw_monty_host::{
-    process::ProcessLimits,
     source_structure::SourceStructure,
-    utility::{UtilityError, UtilityOutput, UtilityRequest, execute},
+    utility::{UtilityError, UtilityLimits, UtilityOutput, UtilityRequest, execute},
 };
 use brassclaw_skills::association_contract::ComponentRevisionRef;
 use uuid::Uuid;
 
-use super::{retained_recipe::RetainedProgram, scripting::utility_bounds};
+use super::retained_recipe::RetainedProgram;
 
 #[derive(thiserror::Error)]
 pub enum RetainedSourceError {
@@ -61,6 +60,7 @@ pub type InspectedSources = BTreeMap<Uuid, InspectedSource>;
 /// A trusted catalogue owner may share this immutable value across task hosts;
 /// a new component revision needs its own inspection and required reviews.
 pub struct InspectedRetainedProgram {
+    preparation_limits: UtilityLimits,
     program: RetainedProgram,
     sources: InspectedSources,
     preload_order: Vec<Uuid>,
@@ -70,6 +70,21 @@ impl InspectedRetainedProgram {
     pub async fn inspect(
         program: RetainedProgram,
         worker: &Path,
+    ) -> Result<Self, RetainedSourceError> {
+        let limits = UtilityLimits::from_execution(Default::default())
+            .expect("default preparation policy is supported");
+        Self::inspect_with_limits(program, worker, limits).await
+    }
+
+    pub fn preparation_limits(&self) -> UtilityLimits {
+        self.preparation_limits
+    }
+
+    /// Product callers must pass the acknowledged instance preparation policy.
+    pub async fn inspect_with_limits(
+        program: RetainedProgram,
+        worker: &Path,
+        preparation_limits: UtilityLimits,
     ) -> Result<Self, RetainedSourceError> {
         use super::retained_preload::PreloadDeclaration;
         let graph = program.inputs().instruction().snapshot().revisions();
@@ -134,13 +149,9 @@ impl InspectedRetainedProgram {
                 worker,
                 UtilityRequest::InspectSource {
                     source: source.to_owned(),
-                    bounds: utility_bounds(),
+                    bounds: preparation_limits.bounds,
                 },
-                ProcessLimits {
-                    hard_memory_bytes: 64 * 1024 * 1024,
-                    max_frame_bytes: 16 * 1024 * 1024,
-                    response_timeout: Duration::from_secs(5),
-                },
+                preparation_limits.process,
             )
             .await
             .map_err(|error| RetainedSourceError::Inspection {
@@ -350,6 +361,7 @@ impl InspectedRetainedProgram {
             ));
         }
         Ok(Self {
+            preparation_limits,
             program,
             sources,
             preload_order,

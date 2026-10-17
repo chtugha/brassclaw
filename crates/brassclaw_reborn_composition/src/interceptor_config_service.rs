@@ -15,10 +15,11 @@
 //!
 //! # vLLM APC
 //!
-//! vLLM automatic prefix caching fires when the client sends the same token
-//! sequence on consecutive turns.  Storing the bundle ensures every turn sends
-//! the exact same bytes → KV-cache hit.  No client-side `cache_control`
-//! breakpoints are needed or supported.
+//! Stored text supports stable token-prefix construction; it does not prove a
+//! cache hit. Reuse also depends on the exact leading token sequence, template,
+//! model/process identity, salt and compatible attention/recurrent-state cache
+//! behavior. Target qualification and observed reuse remain separate from storage.
+//! This compatibility service is not the model-specific prefix resolver.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -363,6 +364,143 @@ impl RebornInterceptorConfigService {
 
 #[async_trait]
 impl InterceptorConfigService for RebornInterceptorConfigService {
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn model_design_catalogue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        targets: Vec<brassclaw_product_workflow::PrefixModelTarget>,
+    ) -> Result<brassclaw_product_workflow::PrefixModelDesignCatalogue, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .catalogue(targets)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn capture_model(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: brassclaw_product_workflow::CapturePrefixModelRequest,
+        targets: Vec<brassclaw_product_workflow::PrefixModelTarget>,
+    ) -> Result<brassclaw_product_workflow::PrefixModelSpecification, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .capture(request, targets)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn get_model_artifacts(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        specification: &str,
+        artifact_set: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixModelArtifactDetail, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_artifacts::PgPrefixModelArtifacts::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .get(specification, artifact_set)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn retain_model_artifacts(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: brassclaw_product_workflow::RetainPrefixModelArtifactsRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixModelArtifactSet, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_artifacts::PgPrefixModelArtifacts::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .retain(request, &caller)
+        .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn retain_design_proposal(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        request: brassclaw_product_workflow::RetainPrefixDesignProposalRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixDesignProposal, InterceptorConfigServiceError>
+    {
+        crate::prefix_model_designs::PgPrefixModelDesigns::new(
+            self.pool.clone(),
+            self.tenant_id.clone(),
+        )
+        .retain_proposal(profile, request)
+        .await
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn list_sources(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        generation: Option<&str>,
+    ) -> Result<brassclaw_product_workflow::PrefixSourceInventory, InterceptorConfigServiceError>
+    {
+        crate::prefix_sources::PgPrefixSources::new(self.pool.clone())
+            .inventory(profile, generation)
+            .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn register_source(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        request: brassclaw_product_workflow::RegisterPrefixSourceRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixSourceRegistration, InterceptorConfigServiceError>
+    {
+        crate::prefix_sources::PgPrefixSources::new(self.pool.clone())
+            .register(profile, request, &caller)
+            .await
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn list_generations(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        profile: &str,
+    ) -> Result<
+        Vec<brassclaw_product_workflow::PrefixGenerationSummary>,
+        InterceptorConfigServiceError,
+    > {
+        crate::prefix_generations::PgPrefixGenerations::new(self.pool.clone())
+            .list(profile)
+            .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn get_generation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        generation: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixGenerationDetail, InterceptorConfigServiceError>
+    {
+        crate::prefix_generations::PgPrefixGenerations::new(self.pool.clone())
+            .get(profile, generation)
+            .await
+    }
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    async fn import_generation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        profile: &str,
+        request: brassclaw_product_workflow::ImportPrefixGenerationRequest,
+    ) -> Result<brassclaw_product_workflow::PrefixGenerationDetail, InterceptorConfigServiceError>
+    {
+        crate::prefix_generations::PgPrefixGenerations::new(self.pool.clone())
+            .import(profile, request)
+            .await
+    }
+
     async fn snapshot(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -439,33 +577,50 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             } else {
                 None
             };
-            let prefixes = vec![PrefixEntry {
-                name: PREFIX_NAME_BASE_PROMPT.to_string(),
-                fingerprint: entry.as_ref().map(|e| e.fingerprint.clone()),
-                is_stale: entry.as_ref().map(|e| e.is_stale).unwrap_or(true),
-                assembled_at: entry
-                    .as_ref()
-                    .and_then(|e| e.assembled_at)
-                    .map(|t| t.to_rfc3339()),
-                prewarm_last_at: entry
-                    .as_ref()
-                    .and_then(|e| e.prewarm_last_at)
-                    .map(|t| t.to_rfc3339()),
-                generation_ms: entry.as_ref().and_then(|e| e.generation_ms),
-            }];
+            let client = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            let rows = client.query("SELECT name,revision,label,description FROM reborn_prefix_profiles ORDER BY sort_order,name", &[])
+                .await.map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            let mut prefixes = Vec::with_capacity(rows.len());
+            for row in rows {
+                let name: String = row.get(0);
+                let legacy = name == PREFIX_NAME_BASE_PROMPT;
+                let saved = if legacy { entry.as_ref() } else { None };
+                prefixes.push(PrefixEntry {
+                    name,
+                    label: row.get(2),
+                    description: row.get(3),
+                    profile_revision: u64::try_from(row.get::<_, i64>(1))
+                        .map_err(|_| InterceptorConfigServiceError::Unavailable)?,
+                    generation_available: legacy
+                        && self
+                            .runtime
+                            .as_ref()
+                            .and_then(std::sync::Weak::upgrade)
+                            .is_some(),
+                    generation_status: if legacy {
+                        "legacy-unverified"
+                    } else {
+                        "prerequisites-required"
+                    }
+                    .into(),
+                    blocked_reason: (!legacy).then(|| "prefix.generationPrerequisites".into()),
+                    fingerprint: saved.map(|e| e.fingerprint.clone()),
+                    is_stale: saved.map(|e| e.is_stale).unwrap_or(true),
+                    assembled_at: saved.and_then(|e| e.assembled_at).map(|t| t.to_rfc3339()),
+                    prewarm_last_at: saved
+                        .and_then(|e| e.prewarm_last_at)
+                        .map(|t| t.to_rfc3339()),
+                    generation_ms: saved.and_then(|e| e.generation_ms),
+                });
+            }
             return Ok(PrefixListResponse { prefixes });
         }
         #[cfg(not(feature = "postgres"))]
-        Ok(PrefixListResponse {
-            prefixes: vec![PrefixEntry {
-                name: PREFIX_NAME_BASE_PROMPT.to_string(),
-                fingerprint: None,
-                is_stale: true,
-                assembled_at: None,
-                prewarm_last_at: None,
-                generation_ms: None,
-            }],
-        })
+        Err(InterceptorConfigServiceError::Unavailable)
     }
 
     async fn regenerate_prefix(
@@ -476,8 +631,25 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         project_id: &str,
     ) -> Result<PrefixRegenerateResponse, InterceptorConfigServiceError> {
         if name != PREFIX_NAME_BASE_PROMPT {
-            return Err(InterceptorConfigServiceError::PrefixNotFound {
-                name: name.to_string(),
+            let client = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            let registered = client
+                .query_opt(
+                    "SELECT name FROM reborn_prefix_profiles WHERE name=$1",
+                    &[&name],
+                )
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?
+                .is_some();
+            return Err(if registered {
+                InterceptorConfigServiceError::Unavailable
+            } else {
+                InterceptorConfigServiceError::PrefixNotFound {
+                    name: name.to_string(),
+                }
             });
         }
 

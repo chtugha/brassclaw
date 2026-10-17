@@ -168,12 +168,10 @@ impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnap
         let mut manifest = package.manifest.clone();
         manifest.capabilities[0].id = capability.clone();
         manifest.capabilities[0].description = "One retained internal review operation".into();
-        manifest.capabilities[0].input_schema_ref = CapabilityProfileSchemaRef::new(
-            "schemas/completed-turn-review.input.v1.json",
-        )?;
-        manifest.capabilities[0].output_schema_ref = CapabilityProfileSchemaRef::new(
-            "schemas/completed-turn-review.output.v1.json",
-        )?;
+        manifest.capabilities[0].input_schema_ref =
+            CapabilityProfileSchemaRef::new("schemas/completed-turn-review.input.v1.json")?;
+        manifest.capabilities[0].output_schema_ref =
+            CapabilityProfileSchemaRef::new("schemas/completed-turn-review.output.v1.json")?;
         package =
             ExtensionPackage::from_manifest(manifest, VirtualPath::new("/system/extensions/host")?)
                 .map_err(|e| invalid(e.to_string()))?;

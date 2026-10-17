@@ -256,9 +256,7 @@ impl CredentialSessionId {
     /// the result to runtime/plugin code. `Display` and `Debug` deliberately
     /// redact, so `format!("{id}")` and `{id:?}` both refuse to leak.
     ///
-    /// Kept feature-agnostic so private DTO conversion code does not depend on
-    /// backend feature gates. It may be unused in featureless builds.
-    #[allow(dead_code)]
+    /// Used only by the private durable DTO and encrypted-storage paths.
     pub(crate) fn to_private_storage_string(self) -> String {
         self.0.to_string()
     }

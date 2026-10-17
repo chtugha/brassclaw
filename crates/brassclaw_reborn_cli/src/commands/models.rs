@@ -77,26 +77,17 @@ impl ModelsListCommand {
 
     async fn execute_async(self) -> anyhow::Result<()> {
         let context = RebornCliContext::resolve_from_env()?;
-        let admin =
-            brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
-
+        let namespace = context.storage_namespace(None)?;
         let provider = self.provider.clone();
         let verbose = self.verbose || provider.is_some();
         let list =
             crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
                 brassclaw_pg::migrations::run_migrations(&pool).await?;
-                let config =
-                    brassclaw_reborn_composition::db_config::load_config_snapshot(&pool, "default")
-                        .await?;
-                let pg_repo = brassclaw_reborn_composition::PgProviderRepo::new(
+                let admin = brassclaw_reborn_composition::RebornProviderAdmin::new(
                     (*pool).clone(),
-                    "default".to_string(),
+                    namespace,
                 );
-                // PostgreSQL is authoritative. An unavailable database or
-                // failed read must not invent a compiled provider catalogue.
-                Ok(admin
-                    .list_from_db(&pg_repo, &config, provider.as_deref(), verbose)
-                    .await?)
+                Ok(admin.list(provider.as_deref(), verbose).await?)
             })
             .await?;
 
@@ -144,13 +135,28 @@ impl ModelsListCommand {
     }
 }
 
-#[cfg(feature = "root-llm-provider")]
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 impl ModelsStatusCommand {
     fn execute(self) -> anyhow::Result<()> {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(self.execute_async())
+    }
+
+    async fn execute_async(self) -> anyhow::Result<()> {
         let context = RebornCliContext::resolve_from_env()?;
-        let admin =
-            brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
-        let status = admin.status()?;
+        let namespace = context.storage_namespace(None)?;
+        let status =
+            crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
+                brassclaw_pg::migrations::run_migrations(&pool).await?;
+                let admin = brassclaw_reborn_composition::RebornProviderAdmin::new(
+                    (*pool).clone(),
+                    namespace,
+                );
+                Ok(admin.status().await?)
+            })
+            .await?;
 
         if self.json {
             println!("{}", serde_json::to_string_pretty(&status)?);

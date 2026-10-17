@@ -8,15 +8,70 @@ pub const DEFAULT_MONTY_IPC_FRAME_BYTES: u64 = 64 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MontyExecutionLimits {
+    /// Physical allocator ceiling for each disposable parser/validator worker.
+    #[serde(default = "default_utility_memory")]
+    pub utility_worker_memory_bytes: u64,
+    /// Maximum bytes captured from one retained native executable.
+    #[serde(default = "default_artifact_bytes")]
+    pub max_native_artifact_bytes: u64,
+    /// Admission bounds for a new catalogue generation; retained generations
+    /// keep the preparation policy that qualified their exact selection.
+    #[serde(default = "default_catalogue_recipes")]
+    pub max_catalogue_recipes: u32,
+    #[serde(default = "default_catalogue_components")]
+    pub max_catalogue_components_per_recipe: u32,
+    #[serde(default = "default_catalogue_recipes")]
+    pub max_catalogue_variants_per_recipe: u32,
+    #[serde(default = "default_ipc_frame")]
+    pub max_catalogue_bytes: u64,
+    #[serde(default = "default_catalogue_actor_bytes")]
+    pub max_catalogue_actor_bytes: u32,
+    /// Retained host HTTP clients. Zero disables caching; active request
+    /// handles survive eviction. This is not a model-response cache.
+    #[serde(default = "default_http_client_cache_entries")]
+    pub max_http_client_cache_entries: u32,
+    /// Distinct active MCP request IDs per provider exchange. Completed calls
+    /// are released; duplicate waiters share one entry. Lowering preserves
+    /// accepted requests and stops new identities until occupancy permits them.
+    #[serde(default = "default_mcp_inflight_calls")]
+    pub max_mcp_inflight_calls: u32,
+    /// Encoded MCP HTTP request body, captured before body decoding. Existing
+    /// accepted reads keep their captured ceiling across live settings edits.
+    #[serde(default = "default_mcp_message_bytes")]
+    pub max_mcp_request_bytes: u32,
+    /// Encoded MCP HTTP response consumed by Kohai, captured before sending
+    /// each operation. Overflow is an error, never a truncated answer or retry.
+    #[serde(default = "default_mcp_message_bytes")]
+    pub max_mcp_response_bytes: u32,
+    /// Defaults for host HTTP requests that omit explicit bounds.
+    #[serde(default = "default_http_request_timeout")]
+    pub default_http_request_timeout_millis: u64,
+    #[serde(default = "default_http_response_body_bytes")]
+    pub default_http_response_body_bytes: u64,
+    /// Memory tree depth used when the caller omits it, and the exact largest
+    /// permitted request. The resulting value still obeys typed-value limits.
+    #[serde(default = "default_memory_tree_depth")]
+    pub default_memory_tree_depth: u32,
+    #[serde(default = "default_memory_tree_max_depth")]
+    pub max_memory_tree_depth: u32,
     /// Bound for newly accepted exchanges; older credits retain their bounds.
     #[serde(default = "default_ipc_frame")]
     pub max_ipc_frame_bytes: u64,
     /// Worker adapter/exception headroom, separate from VM heap and IPC frames.
     #[serde(default = "default_adapter_reserve")]
     pub worker_adapter_reserve_bytes: u64,
+    /// Desired independent task slots in the one global VM. A dependent turn
+    /// can borrow its parked parent's slot; retained state still obeys the
+    /// shared memory and host-call limits. No per-worker VM or reserved heap.
+    #[serde(default = "default_workers")]
+    pub max_workers: u32,
     /// Instance-wide retained child contexts, independent of task worker count.
     #[serde(default = "default_recipe_contexts")]
     pub max_recipe_contexts: u32,
+    /// Global outstanding host calls or withheld late answers. The worker
+    /// checks its current occupancy before accepting a live reduction.
+    #[serde(default = "default_pending_host_calls")]
+    pub max_pending_host_calls: u32,
     #[serde(default = "default_queued_tasks")]
     pub max_queued_tasks: u32,
     #[serde(default = "default_queued_bytes")]
@@ -55,7 +110,7 @@ pub struct MontyExecutionLimits {
     /// Queued plus executing ownership checks; timeout does not refund a request.
     #[serde(default = "default_actor_requests")]
     pub max_pending_ownership_checks: u32,
-    /// Awaiting real cancellation settlement; timeout never discards evidence.
+    /// Cancellation or pre-VM rejection acknowledgement; timeout retains evidence.
     #[serde(default = "default_settings_uptake_timeout")]
     pub cancellation_ack_timeout_millis: u64,
     /// Idle durable-settings reconciliation; operator saves wake it immediately.
@@ -77,9 +132,26 @@ pub struct MontyExecutionLimits {
 impl Default for MontyExecutionLimits {
     fn default() -> Self {
         Self {
+            utility_worker_memory_bytes: default_utility_memory(),
+            max_native_artifact_bytes: default_artifact_bytes(),
+            max_catalogue_recipes: default_catalogue_recipes(),
+            max_catalogue_components_per_recipe: default_catalogue_components(),
+            max_catalogue_variants_per_recipe: default_catalogue_recipes(),
+            max_catalogue_bytes: default_ipc_frame(),
+            max_catalogue_actor_bytes: default_catalogue_actor_bytes(),
+            max_http_client_cache_entries: default_http_client_cache_entries(),
+            max_mcp_inflight_calls: default_mcp_inflight_calls(),
+            max_mcp_request_bytes: default_mcp_message_bytes(),
+            max_mcp_response_bytes: default_mcp_message_bytes(),
+            default_http_request_timeout_millis: default_http_request_timeout(),
+            default_http_response_body_bytes: default_http_response_body_bytes(),
+            default_memory_tree_depth: default_memory_tree_depth(),
+            max_memory_tree_depth: default_memory_tree_max_depth(),
             max_ipc_frame_bytes: default_ipc_frame(),
             worker_adapter_reserve_bytes: default_adapter_reserve(),
+            max_workers: default_workers(),
             max_recipe_contexts: default_recipe_contexts(),
+            max_pending_host_calls: default_pending_host_calls(),
             max_queued_tasks: default_queued_tasks(),
             max_queued_bytes: default_queued_bytes(),
             max_pending_settings: default_pending_settings(),
@@ -114,7 +186,28 @@ impl MontyExecutionLimits {
     /// Representation-independent validation. Each host also checks its native
     /// integer, transport and control-response constraints before publication.
     pub fn validate(self) -> Result<(), &'static str> {
-        if self.max_ipc_frame_bytes == 0
+        if self.utility_worker_memory_bytes <= self.max_ipc_frame_bytes
+            || self.utility_worker_memory_bytes == u64::MAX
+            || self.max_native_artifact_bytes == 0
+            || self.max_native_artifact_bytes == u64::MAX
+            || self.default_http_request_timeout_millis == 0
+            || self.default_memory_tree_depth == 0
+            || self.default_memory_tree_depth > self.max_memory_tree_depth
+            || self.default_http_response_body_bytes == 0
+            || self.default_http_response_body_bytes > isize::MAX as u64
+            || self.max_catalogue_recipes == 0
+            || self.max_mcp_inflight_calls == 0
+            || self.max_mcp_request_bytes == 0
+            || self.max_mcp_response_bytes == 0
+            || u64::from(self.max_mcp_request_bytes) > isize::MAX as u64
+            || u64::from(self.max_mcp_response_bytes) > isize::MAX as u64
+            || self.max_catalogue_components_per_recipe == 0
+            || self.max_catalogue_variants_per_recipe == 0
+            || self.max_catalogue_actor_bytes == 0
+            || self.max_catalogue_bytes == 0
+            || self.max_catalogue_bytes == u64::MAX
+            || usize::try_from(self.max_catalogue_bytes).is_err()
+            || self.max_ipc_frame_bytes == 0
             || u32::try_from(self.max_ipc_frame_bytes).is_err()
             || self.max_source_bytes > self.max_ipc_frame_bytes
             || self.max_stdout_bytes > self.max_ipc_frame_bytes
@@ -131,6 +224,8 @@ impl MontyExecutionLimits {
             || self.max_actor_control_reserved_bytes == 0
             || self.max_queued_bytes == 0
             || self.max_recipe_contexts == 0
+            || self.max_workers == 0
+            || self.max_workers.checked_add(1).is_none_or(|minimum| self.max_pending_host_calls < minimum)
             || self.ownership_check_timeout_millis == 0
             || self.ownership_heartbeat_interval_millis == 0
             || self.max_pending_ownership_checks == 0
@@ -161,8 +256,61 @@ impl MontyExecutionLimits {
     }
 }
 
+fn default_memory_tree_depth() -> u32 {
+    1
+}
+
+fn default_memory_tree_max_depth() -> u32 {
+    10
+}
+
 fn default_recipe_contexts() -> u32 {
     64
+}
+
+fn default_workers() -> u32 {
+    2
+}
+
+fn default_pending_host_calls() -> u32 {
+    128
+}
+
+fn default_http_request_timeout() -> u64 {
+    30_000
+}
+fn default_http_response_body_bytes() -> u64 {
+    10 * 1024 * 1024
+}
+
+fn default_http_client_cache_entries() -> u32 {
+    128
+}
+
+fn default_mcp_inflight_calls() -> u32 {
+    4096
+}
+
+fn default_mcp_message_bytes() -> u32 {
+    1024 * 1024
+}
+
+fn default_catalogue_recipes() -> u32 {
+    512
+}
+fn default_catalogue_components() -> u32 {
+    4096
+}
+fn default_catalogue_actor_bytes() -> u32 {
+    2048
+}
+
+fn default_utility_memory() -> u64 {
+    132 * 1024 * 1024
+}
+
+fn default_artifact_bytes() -> u64 {
+    1024 * 1024 * 1024
 }
 
 fn default_ipc_frame() -> u64 {

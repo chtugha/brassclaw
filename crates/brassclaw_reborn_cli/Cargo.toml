@@ -34,6 +34,7 @@ skills-db = [
 # can still boot the runtime substrate but will surface an "LLM gateway
 # not wired" error on the first `send_user_message`.
 root-llm-provider = [
+    "postgres",
     "brassclaw_reborn_composition/root-llm-provider",
 ]
 # Upgrade-release gate: compiles the libSQL→Postgres data migration module.
@@ -77,6 +78,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
+# Native CLI acceptance prepares actual encrypted PostgreSQL credentials; this
+# fixture dependency must never become a runtime CLI secret-store bypass.
+brassclaw_secrets = { path = "../brassclaw_secrets" }
 # Enable the composition crate's `test-support` seam for CLI unit tests so
 # `open_reborn_identity_resolver` (the test-only standalone resolver opener)
 # is available when building this crate's tests. Production code uses the

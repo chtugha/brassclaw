@@ -23,9 +23,11 @@ const ROOT_ID: Uuid = Uuid::from_u128(0x52a1c2df_fb73_4832_ab11_e47b931f0724);
 fn ports() -> BTreeSet<String> {
     [
         "await_next_task",
+        "await_pool_update",
         "enter_task",
         "finish_task",
         "resolve_intent",
+        "resolve_internal_recipe",
         "resolve_component_by_name",
         "compose_orchestrator",
         "run_program",

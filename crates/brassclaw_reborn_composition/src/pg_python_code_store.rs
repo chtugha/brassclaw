@@ -251,13 +251,34 @@ impl PgPythonCodeStore {
         row: NewPgPythonCode,
     ) -> Result<Uuid, PgPythonCodeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
-        Self::insert_on(&**client, row).await
+        Self::insert_on(&**client, row, false).await
+    }
+
+    /// Installation-owned legacy projection only. This method does not issue
+    /// v3 approval, register code or accept a request-carried bootstrap grant.
+    pub(crate) async fn insert_installation_projection(
+        &self,
+        row: NewPgPythonCode,
+    ) -> Result<Uuid, PgPythonCodeStoreError> {
+        if row.source != "system" {
+            return Err(PgPythonCodeStoreError::Db {
+                reason: "installation projection requires system metadata".into(),
+            });
+        }
+        let client = self.pool.get().await.map_err(map_pool)?;
+        Self::insert_on(&**client, row, true).await
     }
 
     async fn insert_on(
         client: &(impl tokio_postgres::GenericClient + Sync),
         row: NewPgPythonCode,
+        installation_projection: bool,
     ) -> Result<Uuid, PgPythonCodeStoreError> {
+        let validation_status = if installation_projection {
+            "validated"
+        } else {
+            "pending"
+        };
         let includes_json =
             serde_json::to_value(&row.includes).map_err(|e| PgPythonCodeStoreError::Db {
                 reason: format!("includes encode failed: {e}"),
@@ -272,7 +293,7 @@ impl PgPythonCodeStore {
                      validation_status,
                      includes, content_checksum)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-                         CASE WHEN $12 = 'system' THEN 'validated' ELSE 'pending' END,
+                         $16,
                          $14,$15)
                  RETURNING id",
                 &[
@@ -291,6 +312,7 @@ impl PgPythonCodeStore {
                     &row.dependency_registry,
                     &includes_json,
                     &row.content_checksum,
+                    &validation_status,
                 ],
             )
             .await
@@ -485,7 +507,7 @@ impl PgPythonCodeStore {
         };
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let transaction = client.transaction().await.map_err(map_pg)?;
-        let id = Self::insert_on(&*transaction, row).await?;
+        let id = Self::insert_on(&*transaction, row, false).await?;
         queue_store
             .submit_in_transaction(&transaction, &scope, id, 22, None)
             .await

@@ -19,6 +19,63 @@ use crate::provider::{
     ToolCompletionResponse,
 };
 
+/// Timing policy owned by the selected model connection. Limits are ceilings,
+/// not reserved work; validate before constructing any retry timer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetryTimingPolicy {
+    pub base_delay_ms: u64,
+    pub max_backoff_ms: u64,
+    pub jitter_percent: u8,
+    pub max_retry_after_secs: u64,
+}
+impl Default for RetryTimingPolicy {
+    fn default() -> Self {
+        Self {
+            base_delay_ms: 1000,
+            max_backoff_ms: 60_000,
+            jitter_percent: 25,
+            max_retry_after_secs: 3600,
+        }
+    }
+}
+impl RetryTimingPolicy {
+    pub fn validate(self) -> Result<(), &'static str> {
+        if self.base_delay_ms == 0
+            || self.max_backoff_ms < self.base_delay_ms
+            || self.max_retry_after_secs == 0
+            || self.jitter_percent > 100
+            || std::time::Instant::now()
+                .checked_add(Duration::from_millis(self.max_backoff_ms))
+                .is_none()
+            || std::time::Instant::now()
+                .checked_add(Duration::from_secs(self.max_retry_after_secs))
+                .is_none()
+        {
+            return Err(
+                "retry timing must be positive and representable, its backoff ceiling must cover its base delay, and jitter is 0–100 percent",
+            );
+        }
+        Ok(())
+    }
+    fn backoff(self, attempt: u32) -> Duration {
+        let base = u128::from(self.base_delay_ms)
+            .saturating_mul(2u128.checked_pow(attempt).unwrap_or(u128::MAX))
+            .min(u128::from(self.max_backoff_ms));
+        let jitter = base * u128::from(self.jitter_percent) / 100;
+        let offset = if jitter > 0 {
+            rand::thread_rng().gen_range(0..=jitter * 2)
+        } else {
+            0
+        };
+        let ms = base
+            .saturating_sub(jitter)
+            .saturating_add(offset)
+            .min(u128::from(self.max_backoff_ms));
+        Duration::from_millis(ms as u64)
+    }
+}
+
 /// Upper bound for provider-suggested `Retry-After` delays.
 ///
 /// This prevents malicious or malformed headers from turning a retryable
@@ -62,22 +119,29 @@ pub fn is_retryable(err: &LlmError) -> bool {
 /// - attempt 0: ~1s (0.75s - 1.25s)
 /// - attempt 1: ~2s (1.5s - 2.5s)
 /// - attempt 2: ~4s (3.0s - 5.0s)
+#[cfg(test)]
 pub(crate) fn retry_backoff_delay(attempt: u32) -> Duration {
-    let base_ms: u64 = 1000u64.saturating_mul(2u64.saturating_pow(attempt));
-    let jitter_range = base_ms / 4; // 25%
-    let jitter = if jitter_range > 0 {
-        let offset = rand::thread_rng().gen_range(0..=jitter_range * 2);
-        offset as i64 - jitter_range as i64
-    } else {
-        0
-    };
-    let delay_ms = (base_ms as i64 + jitter).max(100) as u64;
-    Duration::from_millis(delay_ms)
+    RetryTimingPolicy::default().backoff(attempt)
 }
 
 /// Clamp a provider-suggested retry delay to a safe maximum.
 pub(crate) fn cap_retry_after(duration: Duration) -> Duration {
     duration.min(Duration::from_secs(MAX_RETRY_AFTER_SECS))
+}
+
+/// Preserve the provider's actual hint. The selected retry owner applies its
+/// configured ceiling when waiting; missing/invalid hints use its backoff.
+pub fn parse_retry_after_hint(header: Option<&reqwest::header::HeaderValue>) -> Option<Duration> {
+    let value = header?.to_str().ok()?.trim();
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let date = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    Some(Duration::from_secs(
+        date.signed_duration_since(chrono::Utc::now())
+            .num_seconds()
+            .max(0) as u64,
+    ))
 }
 
 /// Parse a `Retry-After` header value into a capped `Duration`.
@@ -105,7 +169,7 @@ pub fn parse_retry_after(header: Option<&reqwest::header::HeaderValue>) -> Durat
 ///
 /// Use this from call sites that want to preserve the `Option` shape around
 /// header presence — e.g. 5xx retry paths where a missing header should
-/// fall through to [`retry_backoff_delay`] instead of the 60-second default
+/// fall through to the selected exponential backoff instead of the 60-second default
 /// that [`parse_retry_after`] returns for rate-limit semantics. Unparseable
 /// values still fall back to `DEFAULT_RETRY_AFTER` (60 s).
 pub fn parse_retry_after_value(header: &reqwest::header::HeaderValue) -> Duration {
@@ -152,11 +216,34 @@ impl Default for RetryConfig {
 pub struct RetryProvider {
     inner: Arc<dyn LlmProvider>,
     config: RetryConfig,
+    timing: RetryTimingPolicy,
 }
 
 impl RetryProvider {
     pub fn new(inner: Arc<dyn LlmProvider>, config: RetryConfig) -> Self {
-        Self { inner, config }
+        Self {
+            inner,
+            config,
+            timing: Default::default(),
+        }
+    }
+
+    pub fn new_with_timing(
+        inner: Arc<dyn LlmProvider>,
+        config: RetryConfig,
+        timing: RetryTimingPolicy,
+    ) -> Result<Self, LlmError> {
+        timing
+            .validate()
+            .map_err(|reason| LlmError::RequestFailed {
+                provider: inner.model_name().into(),
+                reason: reason.into(),
+            })?;
+        Ok(Self {
+            inner,
+            config,
+            timing,
+        })
     }
 
     async fn retry_loop<T, F, Fut>(&self, mut op: F, label: &str) -> Result<T, LlmError>
@@ -182,9 +269,18 @@ impl RetryProvider {
                         | LlmError::BadGateway {
                             retry_after: Some(duration),
                             ..
-                        } => *duration,
-                        _ => retry_backoff_delay(attempt),
+                        } => (*duration).min(Duration::from_secs(self.timing.max_retry_after_secs)),
+                        _ => self.timing.backoff(attempt),
                     };
+
+                    let deadline =
+                        std::time::Instant::now()
+                            .checked_add(delay)
+                            .ok_or_else(|| LlmError::RequestFailed {
+                                provider: self.inner.model_name().into(),
+                                reason: "retry delay cannot be represented by this host clock"
+                                    .into(),
+                            })?;
 
                     tracing::debug!(
                         provider = %self.inner.model_name(),
@@ -196,7 +292,7 @@ impl RetryProvider {
                     );
 
                     last_error = Some(err);
-                    tokio::time::sleep(delay).await;
+                    tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
                 }
             }
         }
@@ -299,6 +395,52 @@ mod tests {
     // -- Backoff delay tests --
 
     #[test]
+    fn selected_retry_timing_preserves_hints_and_bounds_full_attempt_range() {
+        let policy = RetryTimingPolicy {
+            base_delay_ms: 5,
+            max_backoff_ms: 10,
+            jitter_percent: 0,
+            max_retry_after_secs: 7200,
+        };
+        policy.validate().unwrap();
+        assert_eq!(policy.backoff(0), Duration::from_millis(5));
+        for attempt in [1, 63, 128, u32::MAX] {
+            assert_eq!(policy.backoff(attempt), Duration::from_millis(10));
+        }
+        let hint = reqwest::header::HeaderValue::from_static("5400");
+        assert_eq!(
+            parse_retry_after_hint(Some(&hint)),
+            Some(Duration::from_secs(5400)),
+            "protocol parsing must not retain the legacy one-hour clamp"
+        );
+        assert_eq!(parse_retry_after_hint(None), None);
+        assert!(
+            RetryTimingPolicy {
+                max_backoff_ms: 4,
+                ..policy
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            RetryTimingPolicy {
+                jitter_percent: 101,
+                ..policy
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            RetryTimingPolicy {
+                max_retry_after_secs: u64::MAX,
+                ..policy
+            }
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
     fn test_retry_backoff_delay_exponential_growth() {
         // Run multiple samples to verify the range, accounting for jitter
         for _ in 0..20 {
@@ -331,9 +473,11 @@ mod tests {
 
     #[test]
     fn test_retry_backoff_delay_no_overflow() {
-        // Very high attempt numbers should not panic from overflow
-        let delay = retry_backoff_delay(30);
-        assert!(delay.as_millis() >= 100);
+        for attempt in [0, 30, 63, 128, u32::MAX] {
+            let delay = retry_backoff_delay(attempt);
+            assert!(delay >= Duration::from_millis(100));
+            assert!(delay.as_millis() <= u128::from(u64::MAX));
+        }
     }
 
     // -- is_retryable() classification tests --

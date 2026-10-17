@@ -5962,17 +5962,29 @@ fn turn_blocked_gate_kind_await_dependent_run_maps_from_status_and_round_trips_w
 
 #[tokio::test]
 async fn prepare_turn_with_requested_id_from_mismatched_scope_is_rejected() {
-    let (coordinator, _store) = coordinator();
+    let (coordinator, store) = coordinator();
     let prepared = coordinator
         .prepare_turn(scope("thread-prepared-origin"))
         .await
         .unwrap();
-
-    let mut request = submit_request("thread-prepared-submit", "idem-prepared-submit");
-    request.requested_run_id = Some(prepared);
-    let error = coordinator.submit_turn(request).await.unwrap_err();
-
-    assert!(matches!(error, TurnError::Unauthorized));
+    let mut foreign = submit_request("thread-prepared-submit", "idem-prepared-submit");
+    foreign.requested_run_id = Some(prepared);
+    for _ in 0..2 {
+        assert!(matches!(
+            coordinator.submit_turn(foreign.clone()).await,
+            Err(TurnError::Unauthorized)
+        ));
+    }
+    assert!(
+        store.persistence_snapshot().runs.is_empty(),
+        "rejected requests cannot consume the scope fence or admit work"
+    );
+    let mut correct = submit_request("thread-prepared-origin", "idem-prepared-correct");
+    correct.requested_run_id = Some(prepared);
+    assert_eq!(
+        accepted_run_id(&coordinator.submit_turn(correct).await.unwrap()),
+        prepared
+    );
 }
 
 #[tokio::test]
@@ -7193,4 +7205,686 @@ async fn record_runner_failure_produces_terminal_failed_with_sanitized_category(
         next_claim.is_none(),
         "terminal Failed run must not be claimable"
     );
+}
+
+#[tokio::test]
+async fn tree_cancellation_is_complete_atomic_and_retains_replay_cursors() {
+    let (coordinator, store) = coordinator();
+    let parent = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request("tree-root", "tree-root-submit"))
+            .await
+            .unwrap(),
+    );
+    let intermediate = TurnRunId::new();
+    coordinator
+        .submit_child_run(child_run_request(
+            scope("tree-root"),
+            parent,
+            "tree-middle",
+            intermediate,
+            "tree-middle-submit",
+            1100,
+        ))
+        .await
+        .unwrap();
+    let grandchild = TurnRunId::new();
+    coordinator
+        .submit_child_run(child_run_request(
+            scope("tree-middle"),
+            intermediate,
+            "tree-grandchild",
+            grandchild,
+            "tree-grandchild-submit",
+            1100,
+        ))
+        .await
+        .unwrap();
+    complete_queued_run(&store, intermediate, "tree-middle").await;
+    for index in 0..1000 {
+        coordinator
+            .submit_child_run(child_run_request(
+                scope("tree-root"),
+                parent,
+                &format!("tree-leaf-{index}"),
+                TurnRunId::new(),
+                &format!("tree-leaf-submit-{index}"),
+                1100,
+            ))
+            .await
+            .unwrap();
+    }
+    let before = store.persistence_snapshot();
+    let mut foreign = cancel_request("tree-root", parent, "tree-cancel");
+    foreign.actor = TurnActor::new(UserId::new("other-owner").unwrap());
+    assert!(matches!(
+        coordinator.cancel_tree(foreign).await,
+        Err(TurnError::Unauthorized)
+    ));
+    assert_same_tree_snapshot(&store.persistence_snapshot(), &before);
+    let request = cancel_request("tree-root", parent, "tree-cancel");
+    let responses = coordinator.cancel_tree(request.clone()).await.unwrap();
+    assert_eq!(responses.len(), 1002);
+    assert!(
+        responses
+            .iter()
+            .all(|(_, response)| response.status == TurnStatus::Cancelled)
+    );
+    assert!(
+        responses
+            .iter()
+            .any(|(_, response)| response.run_id == grandchild)
+    );
+    let snapshot = store.persistence_snapshot();
+    assert_eq!(
+        snapshot
+            .runs
+            .iter()
+            .find(|run| run.run_id == intermediate)
+            .unwrap()
+            .status,
+        TurnStatus::Completed
+    );
+    let restored = Arc::new(
+        InMemoryTurnStateStore::from_persistence_snapshot(
+            snapshot.clone(),
+            InMemoryTurnStateStoreLimits::default(),
+        )
+        .unwrap(),
+    );
+    let replay = DefaultTurnCoordinator::new(restored.clone())
+        .cancel_tree(request)
+        .await
+        .unwrap();
+    let cursors = |values: &Vec<(CancelRunRequest, CancelRunResponse)>| {
+        values
+            .iter()
+            .map(|(_, response)| (response.run_id, response.event_cursor))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(cursors(&responses), cursors(&replay));
+    assert_same_tree_snapshot(&restored.persistence_snapshot(), &snapshot);
+    assert!(matches!(
+        coordinator
+            .submit_child_run(child_run_request(
+                scope("tree-middle"),
+                intermediate,
+                "tree-late-child",
+                TurnRunId::new(),
+                "tree-late-submit",
+                1100,
+            ))
+            .await,
+        Err(TurnError::InvalidRequest { .. })
+    ));
+}
+
+#[tokio::test]
+async fn tree_cancellation_retries_failed_observers_without_repeating_transitions() {
+    let raw = Arc::new(InMemoryTurnStateStore::default());
+    let observer = Arc::new(FailFirstEventKindObserver::failing_on(
+        TurnEventKind::Cancelled,
+    ));
+    let store = lifecycle_publishing_store(raw.clone(), Some(observer.clone()), None);
+    let notifier = Arc::new(RecordingWakeNotifier::default());
+    let coordinator = DefaultTurnCoordinator::new(store.clone())
+        .with_lifecycle_publication_error_port(store)
+        .with_wake_notifier(notifier.clone());
+    let root = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request(
+                "observer-tree-root",
+                "observer-tree-root-submit",
+            ))
+            .await
+            .unwrap(),
+    );
+    for index in 0..2 {
+        coordinator
+            .submit_child_run(child_run_request(
+                scope("observer-tree-root"),
+                root,
+                &format!("observer-tree-child-{index}"),
+                TurnRunId::new(),
+                &format!("observer-tree-child-submit-{index}"),
+                3,
+            ))
+            .await
+            .unwrap();
+    }
+    let request = cancel_request("observer-tree-root", root, "observer-tree-cancel");
+    assert!(matches!(
+        coordinator.cancel_tree(request.clone()).await,
+        Err(TurnError::Unavailable { .. })
+    ));
+    assert!(
+        raw.persistence_snapshot()
+            .runs
+            .iter()
+            .all(|run| run.status == TurnStatus::Cancelled)
+    );
+    assert_eq!(
+        observer.events().len(),
+        3,
+        "other committed cancellation events must still be delivered"
+    );
+    let committed = raw.persistence_snapshot();
+    coordinator.cancel_tree(request).await.unwrap();
+    assert_eq!(
+        observer.events().len(),
+        4,
+        "only the failed cursor is redelivered"
+    );
+    assert_same_tree_snapshot(&raw.persistence_snapshot(), &committed);
+    assert_eq!(
+        notifier.wakes().len(),
+        9,
+        "submission and both cancellation attempts wake every run"
+    );
+}
+
+#[tokio::test]
+async fn tree_cancellation_rolls_back_when_a_descendant_actor_is_invalid() {
+    let (coordinator, store) = coordinator();
+    let root = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request(
+                "rollback-tree-root",
+                "rollback-tree-root-submit",
+            ))
+            .await
+            .unwrap(),
+    );
+    let mut child = child_run_request(
+        scope("rollback-tree-root"),
+        root,
+        "rollback-tree-child",
+        TurnRunId::new(),
+        "rollback-tree-child-submit",
+        3,
+    );
+    child.actor = TurnActor::new(UserId::new("different-child-owner").unwrap());
+    coordinator.submit_child_run(child).await.unwrap();
+    let before = store.persistence_snapshot();
+    assert!(matches!(
+        coordinator
+            .cancel_tree(cancel_request(
+                "rollback-tree-root",
+                root,
+                "rollback-tree-cancel"
+            ))
+            .await,
+        Err(TurnError::Unauthorized)
+    ));
+    assert_same_tree_snapshot(&store.persistence_snapshot(), &before);
+}
+
+#[tokio::test]
+async fn terminal_intermediate_is_retained_until_its_descendants_are_prunable() {
+    let store = Arc::new(InMemoryTurnStateStore::with_limits(
+        InMemoryTurnStateStoreLimits {
+            max_terminal_records: 0,
+            ..InMemoryTurnStateStoreLimits::default()
+        },
+    ));
+    let coordinator = DefaultTurnCoordinator::new(store.clone());
+    let root = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request(
+                "retain-tree-root",
+                "retain-tree-root-submit",
+            ))
+            .await
+            .unwrap(),
+    );
+    let middle = TurnRunId::new();
+    coordinator
+        .submit_child_run(child_run_request(
+            scope("retain-tree-root"),
+            root,
+            "retain-tree-middle",
+            middle,
+            "retain-tree-middle-submit",
+            3,
+        ))
+        .await
+        .unwrap();
+    coordinator
+        .submit_child_run(child_run_request(
+            scope("retain-tree-middle"),
+            middle,
+            "retain-tree-leaf",
+            TurnRunId::new(),
+            "retain-tree-leaf-submit",
+            3,
+        ))
+        .await
+        .unwrap();
+    complete_queued_run(&store, middle, "retain-tree-middle").await;
+    assert!(
+        store
+            .get_run_record(&scope("retain-tree-middle"), middle)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let cancelled = coordinator
+        .cancel_tree(cancel_request(
+            "retain-tree-root",
+            root,
+            "retain-tree-cancel",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(cancelled.len(), 2);
+    assert!(
+        store
+            .get_run_record(&scope("retain-tree-middle"), middle)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[derive(Default)]
+struct ChildAdmissionBarrier {
+    started: tokio::sync::Notify,
+    proceed: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl RunProfileResolver for ChildAdmissionBarrier {
+    async fn resolve_run_profile(
+        &self,
+        request: RunProfileResolutionRequest,
+    ) -> Result<ResolvedRunProfile, RunProfileResolutionError> {
+        self.started.notify_one();
+        self.proceed.notified().await;
+        InMemoryRunProfileResolver::default()
+            .resolve_run_profile(request)
+            .await
+    }
+}
+
+#[tokio::test]
+async fn tree_cancellation_fences_child_admission_after_awaited_resolution() {
+    let (coordinator, store) = coordinator();
+    let root = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request("race-tree-root", "race-tree-root-submit"))
+            .await
+            .unwrap(),
+    );
+    let barrier = Arc::new(ChildAdmissionBarrier::default());
+    let admitted = {
+        let store = store.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            store
+                .submit_child_turn(
+                    child_run_request(
+                        scope("race-tree-root"),
+                        root,
+                        "race-tree-child",
+                        TurnRunId::new(),
+                        "race-tree-child-submit",
+                        3,
+                    ),
+                    &AllowAllTurnAdmissionPolicy,
+                    barrier.as_ref(),
+                )
+                .await
+        })
+    };
+    barrier.started.notified().await;
+    coordinator
+        .cancel_tree(cancel_request("race-tree-root", root, "race-tree-cancel"))
+        .await
+        .unwrap();
+    barrier.proceed.notify_one();
+    assert!(matches!(
+        admitted.await.unwrap(),
+        Err(TurnError::InvalidRequest { .. })
+    ));
+    assert_eq!(store.persistence_snapshot().runs.len(), 1);
+    assert!(
+        store
+            .persistence_snapshot()
+            .spawn_tree_reservations
+            .is_empty()
+    );
+}
+
+fn assert_same_tree_snapshot(
+    a: &brassclaw_turns::TurnPersistenceSnapshot,
+    b: &brassclaw_turns::TurnPersistenceSnapshot,
+) {
+    let a = serde_json::to_value(a).unwrap();
+    let b = serde_json::to_value(b).unwrap();
+    let changed: Vec<_> = a
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(key, value)| b.get(key.as_str()) != Some(*value))
+        .map(|(key, _)| key.as_str())
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "tree snapshot fields changed: {changed:?}"
+    );
+}
+
+#[tokio::test]
+async fn lifecycle_delivery_receipts_survive_more_than_4096_events() {
+    let raw = Arc::new(InMemoryTurnStateStore::default());
+    let sink = Arc::new(InMemoryTurnEventSink::default());
+    let store = lifecycle_publishing_store(raw, None, Some(sink.clone()));
+    let coordinator = DefaultTurnCoordinator::new(store.clone());
+    let request = submit_request("delivery-retention", "delivery-retention-submit");
+    let accepted = coordinator.submit_turn(request.clone()).await.unwrap();
+    let run_id = accepted_run_id(&accepted);
+    let runner_id = TurnRunnerId::new();
+    // Heartbeats deliberately have no lifecycle fanout. Exercise real
+    // claim/block/resume transitions to cross the former delivery-mark limit.
+    for index in 0..1367 {
+        let lease_token = TurnLeaseToken::new();
+        store
+            .claim_next_run(ClaimRunRequest {
+                runner_id,
+                lease_token,
+                scope_filter: Some(scope("delivery-retention")),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        let gate = LoopGateRef::new(format!("gate:delivery-{index}")).unwrap();
+        apply_test_loop_exit(
+            store.as_ref(),
+            run_id,
+            runner_id,
+            lease_token,
+            dependent_blocked_mapping(TurnCheckpointId::new(), block_state_ref(), &gate),
+        )
+        .await
+        .unwrap();
+        coordinator
+            .resume_turn(ResumeTurnRequest {
+                scope: scope("delivery-retention"),
+                actor: actor(),
+                run_id,
+                gate_resolution_ref: GateRef::new(gate.as_str()).unwrap(),
+                source_binding_ref: SourceBindingRef::new("source-web").unwrap(),
+                reply_target_binding_ref: ReplyTargetBindingRef::new("reply-web").unwrap(),
+                idempotency_key: IdempotencyKey::new(format!("delivery-resume-{index}")).unwrap(),
+                precondition: brassclaw_turns::ResumeTurnPrecondition::BlockedDependentRunGate,
+            })
+            .await
+            .unwrap();
+    }
+    let before = sink.events().len();
+    assert!(before > 4096);
+    assert_eq!(coordinator.submit_turn(request).await.unwrap(), accepted);
+    assert_eq!(
+        sink.events().len(),
+        before,
+        "an acknowledged event cannot be replayed when a cache count is crossed"
+    );
+}
+
+struct HeldSubmitObserver {
+    calls: AtomicUsize,
+    started: tokio::sync::Notify,
+    release: tokio::sync::Semaphore,
+}
+#[async_trait::async_trait]
+impl TurnCommittedEventObserver for HeldSubmitObserver {
+    fn observes_event(&self, event: &TurnLifecycleEvent) -> bool {
+        event.kind == TurnEventKind::Submitted
+    }
+    async fn observe_committed_state(&self, _state: TurnRunState) -> Result<(), TurnError> {
+        Ok(())
+    }
+    async fn observe_committed_event(&self, _event: TurnLifecycleEvent) -> Result<(), TurnError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.started.notify_one();
+        self.release.acquire().await.unwrap().forget();
+        Ok(())
+    }
+}
+
+/// Announces completion of a real operation's first poll. Its callback or
+/// publication wait has therefore been entered before the fixture releases it.
+struct AnnounceFirstPoll<F: std::future::Future> {
+    future: std::pin::Pin<Box<F>>,
+    started: Option<Arc<tokio::sync::Notify>>,
+}
+impl<F: std::future::Future> std::future::Future for AnnounceFirstPoll<F> {
+    type Output = F::Output;
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let outcome = this.future.as_mut().poll(cx);
+        if let Some(started) = this.started.take() {
+            started.notify_one();
+        }
+        outcome
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_lifecycle_replays_share_one_required_publication() {
+    let observer = Arc::new(HeldSubmitObserver {
+        calls: AtomicUsize::new(0),
+        started: tokio::sync::Notify::new(),
+        release: tokio::sync::Semaphore::new(0),
+    });
+    let store = lifecycle_publishing_store(
+        Arc::new(InMemoryTurnStateStore::default()),
+        Some(observer.clone()),
+        None,
+    );
+    let coordinator = Arc::new(DefaultTurnCoordinator::new(store));
+    let request = submit_request("concurrent-publication", "concurrent-publication-submit");
+    let first = {
+        let coordinator = coordinator.clone();
+        let request = request.clone();
+        tokio::spawn(async move { coordinator.submit_turn(request).await })
+    };
+    observer.started.notified().await;
+    let second_started = Arc::new(tokio::sync::Notify::new());
+    let second = {
+        let coordinator = coordinator.clone();
+        let started = second_started.clone();
+        tokio::spawn(async move {
+            AnnounceFirstPoll {
+                future: Box::pin(coordinator.submit_turn(request)),
+                started: Some(started),
+            }
+            .await
+        })
+    };
+    second_started.notified().await;
+    observer.release.add_permits(2);
+    let (first, second) = tokio::time::timeout(Duration::from_secs(2), async {
+        (
+            first.await.unwrap().unwrap(),
+            second.await.unwrap().unwrap(),
+        )
+    })
+    .await
+    .unwrap();
+    assert_eq!(first, second);
+    assert_eq!(observer.calls.load(Ordering::SeqCst), 1);
+}
+
+struct ReentrantCancellationObserver {
+    store:
+        Mutex<Option<std::sync::Weak<LifecyclePublishingTurnStateStore<InMemoryTurnStateStore>>>>,
+}
+#[async_trait::async_trait]
+impl TurnCommittedEventObserver for ReentrantCancellationObserver {
+    fn observes_event(&self, event: &TurnLifecycleEvent) -> bool {
+        event.kind == TurnEventKind::Submitted
+    }
+    async fn observe_committed_state(&self, _state: TurnRunState) -> Result<(), TurnError> {
+        Ok(())
+    }
+    async fn observe_committed_event(&self, event: TurnLifecycleEvent) -> Result<(), TurnError> {
+        let store = {
+            let slot = self.store.lock().unwrap();
+            slot.as_ref().unwrap().upgrade().unwrap()
+        };
+        store
+            .request_cancel(CancelRunRequest {
+                scope: event.scope,
+                actor: TurnActor::new(event.owner_user_id.unwrap()),
+                run_id: event.run_id,
+                reason: SanitizedCancelReason::OperatorRequested,
+                idempotency_key: IdempotencyKey::new("reentrant-cancel").unwrap(),
+            })
+            .await?;
+        Ok(())
+    }
+}
+#[tokio::test]
+async fn lifecycle_publication_allows_reentrant_different_event_transitions() {
+    let observer = Arc::new(ReentrantCancellationObserver {
+        store: Mutex::new(None),
+    });
+    let store = lifecycle_publishing_store(
+        Arc::new(InMemoryTurnStateStore::default()),
+        Some(observer.clone()),
+        None,
+    );
+    *observer.store.lock().unwrap() = Some(Arc::downgrade(&store));
+    let coordinator = DefaultTurnCoordinator::new(store.clone());
+    let response = tokio::time::timeout(
+        Duration::from_secs(2),
+        coordinator.submit_turn(submit_request(
+            "reentrant-publication",
+            "reentrant-publication-submit",
+        )),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        store
+            .get_run_state(GetRunStateRequest {
+                scope: scope("reentrant-publication"),
+                run_id: accepted_run_id(&response),
+            })
+            .await
+            .unwrap()
+            .status,
+        TurnStatus::Cancelled
+    );
+}
+
+#[tokio::test]
+async fn prepared_identity_scope_survives_an_admission_error() {
+    let (coordinator, store) = coordinator();
+    let prepared = coordinator
+        .prepare_turn(scope("prepared-admission-origin"))
+        .await
+        .unwrap();
+    let mut invalid = submit_request("prepared-admission-origin", "prepared-invalid-profile");
+    invalid.requested_run_id = Some(prepared);
+    invalid.requested_run_profile = Some(RunProfileRequest::new("missing-profile").unwrap());
+    assert!(coordinator.submit_turn(invalid).await.is_err());
+    let mut foreign = submit_request("prepared-admission-foreign", "prepared-foreign");
+    foreign.requested_run_id = Some(prepared);
+    assert!(matches!(
+        coordinator.submit_turn(foreign).await,
+        Err(TurnError::Unauthorized)
+    ));
+    assert!(store.persistence_snapshot().runs.is_empty());
+    let mut correct = submit_request("prepared-admission-origin", "prepared-valid");
+    correct.requested_run_id = Some(prepared);
+    assert_eq!(
+        accepted_run_id(&coordinator.submit_turn(correct).await.unwrap()),
+        prepared
+    );
+}
+
+#[tokio::test]
+async fn successful_child_submission_releases_its_prepared_identity() {
+    let (coordinator, _) = coordinator();
+    let parent = accepted_run_id(
+        &coordinator
+            .submit_turn(submit_request("prepared-parent", "prepared-parent-submit"))
+            .await
+            .unwrap(),
+    );
+    let child = coordinator
+        .prepare_turn(scope("prepared-child"))
+        .await
+        .unwrap();
+    let wrong_origin = coordinator
+        .prepare_turn(scope("prepared-unrelated"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        coordinator
+            .submit_child_run(child_run_request(
+                scope("prepared-parent"),
+                parent,
+                "prepared-child",
+                wrong_origin,
+                "prepared-wrong-child",
+                2,
+            ))
+            .await,
+        Err(TurnError::Unauthorized)
+    ));
+    coordinator.abort_prepared_turn(wrong_origin).await.unwrap();
+    let response = coordinator
+        .submit_child_run(child_run_request(
+            scope("prepared-parent"),
+            parent,
+            "prepared-child",
+            child,
+            "prepared-child-submit",
+            2,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(accepted_run_id(&response), child);
+    let parent_prepared = coordinator
+        .prepare_turn(scope("prepared-parent"))
+        .await
+        .unwrap();
+    let transferred = coordinator
+        .submit_child_run(child_run_request(
+            scope("prepared-parent"),
+            parent,
+            "prepared-second-child",
+            parent_prepared,
+            "prepared-parent-handoff",
+            2,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        accepted_run_id(&transferred),
+        parent_prepared,
+        "the supported parent-to-child handoff remains valid"
+    );
+    // The existing public compatibility port has a 4096-entry default. A
+    // submitted child must release its slot before new preparations fill it.
+    let mut prepared = Vec::new();
+    for _ in 0..4096 {
+        prepared.push(
+            coordinator
+                .prepare_turn(scope("prepared-capacity-probe"))
+                .await
+                .unwrap(),
+        );
+    }
+    for id in prepared {
+        coordinator.abort_prepared_turn(id).await.unwrap();
+    }
+    coordinator
+        .prepare_turn(scope("prepared-after-abort"))
+        .await
+        .unwrap();
 }

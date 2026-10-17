@@ -140,37 +140,22 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     // after the V047/V048 migration.
     #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
     if let Some(pool) = services.pg_pool.clone() {
-        let keys = crate::LlmKeyStore::new(runtime.services().secret_store());
+        let keys = runtime.services().llm_key_store();
         let tenant_id = runtime.webui_tenant_id().to_string();
         let pg_repo = Arc::new(crate::pg_provider_repo::PgProviderRepo::new(
             pool.as_ref().clone(),
             tenant_id.clone(),
         ));
-        // Seed builtin providers on every service start (idempotent).
-        if let Err(e) = seed_builtin_providers(&pg_repo).await {
-            tracing::warn!(
-                error = %e,
-                "builtin provider seeding failed; providers may be \
-                 missing from the settings UI until the next restart"
-            );
-        }
         let mut llm_config =
             crate::RebornLlmConfigService::new(keys, pool.clone(), pg_repo, tenant_id);
+        if let Some(source) = &services.memory_embedding_source {
+            llm_config = llm_config.with_memory_embedding_source(source.clone());
+        }
         if let Some(adapter) = runtime.webui_llm_reload_adapter() {
             let trigger = Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>;
-            // Boot-time DB reload: if the operator already configured an LLM
-            // via the DB (e.g. direct DB write or a previous WebUI session),
-            // hot-swap it into the running gateway immediately so the runtime
-            // does not start with the placeholder provider.
-            match trigger.reload().await {
-                Ok(()) => {
-                    tracing::debug!("boot-time LLM reload from DB succeeded; provider is now live")
-                }
-                Err(e) => tracing::warn!(
-                    error = %e,
-                    "boot-time LLM reload from DB failed; starting with placeholder provider"
-                ),
-            }
+            // Runtime startup has already restored the primary selection before
+            // Monty/workers/ingress. Attaching a surface must not republish it;
+            // this handle is reserved for explicit live settings changes.
             llm_config = llm_config.with_reload_trigger(trigger);
         }
         if let Some(session) = runtime.webui_llm_session() {
@@ -251,6 +236,15 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         }
     }
 
+    // Reuse the global UUID-keyed kernel policy store, independently from the
+    // legacy scoped capability-permission and component-editing stores.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        api = api.with_instance_tool_settings(Arc::new(
+            crate::instance_tool_settings::PgInstanceToolSettings::new(pool.clone()),
+        ));
+    }
+
     // Wire the safety configuration store (Postgres path).
     #[cfg(feature = "postgres")]
     if let Some(safety_config_store) = &services.pg_safety_config_store {
@@ -304,6 +298,10 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             "", // agent_id: empty string matches the default scope
         ));
         facade = facade.with_basic_prompt_store(basic_prompt);
+        #[cfg(feature = "skills-db")]
+        {
+            facade = facade.with_catalogue(runtime.installed_catalogue.clone());
+        }
         api =
             api.with_recipe_store(
                 Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
@@ -462,74 +460,4 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         product_auth: services.product_auth.clone(),
         readiness: services.readiness,
     })
-}
-
-/// Seed (or update) builtin provider definitions into the DB.
-///
-/// Called on every service start — `upsert_builtin` is idempotent so existing
-/// rows are updated with structural fields from the current binary's
-/// `providers.json` while operator-owned fields (base_url, model, description,
-/// api_key_required, token_budget) are preserved.
-///
-/// This ensures new builtins added in a binary upgrade are automatically
-/// available after restart without requiring a manual migration.
-///
-/// Non-fatal: individual provider seed failures are logged as warnings and do
-/// not prevent service startup.
-#[cfg(feature = "postgres")]
-pub(crate) async fn seed_builtin_providers(
-    pg_repo: &crate::pg_provider_repo::PgProviderRepo,
-) -> Result<(), crate::pg_provider_repo::PgProviderRepoError> {
-    use brassclaw_llm::ProviderDefinition;
-    use std::collections::HashMap;
-
-    let registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
-        .map_err(|e| crate::pg_provider_repo::PgProviderRepoError::Db(e.to_string()))?;
-
-    // Load existing builtin rows for the Rust-side merge so we can preserve
-    // operator-owned fields (base_url, model, description, etc.).
-    let existing = pg_repo.load_all().await?;
-    let existing_map: HashMap<String, ProviderDefinition> = existing
-        .into_iter()
-        .filter(|(_, is_builtin)| *is_builtin)
-        .map(|(def, _)| (def.id.clone(), def))
-        .collect();
-
-    let mut seeded = 0usize;
-    for new_def in registry.all() {
-        // Merge: start from the new binary's canonical definition;
-        // overlay the operator-owned fields from any existing builtin row.
-        let merged = if let Some(existing_def) = existing_map.get(&new_def.id) {
-            let mut merged = new_def.clone();
-            // Operator-owned fields — preserve what the operator last set.
-            // Note: api_key_required is intentionally NOT copied from the existing
-            // DB row; the canonical binary definition is always authoritative for
-            // whether a key is structurally required.  Copying the DB value would
-            // re-seed any corruption introduced by a previous buggy save.
-            merged.default_base_url = existing_def.default_base_url.clone();
-            merged.default_model = existing_def.default_model.clone();
-            merged.description = existing_def.description.clone();
-            merged.token_budget = existing_def.token_budget.clone();
-            merged
-        } else {
-            new_def.clone()
-        };
-
-        match pg_repo.upsert_builtin(merged).await {
-            Ok(true) => seeded += 1,
-            Ok(false) => tracing::warn!(
-                provider_id = %new_def.id,
-                "builtin provider skipped: a non-builtin row with the same id exists; \
-                 the builtin will not overwrite it"
-            ),
-            Err(e) => tracing::warn!(
-                provider_id = %new_def.id,
-                error = %e,
-                "failed to seed builtin provider"
-            ),
-        }
-    }
-
-    tracing::debug!(count = seeded, "seeded builtin LLM providers into DB");
-    Ok(())
 }

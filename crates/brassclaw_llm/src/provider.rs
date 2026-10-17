@@ -473,9 +473,33 @@ pub struct ModelMetadata {
     pub context_length: Option<u32>,
 }
 
+/// One retained host-side selection. Holding this value does not dispatch a
+/// request or grant authority; it keeps an admitted exchange on its backend.
+#[derive(Clone)]
+pub struct RetainedLlmProvider {
+    pub provider: std::sync::Arc<dyn LlmProvider>,
+    pub provider_id: String,
+    pub model: String,
+}
+
+impl std::fmt::Debug for RetainedLlmProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RetainedLlmProvider")
+            .field("provider_id", &self.provider_id)
+            .field("model", &self.model)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Trait for LLM providers.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
+    /// Capture one concrete backend/identity/model before an exchange. Mutable
+    /// provider wrappers override this; immutable providers need no extra layer.
+    fn retained_provider(&self) -> Option<RetainedLlmProvider> {
+        None
+    }
+
     /// Get the model name.
     fn model_name(&self) -> &str;
 

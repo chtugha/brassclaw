@@ -433,12 +433,69 @@ async fn reqwest_transport_enforces_streaming_response_limit_separately_from_req
 }
 
 #[tokio::test]
-async fn reqwest_transport_clamps_oversized_explicit_response_limit_to_safe_default() {
+async fn reqwest_transport_rejects_invalid_limits_before_dispatch() {
+    for (response_body_limit, timeout_ms) in [
+        (Some(0), None),
+        (Some(u64::MAX), None),
+        (Some(1024), Some(0)),
+    ] {
+        let error = ReqwestNetworkTransport::default()
+            .execute(NetworkTransportRequest {
+                method: NetworkMethod::Get,
+                // No URL parsing or network attempt should precede validation.
+                url: "invalid URL containing private-request-data".into(),
+                headers: Vec::new(),
+                body: b"body".to_vec(),
+                resolved_ips: Vec::new(),
+                response_body_limit,
+                timeout_ms,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, NetworkHttpError::PolicyDenied { .. }));
+        assert_eq!(error.request_bytes(), 4);
+        assert_eq!(error.response_bytes(), 0);
+        assert!(!format!("{error:?}").contains("private-request-data"));
+    }
+}
+
+#[tokio::test]
+async fn reqwest_transport_honors_explicit_timeout_above_default() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; SIMPLE_SERVER_READ_BUF];
+        let received = stream.read(&mut request).unwrap();
+        assert!(received > 0, "delayed endpoint must receive a request");
+        std::thread::sleep(Duration::from_millis(300));
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+            .unwrap();
+    });
+    let response = ReqwestNetworkTransport::new(Duration::from_millis(100))
+        .execute(NetworkTransportRequest {
+            method: NetworkMethod::Get,
+            url: format!("http://{address}/test"),
+            headers: Vec::new(),
+            body: Vec::new(),
+            resolved_ips: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            response_body_limit: Some(1024),
+            timeout_ms: Some(2000),
+        })
+        .await
+        .unwrap();
+    assert_eq!(response.body, b"ok");
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn reqwest_transport_honors_explicit_response_limit_above_default() {
     let body_len = DEFAULT_RESPONSE_BODY_LIMIT + 1;
     let (url, server) = sized_response_server(body_len);
     let transport = ReqwestNetworkTransport::new(Duration::from_secs(2));
 
-    let error = transport
+    let response = transport
         .execute(NetworkTransportRequest {
             method: NetworkMethod::Get,
             url,
@@ -449,29 +506,15 @@ async fn reqwest_transport_clamps_oversized_explicit_response_limit_to_safe_defa
             timeout_ms: None,
         })
         .await
-        .expect_err("oversized explicit response limits should still be clamped");
+        .expect("an explicit representable limit must not be silently clamped");
     server.join().unwrap();
 
-    assert!(matches!(
-        error,
-        NetworkHttpError::ResponseBodyLimit {
-            limit: DEFAULT_RESPONSE_BODY_LIMIT,
-            partial_response: Some(_),
-            ..
-        }
-    ));
-    assert_eq!(error.response_bytes(), DEFAULT_RESPONSE_BODY_LIMIT + 1);
-    let partial_response = error
-        .into_partial_response()
-        .expect("transport should retain a capped partial response");
-    assert_eq!(
-        partial_response.body.len() as u64,
-        DEFAULT_RESPONSE_BODY_LIMIT
-    );
+    assert_eq!(response.usage.response_bytes, body_len);
+    assert_eq!(response.body.len() as u64, body_len);
 }
 
 #[tokio::test]
-async fn reqwest_transport_clamps_unspecified_response_limit_to_safe_default() {
+async fn reqwest_transport_bounds_unspecified_response_limit_by_default() {
     let body_len = DEFAULT_RESPONSE_BODY_LIMIT + 1;
     let (url, server) = sized_response_server(body_len);
     let transport = ReqwestNetworkTransport::new(Duration::from_secs(2));
@@ -634,6 +677,115 @@ fn single_response_server(response: &'static str) -> (String, std::thread::JoinH
     single_response_server_for_host("127.0.0.1", response)
 }
 
+#[tokio::test]
+async fn actual_transport_errors_do_not_retain_sensitive_urls_or_backend_data() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let closed_port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let transport = ReqwestNetworkTransport::new(Duration::from_secs(2));
+    // Exercise both send() and response.chunk() errors using actual sockets.
+    let (partial_url, partial_server) = single_response_server(
+        "HTTP/1.1 200 OK\r\nContent-Length: 64\r\nConnection: close\r\n\r\npartial",
+    );
+    for url in [
+        format!("http://127.0.0.1:{closed_port}/private-path"),
+        partial_url,
+    ] {
+        let error = transport
+            .execute(NetworkTransportRequest {
+                method: NetworkMethod::Get,
+                url: format!("{url}?token=private-query-secret"),
+                headers: vec![(
+                    "authorization".into(),
+                    "Bearer private-header-secret".into(),
+                )],
+                body: Vec::new(),
+                resolved_ips: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+                response_body_limit: Some(1024),
+                timeout_ms: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, NetworkHttpError::Transport { .. }));
+        for text in [error.to_string(), format!("{error:?}")] {
+            for private in [
+                "private-query-secret",
+                "private-header-secret",
+                "private-path",
+                "127.0.0.1",
+                "partial",
+            ] {
+                assert!(
+                    !text.contains(private),
+                    "sensitive transport diagnostic: {text}"
+                );
+            }
+        }
+        assert_eq!(error.stable_reason(), "transport_failed");
+    }
+    partial_server.join().unwrap();
+}
+
+#[tokio::test]
+async fn actual_transport_ignores_ambient_proxy_and_uses_vetted_address() {
+    const CHILD: &str = "BRASSCLAW_NETWORK_PROXY_ACCEPTANCE_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        // A subprocess avoids mutating environment shared by concurrent tests.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let proxy = format!("http://{}", listener.local_addr().unwrap());
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "actual_transport_ignores_ambient_proxy_and_uses_vetted_address",
+                "--nocapture",
+            ])
+            .env(CHILD, "1");
+        for name in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ] {
+            command.env(name, &proxy);
+        }
+        for name in ["NO_PROXY", "no_proxy"] {
+            command.env(name, "");
+        }
+        // Keep the proxy port bound with no accept loop; use of the proxy
+        // fails the child deadline instead of routing to the vetted server.
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "stdout: {} stderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        return;
+    }
+    let (url, server) = single_response_server_for_host(
+        "vetted-address.example.test",
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+    );
+    let response = ReqwestNetworkTransport::new(Duration::from_secs(2))
+        .execute(NetworkTransportRequest {
+            method: NetworkMethod::Get,
+            url,
+            headers: Vec::new(),
+            body: Vec::new(),
+            resolved_ips: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            response_body_limit: Some(1024),
+            timeout_ms: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(response.body, b"ok");
+    server.join().unwrap();
+}
+
 fn captured_request_server(
     response: &'static str,
 ) -> (String, Arc<Mutex<Vec<u8>>>, std::thread::JoinHandle<()>) {
@@ -721,4 +873,94 @@ fn sample_scope() -> ResourceScope {
         thread_id: None,
         invocation_id: InvocationId::new(),
     }
+}
+
+#[tokio::test]
+async fn live_http_defaults_apply_to_real_requests_and_preserve_accepted_bounds() {
+    let transport = ReqwestNetworkTransport::default();
+    let control = transport.client_cache_control();
+    control
+        .publish_policy(0, 1, 8, Duration::from_secs(2), 8)
+        .unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (accepted, ready) = tokio::sync::oneshot::channel();
+    let (release, waiting) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0u8; 1024];
+        assert!(stream.read(&mut buffer).unwrap() > 0);
+        accepted.send(()).unwrap();
+        waiting.recv().unwrap();
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nretained")
+            .unwrap();
+    });
+    let request = |addr: std::net::SocketAddr| NetworkTransportRequest {
+        method: NetworkMethod::Get,
+        url: format!("http://defaults.example.test:{}/", addr.port()),
+        headers: vec![],
+        body: vec![],
+        resolved_ips: vec![addr.ip()],
+        response_body_limit: None,
+        timeout_ms: None,
+    };
+    let running = tokio::spawn({
+        let transport = transport.clone();
+        let request = request(addr);
+        async move { transport.execute(request).await }
+    });
+    ready.await.unwrap();
+    control
+        .publish_policy(1, 2, 8, Duration::from_millis(500), 3)
+        .unwrap();
+    // Exceed the successor timeout while the original accepted request waits.
+    tokio::time::sleep(Duration::from_millis(650)).await;
+    release.send(()).unwrap();
+    assert_eq!(running.await.unwrap().unwrap().body, b"retained");
+    server.join().unwrap();
+    // The successor's omitted response limit is actually enforced over a socket.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0u8; 1024];
+        assert!(stream.read(&mut buffer).unwrap() > 0);
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nover")
+            .unwrap();
+    });
+    assert!(matches!(
+        transport.execute(request(addr)).await,
+        Err(NetworkHttpError::ResponseBodyLimit { limit: 3, .. })
+    ));
+    server.join().unwrap();
+    // Omitted timeout also reaches the SDK. No timing-dependent server write.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (release, waiting) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0u8; 1024];
+        assert!(stream.read(&mut buffer).unwrap() > 0);
+        waiting.recv().unwrap();
+    });
+    let result =
+        tokio::time::timeout(Duration::from_secs(2), transport.execute(request(addr))).await;
+    release.send(()).unwrap();
+    server.join().unwrap();
+    assert!(
+        matches!(result.unwrap(),Err(NetworkHttpError::Transport { ref reason, .. }) if reason == "request timed out")
+    );
+    let before = control.status().unwrap();
+    assert!(control.publish_policy(2, 3, 8, Duration::ZERO, 3).is_err());
+    assert_eq!(control.status().unwrap(), before);
+    assert!(
+        control
+            .publish_policy(2, 2, 8, Duration::from_secs(1), 3)
+            .is_err()
+    );
+    control
+        .publish_policy(1, 2, 8, Duration::from_millis(500), 3)
+        .unwrap();
 }

@@ -19,7 +19,7 @@ pub use egress::{NetworkHttpEgress, NetworkHttpTransport, PolicyNetworkHttpEgres
 pub use error::NetworkHttpError;
 pub use policy::{NetworkPolicyEnforcer, StaticNetworkPolicyEnforcer, target_matches_pattern};
 pub use resolver::NetworkResolver;
-pub use transport::ReqwestNetworkTransport;
+pub use transport::{HttpClientCacheControl, HttpClientCacheStatus, ReqwestNetworkTransport};
 pub use types::{
     DEFAULT_RESPONSE_BODY_LIMIT, NetworkHttpRequest, NetworkHttpResponse, NetworkRequest,
     NetworkTransportRequest, NetworkUsage,

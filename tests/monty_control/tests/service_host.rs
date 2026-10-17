@@ -73,6 +73,7 @@ struct FilePorts {
     release: Notify,
     pause_read: bool,
     panic_after_read: bool,
+    refuse_finish: bool,
     retain_child_heap: bool,
     retained_vm_bytes: AtomicUsize,
     resume_child_after_edit: bool,
@@ -101,6 +102,7 @@ impl FilePorts {
             release: Notify::new(),
             pause_read,
             panic_after_read: false,
+            refuse_finish: false,
             retain_child_heap: false,
             retained_vm_bytes: AtomicUsize::new(0),
             resume_child_after_edit: false,
@@ -108,8 +110,14 @@ impl FilePorts {
             child_opened: None,
         })
     }
+    fn retained_input(&self) -> Value {
+        let mut input = self.expected.clone();
+        input["entry"] = json!({"kind":"chat"});
+        input
+    }
     fn input(&self) -> TaskInput {
         TaskInput {
+            entry: brassclaw_monty_host::service::TaskEntry::Chat,
             conversation_id: self.expected["conversation_id"].as_str().unwrap().into(),
             message_id: self.expected["message_id"].as_str().unwrap().into(),
             turn_id: self.expected["turn_id"].as_str().unwrap().into(),
@@ -339,6 +347,9 @@ impl TaskPorts for FilePorts {
                     return Err(failure("wrong_reply_content"));
                 }
             }
+            if self.refuse_finish {
+                return Err(failure("completion_refused"));
+            }
             Ok(outcome)
         }
         .boxed()
@@ -506,6 +517,8 @@ async fn live_adapter_reserve_preserves_heap_identity_and_waiting_task_accountin
         token_budgets_enabled: false,
     };
     let hosting = |reserve| ServiceHostingLimits {
+        max_workers: None,
+        max_pending_host_calls: None,
         max_frame_bytes: None,
         adapter_reserve_bytes: Some(reserve),
         admission: client.admission_observation().limits,
@@ -931,6 +944,44 @@ async fn queued_cancellation_passes_fifo_front_without_a_free_worker_or_capacity
 
 #[tokio::test]
 async fn memory_pressure_holds_admission_without_blocking_controls_or_active_results() {
+    async fn cancel_waiting(
+        client: &brassclaw_monty_host::service::ServiceClient,
+        ports: Arc<FilePorts>,
+    ) {
+        use brassclaw_monty_host::service::TaskSubmission;
+        let before = client.admission_observation();
+        let cancellation = Notify::new();
+        let owner: Arc<dyn TaskPorts> = ports.clone();
+        let run = ports.input().run_id;
+        let mut waiting = Box::pin(client.submit_unless_cancelled(
+            ports.input(),
+            owner.clone(),
+            cancellation.notified(),
+        ));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), waiting.as_mut())
+                .await
+                .is_err()
+        );
+        cancellation.notify_one();
+        let result = tokio::time::timeout(Duration::from_secs(2), waiting.as_mut())
+            .await
+            .unwrap()
+            .unwrap();
+        let TaskSubmission::Cancelled(proof) = result else {
+            panic!("never queued");
+        };
+        drop(waiting);
+        assert!(proof.matches(client.root_identity(), &run, &owner));
+        assert!(!proof.matches(client.root_identity(), "different-run", &owner));
+        let wrong_owner: Arc<dyn TaskPorts> =
+            FilePorts::new(ports.input.parent().unwrap(), "different-owner", false);
+        assert!(!proof.matches(client.root_identity(), &run, &wrong_owner));
+        assert!(ports.fenced.load(Ordering::Acquire));
+        assert_eq!(ports.reads.load(Ordering::Acquire), 0);
+        assert_eq!(ports.writes.load(Ordering::Acquire), 0);
+        assert_eq!(client.admission_observation(), before);
+    }
     let directory = tempfile::tempdir().unwrap();
     let mut owner = start_with_capacity(FILE_ROOT, 1).await;
     let pid = owner.worker_process_id();
@@ -986,6 +1037,11 @@ async fn memory_pressure_holds_admission_without_blocking_controls_or_active_res
             .await
             .is_err()
     );
+    cancel_waiting(
+        &client,
+        FilePorts::new(directory.path(), "cancel-full-queue", false),
+    )
+    .await;
     queued_ticket.control().cancel();
     let cancelled = tokio::time::timeout(Duration::from_secs(2), queued_ticket.wait())
         .await
@@ -1006,6 +1062,11 @@ async fn memory_pressure_holds_admission_without_blocking_controls_or_active_res
     );
     assert_eq!(waiting.reads.load(Ordering::Acquire), 0);
     drop(pending);
+    cancel_waiting(
+        &client,
+        FilePorts::new(directory.path(), "cancel-memory-wait", false),
+    )
+    .await;
 
     let current = client.live_task_settings().current();
     client
@@ -1128,8 +1189,8 @@ async fn fatal_worker_exit_fences_and_retains_queued_inputs_before_held_io_finis
     assert_eq!(exit.failure, Some(ServiceFailure::Transport));
     assert!(exit.pending_admission.is_none());
     assert_eq!(exit.queued_admissions.len(), 2);
-    assert_eq!(exit.queued_admissions[0].input, c.expected);
-    assert_eq!(exit.queued_admissions[1].input, d.expected);
+    assert_eq!(exit.queued_admissions[0].input, c.retained_input());
+    assert_eq!(exit.queued_admissions[1].input, d.retained_input());
     assert_eq!(exit.tasks.len(), 2);
     for ticket in [&a_ticket, &b_ticket] {
         assert!(matches!(
@@ -1145,6 +1206,69 @@ async fn fatal_worker_exit_fences_and_retains_queued_inputs_before_held_io_finis
 }
 
 #[tokio::test]
+async fn refused_completion_preserves_confirmed_reply_and_fences_queued_work_without_replay() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start_with_capacity(FILE_ROOT, 2).await;
+    let client = owner.client();
+    let mut completed = FilePorts::new(directory.path(), "refused-completion", true);
+    Arc::get_mut(&mut completed).unwrap().refuse_finish = true;
+    let completed_ticket = client.submit(completed.input(), completed.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), completed.started.notified())
+        .await
+        .unwrap();
+    let held = FilePorts::new(directory.path(), "refused-held", true);
+    let held_ticket = client.submit(held.input(), held.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), held.started.notified())
+        .await
+        .unwrap();
+    let queued = FilePorts::new(directory.path(), "refused-queued", false);
+    let queued_ticket = client.submit(queued.input(), queued.clone()).unwrap();
+    completed.release.notify_one();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(10), queued_ticket.wait())
+            .await
+            .unwrap(),
+        Err(ServiceFailure::InvalidPortResult)
+    ));
+    assert!(queued.fenced.load(Ordering::Acquire));
+    assert_eq!(queued.reads.load(Ordering::Acquire), 0);
+    assert_eq!(queued.writes.load(Ordering::Acquire), 0);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), owner.join())
+            .await
+            .is_err()
+    );
+    held.release.notify_one();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::InvalidPortResult));
+    assert_eq!(exit.tasks.len(), 2);
+    assert!(
+        exit.tasks
+            .iter()
+            .all(|task| task.reported_outcome.is_none())
+    );
+    assert_eq!(exit.queued_admissions.len(), 1);
+    assert_eq!(exit.queued_admissions[0].input, queued.retained_input());
+    for ticket in [&completed_ticket, &held_ticket] {
+        assert!(matches!(
+            ticket.wait().await,
+            Err(ServiceFailure::InvalidPortResult)
+        ));
+    }
+    assert_eq!(completed.reads.load(Ordering::Acquire), 1);
+    assert_eq!(completed.writes.load(Ordering::Acquire), 1);
+    assert_eq!(
+        tokio::fs::read(&completed.reply).await.unwrap(),
+        tokio::fs::read(&completed.input).await.unwrap()
+    );
+    assert!(completed.fenced.load(Ordering::Acquire));
+    assert!(held.fenced.load(Ordering::Acquire));
+}
+
+#[tokio::test]
 async fn actual_fatal_admission_retains_issued_handle_and_original_work() {
     let directory = tempfile::tempdir().unwrap();
     let source = "import asyncio\nasync def worker(i):\n    task = await host.await_next_task(i)\n    if task is not None:\n        raise RuntimeError('fatal root')\nawait asyncio.gather(*[worker(i) for i in range(worker_count)])";
@@ -1157,12 +1281,16 @@ async fn actual_fatal_admission_retains_issued_handle_and_original_work() {
             .unwrap(),
         Err(ServiceFailure::Transport)
     ));
+    assert!(
+        ticket.control().unsubmitted_rejection().is_none(),
+        "an uncertain Admit must never issue no-VM rejection proof"
+    );
     let exit = owner.join().await.unwrap();
     assert_eq!(exit.failure, Some(ServiceFailure::Transport));
     let pending = exit
         .pending_admission
         .expect("retain admission even before a first port");
-    assert_eq!(pending.input, ports.expected);
+    assert_eq!(pending.input, ports.retained_input());
     assert_eq!(exit.failed_exchanges.len(), 1);
     let failed = exit.failed_exchanges[0].outcome.as_ref().err().unwrap();
     assert!(failed.snapshot.as_ref().unwrap().admitted_task.is_some());
@@ -1220,6 +1348,8 @@ async fn port_panic_during_durable_publication_fences_and_retains_the_owned_writ
         ..initial.into()
     };
     let hosting = ServiceHostingLimits {
+        max_workers: None,
+        max_pending_host_calls: None,
         max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
@@ -1313,6 +1443,8 @@ async fn port_panic_during_durable_publication_fences_and_retains_the_owned_writ
     assert!(matches!(receipt.original_command().unwrap(),
         WorkerCommand::Recipe {
             command: brassclaw_monty_host::process::RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls: None,
+                max_workers: None,
                 settings: retained, ..
             }
         } if retained == settings));
@@ -1829,6 +1961,16 @@ async fn queued_input_is_rechecked_after_live_reduction_without_truncation_or_in
         .await
         .unwrap();
     assert!(matches!(rejected, Err(ServiceFailure::InvalidInput)));
+    let proof = queued
+        .control()
+        .unsubmitted_rejection()
+        .expect("explicit pre-Admit proof");
+    assert_eq!(
+        proof.reason(),
+        brassclaw_monty_host::service::UnsubmittedReason::Rejected(ServiceFailure::InvalidInput)
+    );
+    let original: Arc<dyn TaskPorts> = large.clone();
+    assert!(proof.matches(client.root_identity(), &large.input().run_id, &original));
     assert_eq!(large.reads.load(Ordering::Acquire), 0);
     assert_eq!(large.writes.load(Ordering::Acquire), 0);
     let next = FilePorts::new(directory.path(), "queue-next", false);
@@ -1916,6 +2058,8 @@ async fn live_settings_capacity_retains_accepted_edits_and_grows_beyond_eight() 
     let first_path = directory.path().join("first-committed-settings");
     let (release, commit) = held_commit(client.clone(), first_path.clone()).await;
     let hosting = |limit| ServiceHostingLimits {
+        max_workers: None,
+        max_pending_host_calls: None,
         max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
@@ -2290,6 +2434,8 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             },
         };
         let hosting = ServiceHostingLimits {
+            max_workers: None,
+            max_pending_host_calls: None,
             max_frame_bytes: Some(8 * 1024 * 1024),
             adapter_reserve_bytes: Some(0),
             admission: client.admission_observation().limits,
@@ -2469,6 +2615,8 @@ async fn durable_runtime_settings_hold_children_until_commit_and_survive_lost_wa
             client.vm_bounds(),
             8,
             ServiceHostingLimits {
+                max_workers: None,
+                max_pending_host_calls: None,
                 max_frame_bytes: Some(65536),
                 adapter_reserve_bytes: Some(0),
                 admission: client.admission_observation().limits,
@@ -2544,6 +2692,8 @@ async fn unacknowledged_actual_settings_write_fences_queued_child_and_retains_ev
     let mut settings: brassclaw_monty_host::process::TaskSettings = initial.into();
     settings.revision += 1;
     let hosting = ServiceHostingLimits {
+        max_workers: None,
+        max_pending_host_calls: None,
         max_frame_bytes: None,
         adapter_reserve_bytes: Some(0),
         admission: client.admission_observation().limits,
@@ -2662,6 +2812,8 @@ async fn live_retention_capacity_preserves_owned_credits_and_grows_beyond_256() 
                     client.vm_bounds(),
                     8,
                     ServiceHostingLimits {
+                        max_workers: None,
+                        max_pending_host_calls: None,
                         max_frame_bytes: None,
                         adapter_reserve_bytes: None,
                         admission: client.admission_observation().limits,
@@ -2720,6 +2872,8 @@ async fn actor_policy_is_published_with_the_worker_settings_revision() {
         ..initial
     };
     let hosting = |actor| ServiceHostingLimits {
+        max_workers: None,
+        max_pending_host_calls: None,
         max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
@@ -2788,6 +2942,8 @@ async fn live_hosting_deadlines_share_revision_and_preserve_global_root() {
     let root = client.root_identity();
     let initial = client.hosting_deadlines().unwrap();
     let policy = |deadlines| ServiceHostingLimits {
+        max_workers: None,
+        max_pending_host_calls: None,
         max_frame_bytes: None,
         adapter_reserve_bytes: None,
         admission: client.admission_observation().limits,
@@ -2894,4 +3050,779 @@ async fn live_hosting_deadlines_share_revision_and_preserve_global_root() {
     assert_eq!(client.live_task_settings().current().revision, 5);
     assert_eq!(client.root_identity(), root);
     graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn live_service_pool_reduction_preserves_busy_tasks_then_releases_and_drains() {
+    use brassclaw_monty_host::{process::TaskSettings, service::ServiceHostingLimits};
+    let pool_tail = r#"
+async def coordinator():
+    while True:
+        update = await host.await_pool_update()
+        if update is None:
+            return
+        active = set(update['active_ids'])
+        for worker_id in range(update['workers']):
+            if worker_id not in active:
+                asyncio._replace_sibling(worker_id + 1, worker(worker_id))
+async def main():
+    await asyncio.gather(coordinator(), *[worker(i) for i in range(worker_count)])
+asyncio.run(main())
+None
+"#;
+    let source = FILE_ROOT.replace(
+        "            reference = await host.post_reply(token, value)",
+        "            if task['user_input'] == 'cpu-until-budget-update':\n                counter = 0\n                while True:\n                    counter += 1\n            reference = await host.post_reply(token, value)",
+    ).replace(
+        "await asyncio.gather(*[worker(i) for i in range(worker_count)])\nNone\n",
+        pool_tail,
+    );
+    assert!(source.contains("async def coordinator"));
+    let mut configuration = boot(&source);
+    configuration
+        .aliases
+        .extend(["read_file".into(), "await_pool_update".into()]);
+    let mut owner = ServiceOwner::start(
+        worker(),
+        configuration,
+        limits(),
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: limits().max_frame_bytes * 16,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: limits().max_frame_bytes * 16,
+        },
+        8,
+    )
+    .await
+    .unwrap();
+    let client = owner.client();
+    let identity = client.root_identity();
+    let pid = client.worker_process_id();
+    let settings = |revision| TaskSettings {
+        revision,
+        max_compute_time: Duration::from_secs(600),
+        token_budgets_enabled: false,
+    };
+    let hosting = |workers| ServiceHostingLimits {
+        max_workers: Some(workers),
+        max_pending_host_calls: Some(8),
+        max_frame_bytes: None,
+        adapter_reserve_bytes: None,
+        admission: client.admission_observation().limits,
+        max_pending_settings: client.settings_capacity().limit,
+        max_retained_attempts: client.retained_attempts().limit,
+        actor: None,
+        deadlines: None,
+    };
+    use brassclaw_monty_host::service::{DurableSettingsCommit, HeapCommitOutcome};
+    let directory = tempfile::tempdir().unwrap();
+    let rejected_path = directory.path().join("must-not-write-infeasible-pool");
+    let rejected = client
+        .publish_control_settings_transaction(
+            1,
+            settings(2),
+            client.vm_bounds(),
+            8,
+            hosting(8),
+            DurableSettingsCommit {
+                heap_update: None,
+                timeout: Duration::from_secs(2),
+                future: Box::pin({
+                    let path = rejected_path.clone();
+                    async move {
+                        tokio::fs::write(path, b"must not be polled").await.unwrap();
+                        HeapCommitOutcome::Committed
+                    }
+                }),
+            },
+        )
+        .await;
+    assert!(matches!(rejected, Err(ServiceFailure::InvalidLimits)));
+    assert!(!rejected_path.exists());
+    assert_eq!(client.live_task_settings().current().revision, 1);
+    assert_eq!(client.worker_pool().unwrap().capacity.desired, 2);
+    let committed_path = directory.path().join("committed-pool-revision");
+    let grown = client
+        .publish_control_settings_transaction(
+            1,
+            settings(2),
+            client.vm_bounds(),
+            8,
+            hosting(4),
+            DurableSettingsCommit {
+                heap_update: None,
+                timeout: Duration::from_secs(2),
+                future: Box::pin({
+                    let path = committed_path.clone();
+                    async move {
+                        use std::io::Write;
+                        let mut file = std::fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(path)
+                            .unwrap();
+                        file.write_all(b"revision=2 workers=4").unwrap();
+                        file.sync_all().unwrap();
+                        HeapCommitOutcome::Committed
+                    }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read(committed_path).unwrap(),
+        b"revision=2 workers=4"
+    );
+    assert_eq!(client.live_task_settings().current().revision, 2);
+    assert!(grown.worker_pool.as_ref().unwrap().capacity.settled());
+    assert_eq!(client.worker_pool().unwrap().capacity.effective, 4);
+    let rejection_file = directory.path().join("reject-pool-revision");
+    std::fs::write(&rejection_file, b"existing durable revision").unwrap();
+    let rejected = client
+        .publish_control_settings_transaction(
+            2,
+            settings(3),
+            client.vm_bounds(),
+            8,
+            hosting(1),
+            DurableSettingsCommit {
+                heap_update: None,
+                timeout: Duration::from_secs(2),
+                future: Box::pin(async move {
+                    let error = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(rejection_file)
+                        .unwrap_err();
+                    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+                    HeapCommitOutcome::Rejected
+                }),
+            },
+        )
+        .await;
+    assert!(matches!(rejected, Err(ServiceFailure::SettingsConflict)));
+    assert_eq!(client.live_task_settings().current().revision, 2);
+    assert_eq!(client.worker_pool().unwrap().capacity.desired, 4);
+    let directory = tempfile::tempdir().unwrap();
+    let mut running = Vec::new();
+    for index in 0..4 {
+        let mut ports = FilePorts::new(directory.path(), &format!("pool-{index}"), true);
+        if index == 3 {
+            Arc::get_mut(&mut ports).unwrap().retain_child_heap = true;
+        }
+        let ticket = client.submit(ports.input(), ports.clone()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), ports.started.notified())
+            .await
+            .unwrap();
+        running.push((ports, ticket));
+    }
+    let reduced = client
+        .publish_control_settings(2, settings(3), client.vm_bounds(), 8, hosting(1))
+        .await
+        .unwrap();
+    let pool = reduced.worker_pool.as_ref().unwrap();
+    assert_eq!((pool.capacity.desired, pool.capacity.effective), (1, 4));
+    assert!(!pool.capacity.settled());
+    assert_eq!(reduced.accounting.len(), 4);
+    let queued = FilePorts::new(directory.path(), "pool-queued", false);
+    let queued_ticket = client.submit(queued.input(), queued.clone()).unwrap();
+    // Completing slot zero does not admit more work while three old tasks
+    // still exceed the new target. No busy future is answered by resizing.
+    let (first, first_ticket) = running.remove(0);
+    first.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), first_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), queued.started.notified())
+            .await
+            .is_err()
+    );
+    assert_eq!(queued.reads.load(Ordering::Acquire), 0);
+    let mut pool_changes = client.live_worker_pool();
+    for (ports, ticket) in running {
+        ports.release.notify_one();
+        let receipt = tokio::time::timeout(Duration::from_secs(5), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receipt.accounting.is_some());
+        assert_eq!(ports.reads.load(Ordering::Acquire), 1);
+        assert_eq!(ports.writes.load(Ordering::Acquire), 1);
+        assert_eq!(
+            tokio::fs::read_to_string(&ports.reply).await.unwrap(),
+            tokio::fs::read_to_string(&ports.input).await.unwrap()
+        );
+    }
+    tokio::time::timeout(Duration::from_secs(5), queued_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if pool_changes
+                .borrow_and_update()
+                .as_ref()
+                .is_some_and(|pool| pool.capacity.settled())
+            {
+                break;
+            }
+            pool_changes.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(client.worker_pool().unwrap().capacity.active_ids, [0]);
+    assert_eq!(client.recipe_context_capacity().active, 0);
+    assert_eq!(client.root_identity(), identity);
+    assert_eq!(client.worker_process_id(), pid);
+    // Regrowing reuses the same root and graceful shutdown closes the actual
+    // four workers plus coordinator rather than the boot-time pair.
+    client
+        .publish_control_settings(3, settings(4), client.vm_bounds(), 8, hosting(4))
+        .await
+        .unwrap();
+    assert_eq!(client.worker_pool().unwrap().capacity.effective, 4);
+    let mut cpu = FilePorts::new(directory.path(), "pool-cpu", false);
+    Arc::get_mut(&mut cpu).unwrap().expected["user_input"] = json!("cpu-until-budget-update");
+    let ticket = client.submit(cpu.input(), cpu.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), cpu.started.notified())
+        .await
+        .unwrap();
+    // Three idle workers plus coordinator: the read has actually returned and
+    // the fourth coroutine is executing CPU code, with no outstanding port.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while client.pending_call_capacity().pending != 4 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut reduced_compute = settings(5);
+    reduced_compute.max_compute_time = Duration::from_secs(1);
+    let receipt = tokio::time::timeout(
+        Duration::from_secs(5),
+        client.publish_control_settings(4, reduced_compute, client.vm_bounds(), 8, hosting(4)),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(receipt.effective_settings, reduced_compute);
+    let completed = tokio::time::timeout(Duration::from_secs(5), ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(completed.outcome, TaskOutcome::Failed { .. }));
+    let account = completed.accounting.as_ref().unwrap();
+    assert_eq!(account.effective_revision, 5);
+    assert_eq!(
+        account.failure,
+        Some(brassclaw_resources::MontyTaskBudgetError::ComputeExceeded.to_string())
+    );
+    // A terminal budget check reports its explicit failure, never a fabricated
+    // zero measurement. The pre-terminal settings receipt retains real usage.
+    assert!(account.compute_time.is_none());
+    assert!(receipt.accounting.iter().any(|account| {
+        account
+            .compute_time
+            .is_some_and(|used| used > Duration::ZERO)
+    }));
+    assert_eq!(cpu.reads.load(Ordering::Acquire), 1);
+    assert_eq!(cpu.writes.load(Ordering::Acquire), 0);
+    assert_eq!(client.root_identity(), identity);
+    graceful(&mut owner).await;
+}
+
+struct DependentFilePorts {
+    file: Arc<FilePorts>,
+    parent: Arc<dyn TaskPorts>,
+}
+impl TaskPorts for DependentFilePorts {
+    fn dependency_parent(&self) -> Option<Arc<dyn TaskPorts>> {
+        Some(self.parent.clone())
+    }
+    fn call(
+        self: Arc<Self>,
+        task: TaskHandle,
+        transport: TransportClient,
+        name: String,
+        args: Vec<Value>,
+        kwargs: BTreeMap<String, Value>,
+    ) -> BoxFuture<'static, Result<Value, PortFailure>> {
+        self.file.clone().call(task, transport, name, args, kwargs)
+    }
+    fn finish(
+        self: Arc<Self>,
+        outcome: TaskOutcome,
+    ) -> BoxFuture<'static, Result<TaskOutcome, PortFailure>> {
+        self.file.clone().finish(outcome)
+    }
+    fn fence(&self) {
+        self.file.fence();
+    }
+}
+fn dependent_file(root: &std::path::Path, label: &str) -> Arc<FilePorts> {
+    let mut file = FilePorts::new(root, label, true);
+    Arc::get_mut(&mut file).unwrap().expected["run_id"] = json!(uuid::Uuid::new_v4().to_string());
+    file
+}
+async fn dependent_service(pending: usize) -> ServiceOwner {
+    dependent_service_with_queue(pending, 8).await
+}
+async fn dependent_service_with_queue(pending: usize, queued: usize) -> ServiceOwner {
+    let source = FILE_ROOT.replace(
+        "await asyncio.gather(*[worker(i) for i in range(worker_count)])\nNone\n",
+        r#"async def coordinator():
+    while True:
+        update = await host.await_pool_update()
+        if update is None:
+            return
+        active = set(update['active_ids'])
+        for worker_id in list(range(update['workers'])) + update['borrowed_ids']:
+            if worker_id not in active:
+                asyncio._replace_sibling(worker_id + 1, worker(worker_id))
+                active.add(worker_id)
+async def main():
+    await asyncio.gather(coordinator(), *[worker(i) for i in range(worker_count)])
+asyncio.run(main())
+None
+"#,
+    );
+    let mut config = boot(&source);
+    config.bounds.workers = 1;
+    config.bounds.max_pending_calls = pending;
+    config
+        .aliases
+        .extend(["read_file".into(), "await_pool_update".into()]);
+    ServiceOwner::start(
+        worker(),
+        config,
+        limits(),
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: limits().max_frame_bytes * 16,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: limits().max_frame_bytes * 16,
+        },
+        queued,
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn dependent_service_slots_retain_parent_answers_until_nested_children_settle() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = dependent_service(8).await;
+    let client = owner.client();
+    let identity = client.root_identity();
+    let parent = dependent_file(directory.path(), "nested-parent");
+    let parent_ticket = client.submit(parent.input(), parent.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), parent.started.notified())
+        .await
+        .unwrap();
+    let child = dependent_file(directory.path(), "nested-child");
+    let child_ports = Arc::new(DependentFilePorts {
+        file: child.clone(),
+        parent: parent.clone(),
+    });
+    let child_ticket = client.submit(child.input(), child_ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), child.started.notified())
+        .await
+        .unwrap();
+    let grandchild = dependent_file(directory.path(), "nested-grandchild");
+    let grandchild_ticket = client
+        .submit(
+            grandchild.input(),
+            Arc::new(DependentFilePorts {
+                file: grandchild.clone(),
+                parent: child_ports,
+            }),
+        )
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), grandchild.started.notified())
+        .await
+        .unwrap();
+    let pool = client.worker_pool().unwrap();
+    assert_eq!(pool.capacity.desired, 1);
+    assert_eq!(pool.capacity.borrowed_ids, [1, 2]);
+    assert_eq!(pool.dependents.len(), 2);
+    parent.release.notify_one();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), parent_ticket.control().wait())
+            .await
+            .is_err()
+    );
+    assert!(!parent.reply.exists());
+    grandchild.release.notify_one();
+    let grandchild_result =
+        tokio::time::timeout(Duration::from_secs(5), grandchild_ticket.wait()).await;
+    if !matches!(grandchild_result, Ok(Ok(_))) {
+        child.release.notify_one();
+        parent.release.notify_one();
+        owner.request_shutdown();
+        let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+            .await
+            .unwrap()
+            .unwrap();
+        panic!(
+            "grandchild settlement failed: failure={:?}; boundary={:?}; exchanges={:?}",
+            exit.failure,
+            serde_json::to_string(&exit.last_snapshot.boundary).unwrap(),
+            exit.failed_exchanges
+                .iter()
+                .map(|receipt| receipt
+                    .outcome
+                    .as_ref()
+                    .err()
+                    .map(|error| (&error.kind, &error.diagnostic)))
+                .collect::<Vec<_>>()
+        );
+    }
+    let grandchild_receipt = grandchild_result.unwrap().unwrap();
+    assert!(matches!(
+        grandchild_receipt.outcome,
+        TaskOutcome::Completed { .. }
+    ));
+    assert!(grandchild_receipt.accounting.is_some());
+    assert_eq!(client.worker_pool().unwrap().dependents.len(), 1);
+    child.release.notify_one();
+    for ticket in [child_ticket, parent_ticket] {
+        let receipt = tokio::time::timeout(Duration::from_secs(5), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        assert!(receipt.accounting.is_some());
+    }
+    for file in [&parent, &child, &grandchild] {
+        assert_eq!(file.writes.load(Ordering::Acquire), 1);
+        assert_eq!(
+            std::fs::read(&file.reply).unwrap(),
+            std::fs::read(&file.input).unwrap()
+        );
+    }
+    assert!(client.worker_pool().unwrap().dependents.is_empty());
+    assert_eq!(client.root_identity(), identity);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn dependent_service_cancellation_fences_children_and_retains_started_reads() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = dependent_service(8).await;
+    let client = owner.client();
+    let parent = dependent_file(directory.path(), "cancel-parent");
+    let parent_ticket = client.submit(parent.input(), parent.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), parent.started.notified())
+        .await
+        .unwrap();
+    let child = dependent_file(directory.path(), "cancel-child");
+    let child_ticket = client
+        .submit(
+            child.input(),
+            Arc::new(DependentFilePorts {
+                file: child.clone(),
+                parent: parent.clone(),
+            }),
+        )
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), child.started.notified())
+        .await
+        .unwrap();
+    parent_ticket.control().cancel();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !child.fenced.load(Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(child_ticket.control().receipt().is_none());
+    parent.release.notify_one();
+    child.release.notify_one();
+    for ticket in [child_ticket, parent_ticket] {
+        let result = tokio::time::timeout(Duration::from_secs(5), ticket.wait()).await;
+        if !matches!(result, Ok(Ok(_))) {
+            owner.request_shutdown();
+            let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+                .await
+                .unwrap()
+                .unwrap();
+            panic!(
+                "cancelled child settlement failed: failure={:?}; boundary={:?}; exchanges={:?}",
+                exit.failure,
+                serde_json::to_string(&exit.last_snapshot.boundary).unwrap(),
+                exit.failed_exchanges
+                    .iter()
+                    .map(|receipt| receipt
+                        .outcome
+                        .as_ref()
+                        .err()
+                        .map(|error| (&error.kind, &error.diagnostic)))
+                    .collect::<Vec<_>>()
+            );
+        }
+        let receipt = result.unwrap().unwrap();
+        assert!(
+            matches!(&receipt.outcome, TaskOutcome::Failed { reason_kind } if reason_kind == "task_cancelled")
+        );
+    }
+    for file in [&parent, &child] {
+        assert_eq!(file.completed_reads.load(Ordering::Acquire), 1);
+        assert_eq!(file.writes.load(Ordering::Acquire), 0);
+        assert!(!file.reply.exists());
+    }
+    assert!(client.worker_pool().unwrap().dependents.is_empty());
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn dependent_service_resource_denial_preserves_parent_and_instance() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = dependent_service(2).await;
+    let client = owner.client();
+    let identity = client.root_identity();
+    let parent = dependent_file(directory.path(), "capacity-parent");
+    let parent_ticket = client.submit(parent.input(), parent.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), parent.started.notified())
+        .await
+        .unwrap();
+    let child = dependent_file(directory.path(), "capacity-child");
+    let child_ticket = client
+        .submit(
+            child.input(),
+            Arc::new(DependentFilePorts {
+                file: child.clone(),
+                parent: parent.clone(),
+            }),
+        )
+        .unwrap();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), child_ticket.wait())
+            .await
+            .unwrap(),
+        Err(ServiceFailure::Backpressure)
+    ));
+    assert_eq!(child.reads.load(Ordering::Acquire), 0);
+    assert!(client.worker_pool().unwrap().dependents.is_empty());
+    parent.release.notify_one();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), parent_ticket.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .outcome,
+        TaskOutcome::Completed { .. }
+    ));
+    assert_eq!(client.root_identity(), identity);
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn dependent_service_admission_pause_rejects_waiting_sibling_without_pausing_active_work() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = dependent_service(8).await;
+    let client = owner.client();
+    let parent = dependent_file(directory.path(), "paused-parent");
+    let parent_ticket = client.submit(parent.input(), parent.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), parent.started.notified())
+        .await
+        .unwrap();
+    let child = dependent_file(directory.path(), "active-child");
+    let child_ticket = client
+        .submit(
+            child.input(),
+            Arc::new(DependentFilePorts {
+                file: child.clone(),
+                parent: parent.clone(),
+            }),
+        )
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), child.started.notified())
+        .await
+        .unwrap();
+    let sibling = dependent_file(directory.path(), "paused-sibling");
+    let sibling_ticket = client
+        .submit(
+            sibling.input(),
+            Arc::new(DependentFilePorts {
+                file: sibling.clone(),
+                parent: parent.clone(),
+            }),
+        )
+        .unwrap();
+    client.publish_memory_backpressure(0, true).await.unwrap();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), sibling_ticket.wait())
+            .await
+            .unwrap(),
+        Err(ServiceFailure::Backpressure)
+    ));
+    assert_eq!(sibling.reads.load(Ordering::Acquire), 0);
+    parent.release.notify_one();
+    child.release.notify_one();
+    for ticket in [child_ticket, parent_ticket] {
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(5), ticket.wait())
+                .await
+                .unwrap()
+                .unwrap()
+                .outcome,
+            TaskOutcome::Completed { .. }
+        ));
+    }
+    assert!(client.worker_pool().unwrap().dependents.is_empty());
+    assert!(client.memory_admission_policy().backpressure);
+    client.publish_memory_backpressure(1, false).await.unwrap();
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn dependent_service_full_sibling_queue_cannot_block_nested_submission() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = dependent_service_with_queue(8, 1).await;
+    let client = owner.client();
+    let parent = dependent_file(directory.path(), "credit-parent");
+    let parent_ticket = client.submit(parent.input(), parent.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), parent.started.notified())
+        .await
+        .unwrap();
+    let child = dependent_file(directory.path(), "credit-child");
+    let child_ports = Arc::new(DependentFilePorts {
+        file: child.clone(),
+        parent: parent.clone(),
+    });
+    let child_ticket = client.submit(child.input(), child_ports.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), child.started.notified())
+        .await
+        .unwrap();
+    let sibling = dependent_file(directory.path(), "credit-sibling");
+    let sibling_ticket = client
+        .submit(
+            sibling.input(),
+            Arc::new(DependentFilePorts {
+                file: sibling.clone(),
+                parent: parent.clone(),
+            }),
+        )
+        .unwrap();
+    let grandchild = dependent_file(directory.path(), "credit-grandchild");
+    let grandchild_ports: Arc<dyn TaskPorts> = Arc::new(DependentFilePorts {
+        file: grandchild.clone(),
+        parent: child_ports,
+    });
+    let submission = tokio::time::timeout(
+        Duration::from_secs(5),
+        client.submit_unless_cancelled(
+            grandchild.input(),
+            grandchild_ports.clone(),
+            std::future::pending(),
+        ),
+    )
+    .await
+    .unwrap();
+    let Ok(brassclaw_monty_host::service::TaskSubmission::Rejected(proof)) = submission else {
+        panic!("bounded rejection needs sealed non-cancellation proof");
+    };
+    assert_eq!(
+        proof.reason(),
+        brassclaw_monty_host::service::UnsubmittedReason::Rejected(ServiceFailure::Backpressure)
+    );
+    assert!(proof.matches(
+        client.root_identity(),
+        &grandchild.input().run_id,
+        &grandchild_ports
+    ));
+    assert_eq!(grandchild.reads.load(Ordering::Acquire), 0);
+    child.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), child_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), sibling.started.notified())
+        .await
+        .unwrap();
+    sibling.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), sibling_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    parent.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), parent_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(client.worker_pool().unwrap().dependents.is_empty());
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn dependent_service_parent_panic_contains_before_waiting_for_child_completion() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = dependent_service(8).await;
+    let client = owner.client();
+    let mut parent = dependent_file(directory.path(), "panic-parent");
+    Arc::get_mut(&mut parent).unwrap().panic_after_read = true;
+    let parent_ticket = client.submit(parent.input(), parent.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), parent.started.notified())
+        .await
+        .unwrap();
+    let child = dependent_file(directory.path(), "panic-child");
+    let child_ticket = client
+        .submit(
+            child.input(),
+            Arc::new(DependentFilePorts {
+                file: child.clone(),
+                parent: parent.clone(),
+            }),
+        )
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), child.started.notified())
+        .await
+        .unwrap();
+    parent.release.notify_one();
+    // A blocked parent result must not hide a panic from instance containment.
+    // Probe the real control lane while the actual child read remains held.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut revision = 0;
+        loop {
+            match client.publish_memory_backpressure(revision, false).await {
+                Ok(next) => revision = next.revision,
+                Err(ServiceFailure::Closed) => break,
+                Err(error) => panic!("unexpected control result: {error:?}"),
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !child.fenced.load(Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(child_ticket.control().receipt().is_none());
+    child.release.notify_one();
+    let exit = tokio::time::timeout(Duration::from_secs(5), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::InvalidPortResult));
+    assert_eq!(exit.tasks.len(), 2);
+    assert_eq!(child.completed_reads.load(Ordering::Acquire), 1);
+    let actual = std::fs::read_to_string(&child.input).unwrap();
+    assert!(exit.tasks.iter().any(|task| {
+        task.host_results
+            .iter()
+            .any(|value| value.as_str() == Some(actual.as_str()))
+    }));
+    assert!(!parent.reply.exists());
+    assert!(!child.reply.exists());
+    drop((parent_ticket, child_ticket));
 }

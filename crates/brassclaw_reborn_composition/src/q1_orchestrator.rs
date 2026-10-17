@@ -34,8 +34,9 @@
 
 #![forbid(unsafe_code)]
 
+use brassclaw_engine::executor::scripting::run_python_code_body_with_limits;
 use brassclaw_engine::memory::retrieval_source::ComponentScope;
-use brassclaw_engine::run_python_code_body;
+use brassclaw_monty_host::utility::UtilityLimits;
 use brassclaw_pg::PgPool;
 use thiserror::Error;
 use uuid::Uuid;
@@ -273,18 +274,19 @@ fn reviewed_content_fields(
 /// Converts the legacy quoted slot markers to fixed typed-input expressions.
 /// Component values are injected separately, never rendered as Python source.
 /// This compatibility preparation does not change or activate the stored body.
-/// Then calls [`run_python_code_body`] — a pure-logic, no-host-call executor.
+/// Then calls [`run_python_code_body_with_limits`] — a pure-logic, no-host-call executor.
 ///
 /// Returns `(passed: bool, errors: Vec<String>)` from the body's
 /// `{"pass": bool, "errors": [...]}` return value.  On any execution error
 /// the result is treated as a failure with the error message as the sole error.
-async fn run_validator_python(
+async fn run_validator_python_with_limits(
     pc_body: &str,
     name: &str,
     description: &str,
     content: &str,
+    limits: UtilityLimits,
 ) -> (bool, Vec<String>) {
-    if pc_body.len() > brassclaw_engine::executor::scripting::MAX_PYTHON_UTILITY_SOURCE_BYTES {
+    if pc_body.len() > limits.bounds.max_source_bytes {
         return (
             false,
             vec!["validator source exceeds the technical utility bound".into()],
@@ -307,7 +309,7 @@ async fn run_validator_python(
     let body_with_return = format!("{body}\nresult");
 
     let inputs = serde_json::json!({"name": name, "description": description, "content": content});
-    match run_python_code_body(&body_with_return, &[("inputs", inputs)]).await {
+    match run_python_code_body_with_limits(&body_with_return, &[("inputs", inputs)], limits).await {
         Ok(Some(val)) => {
             let invalid = || {
                 (
@@ -362,7 +364,7 @@ async fn run_validator_python(
 /// 4. **Recipe found** → capture the exact queued candidate, overlay any
 ///    validated proposed upgrade fields, and select the approved single-entry
 ///    validator PythonCode in the same catalogue read transaction; execute via
-///    [`run_python_code_body`] (no engine deps required for Tier-0 validators).
+///    [`run_python_code_body_with_limits`] (no engine deps required for Tier-0 validators).
 ///    On pass → `queue_store.gate1_pass_reviewed(…)` (state 1→2).
 ///    On fail → `queue_store.gate1_fail_reviewed(…)` (state 1, errors recorded).
 ///    Both compare the captured bytes again before persisting the result.
@@ -380,6 +382,7 @@ pub async fn run_q1_validation(
     component_id: Uuid,
     class_code: i32,
     queue_store: &ValidationQueueStore,
+    preparation: UtilityLimits,
 ) -> Result<Q1Outcome, Q1Error> {
     let class_i16: i16 = class_code
         .try_into()
@@ -418,8 +421,14 @@ pub async fn run_q1_validation(
     };
 
     // Step 5 — run the pure-logic structural validator in the Monty sandbox.
-    let (passed, errors) =
-        run_validator_python(&pc_body, &fields.name, &fields.description, &fields.content).await;
+    let (passed, errors) = run_validator_python_with_limits(
+        &pc_body,
+        &fields.name,
+        &fields.description,
+        &fields.content,
+        preparation,
+    )
+    .await;
 
     tracing::debug!(
         component_id = %component_id,
@@ -449,6 +458,18 @@ pub async fn run_q1_validation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn utility_limits() -> UtilityLimits {
+        UtilityLimits::from_execution(Default::default()).unwrap()
+    }
+    async fn run_validator_python(
+        body: &str,
+        name: &str,
+        description: &str,
+        content: &str,
+    ) -> (bool, Vec<String>) {
+        run_validator_python_with_limits(body, name, description, content, utility_limits()).await
+    }
 
     #[test]
     fn q1outcome_deferred_is_not_passed() {
@@ -655,7 +676,7 @@ result = {"pass": name == inputs["name"] and description == inputs["description"
             .await
             .unwrap();
         assert_eq!(
-            run_q1_validation(&rig.pool, &scope, candidate, 22, &store)
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store, utility_limits())
                 .await
                 .unwrap(),
             Q1Outcome::Passed
@@ -704,7 +725,7 @@ result = {"pass": name == inputs["name"] and description == inputs["description"
             .await
             .unwrap();
         assert!(matches!(
-            run_q1_validation(&rig.pool, &scope, candidate, 22, &store).await,
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store, utility_limits()).await,
             Err(Q1Error::InvalidValidator { .. })
         ));
         assert_eq!(store.list(&scope, Some(1)).await.unwrap().len(), 1);
@@ -720,7 +741,7 @@ result = {"pass": name == inputs["name"] and description == inputs["description"
         client.execute("UPDATE reborn_recipes SET step_descriptions=$5 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4",
             &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&malformed]).await.unwrap();
         assert!(matches!(
-            run_q1_validation(&rig.pool, &scope, candidate, 22, &store).await,
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store, utility_limits()).await,
             Err(Q1Error::InvalidValidator { .. })
         ));
         client.execute("UPDATE reborn_recipes SET step_descriptions=$5 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4",
@@ -731,7 +752,7 @@ result = {"pass": name == inputs["name"] and description == inputs["description"
             &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&descriptions],
         ).await.unwrap();
         assert!(matches!(
-            run_q1_validation(&rig.pool, &scope, candidate, 22, &store).await,
+            run_q1_validation(&rig.pool, &scope, candidate, 22, &store, utility_limits()).await,
             Err(Q1Error::AmbiguousValidator { class_code: 22 })
         ));
         let current: String = client

@@ -248,8 +248,19 @@ pub struct ComponentRevisionSelection {
 pub struct SubmitComponentReviewRequest {
     pub submission_id: String,
     pub candidate_bytes: String,
+    /// Observed allocation head, independent of the exact lineage base. Missing
+    /// retains historical adjacent-version authoring for compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_previous_version: Option<u64>,
     pub base: Option<ComponentRevisionSelection>,
     pub dependencies: Vec<ComponentRevisionSelection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentRevisionHeadView {
+    pub component_id: String,
+    pub class_code: Option<i32>,
+    pub last_allocated_version: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +279,9 @@ pub struct ComponentReviewSubmissionView {
     pub receipt: ComponentReviewSubmissionReceipt,
     pub subject_bytes: String,
     pub component_bytes: Vec<String>,
+    /// Original preparation metadata only; not Q1, approval or task completion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_selection_bytes: Option<String>,
 }
 
 /// Bounded, cursor-paginated operator projection of internal Sempai attempts.
@@ -278,6 +292,7 @@ pub struct PostTurnReviewSummary {
     pub phase: String,
     pub model_dispatch_count: i32,
     pub settlement_recorded: bool,
+    pub reconciliation_recorded: bool,
     pub disposition_count: i64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -312,6 +327,21 @@ pub struct ReviewDispositionReceipt {
     pub attempt_id: String,
     pub evidence_checksum: String,
     pub retention_released: bool,
+    pub work_replayed: bool,
+}
+
+/// Native reconciliation accepts no effect outcomes or accounting amounts
+/// from the caller. Exact-ID retries read the immutable native proof.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewReconciliationRequest {
+    pub evidence_checksum: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ReviewReconciliationReceipt {
+    pub attempt_id: String,
+    pub retention_released: bool,
+    pub reconciliation_recorded: bool,
     pub work_replayed: bool,
 }
 
@@ -351,6 +381,103 @@ pub struct RecordOutcomeResponse {
     pub recorded: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CatalogueActivationStatus {
+    pub generation: String,
+    pub recipes: Vec<String>,
+    /// Exact complete authored selections, suitable for a generation-CAS edit.
+    pub selections: Vec<CatalogueRecipeSelection>,
+    /// Stable routing disables, including temporarily withdrawn Recipes.
+    pub disabled_recipe_ids: Vec<String>,
+    /// Packaged ordinary matching Recipes; internal reply/history remain usable.
+    pub packaged_recipe_ids: Vec<String>,
+}
+/// Complete retained source projection for one active ordinary-workflow generation.
+/// Root retention and checked usage selections are distinct; this export is not
+/// activation authority or proof of full-library coverage/cache qualification.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CatalogueSourceExport {
+    pub format: String,
+    pub generation: String,
+    pub coverage: String,
+    pub catalogue_bytes: String,
+    pub catalogue_checksum: String,
+    pub root: ComponentRevisionSelection,
+    pub components: Vec<CatalogueSourceComponent>,
+    /// Exact retained selection bytes include variant/input/export/approval pins.
+    pub selections: Vec<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CatalogueSourceComponent {
+    pub reference: ComponentRevisionSelection,
+    pub revision_bytes: String,
+}
+/// Operator-selected coherent catalogue replacement. References select existing
+/// immutable artifacts; this request cannot manufacture approval evidence.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActivateCatalogueRequest {
+    pub activation_id: String,
+    pub expected_generation: String,
+    pub recipes: Vec<CatalogueRecipeSelection>,
+    /// Optional immutable proposal provenance; validated again on publication.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deployment_subjects: Vec<DeploymentSubjectPin>,
+    /// None preserves existing operator routing choices; Some replaces them.
+    /// These choices affect matching/discovery, never Tool policy or approvals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_recipe_ids: Option<Vec<String>>,
+}
+/// Preparation selects retained proposal bytes, never accepts approval evidence.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeploymentSubjectPin {
+    pub submission_id: String,
+    pub subject_checksum: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecipeDeploymentSubject {
+    pub subject: DeploymentSubjectPin,
+    pub workflow_class: CatalogueWorkflowClass,
+    pub association_approvals: std::collections::BTreeMap<String, String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrepareComponentDeploymentRequest {
+    pub activation_id: String,
+    pub expected_generation: String,
+    pub recipes: Vec<RecipeDeploymentSubject>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ComponentDeploymentPlan {
+    pub activation: ActivateCatalogueRequest,
+    pub preserved_recipe_ids: Vec<String>,
+    pub replaced_recipe_ids: Vec<String>,
+    pub catalogue_activated: bool,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogueWorkflowClass {
+    Deterministic,
+    RequiresModel,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CatalogueRecipeSelection {
+    pub recipe_id: String,
+    pub workflow_class: CatalogueWorkflowClass,
+    pub components: Vec<ComponentRevisionSelection>,
+    /// Existing exact usage approvals, keyed by stable Skill UUID.
+    pub association_approvals: std::collections::BTreeMap<String, String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CatalogueActivationReceipt {
+    pub activation_id: String,
+    pub generation: String,
+    pub catalogue_activated: bool,
+}
+
 /// Persistence port used by [`crate::RebornServicesApi`]. Composition
 /// wires this in from `brassclaw_reborn_composition::recipe_store`;
 /// the WebUI's facade impl forwards each call here.
@@ -361,6 +488,40 @@ pub struct RecordOutcomeResponse {
 /// `RecipeSummary` / `ToolSkillSummary` for the WebUI list tab.
 #[async_trait]
 pub trait RecipeStore: Send + Sync {
+    async fn prepare_component_deployment(
+        &self,
+        _request: PrepareComponentDeploymentRequest,
+    ) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "component deployment unavailable".into(),
+        ))
+    }
+
+    async fn export_catalogue_sources(
+        &self,
+        _generation: &str,
+    ) -> Result<CatalogueSourceExport, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "catalogue source export unavailable".into(),
+        ))
+    }
+
+    async fn catalogue_status(&self) -> Result<CatalogueActivationStatus, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "authored catalogue activation unavailable".into(),
+        ))
+    }
+
+    async fn activate_catalogue(
+        &self,
+        _actor: &str,
+        _request: ActivateCatalogueRequest,
+    ) -> Result<CatalogueActivationReceipt, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "authored catalogue activation unavailable".into(),
+        ))
+    }
+
     async fn list_post_turn_reviews(
         &self,
         _after: Option<&str>,
@@ -377,6 +538,16 @@ pub trait RecipeStore: Send + Sync {
             "post-turn review inspection unavailable".into(),
         ))
     }
+    async fn reconcile_post_turn_review(
+        &self,
+        _attempt: &str,
+        _request: ReviewReconciliationRequest,
+    ) -> Result<ReviewReconciliationReceipt, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "native review reconciliation unavailable".into(),
+        ))
+    }
+
     async fn record_review_disposition(
         &self,
         _actor: &str,
@@ -395,6 +566,15 @@ pub trait RecipeStore: Send + Sync {
     ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
         Err(RecipeStoreError::Unavailable(
             "immutable review submissions are unavailable".into(),
+        ))
+    }
+
+    async fn get_component_revision_head(
+        &self,
+        _component_id: &str,
+    ) -> Result<ComponentRevisionHeadView, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "immutable allocation metadata unavailable".into(),
         ))
     }
 

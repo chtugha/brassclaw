@@ -1,7 +1,8 @@
 //! Conservative repair for legacy installation-seeded prompt rows.
 //!
-//! Seeders now write trusted built-ins as validated at insertion time. This
-//! helper only repairs older prompt rows when the live prose hashes to the
+//! This helper repairs only required compiled-in legacy prompt projections.
+//! It never classifies arbitrary source-labeled metadata as a boot prerequisite.
+//! Older prompt rows are repaired only when the live prose hashes to the
 //! digest compiled into this binary. It never rewrites prose and never
 //! promotes a component whose content cannot be proven against that digest.
 
@@ -10,13 +11,14 @@ use brassclaw_pg::PgPool;
 use crate::builtin_bootstrap::EXPECTED_CHECKSUMS;
 use crate::checksum::sha256_hex;
 
-/// Promote legacy seeded prompt rows only when all three checksum values
-/// (database prose and compiled-in expected digest) match. The stored digest
-/// is then refreshed from that verified content.
+/// Repair legacy prompt status only when the live prose hash matches the
+/// compiled-in expected digest. Refresh the stored digest from that verified
+/// content; this is a legacy projection, not immutable v3 approval.
 ///
-/// Other component classes intentionally remain untouched: they do not yet
-/// have a canonical seed checksum, so their provenance cannot be proven here.
-pub(crate) async fn ensure_system_seeds_validated(
+/// Other component classes remain untouched. Their source/status labels are
+/// neither bootstrap provenance nor proof that they belong to an active catalogue.
+/// Active workflow qualification belongs to the subsequent catalogue owner.
+pub(crate) async fn repair_packaged_legacy_prompts(
     pool: &PgPool,
     tenant_id: &str,
     user_id: &str,
@@ -87,52 +89,14 @@ pub(crate) async fn ensure_system_seeds_validated(
             .await
             .map_err(|error| error.to_string())?;
     }
-    // Do not silently leave a legacy installation row unavailable. These
-    // classes do not have compiled-in row checksums, so report them without
-    // changing their validation state or content.
-    let pending = transaction
-        .query(
-            "SELECT table_name, name, validation_status FROM (
-                 SELECT 'reborn_skills' AS table_name, name, validation_status FROM reborn_skills WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_tools', name, validation_status FROM reborn_tools WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_actions', name, validation_status FROM reborn_actions WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_specs', name, validation_status FROM reborn_specs WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_summaries', name, validation_status FROM reborn_summaries WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_lessons', name, validation_status FROM reborn_lessons WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_issues', name, validation_status FROM reborn_issues WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_notes', name, validation_status FROM reborn_notes WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_tool_skills', name, validation_status FROM reborn_tool_skills WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_plans', name, validation_status FROM reborn_plans WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_docus', name, validation_status FROM reborn_docus WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_python_code', name, validation_status FROM reborn_python_code WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_recipes', name, validation_status FROM reborn_recipes WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_extensions_unified', name, validation_status FROM reborn_extensions_unified WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-                 UNION ALL SELECT 'reborn_extension_catalogues', name, validation_status FROM reborn_extension_catalogues WHERE source='system' AND validation_status <> 'validated' AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
-             ) pending ORDER BY table_name, name",
-            &[&tenant_id, &user_id, &agent_id, &project_id],
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+    // This repair owns only the exact packaged prompts selected above. Draft
+    // metadata in other classes is not an active workflow and must not acquire
+    // approval or block boot because of a source label. The subsequent global
+    // catalogue owner verifies required active selections, exact approval and
+    // registered implementations before workers/ingress start.
     transaction
         .commit()
         .await
         .map_err(|error| error.to_string())?;
-    if !pending.is_empty() {
-        let names = pending
-            .iter()
-            .map(|row| {
-                format!(
-                    "{}:{} (status={})",
-                    row.get::<_, String>(0),
-                    row.get::<_, String>(1),
-                    row.get::<_, String>(2)
-                )
-            })
-            .collect::<Vec<_>>();
-        return Err(format!(
-            "installation-seeded components remain unvalidated and were left unchanged because their content/status could not be safely repaired: {}",
-            names.join(", ")
-        ));
-    }
     Ok(())
 }

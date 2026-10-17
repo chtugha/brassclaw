@@ -160,13 +160,13 @@ impl FunctionCall {
     /// This allows modifying resource limits between execution phases,
     /// e.g. setting a time limit before resuming after an external function call.
     pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
-        &mut self.snapshot.heap.tracker
+        &mut self.snapshot.heap.as_mut().expect("owned suspended heap").tracker
     }
 
     /// Returns the resource tracker while execution is suspended.
     #[must_use]
     pub fn tracker(&self) -> &ResourceTracker {
-        &self.snapshot.heap.tracker
+        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
     }
 
     /// Resumes execution with the return value or exception from the external function.
@@ -324,7 +324,7 @@ impl OsCall {
     /// Returns the resource tracker while execution is suspended.
     #[must_use]
     pub fn tracker(&self) -> &ResourceTracker {
-        &self.snapshot.heap.tracker
+        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
     }
 }
 
@@ -416,7 +416,7 @@ impl NameLookup {
     /// Returns the resource tracker while execution is suspended.
     #[must_use]
     pub fn tracker(&self) -> &ResourceTracker {
-        &self.snapshot.heap.tracker
+        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
     }
 
     /// Aborts the feed with an uncatchable exception; see [`OsCall::abort`].
@@ -443,11 +443,7 @@ impl NameLookup {
     ) -> Result<RunProgress, MontyException> {
         let result = result.into();
 
-        let Snapshot {
-            mut heap,
-            mut executor,
-            vm_state: snapshot_vm_state,
-        } = self.snapshot;
+        let (mut executor, snapshot_vm_state, mut heap) = self.snapshot.into_parts();
         let scope = self.scope;
         let name = self.name;
 
@@ -637,11 +633,14 @@ fn undefined_lookup_error(scope: &LookupScope, name: &str) -> RunError {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ResolveFutures {
     /// The executor containing compiled code and interns.
-    executor: Executor,
+    #[serde(deserialize_with = "deserialize_owned")]
+    executor: Option<Executor>,
     /// The VM state containing stack, frames, globals, and exception state.
-    vm_state: VMSnapshot,
+    #[serde(deserialize_with = "deserialize_owned")]
+    vm_state: Option<VMSnapshot>,
     /// The heap containing all allocated objects.
-    heap: Heap,
+    #[serde(deserialize_with = "deserialize_owned")]
+    heap: Option<Heap>,
     /// The pending call_ids that this snapshot is waiting on.
     pending_call_ids: Vec<u32>,
     /// Where the main task's blocked `await` is in the source.
@@ -649,6 +648,16 @@ pub struct ResolveFutures {
 }
 
 impl ResolveFutures {
+    fn into_parts(mut self) -> (Executor, VMSnapshot, Heap, Vec<u32>, SourceRange) {
+        (
+            self.executor.take().expect("owned suspended executor"),
+            self.vm_state.take().expect("owned suspended state"),
+            self.heap.take().expect("owned suspended heap"),
+            mem::take(&mut self.pending_call_ids),
+            self.position.clone(),
+        )
+    }
+
     /// Creates a new `ResolveFutures` from its parts.
     fn new(
         executor: Executor,
@@ -658,9 +667,9 @@ impl ResolveFutures {
         position: SourceRange,
     ) -> Self {
         Self {
-            executor,
-            vm_state,
-            heap,
+            executor: Some(executor),
+            vm_state: Some(vm_state),
+            heap: Some(heap),
             pending_call_ids,
             position,
         }
@@ -681,17 +690,12 @@ impl ResolveFutures {
     /// Returns the resource tracker while execution is suspended.
     #[must_use]
     pub fn tracker(&self) -> &ResourceTracker {
-        &self.heap.tracker
+        &self.heap.as_ref().expect("owned suspended heap").tracker
     }
 
     /// Aborts with an uncatchable exception and abandons pending futures.
     pub fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
-        let Self {
-            executor,
-            vm_state,
-            heap,
-            ..
-        } = self;
+        let (executor, vm_state, heap, _, _) = self.into_parts();
         abort_restored(executor, vm_state, heap, exc, print)
     }
 
@@ -705,13 +709,7 @@ impl ResolveFutures {
     #[doc(hidden)]
     #[must_use]
     pub fn __force_gc_for_tests(self) -> Self {
-        let Self {
-            mut executor,
-            vm_state,
-            mut heap,
-            pending_call_ids,
-            position,
-        } = self;
+        let (mut executor, vm_state, mut heap, pending_call_ids, position) = self.into_parts();
 
         let vm_state = HeapReader::with(&mut heap, &mut &mut executor, |reader, executor| {
             let mut vm = VM::restore(
@@ -737,7 +735,7 @@ impl ResolveFutures {
     #[doc(hidden)]
     #[must_use]
     pub fn __live_task_count_for_tests(&self) -> usize {
-        self.vm_state.live_task_count()
+        self.vm_state.as_ref().expect("owned suspended state").live_task_count()
     }
 
     /// Resumes execution with results for some or all pending futures.
@@ -760,13 +758,7 @@ impl ResolveFutures {
         results: Vec<(u32, ExtFunctionResult)>,
         print: PrintWriter<'_>,
     ) -> Result<RunProgress, MontyException> {
-        let Self {
-            mut executor,
-            vm_state,
-            mut heap,
-            pending_call_ids,
-            ..
-        } = self;
+        let (mut executor, vm_state, mut heap, pending_call_ids, _) = self.into_parts();
 
         // Validate that all provided call_ids are in the pending set before restoring VM.
         let invalid_call_id = results
@@ -817,10 +809,10 @@ pub struct ControlYield {
 
 impl ControlYield {
     pub fn tracker(&self) -> &ResourceTracker {
-        &self.snapshot.heap.tracker
+        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
     }
     pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
-        &mut self.snapshot.heap.tracker
+        &mut self.snapshot.heap.as_mut().expect("owned suspended heap").tracker
     }
     pub fn resume(self, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
         self.snapshot.run_inner(None, None, None, print)
@@ -847,14 +839,55 @@ impl ControlYield {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Snapshot {
     /// The executor containing compiled code and interns.
-    pub(crate) executor: Executor,
+    #[serde(deserialize_with = "deserialize_owned")]
+    pub(crate) executor: Option<Executor>,
     /// The VM state containing stack, frames, globals, and exception state.
-    pub(crate) vm_state: VMSnapshot,
+    #[serde(deserialize_with = "deserialize_owned")]
+    pub(crate) vm_state: Option<VMSnapshot>,
     /// The heap containing all allocated objects.
-    pub(crate) heap: Heap,
+    #[serde(deserialize_with = "deserialize_owned")]
+    pub(crate) heap: Option<Heap>,
+}
+
+// Options are an ownership-transfer detail, not a nullable dump contract.
+// Their Some serialization is the original value shape; reject a null on load.
+pub(crate) fn deserialize_owned<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+fn release_snapshot(vm_state: Option<VMSnapshot>, heap: &mut Option<Heap>) {
+    if let Some(vm_state) = vm_state {
+        let heap = heap.as_mut().expect("owned suspended heap");
+        let (globals, _, _) = vm_state.abandon(heap);
+        globals.drop_with(heap);
+    }
+}
+
+impl Drop for Snapshot {
+    fn drop(&mut self) {
+        release_snapshot(self.vm_state.take(), &mut self.heap);
+    }
+}
+
+impl Drop for ResolveFutures {
+    fn drop(&mut self) {
+        release_snapshot(self.vm_state.take(), &mut self.heap);
+    }
 }
 
 impl Snapshot {
+    fn into_parts(mut self) -> (Executor, VMSnapshot, Heap) {
+        (
+            self.executor.take().expect("owned suspended executor"),
+            self.vm_state.take().expect("owned suspended state"),
+            self.heap.take().expect("owned suspended heap"),
+        )
+    }
+
     /// Continues execution with the return value or exception from the external call.
     pub(crate) fn run(
         self,
@@ -873,11 +906,7 @@ impl Snapshot {
         control_exception: Option<MontyException>,
         print: PrintWriter<'_>,
     ) -> Result<RunProgress, MontyException> {
-        let Self {
-            mut executor,
-            vm_state,
-            mut heap,
-        } = self;
+        let (mut executor, vm_state, mut heap) = self.into_parts();
 
         heap.tracker.on_turn_start();
         let (converted, vm_state) =
@@ -907,11 +936,7 @@ impl Snapshot {
 
     /// Raises `exc` uncatchably at the suspension point.
     pub(crate) fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
-        let Self {
-            executor,
-            vm_state,
-            heap,
-        } = self;
+        let (executor, vm_state, heap) = self.into_parts();
         abort_restored(executor, vm_state, heap, exc, print)
     }
 }
@@ -1245,9 +1270,9 @@ pub(crate) fn build_run_progress(
     macro_rules! new_snapshot {
         () => {
             Snapshot {
-                executor,
-                vm_state: vm_state.expect("snapshot should exist"),
-                heap,
+                executor: Some(executor),
+                vm_state: Some(vm_state.expect("snapshot should exist")),
+                heap: Some(heap),
             }
         };
     }

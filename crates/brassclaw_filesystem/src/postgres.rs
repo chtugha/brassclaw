@@ -9,19 +9,41 @@ use crate::db::{
     directory_write_error, escape_like_literal, escape_like_with_trailing_wildcard,
     infrastructure_error, infrastructure_pg_error, is_not_found, not_found, page_offset_to_i64,
     record_version_from_i64, record_version_to_i64, sql_index_name, system_time_from_unix_seconds,
-    virtual_path_prefixes,
 };
 use crate::vector::{cosine_similarity, decode_embedding_blob};
 use crate::{
-    BackendCapabilities, Capability, CasExpectation, ContentType, DirEntry, Entry, FileStat,
-    FileType, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexKind, IndexSpec,
-    IndexValue, Page, RecordKind, RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
+    BackendCapabilities, Capability, CasExpectation, ContentType, DirEntry, Entry,
+    EntryIndexMetadata, EntryMetadata, FileStat, FileType, FilesystemError, FilesystemOperation,
+    Filter, IndexKey, IndexKind, IndexSpec, IndexValue, Page, RecordKind, RecordVersion,
+    RootFilesystem, SeqNo, VersionedEntry,
 };
 
 #[cfg(feature = "postgres")]
 /// PostgreSQL-backed [`RootFilesystem`] storing file contents by virtual path.
 pub struct PostgresRootFilesystem {
     pool: deadpool_postgres::Pool,
+}
+
+#[cfg(feature = "postgres")]
+fn decode_metadata(
+    requested: &VirtualPath,
+    row: &tokio_postgres::Row,
+    operation: FilesystemOperation,
+) -> Result<EntryMetadata, FilesystemError> {
+    let invalid = || FilesystemError::Backend {
+        path: requested.clone(),
+        operation,
+        reason: "stored entry metadata is invalid".into(),
+    };
+    let path: String = row.get("path");
+    let kind: Option<String> = row.get("kind");
+    Ok(EntryMetadata {
+        path: VirtualPath::new(path).map_err(|_| invalid())?,
+        kind: kind
+            .map(RecordKind::new)
+            .transpose()
+            .map_err(|_| invalid())?,
+    })
 }
 
 #[cfg(feature = "postgres")]
@@ -59,6 +81,8 @@ impl RootFilesystem for PostgresRootFilesystem {
         // do not require pgvector.
         BackendCapabilities::sql_typical()
             .with(Capability::Events)
+            .with(Capability::EntryMetadata)
+            .with(Capability::EntryIndexMetadata)
             .with(Capability::IndexFts)
             .with(Capability::IndexVector)
     }
@@ -69,14 +93,6 @@ impl RootFilesystem for PostgresRootFilesystem {
         entry: Entry,
         cas: CasExpectation,
     ) -> Result<RecordVersion, FilesystemError> {
-        let client = self.client().await?;
-        if matches!(
-            self.exact_entry_with_client(&client, path).await?,
-            Some((_, FileType::Directory, _))
-        ) || self.has_child_entry_with_client(&client, path).await?
-        {
-            return Err(directory_write_error(path.clone()));
-        }
         let indexed_json = serde_json::to_value(&entry.indexed).map_err(|_| {
             FilesystemError::SerializeIndexed {
                 path: path.clone(),
@@ -88,9 +104,18 @@ impl RootFilesystem for PostgresRootFilesystem {
         let body = entry.body;
         let path_str = path.as_str();
 
-        match cas {
+        let mut client = self.client().await?;
+        let transaction = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::WriteFile, error))?;
+        Self::validate_file_namespace(&transaction, path, FilesystemOperation::WriteFile).await?;
+
+        let version = match cas {
             CasExpectation::Absent => {
-                let rows = client
+                let rows = transaction
                     .execute(
                         r#"
                         INSERT INTO root_filesystem_entries
@@ -111,7 +136,9 @@ impl RootFilesystem for PostgresRootFilesystem {
                         db_error(path.clone(), FilesystemOperation::WriteFile, error)
                     })?;
                 if rows == 0 {
-                    let found = self.current_version_with_client(&client, path).await?;
+                    let found = self
+                        .current_version_with_transaction(&transaction, path)
+                        .await?;
                     return Err(FilesystemError::VersionMismatch {
                         path: path.clone(),
                         expected: None,
@@ -122,7 +149,7 @@ impl RootFilesystem for PostgresRootFilesystem {
             }
             CasExpectation::Version(expected) => {
                 let expected_raw = record_version_to_i64(path, expected)?;
-                let rows = client
+                let rows = transaction
                     .execute(
                         r#"
                         UPDATE root_filesystem_entries
@@ -148,7 +175,9 @@ impl RootFilesystem for PostgresRootFilesystem {
                         db_error(path.clone(), FilesystemOperation::WriteFile, error)
                     })?;
                 if rows == 0 {
-                    let found = self.current_version_with_client(&client, path).await?;
+                    let found = self
+                        .current_version_with_transaction(&transaction, path)
+                        .await?;
                     return Err(FilesystemError::VersionMismatch {
                         path: path.clone(),
                         expected: Some(expected),
@@ -158,7 +187,7 @@ impl RootFilesystem for PostgresRootFilesystem {
                 Ok(expected.next())
             }
             CasExpectation::Any => {
-                let row = client
+                let row = transaction
                     .query_opt(
                         r#"
                         INSERT INTO root_filesystem_entries
@@ -192,7 +221,12 @@ impl RootFilesystem for PostgresRootFilesystem {
                 let version: i64 = row.get("version");
                 record_version_from_i64(path, version)
             }
-        }
+        }?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::WriteFile, error))?;
+        Ok(version)
     }
 
     async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
@@ -370,6 +404,72 @@ impl RootFilesystem for PostgresRootFilesystem {
         Ok(())
     }
 
+    async fn get_metadata(
+        &self,
+        path: &VirtualPath,
+    ) -> Result<Option<EntryMetadata>, FilesystemError> {
+        let client = self.client().await?;
+        client
+            .query_opt(
+                "SELECT path,kind FROM root_filesystem_entries WHERE path=$1 AND NOT is_dir",
+                &[&path.as_str()],
+            )
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::ReadFile, error))?
+            .map(|row| decode_metadata(path, &row, FilesystemOperation::ReadFile))
+            .transpose()
+    }
+
+    async fn query_metadata(
+        &self,
+        path: &VirtualPath,
+        page: Page,
+    ) -> Result<Vec<EntryMetadata>, FilesystemError> {
+        let offset = page_offset_to_i64(path, page.offset)?;
+        let limit = i64::from(page.limit.min(Page::MAX_LIMIT));
+        let prefix = child_path_like_pattern(path);
+        let client = self.client().await?;
+        client.query(r#"SELECT path,kind FROM root_filesystem_entries WHERE NOT is_dir AND (path=$1 OR path LIKE $2 ESCAPE '!') ORDER BY path COLLATE "C" LIMIT $3 OFFSET $4"#, &[&path.as_str(), &prefix, &limit, &offset]).await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::Query, error))?
+            .into_iter().map(|row| decode_metadata(path, &row, FilesystemOperation::Query)).collect()
+    }
+
+    async fn query_index_metadata(
+        &self,
+        path: &VirtualPath,
+        key: &IndexKey,
+        page: Page,
+    ) -> Result<Vec<EntryIndexMetadata>, FilesystemError> {
+        let offset = page_offset_to_i64(path, page.offset)?;
+        let limit = i64::from(page.limit.min(Page::MAX_LIMIT));
+        let prefix = child_path_like_pattern(path);
+        let client = self.client().await?;
+        let rows = client.query(
+            r#"SELECT path,kind,jsonb_typeof(indexed)='object' AS index_object,indexed->($3::text) AS selected_value FROM root_filesystem_entries WHERE NOT is_dir AND (path=$1 OR path LIKE $2 ESCAPE '!') ORDER BY path COLLATE "C" LIMIT $4 OFFSET $5"#,
+            &[&path.as_str(), &prefix, &key.as_str(), &limit, &offset],
+        ).await.map_err(|error| db_error(path.clone(), FilesystemOperation::Query, error))?;
+        rows.into_iter()
+            .map(|row| {
+                let invalid = || FilesystemError::Backend {
+                    path: path.clone(),
+                    operation: FilesystemOperation::Query,
+                    reason: "stored selected index metadata is invalid".into(),
+                };
+                if !row.get::<_, bool>("index_object") {
+                    return Err(invalid());
+                }
+                let selected: Option<serde_json::Value> = row.get("selected_value");
+                Ok(EntryIndexMetadata {
+                    metadata: decode_metadata(path, &row, FilesystemOperation::Query)?,
+                    value: selected
+                        .map(serde_json::from_value::<IndexValue>)
+                        .transpose()
+                        .map_err(|_| invalid())?,
+                })
+            })
+            .collect()
+    }
+
     async fn query(
         &self,
         path: &VirtualPath,
@@ -512,53 +612,22 @@ impl RootFilesystem for PostgresRootFilesystem {
     }
 
     async fn write_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
-        let client = self.client().await?;
-        if matches!(
-            self.exact_entry_with_client(&client, path).await?,
-            Some((_, FileType::Directory, _))
-        ) || self.has_child_entry_with_client(&client, path).await?
-        {
-            return Err(directory_write_error(path.clone()));
-        }
-        // PR #3660 reviewer fix: legacy write_file must reset content_type
-        // / kind / indexed and bump version, otherwise get() after
-        // write_file-overwrite of a previously record-shaped entry
-        // returns stale metadata.
-        let rows = client
-            .execute(
-                r#"
-                INSERT INTO root_filesystem_entries
-                    (path, contents, is_dir, content_type, kind, indexed, version)
-                VALUES ($1, $2, FALSE, 'application/octet-stream', NULL, '{}'::jsonb, 1)
-                ON CONFLICT (path) DO UPDATE SET
-                    contents = EXCLUDED.contents,
-                    is_dir = FALSE,
-                    content_type = EXCLUDED.content_type,
-                    kind = EXCLUDED.kind,
-                    indexed = EXCLUDED.indexed,
-                    version = root_filesystem_entries.version + 1,
-                    updated_at = NOW()
-                WHERE root_filesystem_entries.is_dir = FALSE
-                "#,
-                &[&path.as_str(), &bytes],
-            )
+        // The unified mutation preserves opaque-write metadata reset and uses
+        // the same atomic namespace checks as record-shaped put.
+        self.put(path, Entry::bytes(bytes.to_vec()), CasExpectation::Any)
             .await
-            .map_err(|error| db_error(path.clone(), FilesystemOperation::WriteFile, error))?;
-        if rows == 0 {
-            return Err(directory_write_error(path.clone()));
-        }
-        Ok(())
+            .map(|_| ())
     }
 
     async fn append_file(&self, path: &VirtualPath, bytes: &[u8]) -> Result<(), FilesystemError> {
-        let client = self.client().await?;
-        if matches!(
-            self.exact_entry_with_client(&client, path).await?,
-            Some((_, FileType::Directory, _))
-        ) || self.has_child_entry_with_client(&client, path).await?
-        {
-            return Err(directory_append_error(path.clone()));
-        }
+        let mut client = self.client().await?;
+        let transaction = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::AppendFile, error))?;
+        Self::validate_file_namespace(&transaction, path, FilesystemOperation::AppendFile).await?;
         // PR #3660 reviewer fix: append also resets schema metadata.
         // Appending bytes onto a previously record-shaped entry was always
         // a category error; surface it by clearing the schema metadata
@@ -568,7 +637,7 @@ impl RootFilesystem for PostgresRootFilesystem {
         // migration cleanup pass — see RootFilesystem::append_file's
         // deprecation note). New callers must use `append`/`tail` for
         // log-shaped mounts or `get`+`put` read-modify-write.
-        client
+        transaction
             .execute(
                 r#"
                 INSERT INTO root_filesystem_entries
@@ -585,6 +654,10 @@ impl RootFilesystem for PostgresRootFilesystem {
                 "#,
                 &[&path.as_str(), &bytes],
             )
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::AppendFile, error))?;
+        transaction
+            .commit()
             .await
             .map_err(|error| db_error(path.clone(), FilesystemOperation::AppendFile, error))?;
         Ok(())
@@ -744,10 +817,14 @@ impl RootFilesystem for PostgresRootFilesystem {
     async fn create_dir_all(&self, path: &VirtualPath) -> Result<(), FilesystemError> {
         let mut client = self.client().await?;
         let transaction = client
-            .transaction()
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::ReadCommitted)
+            .start()
             .await
             .map_err(|error| db_error(path.clone(), FilesystemOperation::CreateDirAll, error))?;
-        for prefix in virtual_path_prefixes(path)? {
+        Self::lock_namespace(&transaction, path, FilesystemOperation::CreateDirAll).await?;
+        for prefix in path.prefixes() {
+            let prefix = VirtualPath::new(prefix)?;
             let row = transaction
                 .query_opt(
                     "SELECT is_dir FROM root_filesystem_entries WHERE path = $1",
@@ -788,6 +865,73 @@ impl RootFilesystem for PostgresRootFilesystem {
 
 #[cfg(feature = "postgres")]
 impl PostgresRootFilesystem {
+    /// Shared ancestor locks allow unrelated leaves to proceed together. A
+    /// parent writer needs its exclusive leaf lock, so it cannot race a child
+    /// writer's ancestor check. Keep locks through the actual CAS and commit.
+    /// ReadCommitted is explicit: the validation statement after a lock wait
+    /// must see the preceding holder's committed mutation.
+    async fn lock_namespace(
+        transaction: &tokio_postgres::Transaction<'_>,
+        path: &VirtualPath,
+        operation: FilesystemOperation,
+    ) -> Result<(), FilesystemError> {
+        for prefix in path.prefixes() {
+            let key = format!("brassclaw.root-filesystem.namespace:{prefix}");
+            let leaf = prefix == path.as_str();
+            let sql = if leaf {
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,0))"
+            } else {
+                "SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))"
+            };
+            transaction
+                .query_one(sql, &[&key])
+                .await
+                .map_err(|error| db_error(path.clone(), operation, error))?;
+            if !leaf {
+                // A separate ReadCommitted statement AFTER the lock wait sees
+                // the preceding writer's commit. Do not build a quadratic
+                // array of all ancestor strings for one SQL parameter.
+                let exists: bool = transaction.query_one(
+                    "SELECT EXISTS(SELECT 1 FROM root_filesystem_entries WHERE path=$1 AND NOT is_dir)",
+                    &[&prefix]).await
+                    .map_err(|error| db_error(path.clone(), operation, error))?.get(0);
+                if exists {
+                    return Err(FilesystemError::Backend {
+                        path: if operation == FilesystemOperation::CreateDirAll {
+                            VirtualPath::new(prefix)?
+                        } else {
+                            path.clone()
+                        },
+                        operation,
+                        reason: "file exists where an ancestor directory is required".into(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn validate_file_namespace(
+        transaction: &tokio_postgres::Transaction<'_>,
+        path: &VirtualPath,
+        operation: FilesystemOperation,
+    ) -> Result<(), FilesystemError> {
+        Self::lock_namespace(transaction, path, operation).await?;
+        let child_pattern = child_path_like_pattern(path);
+        let directory: bool = transaction.query_one(
+            "SELECT EXISTS(SELECT 1 FROM root_filesystem_entries WHERE (path=$1 AND is_dir) OR path LIKE $2 ESCAPE '!')",
+            &[&path.as_str(),&child_pattern]).await
+            .map_err(|error| db_error(path.clone(), operation, error))?.get(0);
+        if directory {
+            return Err(if operation == FilesystemOperation::AppendFile {
+                directory_append_error(path.clone())
+            } else {
+                directory_write_error(path.clone())
+            });
+        }
+        Ok(())
+    }
+
     async fn exact_entry_with_client(
         &self,
         client: &tokio_postgres::Client,
@@ -886,8 +1030,8 @@ impl PostgresRootFilesystem {
             .query(
                 "SELECT path, indexed, version \
                  FROM root_filesystem_entries \
-                 WHERE is_dir = FALSE AND (path = $1 OR path LIKE $2 ESCAPE '!')",
-                &[&path.as_str(), &prefix_pattern],
+                 WHERE is_dir = FALSE AND (path = $1 OR path LIKE $2 ESCAPE '!') AND indexed ? $3",
+                &[&path.as_str(), &prefix_pattern, &key.as_str()],
             )
             .await
             .map_err(|error| db_error(path.clone(), FilesystemOperation::Query, error))?;
@@ -958,9 +1102,9 @@ impl PostgresRootFilesystem {
         Ok(out)
     }
 
-    async fn current_version_with_client(
+    async fn current_version_with_transaction(
         &self,
-        client: &tokio_postgres::Client,
+        client: &tokio_postgres::Transaction<'_>,
         path: &VirtualPath,
     ) -> Result<Option<RecordVersion>, FilesystemError> {
         let row = client

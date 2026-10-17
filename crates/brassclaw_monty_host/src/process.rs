@@ -23,6 +23,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::{Child, ChildStdin, ChildStdout, Command},
 };
+use uuid::Uuid;
 
 use crate::{
     ContinuationKey, HostAnswer, ValueBudget, VmBounds, VmFailure,
@@ -41,7 +42,11 @@ pub use crate::process_recipe::{
     ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
-const PROTOCOL: u32 = 14;
+// Version 20 transports exact dependent-slot ownership with pool observations.
+// Reject older workers before readiness rather than claiming false capacity.
+const PROTOCOL: u32 = 20;
+#[path = "process_pool_projection.rs"]
+mod pool_projection;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
 // and bound recursive serialization before it enters the parent Rust stack.
 const MAX_TRANSPORT_DEPTH: usize = 64;
@@ -132,6 +137,8 @@ pub struct RuntimeSettingsCandidate {
     pub settings: TaskSettings,
     pub values: VmBounds,
     pub max_recipe_contexts: Option<u32>,
+    pub max_pending_host_calls: Option<u32>,
+    pub max_workers: Option<u32>,
     pub adapter_reserve_bytes: Option<usize>,
     pub heap_update: Option<HeapUpdate>,
     pub frame_update: Option<FrameUpdate>,
@@ -194,6 +201,27 @@ pub enum WorkerCommand {
     CloseWorker {
         key: ContinuationKey,
     },
+    RequestWorkerPool {
+        workers: u32,
+    },
+    ValidateDependentWorker {
+        parent: ContinuationKey,
+        parent_task: TaskHandle,
+        child_run: Uuid,
+    },
+    ReserveDependentWorker {
+        parent: ContinuationKey,
+        parent_task: TaskHandle,
+        child_run: Uuid,
+    },
+    ReleaseDependentWorker {
+        worker: u32,
+        child_task: Option<TaskHandle>,
+    },
+    DrainWorker {
+        key: ContinuationKey,
+    },
+    ClosePoolCoordinator,
 }
 
 /// Domain errors are classified by the trusted port, without placing arbitrary
@@ -268,6 +296,8 @@ impl From<GlobalBoundary> for ProcessBoundary {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessSnapshot {
+    pub worker_pool: Option<WorkerPoolSnapshot>,
+    pub pending_call_capacity: Option<crate::global::PendingCallCapacity>,
     pub allocator: AllocatorStatus,
     pub frame: FrameStatus,
     /// Real shared allocator ownership, never a serialized-frame estimate or
@@ -290,6 +320,124 @@ pub struct ProcessSnapshot {
     pub withheld_answers: Vec<WithheldHostAnswer>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerPoolSnapshot {
+    pub capacity: crate::global::WorkerPoolCapacity,
+    pub coordinator: Option<ContinuationKey>,
+    pub dependents: Vec<crate::global::DependentWorkerObservation>,
+}
+impl WorkerPoolSnapshot {
+    fn from_root(root: &GlobalVm) -> Option<Self> {
+        root.pool_enabled()
+            .then(|| {
+                root.worker_pool_capacity().ok().map(|capacity| Self {
+                    capacity,
+                    coordinator: root.pool_wait(),
+                    dependents: root.dependent_workers(),
+                })
+            })
+            .flatten()
+    }
+    fn valid(&self, root: RootExecutionIdentity, snapshot: &ProcessSnapshot) -> bool {
+        self.capacity.desired > 0
+            && usize::try_from(self.capacity.effective) == Ok(self.capacity.active_ids.len())
+            && self
+                .capacity
+                .active_ids
+                .windows(2)
+                .all(|ids| ids[0] < ids[1])
+            && self
+                .capacity
+                .borrowed_ids
+                .windows(2)
+                .all(|ids| ids[0] < ids[1])
+            && self
+                .dependents
+                .iter()
+                .map(|dependent| dependent.worker)
+                .eq(self.capacity.borrowed_ids.iter().copied())
+            && self.dependents.iter().all(|dependent| {
+                dependent.parent.vm_id == root.vm_id()
+                    && snapshot.outstanding.contains(&dependent.parent)
+                    && Uuid::parse_str(&dependent.parent_task).is_ok_and(|id| !id.is_nil())
+                    && !dependent.child_run.is_nil()
+                    && (snapshot.lifecycle != Lifecycle::Ready
+                        || snapshot
+                            .task_accounting
+                            .iter()
+                            .any(|account| account.task.to_string() == dependent.parent_task))
+                    && dependent
+                        .child_task
+                        .as_ref()
+                        .is_none_or(|token| Uuid::parse_str(token).is_ok_and(|id| !id.is_nil()))
+                    && !snapshot
+                        .work_waits
+                        .iter()
+                        .any(|(_, key)| *key == dependent.parent)
+            })
+            && self
+                .dependents
+                .iter()
+                .map(|dependent| dependent.parent)
+                .collect::<BTreeSet<_>>()
+                .len()
+                == self.dependents.len()
+            && self
+                .dependents
+                .iter()
+                .map(|dependent| dependent.child_run)
+                .collect::<BTreeSet<_>>()
+                .len()
+                == self.dependents.len()
+            && snapshot
+                .work_waits
+                .iter()
+                .all(|(id, _)| self.capacity.active_ids.binary_search(id).is_ok())
+            && self.coordinator.is_none_or(|key| {
+                key.vm_id == root.vm_id()
+                    && snapshot.outstanding.contains(&key)
+                    && !self
+                        .dependents
+                        .iter()
+                        .any(|dependent| dependent.parent == key)
+                    && !snapshot.work_waits.iter().any(|(_, worker)| *worker == key)
+            })
+            && (!self.capacity.coordinator_waiting || self.coordinator.is_some())
+            && (snapshot.lifecycle != Lifecycle::Ready || self.coordinator.is_some())
+    }
+}
+
+fn valid_pool_observation(enabled: bool, snapshot: &ProcessSnapshot) -> bool {
+    let Some(root) = snapshot.root else {
+        return snapshot.worker_pool.is_none();
+    };
+    let outstanding: BTreeSet<_> = snapshot.outstanding.iter().copied().collect();
+    let worker_keys: BTreeSet<_> = snapshot.work_waits.iter().map(|(_, key)| *key).collect();
+    if outstanding.len() != snapshot.outstanding.len()
+        || worker_keys.len() != snapshot.work_waits.len()
+        || outstanding.iter().any(|key| key.vm_id != root.vm_id())
+        || snapshot
+            .work_waits
+            .windows(2)
+            .any(|waits| waits[0].0 >= waits[1].0)
+        || snapshot
+            .work_waits
+            .iter()
+            .any(|(_, key)| !outstanding.contains(key))
+    {
+        return false;
+    }
+    match (enabled, &snapshot.worker_pool) {
+        (true, Some(pool)) => pool.valid(root, snapshot),
+        (false, None) => snapshot
+            .work_waits
+            .iter()
+            .all(|(id, _)| *id < root.workers()),
+        _ => false,
+    }
+}
+
 /// Acknowledged execution settings, distinct from changing usage/context counts
 /// and from Tool authority. Expected edit denials preserve this observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,6 +445,8 @@ pub struct RuntimeSettingsObservation {
     pub task: Option<TaskSettings>,
     pub values: Option<VmBounds>,
     pub max_recipe_contexts: Option<u32>,
+    pub max_pending_host_calls: Option<u32>,
+    pub max_workers: Option<u32>,
     pub adapter_reserve_bytes: usize,
     pub frame: FrameStatus,
 }
@@ -313,6 +463,8 @@ impl ProcessSnapshot {
             task: self.effective_task_settings,
             values: self.vm_bounds,
             max_recipe_contexts: self.recipe_context_capacity.map(|capacity| capacity.limit),
+            max_pending_host_calls: self.pending_call_capacity.map(|capacity| capacity.limit),
+            max_workers: self.worker_pool.as_ref().map(|pool| pool.capacity.desired),
             adapter_reserve_bytes: self.allocator.adapter_reserve_bytes,
             frame: self.frame,
         }
@@ -347,6 +499,86 @@ struct Reply<S = ProcessSnapshot> {
     diagnostic: Option<String>,
 }
 
+fn validate_dependent_frame(
+    root: &GlobalVm,
+    registry: &WorkerRecipes,
+    heap: &WorkerHeap,
+    parent: ContinuationKey,
+    parent_task: TaskHandle,
+    child_run: Uuid,
+    accepted_frame: usize,
+) -> Result<(), crate::VmError> {
+    let prepared = root.prepare_dependent_worker(parent, child_run)?;
+    if prepared.observation.parent_task != parent_task.to_string()
+        || !registry.retains_task(parent_task)
+    {
+        return Err(crate::VmError::kind(VmFailure::ForeignContinuation));
+    }
+    let mut snapshot = ProcessSnapshot {
+        worker_pool: WorkerPoolSnapshot::from_root(root),
+        pending_call_capacity: Some(root.pending_call_capacity()),
+        allocator: heap.allocator_status(),
+        frame: heap.frame_status(),
+        vm_live_bytes: usize::MAX,
+        root: Some(root.execution_identity()),
+        heap: heap.status(),
+        lifecycle: root.lifecycle(),
+        boundary: None,
+        work_waits: root.work_waits(),
+        outstanding: root.outstanding(),
+        stdout: String::new(),
+        admitted_task: None,
+        recipe: None,
+        effective_task_settings: Some(registry.settings()),
+        vm_bounds: Some(registry.bounds()),
+        recipe_context_capacity: Some(registry.context_capacity()),
+        task_accounting: registry.accounting(),
+        withheld_answers: Vec::new(),
+    };
+    let pool = snapshot
+        .worker_pool
+        .as_mut()
+        .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBinding))?;
+    if !pool
+        .capacity
+        .borrowed_ids
+        .contains(&prepared.observation.worker)
+    {
+        pool.capacity.borrowed_ids.push(prepared.observation.worker);
+        pool.capacity.borrowed_ids.sort_unstable();
+        pool.dependents.push(prepared.observation);
+        pool.dependents.sort_unstable_by_key(|entry| entry.worker);
+    }
+    // Project the eventual canonical task-token width as well. This is only
+    // size evidence; the nil UUID is never emitted or treated as an admission.
+    for dependent in &mut pool.dependents {
+        if dependent.child_task.is_none() {
+            dependent.child_task = Some(Uuid::nil().to_string());
+        }
+    }
+    // The owner must fit the current response before an intermediate JSON map
+    // is allocated. The subsequent target-sized arrays are streamed only.
+    encode(
+        &Reply {
+            protocol: PROTOCOL,
+            sequence: u64::MAX,
+            max_frame_bytes: accepted_frame,
+            snapshot: &snapshot,
+            failure: None,
+            diagnostic: None,
+        },
+        accepted_frame,
+    )
+    .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    let target = snapshot
+        .worker_pool
+        .as_ref()
+        .expect("validated pool")
+        .capacity
+        .desired;
+    pool_projection::validate(&snapshot, target, accepted_frame)
+}
+
 /// Size the actual control wire representation without changing VM state or
 /// publishing the proposed revision. This projection is never an observation.
 fn validate_candidate_frame(
@@ -362,6 +594,14 @@ fn validate_candidate_frame(
         candidate.values,
         candidate.max_recipe_contexts,
     )?;
+    root.validate_pending_call_limit(candidate.max_pending_host_calls)?;
+    if let Some(workers) = candidate.max_workers {
+        root.validate_worker_pool_target(
+            workers,
+            candidate.max_pending_host_calls,
+            candidate.values,
+        )?;
+    }
     let before = heap.frame_status();
     let frame = candidate.frame_update.map_or(before, |update| FrameStatus {
         configured_frame_bytes: update.configured_frame_bytes,
@@ -418,7 +658,13 @@ fn validate_candidate_frame(
     if let Some(limit) = candidate.max_recipe_contexts {
         contexts.limit = limit;
     }
+    let mut pending_calls = root.pending_call_capacity();
+    if let Some(limit) = candidate.max_pending_host_calls {
+        pending_calls.limit = limit;
+    }
     let mut projection = ProcessSnapshot {
+        worker_pool: WorkerPoolSnapshot::from_root(root),
+        pending_call_capacity: Some(pending_calls),
         allocator: AllocatorStatus {
             adapter_reserve_bytes: adapter,
             non_vm_reserve_bytes: non_vm,
@@ -457,6 +703,9 @@ fn validate_candidate_frame(
         .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))
     };
     check(&projection)?;
+    if let Some(workers) = candidate.max_workers {
+        pool_projection::validate(&projection, workers, frame.configured_frame_bytes)?;
+    }
     // A pending automatic heap target can become feasible after the coupled
     // reserve update. Validate both possible acknowledgements, without applying it.
     if heap_status.pending_reduction
@@ -560,6 +809,7 @@ pub struct GlobalProcess {
     kill_error: Option<io::Error>,
     reap_error: Option<io::Error>,
     root: Option<RootExecutionIdentity>,
+    pool_enabled: bool,
 }
 impl GlobalProcess {
     pub async fn start(
@@ -595,6 +845,7 @@ impl GlobalProcess {
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let workers = boot.bounds.workers;
+        let pool_enabled = boot.aliases.contains("await_pool_update");
         let expected_heap = boot.heap_settings;
         let expected_adapter_reserve = boot.adapter_reserve_bytes;
         let expected_source = boot.checksum;
@@ -620,6 +871,7 @@ impl GlobalProcess {
             kill_error: None,
             reap_error: None,
             root: None,
+            pool_enabled,
         };
         let expected_frame = process.frame;
         let snapshot = match process.exchange(WorkerCommand::Boot { boot }).await {
@@ -660,7 +912,11 @@ impl GlobalProcess {
                 .iter()
                 .enumerate()
                 .any(|(index, (id, _))| *id as usize != index)
-            || snapshot.outstanding.len() != workers as usize
+            || snapshot.outstanding.len() != workers as usize + usize::from(pool_enabled)
+            || (pool_enabled
+                && !snapshot.worker_pool.as_ref().is_some_and(|pool| {
+                    pool.capacity.desired == workers && pool.capacity.settled()
+                }))
             || !matches!(snapshot.boundary, Some(ProcessBoundary::Waiting { .. }))
         {
             let mut error = ProcessError::new(ProcessFailure::Protocol);
@@ -859,11 +1115,30 @@ impl GlobalProcess {
                     .checked_add(allocator.non_vm_reserve_bytes)
                     == Some(allocator.memory_budget_bytes)
             });
-        if !allocator_valid
+        if reply
+            .snapshot
+            .pending_call_capacity
+            .is_some_and(|capacity| {
+                !capacity.valid()
+                    || reply.snapshot.root.is_some_and(|root| {
+                        let minimum = reply
+                            .snapshot
+                            .worker_pool
+                            .as_ref()
+                            .map_or(Some(root.workers()), |pool| {
+                                pool.capacity.required_pending_calls()
+                            });
+                        minimum != Some(capacity.minimum)
+                    })
+                    || capacity.pending as usize != reply.snapshot.outstanding.len()
+            })
+            || !valid_pool_observation(guard.owner.pool_enabled, &reply.snapshot)
+            || !allocator_valid
             || (guard.owner.root.is_some()
                 && (reply.snapshot.root != guard.owner.root
                     || reply.snapshot.vm_bounds.is_none()
-                    || reply.snapshot.recipe_context_capacity.is_none()))
+                    || reply.snapshot.recipe_context_capacity.is_none()
+                    || reply.snapshot.pending_call_capacity.is_none()))
             || reply
                 .snapshot
                 .recipe_context_capacity
@@ -1276,6 +1551,7 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             WorkerCommand::ValidateMemoryLayout { .. }
                 | WorkerCommand::ValidateRuntimeSettings { .. }
                 | WorkerCommand::ReconcileFrameCapacity { .. }
+                | WorkerCommand::ValidateDependentWorker { .. }
         );
         let recipe_command = matches!(&request.command, WorkerCommand::Recipe { .. });
         let recipe_context = match &request.command {
@@ -1294,6 +1570,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             WorkerCommand::Recipe {
                 command:
                     RecipeCommand::UpdateRuntimeSettings {
+                        max_pending_host_calls,
+                        max_workers,
                         expected_revision,
                         settings,
                         values,
@@ -1303,6 +1581,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                         frame_update,
                     },
             } => Some(RuntimeSettingsCandidate {
+                max_pending_host_calls: *max_pending_host_calls,
+                max_workers: *max_workers,
                 expected_revision: *expected_revision,
                 settings: *settings,
                 values: *values,
@@ -1321,6 +1601,34 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => Ok(()),
         };
+        let preflight =
+            preflight.and_then(
+                |()| match (&request.command, vm.as_ref(), recipes.as_ref()) {
+                    (
+                        WorkerCommand::ValidateDependentWorker {
+                            parent,
+                            parent_task,
+                            child_run,
+                        }
+                        | WorkerCommand::ReserveDependentWorker {
+                            parent,
+                            parent_task,
+                            child_run,
+                        },
+                        Some(root),
+                        Some(registry),
+                    ) => validate_dependent_frame(
+                        root,
+                        registry,
+                        &heap,
+                        *parent,
+                        *parent_task,
+                        *child_run,
+                        request.max_frame_bytes,
+                    ),
+                    _ => Ok(()),
+                },
+            );
         let candidate_rejected = preflight.is_err();
         let result = if let Err(error) = preflight {
             Err(error)
@@ -1451,6 +1759,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                         WorkerCommand::Recipe {
                             command:
                                 RecipeCommand::UpdateRuntimeSettings {
+                                    max_pending_host_calls,
+                                    max_workers,
                                     expected_revision,
                                     settings,
                                     values,
@@ -1488,6 +1798,8 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                 let event = registry
                                     .apply(
                                         RecipeCommand::UpdateRuntimeSettings {
+                                            max_pending_host_calls,
+                                            max_workers,
                                             expected_revision,
                                             settings,
                                             values,
@@ -1530,6 +1842,37 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                             Err(crate::VmError::kind(VmFailure::WrongBoundary))
                         }
                         WorkerCommand::CloseWorker { key } => root.close_worker(key).map(Some),
+                        WorkerCommand::RequestWorkerPool { workers } => {
+                            root.request_worker_pool(workers).map(|boundary| {
+                                registry.update_task_capacity(workers);
+                                Some(boundary)
+                            })
+                        }
+                        WorkerCommand::ValidateDependentWorker { .. } => Ok(None),
+                        WorkerCommand::ReserveDependentWorker {
+                            parent, child_run, ..
+                        } => root
+                            .publish_dependent_worker(parent, child_run)
+                            .map(|()| None),
+                        WorkerCommand::ReleaseDependentWorker {
+                            child_task: Some(task),
+                            ..
+                        } if registry.retains_task(task) => {
+                            Err(crate::VmError::kind(VmFailure::WrongBoundary))
+                        }
+                        WorkerCommand::ReleaseDependentWorker { worker, child_task } => root
+                            .release_dependent_worker(
+                                worker,
+                                child_task.as_ref().map(ToString::to_string).as_deref(),
+                            )
+                            .map(|()| None),
+                        WorkerCommand::DrainWorker { key } => root.drain_worker(key).map(Some),
+                        WorkerCommand::ClosePoolCoordinator if !registry.empty() => {
+                            Err(crate::VmError::kind(VmFailure::WrongBoundary))
+                        }
+                        WorkerCommand::ClosePoolCoordinator => {
+                            root.close_pool_coordinator().map(Some)
+                        }
                         WorkerCommand::Boot { .. } => {
                             Err(crate::VmError::kind(VmFailure::WrongBoundary))
                         }
@@ -1567,26 +1910,33 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
             .map(WorkerRecipes::accounting)
             .unwrap_or_default();
         let snapshot = match vm.as_mut() {
-            Some(root) => ProcessSnapshot {
-                allocator: heap.allocator_status(),
-                frame: heap.frame_status(),
-                vm_live_bytes: 0,
-                root: Some(root.execution_identity()),
-                heap: heap.status(),
-                lifecycle: root.lifecycle(),
-                boundary,
-                work_waits: root.work_waits(),
-                outstanding: root.outstanding(),
-                stdout: format!("{failed_stdout}{}", root.take_stdout()),
-                admitted_task,
-                recipe,
-                effective_task_settings,
-                vm_bounds: recipes.as_ref().map(WorkerRecipes::bounds),
-                recipe_context_capacity: recipes.as_ref().map(WorkerRecipes::context_capacity),
-                task_accounting,
-                withheld_answers: root.take_withheld_answers(),
-            },
+            Some(root) => {
+                let withheld_answers = root.take_withheld_answers();
+                ProcessSnapshot {
+                    worker_pool: WorkerPoolSnapshot::from_root(root),
+                    pending_call_capacity: Some(root.pending_call_capacity()),
+                    allocator: heap.allocator_status(),
+                    frame: heap.frame_status(),
+                    vm_live_bytes: 0,
+                    root: Some(root.execution_identity()),
+                    heap: heap.status(),
+                    lifecycle: root.lifecycle(),
+                    boundary,
+                    work_waits: root.work_waits(),
+                    outstanding: root.outstanding(),
+                    stdout: format!("{failed_stdout}{}", root.take_stdout()),
+                    admitted_task,
+                    recipe,
+                    effective_task_settings,
+                    vm_bounds: recipes.as_ref().map(WorkerRecipes::bounds),
+                    recipe_context_capacity: recipes.as_ref().map(WorkerRecipes::context_capacity),
+                    task_accounting,
+                    withheld_answers,
+                }
+            }
             None => ProcessSnapshot {
+                worker_pool: None,
+                pending_call_capacity: None,
                 allocator: heap.allocator_status(),
                 frame: heap.frame_status(),
                 vm_live_bytes: 0,

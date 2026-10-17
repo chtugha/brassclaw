@@ -7,9 +7,19 @@ Concrete provider implementations, the `EmbeddingsConfig` shape, the `create_pro
 ## Responsibilities
 
 - Define `EmbeddingProvider`, `EmbeddingError`, and re-export them as the workspace-wide trait contract.
+- `max_input_length` returns an optional known UTF-8 byte limit. `None` imposes
+  no artificial byte quota; never approximate model token limits as byte limits
+  or truncate text. Actual model/service limits remain authoritative.
 - Provide `CachedEmbeddingProvider` + `EmbeddingCacheConfig` (LRU decorator).
+  Zero `max_entries` disables retention; the logical ceiling does not reserve
+  entries upfront. `set_max_entries` changes the actual adapter's ceiling,
+  evicts oldest entries on shrink and releases the map on disable. `clear`
+  and changed ceilings fence inserts from requests already in flight; their
+  results still reach the original callers. No lock is held across awaits or
+  input hashing. Composition owns persistence and any WebUI control; a setter
+  alone is not evidence of live settings wiring.
 - Expose `url_check::check_base_url` — the AlwaysBlocked IP-class floor check (not a full SSRF policy).
-- Expose `default_dimension_for_model` — model-name → embedding dimension helper.
+- Vector dimensions are selected from DB model contracts by composition; do not infer them here.
 - Expose `DEFAULT_EMBEDDING_CACHE_SIZE` constant.
 - Expose `MockEmbeddings` behind the `testing` cargo feature (deterministic test double).
 
@@ -28,7 +38,6 @@ Concrete provider implementations, the `EmbeddingsConfig` shape, the `create_pro
 | `EmbeddingError` | Error type returned by every provider |
 | `CachedEmbeddingProvider`, `EmbeddingCacheConfig` | LRU caching decorator |
 | `url_check::check_base_url` | AlwaysBlocked URL floor check (used by `embedding_providers`) |
-| `default_dimension_for_model` | Model → dimension helper |
 | `DEFAULT_EMBEDDING_CACHE_SIZE` | Default LRU cap |
 | `MockEmbeddings` | Deterministic test double (gated: `testing` feature) |
 

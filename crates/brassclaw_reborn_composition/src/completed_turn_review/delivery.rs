@@ -23,12 +23,14 @@ use uuid::Uuid;
 /// Configuration transport only. The actual provider/model/prefix and isolated
 /// accounting owner are captured once before reserving an internal admission.
 pub(crate) struct ReviewSource {
+    pub preparation: brassclaw_monty_host::utility::UtilityLimits,
     pub provider: Option<Arc<SwappableLlmProvider>>,
     pub accountant: Option<Arc<dyn LoopModelBudgetAccountant>>,
     pub profile: ResolvedRunProfile,
 }
 struct RetainedReview {
-    _ports: Arc<ReviewPorts>,
+    ports: Arc<ReviewPorts>,
+    control: Option<brassclaw_monty_host::service::TaskControl>,
     _credit: brassclaw_monty_host::service::RetainedAttemptCredit,
     attempt: Uuid,
 }
@@ -36,10 +38,13 @@ type Retentions = Arc<Mutex<Vec<RetainedReview>>>;
 // Shutdown cannot destroy unresolved native handles/answers. Recovery remains
 // supervised and never re-admits these reservations.
 static QUARANTINE: OnceLock<Mutex<Vec<Retentions>>> = OnceLock::new();
+type OwnerRegistry = Mutex<Vec<std::sync::Weak<Mutex<Vec<RetainedReview>>>>>;
+static OWNERS: OnceLock<OwnerRegistry> = OnceLock::new();
 pub(crate) struct ReviewOwner {
     stop: CancellationToken,
     handle: tokio::task::JoinHandle<()>,
     retained: Retentions,
+    pool: Arc<PgPool>,
 }
 impl ReviewOwner {
     #[allow(clippy::too_many_arguments)]
@@ -54,12 +59,18 @@ impl ReviewOwner {
     ) -> Result<Self, crate::RebornBuildError> {
         let worker = brassclaw_monty_host::process::installed_worker()
             .map_err(|e| super::invalid(e.to_string()))?;
-        let package = Package::boot(pool.clone(), &worker).await?;
+        let package = Package::boot(pool.clone(), &worker, source.preparation).await?;
         let stop = CancellationToken::new();
         let cancelled = stop.clone();
         let owner = Uuid::new_v4();
         let retained: Retentions = Arc::new(Mutex::new(Vec::new()));
+        OWNERS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .map_err(|_| super::invalid("review retention registry unavailable"))?
+            .push(Arc::downgrade(&retained));
         let retained_worker = retained.clone();
+        let retained_pool = pool.clone();
         let handle = tokio::spawn(async move {
             // Polling is journal delivery, never VM work polling or an agent
             // loop. Python alone selects and executes Recipe steps.
@@ -68,20 +79,25 @@ impl ReviewOwner {
             let mut last_error = None;
             loop {
                 tokio::select! {_=cancelled.cancelled()=>break,_=tick.tick()=>{}}
-                let result = deliver(
-                    &pool,
-                    &kernel,
-                    &service,
-                    &ownership,
-                    &threads,
-                    &scope,
-                    &source,
-                    &package,
-                    owner,
-                    &cancelled,
-                    &retained_worker,
-                )
-                .await;
+                let result = match reconcile_retained(&pool, &retained_worker).await {
+                    Err(reason) => Err(reason),
+                    Ok(()) => {
+                        deliver(
+                            &pool,
+                            &kernel,
+                            &service,
+                            &ownership,
+                            &threads,
+                            &scope,
+                            &source,
+                            &package,
+                            owner,
+                            &cancelled,
+                            &retained_worker,
+                        )
+                        .await
+                    }
+                };
                 if let Err(reason) = result {
                     if last_error == Some(reason) {
                         continue;
@@ -100,6 +116,7 @@ impl ReviewOwner {
             stop,
             handle,
             retained,
+            pool: retained_pool,
         })
     }
     pub(crate) fn request_shutdown(&self) {
@@ -107,7 +124,10 @@ impl ReviewOwner {
     }
     pub(crate) async fn join(self) -> Result<(), crate::RebornRuntimeError> {
         let failed = self.handle.await.is_err();
-        if failed || self.retained.lock().map_or(true, |v| !v.is_empty()) {
+        let reconciliation_failed = reconcile_retained(&self.pool, &self.retained)
+            .await
+            .is_err();
+        if failed || reconciliation_failed || self.retained.lock().map_or(true, |v| !v.is_empty()) {
             QUARANTINE
                 .get_or_init(|| Mutex::new(Vec::new()))
                 .lock()
@@ -141,7 +161,9 @@ async fn deliver(
     let Some(provider) = &source.provider else {
         return Ok(());
     };
-    let (provider, model) = provider.pinned_provider();
+    let selected = provider.retained_selection();
+    let provider = selected.provider;
+    let model = selected.model;
     if model == "unconfigured" || model.trim().is_empty() {
         return Ok(());
     }
@@ -203,7 +225,8 @@ async fn deliver(
     let accountant = accountant
         .isolated_work_accountant()
         .ok_or("isolated_accounting_unavailable")?;
-    let gateway = Arc::new(LlmProviderModelGateway::new(
+    let gateway = Arc::new(LlmProviderModelGateway::with_provider_identity(
+        selected.provider_id,
         provider,
         LlmModelProfilePolicy::new().allow_model_profile(
             context.resolved_run_profile.model_profile_id.clone(),
@@ -218,6 +241,7 @@ async fn deliver(
         ownership: ownership.clone(),
         closed: AtomicBool::new(false),
         observed_model: tokio::sync::Mutex::new(None),
+        model_work: tokio::sync::Mutex::new(Default::default()),
         threads: threads.clone(),
         scope: scope.clone(),
         context,
@@ -242,7 +266,8 @@ async fn deliver(
         .lock()
         .map_err(|_| "retention_unavailable")?
         .push(RetainedReview {
-            _ports: ports.clone(),
+            ports: ports.clone(),
+            control: None,
             _credit: credit,
             attempt,
         });
@@ -258,6 +283,9 @@ async fn deliver(
     }
     drop(client);
     let input = TaskInput {
+        entry: brassclaw_monty_host::service::TaskEntry::InternalRecipe {
+            name: "completed-turn-review".into(),
+        },
         conversation_id: backend.context.thread_id.to_string(),
         message_id: format!("review-event:{source_id}"),
         turn_id: backend.context.turn_id.to_string(),
@@ -269,6 +297,13 @@ async fn deliver(
         _=stop.cancelled()=>{ports.retain_failure().await.map_err(|_|"reservation_unresolved")?;return Ok(());}
         result=service.submit_when_available(input,ports.clone())=>result.map_err(|_|"admission_unresolved")?,
     };
+    retained
+        .lock()
+        .map_err(|_| "retention_unavailable")?
+        .iter_mut()
+        .find(|r| r.attempt == attempt)
+        .ok_or("retention_unavailable")?
+        .control = Some(ticket.control());
     let result = tokio::select! {
         result=ticket.wait()=>result,
         _=stop.cancelled()=>{ticket.control().cancel();ticket.wait().await}
@@ -286,36 +321,19 @@ async fn deliver(
             }
             // Retain actual root/accounting settlement independently of an
             // earlier acknowledgement; service failure cannot imply zero usage.
-            let evidence=serde_json::json!({"format":"completed-turn-review-service-settlement/1",
-                "root_vm_id":receipt.root.vm_id(),"accounting":receipt.accounting.as_ref().map(|a|
-                    serde_json::json!({"effective_revision":a.effective_revision,"compute_time":a.compute_time,"failure":a.failure})),
-                "outcome":match &receipt.outcome {
-                    brassclaw_monty_host::service::TaskOutcome::InternalCompleted {receipt_ref}=>serde_json::json!({"status":"internal_completed","receipt_ref":receipt_ref}),
-                    brassclaw_monty_host::service::TaskOutcome::Failed {reason_kind}=>serde_json::json!({"status":"failed","reason_kind":reason_kind}),
-                    _=>serde_json::json!({"status":"invalid_chat_completion"}),
-                },
-                "internal_completed":matches!(receipt.outcome,brassclaw_monty_host::service::TaskOutcome::InternalCompleted {..}),
-                "withheld_root_answers":receipt.withheld.len()}).to_string();
+            let evidence = super::reconciliation::settlement(&receipt);
             let changed = pool.get().await.map_err(|_|"review_settlement_unresolved")?.execute(
                 "INSERT INTO brassclaw_monty_review_settlements(attempt_id,settlement_bytes) VALUES($1,$2) ON CONFLICT DO NOTHING",
                 &[&attempt,&evidence]).await.map_err(|_|"review_settlement_unresolved")?;
             if changed != 1 {
-                return Err("review_settlement_unresolved");
+                let existing: String = pool.get().await.map_err(|_| "review_settlement_unresolved")?
+                    .query_one("SELECT settlement_bytes FROM brassclaw_monty_review_settlements WHERE attempt_id=$1", &[&attempt])
+                    .await.map_err(|_| "review_settlement_unresolved")?.get(0);
+                if existing != evidence {
+                    return Err("review_settlement_unresolved");
+                }
             }
-            if matches!(
-                receipt.outcome,
-                brassclaw_monty_host::service::TaskOutcome::InternalCompleted { .. }
-            ) && receipt.withheld.is_empty()
-                && receipt
-                    .accounting
-                    .as_ref()
-                    .is_some_and(|a| a.compute_time.is_some() && a.failure.is_none())
-            {
-                retained
-                    .lock()
-                    .map_err(|_| "retention_unavailable")?
-                    .retain(|r| r.attempt != attempt);
-            }
+            reconcile_retained(pool, retained).await?;
             Ok(())
         }
         Err(_) => {
@@ -326,4 +344,73 @@ async fn deliver(
             Err("service_settlement_unresolved")
         }
     }
+}
+
+/// Native recovery maintenance. The delivery owner calls this only between
+/// admissions; no recipe sequencing or effect dispatch occurs here.
+async fn reconcile_retained(pool: &Arc<PgPool>, retained: &Retentions) -> Result<(), &'static str> {
+    let entries: Vec<_> = retained
+        .lock()
+        .map_err(|_| "retention_unavailable")?
+        .iter()
+        .filter_map(|r| {
+            r.control
+                .as_ref()
+                .and_then(|control| match control.receipt() {
+                    Some(Ok(receipt)) => Some((r.attempt, r.ports.clone(), receipt)),
+                    _ => None,
+                })
+        })
+        .collect();
+    for (attempt, ports, receipt) in entries {
+        if super::reconciliation::reconcile(pool, &ports, &receipt).await? {
+            retained
+                .lock()
+                .map_err(|_| "retention_unavailable")?
+                .retain(|r| r.attempt != attempt);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn reconcile_attempt(
+    pool: &Arc<PgPool>,
+    attempt: Uuid,
+) -> Result<bool, &'static str> {
+    let owners: Vec<_> = OWNERS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .map_err(|_| "retention_unavailable")?
+        .iter()
+        .filter_map(std::sync::Weak::upgrade)
+        .collect();
+    for owner in owners {
+        let native = owner
+            .lock()
+            .map_err(|_| "retention_unavailable")?
+            .iter()
+            .find(|r| {
+                r.attempt == attempt && std::ptr::eq(pool.manager(), r.ports.backend.pool.manager())
+            })
+            .and_then(|r| {
+                r.control
+                    .as_ref()
+                    .and_then(|control| match control.receipt() {
+                        Some(Ok(receipt)) => Some((r.ports.clone(), receipt)),
+                        _ => None,
+                    })
+            });
+        if let Some((ports, receipt)) = native {
+            if super::reconciliation::reconcile(pool, &ports, &receipt).await? {
+                let mut entries = owner.lock().map_err(|_| "retention_unavailable")?;
+                let before = entries.len();
+                entries.retain(|r| r.attempt != attempt);
+                // Concurrent maintenance/operator calls may share the same
+                // immutable proof. Only the actual remover reports release.
+                return Ok(entries.len() != before);
+            }
+            return Ok(false);
+        }
+    }
+    Ok(false)
 }

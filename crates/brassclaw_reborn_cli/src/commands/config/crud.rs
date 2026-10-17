@@ -7,7 +7,7 @@
 //! 4. Conditional shutdown: shut down embedded PG only if this command started it.
 
 use brassclaw_reborn_composition::db_config::{
-    ConfigWriteContext, delete_config_key, list_config_keys, save_config_key,
+    ConfigWriteContext, delete_config_key, list_config_keys, save_config_changes, save_config_key,
 };
 use clap::Args;
 
@@ -23,9 +23,9 @@ pub(crate) struct ConfigGetCommand {
     /// The config key to read (e.g. `llm.default.provider_id`).
     key: String,
 
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigGetCommand {
@@ -37,18 +37,19 @@ impl ConfigGetCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             brassclaw_pg::migrations::run_migrations(&pool)
                 .await
                 .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-            let rows = list_config_keys(&pool, &self.tenant)
+            let rows = list_config_keys(&pool, &tenant)
                 .await
                 .map_err(|e| anyhow::anyhow!("config get failed: {e}"))?;
 
             match rows.into_iter().find(|(k, _)| k == &self.key) {
                 Some((_, v)) => println!("{v}"),
-                None => anyhow::bail!("key `{}` not found for tenant `{}`", self.key, self.tenant),
+                None => anyhow::bail!("key `{}` not found for tenant `{}`", self.key, tenant),
             }
             Ok(())
         })
@@ -69,9 +70,9 @@ pub(crate) struct ConfigSetCommand {
     /// The value to store.
     value: String,
 
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigSetCommand {
@@ -83,6 +84,7 @@ impl ConfigSetCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             brassclaw_pg::migrations::run_migrations(&pool)
                 .await
@@ -90,7 +92,7 @@ impl ConfigSetCommand {
 
             save_config_key(
                 &pool,
-                &self.tenant,
+                &tenant,
                 &self.key,
                 &self.value,
                 ConfigWriteContext::Operator,
@@ -115,9 +117,9 @@ pub(crate) struct ConfigUnsetCommand {
     /// The config key to remove.
     key: String,
 
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigUnsetCommand {
@@ -129,12 +131,13 @@ impl ConfigUnsetCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             brassclaw_pg::migrations::run_migrations(&pool)
                 .await
                 .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-            delete_config_key(&pool, &self.tenant, &self.key)
+            delete_config_key(&pool, &tenant, &self.key)
                 .await
                 .map_err(|e| anyhow::anyhow!("config unset failed: {e}"))?;
 
@@ -156,9 +159,9 @@ pub(crate) struct ConfigListCommand {
     #[arg(long)]
     section: Option<String>,
 
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigListCommand {
@@ -170,12 +173,13 @@ impl ConfigListCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             brassclaw_pg::migrations::run_migrations(&pool)
                 .await
                 .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-            let rows = list_config_keys(&pool, &self.tenant)
+            let rows = list_config_keys(&pool, &tenant)
                 .await
                 .map_err(|e| anyhow::anyhow!("config list failed: {e}"))?;
 
@@ -203,9 +207,9 @@ impl ConfigListCommand {
 /// Render all DB config rows back as TOML (matches the `config.toml` shape).
 #[derive(Debug, Args)]
 pub(crate) struct ConfigShowAllCommand {
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigShowAllCommand {
@@ -217,6 +221,7 @@ impl ConfigShowAllCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             brassclaw_pg::migrations::run_migrations(&pool)
                 .await
@@ -224,13 +229,12 @@ impl ConfigShowAllCommand {
 
             // Render DB rows as flat TOML-style `key = "value"` lines.
             // RebornConfigFile is Deserialize-only so we render the flat list.
-            let rows = list_config_keys(&pool, &self.tenant)
+            let rows = list_config_keys(&pool, &tenant)
                 .await
                 .map_err(|e| anyhow::anyhow!("config show-all failed: {e}"))?;
 
-            for (key, value) in &rows {
-                println!("{key} = {value:?}");
-            }
+            let values: std::collections::BTreeMap<_, _> = rows.into_iter().collect();
+            print!("{}", toml::to_string(&values)?);
             Ok(())
         })
         .await
@@ -246,9 +250,9 @@ impl ConfigShowAllCommand {
 /// Usage: `brassclaw config export > config-backup.toml`
 #[derive(Debug, Args)]
 pub(crate) struct ConfigExportCommand {
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigExportCommand {
@@ -260,19 +264,19 @@ impl ConfigExportCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             brassclaw_pg::migrations::run_migrations(&pool)
                 .await
                 .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
             // Export as flat `key = "value"` lines (TOML-compatible scalar format).
-            let rows = list_config_keys(&pool, &self.tenant)
+            let rows = list_config_keys(&pool, &tenant)
                 .await
                 .map_err(|e| anyhow::anyhow!("config export failed: {e}"))?;
 
-            for (key, value) in &rows {
-                println!("{key} = {value:?}");
-            }
+            let values: std::collections::BTreeMap<_, _> = rows.into_iter().collect();
+            print!("{}", toml::to_string(&values)?);
             Ok(())
         })
         .await
@@ -291,9 +295,9 @@ impl ConfigExportCommand {
 /// non-empty key into `brassclaw_config`. Existing keys are overwritten.
 #[derive(Debug, Args)]
 pub(crate) struct ConfigImportCommand {
-    /// Tenant ID (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 }
 
 impl ConfigImportCommand {
@@ -305,6 +309,7 @@ impl ConfigImportCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         use std::io::Read as _;
 
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
@@ -323,24 +328,17 @@ impl ConfigImportCommand {
             let config_value: toml::Value = toml::from_str(&stdin_text)
                 .map_err(|e| anyhow::anyhow!("invalid config TOML: {e}"))?;
 
-            let mut count = 0usize;
-            for (key, value) in flatten_toml("", &config_value) {
-                save_config_key(
-                    &pool,
-                    &self.tenant,
-                    &key,
-                    &value,
-                    ConfigWriteContext::Operator,
-                )
+            let rows = flatten_toml("", &config_value)?;
+            let changes: Vec<_> = rows
+                .iter()
+                .map(|(key, value)| (key.as_str(), Some(value.as_str())))
+                .collect();
+            save_config_changes(&pool, &tenant, &changes, ConfigWriteContext::Operator)
                 .await
-                .map_err(|e| anyhow::anyhow!("failed to import key `{key}`: {e}"))?;
-                count += 1;
-            }
+                .map_err(|e| anyhow::anyhow!("config import failed; no keys changed: {e}"))?;
+            let count = rows.len();
 
-            println!(
-                "imported {count} config key(s) into tenant `{}`",
-                self.tenant
-            );
+            println!("imported {count} config key(s) into tenant `{}`", tenant);
             Ok(())
         })
         .await
@@ -348,8 +346,8 @@ impl ConfigImportCommand {
 }
 
 /// Flatten a TOML `Value` tree into `(dot.path, string_value)` pairs.
-fn flatten_toml(prefix: &str, value: &toml::Value) -> Vec<(String, String)> {
-    match value {
+fn flatten_toml(prefix: &str, value: &toml::Value) -> anyhow::Result<Vec<(String, String)>> {
+    Ok(match value {
         toml::Value::Table(table) => {
             let mut out = Vec::new();
             for (k, v) in table {
@@ -358,7 +356,7 @@ fn flatten_toml(prefix: &str, value: &toml::Value) -> Vec<(String, String)> {
                 } else {
                     format!("{prefix}.{k}")
                 };
-                out.extend(flatten_toml(&path, v));
+                out.extend(flatten_toml(&path, v)?);
             }
             out
         }
@@ -373,9 +371,9 @@ fn flatten_toml(prefix: &str, value: &toml::Value) -> Vec<(String, String)> {
         }
         toml::Value::Array(arr) => {
             // Serialize arrays as JSON (the §4.2 contract for list fields).
-            let json = serde_json::to_string(arr).unwrap_or_default();
+            let json = serde_json::to_string(arr)?;
             vec![(prefix.to_string(), json)]
         }
         toml::Value::Datetime(dt) => vec![(prefix.to_string(), dt.to_string())],
-    }
+    })
 }

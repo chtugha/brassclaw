@@ -140,6 +140,7 @@ where
     secret_injection_store: Arc<RuntimeSecretInjectionStore>,
     process_lifecycle_store: Arc<ProcessObligationLifecycleStore>,
     runtime_http_egress: SharedRuntimeHttpEgress,
+    http_client_cache_control: Option<brassclaw_network::HttpClientCacheControl>,
     tool_call_http_egress: SharedToolCallHttpEgress,
     process_port: Arc<dyn RuntimeProcessPort>,
     managed_process_port: bool,
@@ -307,6 +308,7 @@ where
             secret_injection_store,
             process_lifecycle_store,
             runtime_http_egress: Arc::new(Mutex::new(None)),
+            http_client_cache_control: None,
             tool_call_http_egress: Arc::new(Mutex::new(None)),
             process_port: Arc::new(LocalHostProcessPort::new()),
             managed_process_port: true,
@@ -416,6 +418,10 @@ where
     /// Returns the canonical host-runtime HTTP egress port when configured.
     pub fn runtime_http_egress(&self) -> Option<Arc<dyn RuntimeHttpEgress>> {
         runtime_http_egress(&self.runtime_http_egress)
+    }
+
+    pub fn http_client_cache_control(&self) -> Option<brassclaw_network::HttpClientCacheControl> {
+        self.http_client_cache_control.clone()
     }
 
     /// Returns the canonical host-runtime obligation handler.

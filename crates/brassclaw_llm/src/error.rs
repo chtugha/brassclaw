@@ -23,6 +23,15 @@ pub enum LlmError {
     #[error("Provider {provider} request failed: {reason}")]
     RequestFailed { provider: String, reason: String },
 
+    /// Nonretryable HTTP rejection. No upstream body or credential-bearing URL
+    /// is carried across the caller boundary.
+    #[error("Provider {provider} rejected the request (HTTP {status})")]
+    RequestRejected { provider: String, status: u16 },
+
+    /// A technical response capacity failure is never a transient provider error.
+    #[error("Provider {provider} response exceeded its configured {limit} byte capacity")]
+    ResponseTooLarge { provider: String, limit: u64 },
+
     #[error("Provider {provider} rate limited, retry after {retry_after:?}")]
     RateLimited {
         provider: String,

@@ -3,13 +3,14 @@ use brassclaw_host_api::VirtualPath;
 
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
-    BackendCapabilities, CasExpectation, DirEntry, Entry, FileStat, FilesystemError,
-    FilesystemOperation, Filter, IndexSpec, Page, RecordVersion, SeqNo, VersionedEntry,
+    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryIndexMetadata, EntryMetadata,
+    FileStat, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexSpec, Page,
+    RecordVersion, SeqNo, VersionedEntry,
 };
 
 /// Unified filesystem interface over canonical virtual paths.
 ///
-/// Both individual storage backends (local files, Postgres, libSQL, HSM,
+/// Both individual storage backends (local files, Postgres, HSM,
 /// in-memory) and the composite dispatcher
 /// ([`CompositeRootFilesystem`](crate::CompositeRootFilesystem)) implement this
 /// trait. There is intentionally only one trait — the dispatcher *is* a
@@ -48,6 +49,11 @@ pub trait RootFilesystem: Send + Sync {
 
     /// Write an [`Entry`] at `path` with a compare-and-swap precondition.
     /// Returns the new [`RecordVersion`].
+    ///
+    /// Entries are leaves: a file/record cannot also be a directory or have a
+    /// file/record ancestor. A backend accepting writes must preserve this
+    /// namespace constraint atomically with the actual mutation/CAS, including
+    /// concurrent parent/child creation. A preflight read alone is insufficient.
     ///
     /// Default impl is `Unsupported` — backends that want to participate in
     /// the unified surface must implement `put` natively. Byte-only backends
@@ -110,6 +116,42 @@ pub trait RootFilesystem: Send + Sync {
         _filter: &Filter,
         _page: Page,
     ) -> Result<Vec<VersionedEntry>, FilesystemError> {
+        unsupported(path, FilesystemOperation::Query)
+    }
+
+    /// Read only the exact entry's path and kind. Never reads/clones its body
+    /// or indexed projection. Missing entries/directories return `None`.
+    /// Requires `Capability::EntryMetadata`; no full-body compatibility fallback.
+    async fn get_metadata(
+        &self,
+        path: &VirtualPath,
+    ) -> Result<Option<EntryMetadata>, FilesystemError> {
+        unsupported(path, FilesystemOperation::ReadFile)
+    }
+
+    /// Structural metadata for entries at/below `path`, excluding directories.
+    /// Ordered by canonical UTF-8 path bytes, using the ordinary Page contract.
+    /// This is a live page, not a cross-page snapshot. Consumers must continue
+    /// pagination for complete enumeration and retain their domain filtering.
+    /// No bodies/indexed payloads are read; missing prefixes return an empty page.
+    /// Scoped callers require the same read+list permission as ordinary query.
+    async fn query_metadata(
+        &self,
+        path: &VirtualPath,
+        _page: Page,
+    ) -> Result<Vec<EntryMetadata>, FilesystemError> {
+        unsupported(path, FilesystemOperation::Query)
+    }
+
+    /// Same live page/order/permission contract as `query_metadata`, plus one
+    /// requested indexed field. No bodies or unrelated indexed values are read.
+    /// Requires `Capability::EntryIndexMetadata`; no full-record fallback.
+    async fn query_index_metadata(
+        &self,
+        path: &VirtualPath,
+        _key: &IndexKey,
+        _page: Page,
+    ) -> Result<Vec<EntryIndexMetadata>, FilesystemError> {
         unsupported(path, FilesystemOperation::Query)
     }
 

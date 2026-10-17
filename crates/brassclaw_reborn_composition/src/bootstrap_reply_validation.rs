@@ -1,9 +1,7 @@
 //! Noncircular, installation-owned reply qualification. Only the exact bundled
 //! candidate enters here. Effects are contained in isolated durable validation
 //! chats, using the actual reply handler, kernel and invocation journal.
-use crate::{
-    RebornBuildError, monty_kernel::MontyKernelSnapshot, pg_monty_admission::PgMontyAdmission,
-};
+use crate::{RebornBuildError, monty_kernel::MontyKernelSnapshot};
 use async_trait::async_trait;
 use brassclaw_authorization::{
     InstanceToolPolicyError, InstanceToolPolicySource, InstanceToolRule,
@@ -15,47 +13,28 @@ use brassclaw_engine::executor::{
     },
     retained_source::InspectedRetainedProgram,
 };
-use brassclaw_host_api::{AgentId, CapabilityDescriptor, ProjectId, TenantId, ThreadId, UserId};
-use brassclaw_loop_support::{
-    RunCancellationFactory, RunStateLoopCancellationPort, ThreadBackedLoopTranscriptPort,
-    TurnStateRunCancellationFactory,
-};
+use brassclaw_host_api::CapabilityDescriptor;
 use brassclaw_monty_host::{
     VmBounds, VmFailure,
     global::{GlobalBounds, Lifecycle},
     heap::HeapSettings,
     process::{
-        PortAnswer, ProcessBoundary, ProcessFailure, ProcessLimits, RecipeCommand, RootBoot,
-        TaskSettings, WorkerCommand,
+        PortAnswer, ProcessFailure, ProcessLimits, RecipeCommand, RootBoot, TaskSettings,
+        WorkerCommand,
     },
-    transport_actor::{ActorLimits, TransportOwner},
+    transport_actor::ActorLimits,
 };
 use brassclaw_pg::PgPool;
-use brassclaw_reborn::monty_task_host::MontyTaskHost;
-use brassclaw_threads::{
-    AcceptInboundMessageRequest, EnsureThreadRequest, MessageContent, PgSessionThreadService,
-    SessionThreadService, ThreadScope,
-};
-use brassclaw_turns::{
-    AcceptedMessageRef, DefaultTurnCoordinator, IdempotencyKey, PgTurnStateStore,
-    ReplyTargetBindingRef, SourceBindingRef, SubmitTurnRequest, TurnActor, TurnCoordinator,
-    TurnLeaseToken, TurnRunnerId, TurnScope,
-    run_profile::{AgentLoopDriverRunRequest, LoopRunContext, MontyTaskAttempt, MontyTaskHandoff},
-    runner::{ClaimRunRequest, CompleteRunRequest, TurnRunTransitionPort},
-};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{path::Path, sync::Arc, time::Duration};
-use uuid::Uuid;
-#[path = "bootstrap_reply_host.rs"]
-mod host;
 
 pub(super) fn invalid(reason: impl ToString) -> RebornBuildError {
     RebornBuildError::InvalidConfig {
         reason: reason.to_string(),
     }
 }
-const ROOT: &str = "import asyncio\nasync def validate_reply():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    await host.validation_hold(task['task_token'])\nasyncio.run(validate_reply())\n";
+pub(super) const ROOT: &str = "import asyncio\nasync def validate_reply():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    await host.validation_hold(task['task_token'])\nasyncio.run(validate_reply())\n";
 pub(super) const PRODUCER: &str = "brassclaw-public-reply-bootstrap/1";
 
 // Fixed packaged acceptance cases. No caller-supplied expected success or source.
@@ -120,7 +99,12 @@ pub(super) async fn execute_cases(
         let denied = case["denied"]
             .as_bool()
             .ok_or_else(|| invalid("bootstrap policy missing"))?;
-        let admitted = Box::pin(admit(pool.clone(), answer)).await?;
+        let admitted = Box::pin(crate::bootstrap_validation::admit(
+            pool.clone(),
+            "bootstrap-reply",
+            answer,
+        ))
+        .await?;
         let tools = crate::installed_monty_catalogue::bootstrap_reply_tools(
             pool.clone(),
             kernel.clone(),
@@ -163,7 +147,7 @@ pub(super) async fn execute_cases(
             },
             max_recipe_contexts: 8,
         };
-        let (mut owner, ready) = TransportOwner::start(
+        let (mut owner, transport, root, task) = crate::bootstrap_validation::start(
             worker,
             boot,
             ProcessLimits {
@@ -177,43 +161,9 @@ pub(super) async fn execute_cases(
                 max_control_unclaimed: 8,
                 max_control_reserved_frame_bytes: 4 * 1024 * 1024,
             },
+            admitted.input.clone(),
         )
-        .await
-        .map_err(invalid)?;
-        let transport = owner.client();
-        let key = ready
-            .work_waits
-            .first()
-            .ok_or_else(|| invalid("bootstrap work wait missing"))?
-            .1;
-        let mut root = transport
-            .try_submit(WorkerCommand::Admit {
-                key,
-                task: admitted.input.clone(),
-            })
-            .map_err(invalid)?
-            .wait()
-            .await
-            .map_err(invalid)?
-            .outcome
-            .map_err(invalid)?;
-        let task = root
-            .admitted_task
-            .ok_or_else(|| invalid("bootstrap task not admitted"))?;
-        while let Some(ProcessBoundary::ControlYield { key }) = root.boundary {
-            root = transport
-                .try_submit(WorkerCommand::ResumeControl { key })
-                .map_err(invalid)?
-                .wait()
-                .await
-                .map_err(invalid)?
-                .outcome
-                .map_err(invalid)?;
-        }
-        if !matches!(root.boundary, Some(ProcessBoundary::HostCall { ref name, .. }) if name == "validation_hold")
-        {
-            return Err(invalid("bootstrap root did not reach contained hold"));
-        }
+        .await?;
         let input = program
             .inputs()
             .bind_task_inputs(&json!({"answer":answer}))
@@ -359,30 +309,7 @@ pub(super) async fn execute_cases(
             "answer_checksum":hex(actual.answer_checksum().ok_or_else(|| invalid("bootstrap answer missing"))?),
             "failure":actual.failure().map(RetainedStepFailure::reason_kind),
             "worker_root":root.root});
-        owner.request_termination();
-        let exit = owner.join().await.map_err(invalid)?;
-        if exit.exit_status.is_none()
-            || exit.containment_error.is_some()
-            || exit.reap_error.is_some()
-        {
-            return Err(invalid("bootstrap worker containment is unresolved"));
-        }
-        // This validator is closed, not a completed ordinary chat root. The
-        // admission settlement fences it without inventing normal-match proof.
-        admitted
-            .admission
-            .settle(json!({"status":"failed","reason_kind":"bootstrap_validation_closed"}))
-            .await
-            .map_err(invalid)?;
-        admitted
-            .state
-            .complete_run(CompleteRunRequest {
-                run_id: admitted.attempt.run_id,
-                runner_id: admitted.attempt.runner_id,
-                lease_token: admitted.attempt.lease_token,
-            })
-            .await
-            .map_err(invalid)?;
+        crate::bootstrap_validation::close(&mut owner, &admitted).await?;
         observations.push(observation);
     }
     Ok(
@@ -394,147 +321,4 @@ pub(super) fn hex(value: [u8; 32]) -> String {
 }
 pub(super) fn root_checksum() -> String {
     hex(Sha256::digest(ROOT.as_bytes()).into())
-}
-
-struct Admitted {
-    host: Arc<MontyTaskHost>,
-    input: Value,
-    admission: Arc<PgMontyAdmission>,
-    state: Arc<PgTurnStateStore>,
-    attempt: MontyTaskAttempt,
-}
-async fn admit(pool: Arc<PgPool>, answer: &str) -> Result<Admitted, RebornBuildError> {
-    let tenant = TenantId::new("bootstrap-validation").map_err(invalid)?;
-    let agent = AgentId::new("bootstrap-reply").map_err(invalid)?;
-    let project = ProjectId::new("contained").map_err(invalid)?;
-    let actor = UserId::new("installation-owner").map_err(invalid)?;
-    let conversation =
-        ThreadId::new(format!("bootstrap-reply-{}", Uuid::new_v4())).map_err(invalid)?;
-    let scope = ThreadScope {
-        tenant_id: tenant.clone(),
-        agent_id: agent.clone(),
-        project_id: Some(project.clone()),
-        owner_user_id: None,
-    };
-    let threads = Arc::new(PgSessionThreadService::new(pool.clone(), tenant.as_str()));
-    threads
-        .ensure_thread(EnsureThreadRequest {
-            scope: scope.clone(),
-            thread_id: Some(conversation.clone()),
-            created_by_actor_id: actor.to_string(),
-            title: Some("Internal bootstrap validation".into()),
-            metadata_json: Some(json!({"bootstrap_validation":true}).to_string()),
-        })
-        .await
-        .map_err(invalid)?;
-    let accepted = threads
-        .accept_inbound_message(AcceptInboundMessageRequest {
-            scope: scope.clone(),
-            thread_id: conversation.clone(),
-            actor_id: actor.to_string(),
-            source_binding_id: Some("bootstrap-internal".into()),
-            reply_target_binding_id: Some("bootstrap-internal".into()),
-            external_event_id: None,
-            content: MessageContent::text(answer),
-        })
-        .await
-        .map_err(invalid)?;
-    let turn_scope = TurnScope::new(
-        tenant.clone(),
-        Some(agent),
-        Some(project),
-        conversation.clone(),
-    );
-    let state = Arc::new(PgTurnStateStore::new(pool.clone(), tenant.as_str()));
-    DefaultTurnCoordinator::new(state.clone())
-        .submit_turn(SubmitTurnRequest {
-            scope: turn_scope.clone(),
-            actor: TurnActor::new(actor),
-            accepted_message_ref: AcceptedMessageRef::new(format!("msg:{}", accepted.message_id))
-                .map_err(invalid)?,
-            source_binding_ref: SourceBindingRef::new("bootstrap-internal").map_err(invalid)?,
-            reply_target_binding_ref: ReplyTargetBindingRef::new("bootstrap-internal")
-                .map_err(invalid)?,
-            requested_run_profile: None,
-            idempotency_key: IdempotencyKey::new(Uuid::new_v4().to_string()).map_err(invalid)?,
-            received_at: chrono::Utc::now(),
-            requested_run_id: None,
-            parent_run_id: None,
-            subagent_depth: 0,
-            spawn_tree_root_run_id: None,
-        })
-        .await
-        .map_err(invalid)?;
-    let claimed = state
-        .claim_next_run(ClaimRunRequest {
-            runner_id: TurnRunnerId::new(),
-            lease_token: TurnLeaseToken::new(),
-            scope_filter: Some(turn_scope.clone()),
-        })
-        .await
-        .map_err(invalid)?
-        .ok_or_else(|| invalid("bootstrap claim missing"))?;
-    threads
-        .mark_message_submitted(
-            &scope,
-            &conversation,
-            accepted.message_id,
-            claimed.state.turn_id.to_string(),
-            claimed.state.run_id.to_string(),
-        )
-        .await
-        .map_err(invalid)?;
-    let context = LoopRunContext::new(
-        turn_scope,
-        claimed.state.turn_id,
-        claimed.state.run_id,
-        claimed.resolved_run_profile.clone(),
-    )
-    .with_actor(
-        claimed
-            .state
-            .actor
-            .clone()
-            .ok_or_else(|| invalid("bootstrap actor missing"))?,
-    )
-    .with_accepted_message_ref(claimed.state.accepted_message_ref.clone());
-    let attempt = MontyTaskAttempt {
-        run_id: claimed.state.run_id,
-        runner_id: claimed.runner_id,
-        lease_token: claimed.lease_token,
-    };
-    let admission = Arc::new(PgMontyAdmission::prepare(pool, &context, attempt).map_err(invalid)?);
-    admission.persist_reservation().await.map_err(invalid)?;
-    admission.check_and_start().await.map_err(invalid)?;
-    let cancellation_owner = Arc::new(TurnStateRunCancellationFactory::new(state.clone()));
-    let cancellation = RunStateLoopCancellationPort::new(
-        cancellation_owner
-            .handle_for_run(&context.scope, context.run_id)
-            .await
-            .map_err(invalid)?,
-    );
-    let host = Arc::new(host::BootstrapReplyHost {
-        transcript: ThreadBackedLoopTranscriptPort::new(threads, scope, context.clone()),
-        cancellation,
-        _cancellation_owner: cancellation_owner,
-    });
-    let host = Arc::new(MontyTaskHost::new(
-        MontyTaskHandoff::new(
-            AgentLoopDriverRunRequest {
-                turn_id: context.turn_id,
-                run_id: context.run_id,
-                resolved_run_profile: context.resolved_run_profile.clone(),
-            },
-            attempt,
-            host,
-        )
-        .map_err(invalid)?,
-    ));
-    Ok(Admitted {
-        host,
-        admission,
-        state,
-        attempt,
-        input: json!({"conversation_id":conversation,"message_id":accepted.message_id,"turn_id":context.turn_id,"run_id":context.run_id,"user_input":answer,"history":[]}),
-    })
 }

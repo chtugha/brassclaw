@@ -109,6 +109,8 @@ pub(crate) mod embedding_providers;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 mod fetch_cached_content;
+#[cfg(feature = "postgres")]
+pub(crate) mod instance_tool_settings;
 #[cfg(feature = "skills-db")]
 pub mod mcp_chat_bridge;
 #[cfg(feature = "skills-db")]
@@ -117,6 +119,8 @@ mod mcp_provider_gateway;
 pub mod mcp_recipe_catalogue;
 /// Phase V: McpServerService — lifecycle management (start/stop) for the MCP server.
 pub mod mcp_server_service;
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+mod memory_embedding_source;
 #[cfg(feature = "migrate-from-libsql")]
 pub mod migration;
 #[cfg(feature = "skills-db")]
@@ -154,9 +158,9 @@ pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_review_submission;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_review_inspection;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_review_submission;
 pub(crate) mod pg_security_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_settings_listing;
@@ -173,9 +177,9 @@ pub(crate) mod pg_tool_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
 pub(crate) mod plan_library;
-#[cfg(feature = "root-llm-provider")]
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_admin;
-#[cfg(feature = "root-llm-provider")]
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 mod provider_admin_product_command;
 mod readiness;
 pub mod recipe_outcome_listener;
@@ -256,13 +260,10 @@ pub use hooks::{
     tenant_extension_root,
 };
 pub use input::{OAuthClientConfig, RebornBuildInput, RebornRuntimeProcessBinding};
+#[cfg(feature = "root-llm-provider")]
+pub use llm_catalog::RebornLlmCatalogError;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use llm_catalog::resolve_llm_selection_against_catalog_db;
-#[cfg(feature = "root-llm-provider")]
-pub use llm_catalog::{
-    RebornLlmCatalogError, resolve_against_registry, resolve_llm_selection_against_catalog,
-    resolve_reborn_runtime_llm,
-};
 #[cfg(feature = "root-llm-provider")]
 pub use llm_config_service::{LlmReloadTrigger, RebornLlmConfigService};
 #[cfg(feature = "root-llm-provider")]
@@ -281,13 +282,13 @@ pub use product_live_adapters::{
     capability_allowlist, visible_capability_request_for_run,
 };
 pub use production_runtime_policy::RebornProductionRuntimePolicy;
-#[cfg(feature = "root-llm-provider")]
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use provider_admin::{
     RebornModelRoutesState, RebornProviderAdmin, RebornProviderAdminError, RebornProviderInfo,
     RebornProviderList, RebornProviderMetadata, RebornProviderSelection, RebornProviderStatus,
     RebornV1State,
 };
-#[cfg(feature = "root-llm-provider")]
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use provider_admin_product_command::RebornProviderAdminProductCommandService;
 pub use readiness::{
     RebornFacadeReadiness, RebornReadiness, RebornReadinessState, RebornWorkerReadiness,
@@ -1049,10 +1050,24 @@ mod normal_match_evidence;
 #[cfg(feature = "skills-db")]
 mod mcp_command_qualification;
 
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_evidence;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_generation_approval;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_generation_validation;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod bootstrap_compiler_fixture;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod bootstrap_compiler_validation;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod bootstrap_recipe_flow;
 #[cfg(feature = "skills-db")]
 mod bootstrap_reply_approval;
 #[cfg(feature = "skills-db")]
 mod bootstrap_reply_validation;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_validation;
 #[cfg(feature = "skills-db")]
 mod public_recipe_population;
 
@@ -1067,9 +1082,44 @@ mod pg_monty_admission;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod monty_kernel;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod source_inspection;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod host_primitive_settings;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod installed_monty_catalogue;
+
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod authored_monty_catalogue;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod catalogue_source_export;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod component_deployment;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pg_prefix_generation_backend;
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+mod prefix_generation_behavior_tests;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_generation_candidates;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_compiler_candidates;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_generations;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub mod prefix_installation_baseline;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_model_designs;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_model_artifacts;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_profile_seeds;
+#[cfg(all(test, feature = "skills-db"))]
+mod prefix_reference_tests;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod prefix_sources;
+#[cfg(all(test, feature = "skills-db"))]
+mod validator_component_tests;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_monty_startup;
@@ -1079,3 +1129,9 @@ mod live_monty_settings;
 
 #[cfg(all(test, feature = "postgres"))]
 mod pg_resource_gate_tests;
+
+#[cfg(all(test, feature = "postgres"))]
+mod instance_policy_loop_tests;
+
+#[cfg(all(test, feature = "postgres"))]
+mod pending_seed_metadata_tests;

@@ -563,7 +563,9 @@ impl RebornServicesApi for StubServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
         provider_id: String,
+        expected_revision: u64,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
+        assert_eq!(expected_revision, 1);
         self.delete_llm_provider_calls
             .lock()
             .expect("lock")
@@ -1217,7 +1219,16 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
         model: Some("model-a".to_string()),
     };
     LlmConfigSnapshot {
+        model_discovery_defaults: Default::default(),
+        request_policy_defaults: Default::default(),
+        inactive_providers: Vec::new(),
+        response_cache_defaults: Default::default(),
         providers: vec![LlmProviderView {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
+            revision: 1,
+            response_cache: Default::default(),
             id: provider_id.to_string(),
             description: "provider".to_string(),
             adapter: "open_ai_completions".to_string(),
@@ -2024,6 +2035,28 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
     let get_body = read_json(get_response).await;
     assert_eq!(get_body["providers"][0]["accepts_api_key"], true);
 
+    let null_policy = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/llm/providers")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"id":"acme","adapter":"open_ai_completions","response_cache":null}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(null_policy.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        services
+            .upsert_llm_provider_calls
+            .lock()
+            .unwrap()
+            .is_empty()
+    );
     let upsert_response = router
         .clone()
         .oneshot(
@@ -2040,13 +2073,34 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
         .expect("oneshot");
     assert_eq!(upsert_response.status(), StatusCode::OK);
 
+    let missing_revision = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/llm/providers/acme/delete")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_revision.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        services
+            .delete_llm_provider_calls
+            .lock()
+            .unwrap()
+            .is_empty()
+    );
     let delete_response = router
         .clone()
         .oneshot(
             Request::builder()
                 .method(Method::POST)
                 .uri("/api/webchat/v2/llm/providers/acme/delete")
-                .body(Body::empty())
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"expected_revision":1}"#))
                 .expect("request"),
         )
         .await

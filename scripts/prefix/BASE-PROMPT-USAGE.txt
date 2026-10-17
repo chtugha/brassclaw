@@ -1,0 +1,133 @@
+BASE PROMPT — OFFLINE DEVELOPMENT COMPILER
+
+Goal: preserve complete current documents/components and build a stable leading
+reference with the actual local tokenizer. No model/provider calls, source refresh,
+DB connections or inference-service changes occur. These artifacts are quarantined:
+activation_eligible=false. The catalogue export API supplies scoped owner-selected
+sources; Recipe dispatch, trusted seeding and prefix activation remain separate work.
+
+Run from the BrassClaw repository root. Commands work in Linux/macOS terminals.
+Python and transformers/tokenizers are required only for target compilation.
+
+1. Create an explicit reviewed source inventory (minimum document-only example).
+   This is NOT the complete production catalogue export. Include all other current
+   reference documents and complete components in a production inventory; classify
+   historical/development/superseded sources explicitly. Never include secrets,
+   LOCAL_TEST_ENV.md or private deployment/patient data.
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+names = ['skills.md', 'recipe.md', 'tools.md', 'toolskills.md',
+         'CLAUDE.md', 'AGENTS.md', 'simplified_v3.md']
+inventory = {'format': 'brassclaw-prefix-source-inventory/1',
+             'release': 'development-document-snapshot-not-approved',
+             'sources': [{'path': name, 'kind': 'document',
+                          'disposition': 'included',
+                          'reason': 'complete mandatory BrassClaw guide'}
+                         for name in names]}
+Path('base-prefix-inventory.json').write_text(json.dumps(inventory, indent=2))
+PY
+
+2. Snapshot precisely those files into a content-addressed package:
+
+SNAPSHOT_JSON=$(python3 scripts/prefix/base-promt-compiler.py \
+  --inventory base-prefix-inventory.json --source-root . \
+  --output prefix-build/sources)
+printf '%s\n' "$SNAPSHOT_JSON"
+PACKAGE_ID=$(printf '%s' "$SNAPSHOT_JSON" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["source_package"])')
+
+Each packaged source retains its original bytes/hash and a logical relative path.
+Different checkout/output locations do not change content identity. This is a
+local development export, never evidence of activated/approved component status.
+The installed catalogue owner must supply production selection/approval provenance.
+
+Optional installed-catalogue snapshot (API must include the new export route):
+
+Set WEBUI_URL to your actual BrassClaw WebUI base URL. Set the existing operator
+instance token in BRASSCLAW_WEBUI_TOKEN; do not put it into the inventory or prefix.
+
+WEBUI_URL="http://127.0.0.1:8080"
+: "${BRASSCLAW_WEBUI_TOKEN:?Set the existing BrassClaw operator token first}"
+CATALOGUE_ID=$(curl --fail --silent --show-error \
+  -H "Authorization: Bearer $BRASSCLAW_WEBUI_TOKEN" \
+  "$WEBUI_URL/api/webchat/v2/catalogue" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["generation"])')
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $BRASSCLAW_WEBUI_TOKEN" \
+  "$WEBUI_URL/api/webchat/v2/catalogue/$CATALOGUE_ID/sources" \
+  --output catalogue-export.json
+
+Run the snapshot command only after curl succeeds. HTTP 409 means the active
+catalogue changed between the two reads: rerun both reads. HTTP 401 means the
+existing instance token is missing/invalid. HTTP 503 means the feature is not
+attached or the complete export exceeds supported technical transport capacity.
+No partial export or row-limited substitute is accepted.
+
+SNAPSHOT_JSON=$(python3 scripts/prefix/base-promt-compiler.py \
+  --inventory base-prefix-inventory.json --source-root . \
+  --catalogue-export catalogue-export.json --output prefix-build/sources)
+PACKAGE_ID=$(printf '%s' "$SNAPSHOT_JSON" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["source_package"])')
+
+Coverage is active ordinary workflows plus the retained global root. It includes
+complete component revision envelopes and exact workflow selections with variant,
+input, export and approval pins. Staged proposals, legacy validated rows outside
+that owner and separately managed review workflows are not this export's scope.
+Root source retention is distinct from a usage approval. The raw transfer envelope
+is preserved outside the model text; components and selections are rendered once.
+The offline importer checks hashes/identities/dependency coverage, but JSON claims
+cannot establish activation authority. Release inventory completeness, provider
+quality and production generation Recipes remain separate acceptance requirements.
+
+3. Compile using a local immutable tokenizer snapshot. Replace this one path:
+
+TOKENIZER_DIR="/path/to/local/immutable/ornith-tokenizer-snapshot"
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+python3 scripts/prefix/base-promt-compiler.py \
+  --package "prefix-build/sources/$PACKAGE_ID" \
+  --output prefix-build/generations \
+  --tokenizer-dir "$TOKENIZER_DIR" \
+  --max-model-len 131072 --reserve-tokens 8192
+
+The CLI prints one JSON receipt. Read rendered_probe_tokens, shared_prefix_tokens,
+probe_count and the exact token-prefix hash. Model context is a caller-declared
+technical input, not an assertion that a server supports that size. The minimum
+workspace reserve is 8192 tokens for dynamic input/history/reasoning/output.
+Increase it when a workload needs more; an oversized complete reference fails
+before publication. No source is silently omitted. The mandatory-guide plus
+sample-component regression rendered to 119212 tokens with the cached Ornith
+snapshot used in development; changing sources/tokenizer can change that number.
+
+For a source-only build without tokenizer geometry:
+
+python3 scripts/prefix/base-promt-compiler.py \
+  --package "prefix-build/sources/$PACKAGE_ID" \
+  --output prefix-build/source-generations
+
+That reports geometry.status=unmeasured. It cannot establish model readiness.
+
+Artifacts under the returned generation ID:
+- context.md: each complete document/component rendered once, with compact source IDs.
+- evidence.json: unchanged full excerpts and complete section/range/hash navigation.
+- raw/<SHA256>: all originals, including explicitly excluded historical material.
+- sources.json: complete pinned inventory with inclusion/exclusion reasons.
+- server_chat_template.jinja: existing Ornith/Qwen injection adapter, if measured.
+- manifest.json: content/engine/tokenizer identities, exact geometry and honest status.
+
+Current template adapter supports the inspected Ornith/Qwen system opening.
+Unknown templates fail; cache architecture/block/recurrent-state facts are never
+inferred from the tokenizer. The exported template is server-owned: do not also
+prepend the same prefix in the client. This command does not install that template.
+No current/active pointer or running provider is changed. Cache reuse and model
+answer quality remain unverified until actual production/provider qualification.
+
+Optional reviewed development design: exact whole-unit deduplication
+
+Add --evidence-view literal-reference/v2-deduplicated to the COMPILE command
+only. It replaces repeated byte-identical complete sections with explicit source/
+range references, preserves every original and emits render_map.json. Different
+text is never merged, summarized or clipped. Keep literal-reference/v1 for an
+accepted v1 design; switching views is a design change, not a hidden Generate
+optimization. Both views remain quarantined pending runtime/design acceptance.

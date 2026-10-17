@@ -1,0 +1,147 @@
+# Runtime limits audit
+
+Source audit: 2026-10-15. This is an implementation inventory, not a full-v3
+acceptance claim. The release checklist must close the remaining fixed values.
+
+## Controls already wired to Monty settings
+
+Settings → Monty VM exposes the following controls with English and German
+explanations. Desired and effective revisions distinguish a saved value from
+runtime acknowledgement. Unsafe reductions must not discard retained work.
+
+| Control | Meaning |
+| --- | --- |
+| Shared heap (`max_memory_bytes`) | Ceiling for the global VM's live heap. It does not reserve RAM. Startup/manual values have the required 512 MiB minimum. |
+| Memory mode and startup reserve | Startup sizing measures capacity once and holds that ceiling. Manual edits are live. Automatic adjustment is optional. |
+| Automatic sample interval | Time between capacity measurements in automatic mode. Startup/manual modes do not measure periodically. Mild pressure alone does not pause all admission. |
+| Worker adapter reserve | Additional physical memory for Rust hosting and worker overhead. The finite physical backstop also includes the heap and two accepted IPC frames. |
+| Preparation worker memory | Physical ceiling for disposable parsing/pure-validation workers, separate from the long-lived global heap. |
+| Native artifact size | Maximum executable bytes retained for identity verification. |
+| IPC frame and queued bytes/tasks | Bounds for accepted transport frames and waiting work. They grant no Tool permission. |
+| Recipe contexts and retained attempts | Capacity for isolated live Recipe state and recovery evidence. Completed task state is released; unresolved effects retain their evidence. |
+| Source/feed/value/stdout limits | Bounds on compiler inputs, feeds and values crossing execution boundaries. Source accounting is not code-cache occupancy. |
+| Task duration | Executing VM time per task, excluding queue, idle and external waits. It does not limit global Monty lifetime. |
+| Token-budget enable switch | Disabled by default. Actual model context/output capacities remain technical constraints. |
+
+Authoritative source: `crates/brassclaw_host_api/src/monty_resources.rs`, the
+Monty product DTOs and `live_monty_settings.rs`. Field-by-field help is in
+`brassclaw_webui_v2_static/static/js/i18n/{en,de}.js`.
+
+## Values still requiring implementation
+
+| Current fixed value | Owner and required repair |
+| --- | --- |
+| Ordinary workers and pending host calls | Both capacities are persisted and acknowledged live, with EN/DE help and actual membership/occupancy. Worker product r8 accepts startup, revisioned resize, draining and restart through the native WebUI/runtime; protocol20 wire r3 additionally retains an actual dependent child across growth and reduction. Dependent capacity is observed separately and shares heap/pending-call limits. Native dependent-service-20261015-r10 additionally accepts ordinary HTTP MCP sibling admission while their exact live parent holds the only ordinary slot, through the same VM and Recipes; service tests cover nested loans and descendant cancellation. Native multi-parent/recovery, rendered resource-form and cross-platform/release acceptance remain open. |
+| Catalogue Recipe/component/variant counts, bytes and activation actor length | V141 adds five live execution controls with EN/DE help. Frozen native `catalogue-policy-20261012-r4` passed acknowledgement, lowering/restoration, replay, migration and ordinary global execution. New format-2 generations pin preparation limits. Historical format-1 compatibility is not a policy-retention certificate. |
+| Matcher eligibility: former 4096 instruction/reference, 65,536 visit, 8192 row, 2048-character and 64 MiB guards | Removed from the neutral eligibility helper. Catalogue admission remains the owning layer’s retained policy. Exact conflicting revisions and invalid empty entries still fail; checked counts and fallible allocations never return a partial set. Native catalogue-eligibility-20261013-r2 matches 9,000 templates, including final entries, through the operator/global path. Engine checks cover larger complete graphs and repeated snapshots. Routing metadata now uses one coherent aggregate instead of one query per template, retaining the same checksum and all-class integrity checks. |
+| Retained dependency graph: former 64-level traversal | Removed through an iterative DFS with fallible frame reservation; cycle/missing/duplicate/unrelated/shared-root checks and exact references remain. Native retained-graph-depth-20261014-r1 covers a 2,048-node neutral graph, a real PG deep graph with old selections after successors, deep-cycle rejection, global startup and strict affected lint. This does not remove the separate JSON parser depth or store capacities below. |
+| Typed execution: former 262,144-node / 64 MiB consumer and journal bounds | Captured acknowledged value limits now reach ordinary task/step bindings, Tool arguments, observations and immutable per-intent V155 journal bounds. Native typed-resource-20261014-r2 accepts a 300,000-node value, live global profiles, bounded escaping/envelope serialization, real kernel/PG late answers after cancellation, retained child handoffs and strict root/standalone lint. Returned value node/depth checks exclude the journal wrapper; encoded bytes include it. EN/DE help explains retention and byte accounting. Native review-data-profile-20261014-r2 additionally accepts complete Monty 300,000-item handoff across a live edit and exact per-step profiles in workflow/usage behavioral review, with real kernel/PG answer/persistence and strict root/standalone lint. The transport/parser 64-level support restriction and other bootstrap/prefix review-helper profiles remain required work. |
+| Retained component store: 4096 references / 64 MiB snapshot; revision parser 8 MiB / 262,144 nodes / depth 64; database input text 2048 characters and step links 4096 | `revision_store.rs`, `component_revision.rs`, V028/V054. These are separate remaining limits, not removed by the matcher repair. Integrate actual store/parser/index admission with acknowledged profiles and retention; do not merely increase the catalogue form or remove database checks without considering index and parser constraints. |
+| Retained IBS flow: former 255 executable steps / 16 result-path fields | Removed from `retained_inputs.rs`; the current global interpreter has no matching extra quotas. Frozen retained-flow-20261013-r1 preserves 300 complete steps and a typed 17-field path, with existing native retained-input regressions and strict engine lint. Actual value/transport/heap/task bounds remain effective; full branch/occurrence recovery is separate. |
+| 10,000 events, terminal records and idempotency records / 90-second runner lease | `brassclaw_turns/src/memory.rs`. Expose retention/lease policy and coordinate live stores. Protected ancestors and unresolved work remain retained. |
+| Lifecycle delivery: former 4096 cursor clear-all | Removed. Exact scope/run/cursor receipts prevent per-thread sequence collisions and survive count crossings. Same-event publication coalesces through weak per-event gates; errors remain correlated and observable until acknowledgement. Native lifecycle-delivery-20261014-r4 passes all139 coordinator contracts, real PG equal-cursor/error checks, global startup and strict affected lint. Safe durable receipt reclamation/restart remains required; these identities contain no task input/result payloads. |
+| 4096 prepared run IDs | `brassclaw_turns::coordinator`. Native prepared-identity-20261014-r1 accepts repeated scope rejection, admission-error fencing and successful child/abort cleanup (141 contracts plus ordinary cancellation/global startup and lint). The fixed capacity remains; current production callers/ownership need confirmed tracing before live retention controls. |
+| 4096 subagent gate, goal and tombstone records | `brassclaw_reborn/src/subagent`. Apply the same retained-work and acknowledgement rules. |
+| MCP request cancellation index: former 4096 lifetime/active IDs per exchange | Repaired with live `max_mcp_inflight_calls` (default 4096), complete revisioned settings and EN/DE WebUI help. Native mcp-call-lifecycle-20261015-r3 proves 4097 actual registrations, live lowering without canceling accepted work, shared duplicate ownership, concurrent/aborted waiter cleanup, whole empty-batch reclamation and completed durable receipt recovery after late cancellation. V160 preserves overrides and evaluates prior defaults once; native WebUI/runtime uptake and strict affected lint pass. Ordinary saturated sibling chat admission is accepted separately in dependent-service-20261015-r10; full multi-parent/recovery and rendered form/platform acceptance remain open. HTTP byte limits are now independently live and explained, as recorded below. The request-ID guard/index repair is accepted in mcp-request-digest-20261015-r1 with r2 validation, as described below; aggregate transport buffering remains open. |
+| MCP HTTP request and response bytes | Repaired with `max_mcp_request_bytes` and `max_mcp_response_bytes` (default 1 MiB), V163 preservation of complete/partial overrides and one prior-default evaluation, complete revisioned publication and EN/DE help. Native mcp-transport-bytes-20261015-r3 with r8 retained evidence accepts requests and complete ordinary-chat replies beyond the old ceiling, a held body across reduction, no replay after response overflow following an effect, actual listener and rendered settings with persisted/effective revisions. The three command/catalogue contract regressions also pass. The extra 64 KiB invocation guard/advertised maxLength is removed; exact typed usage contracts remain. The former 256-byte request-ID guard and raw-ID B-tree key are repaired in mcp-request-digest-20261015-r1/r2. V164 indexes a canonical scalar digest while retaining and comparing the exact JSONB ID; the actual populated predecessor upgrade preserves all rows, IDs, phases, references and receipts. Real HTTP accepts an incompressible ID over 14 KiB; equivalent numeric spellings recover the same original run with unchanged effect counts, and changed-command reuse fails. Native parent/HTTP39.253s, global Monty38.259s and strict PG/composition test lint66.138s pass. Existing live HTTP byte limits remain effective. Structural declaration 64 KiB, catalogue entry 1024 and aggregate buffering remain open. Browser CI is wired through the existing native fixture and both actual local browser checks pass (settings-browser-ci-20261016); GitHub job execution, packaged and platform/remote acceptance remain required. |
+| Host HTTP client retention | Repaired: `max_http_client_cache_entries` (default 128; zero disables retention) is persisted and exposed with EN/DE help. Individual LRU eviction preserves active handles and vetted-address keys; old builders cannot insert after a revision change. Native http-cache-policy-20261012-r2 passed actual host HTTP, PostgreSQL migration/rejection, live settings with one global VM and strict affected lint. Rendered browser and cross-platform acceptance remain open. |
+| Global Tool-policy management and remaining authorization cutover | UUID-keyed GET/PUT policy APIs over the kernel table pass native instance-tool-admin-20261014-r3 CAS/rejection/class-0 identity, actual router/Recipe blocking and restart, exact revision wire, bearer/operator boundary and strict lint. No policy rows or approvals are created by editing. The editor now uses this API with exact revisions, allow/block and EN/DE help. Native instance-policy-ui-20261015-r3 passes actual Chromium/React, native facade/PG writes, stale-edit fencing and lost committed acknowledgement without application replay, plus the surrounding global regression and strict lint. No scoped permission writes remain in this editor. Ordinary model-call registration/authority, complete technical parameter uptake and packaged product/platform qualification remain required; do not claim all Tool callbacks already share this policy. |
+| Shared first-party primitive limits: 1 MiB input/output, coding input 6/21 MiB and 5-second manifest wall time | `first_party_tools/mod.rs` handlers and retained native metadata. HTTP has its accepted independent live-default path. The additional fixed input fallback for memory_write is removed in mcp-transport-bytes-20261015-r3: the real complete-history regression passes after an already successful reply, with eleven existing memory/input/mount cases and strict affected lint. Captured task value/IPC, backend/kernel/mount checks remain. Memory input/output byte fallbacks and its shared manifest ceiling/estimate are removed in memory-complete-data-20261015-r1: complete escaped/Unicode read/search results exceed 2 MiB with exact encoded-byte accounting; a retained Tool still enforces a configured kernel output ceiling and immediately honors its increase. Native PostgreSQL104.697s, MCP/history36.036s, global Monty37.682s, thirteen registered Memory cases, surface metadata and strict affected test lint62.618s pass. Other primitives retain their listed guards. The silent memory-search maxima (Tool 20, request 1,000, pre-fusion 5,000 and one FTS page) are removed in memory-search-counts-20261015-r1: explicit positive backend-representable counts are preserved, invalid optional counts are errors, and actual FTS pages are collected without a hidden total cap. All 113 memory tests, twelve registered Tool cases, native PostgreSQL count/default/policy checks, ordinary global Monty and strict affected lint pass. The successor real registered Tool/PostgreSQL test crosses 1,024 hits with 1,050 writes/results and passes104.222s in mcp-request-digest-20261015-r1/r2. The per-call default remains five; u32 count/rank representation, live kernel/mount checks and explicit kernel/transport constraints remain. Coordinate actual live handler/kernel profiles and retained implementation contracts before exposing adjustable defaults. Large typed-value review acceptance within these primitive bounds does not certify this cutover. |
+| Memory write conflict preflight and filesystem namespace | Repaired in memory-namespace-20261016-r8: exact ancestors and the target subtree replace unrelated full-scope document/chunk/version enumeration. Complete listing, sidecar filtering and CAS semantics remain. Actual PostgreSQL transactions use shared ancestor/exclusive leaf locks through validation and commit; in-memory mutations check under the state mutex. Native parent/child, directory/file, cancellation, rollback, sibling-progress and CAS races pass (4.290s), along with all Memory contracts, registered Tools, ordinary Monty/MCP callers and strict affected lint. Existing invalid hierarchies and mixed old/direct-SQL writers are not silently repaired or certified. This introduces no application quota and is not a controlled production speed benchmark. |
+| Memory tree depth | Repaired locally in memory-tree-20261016-r2: acknowledged `default_memory_tree_depth` (1) and `max_memory_tree_depth` (10) are live and explained in EN/DE WebUI. Explicit requests above ten work after raising the setting; invalid/null/over-limit values fail without clamping or fallback. A flat arena checks actual output depth, nodes and encoded bytes before creating nested JSON; result ordering and scopes remain. V165 preserves overrides/default evaluation and rejects invalid values or overflow; native retained Tool/PG, ordinary global/MCP, browser save/effective revision, canonical complete-update parser and strict lint pass. This does not remove the separate transport/parser depth restriction or bound unrelated input bodies fetched by document listing. Full library/installed-platform acceptance remains open. |
+| Memory patch conflict attempts | `MAX_MEMORY_PATCH_RETRIES=8` remains in `first_party_tools/memory.rs`. Replace it through the actual configurable, revisioned policy path with explanation. Count the initial compare-and-write, preserve confirmed no-effect conflict semantics, stop on cancellation/current policy and never repeat a committed write. This is separate required work from the accepted tree control. |
+| Memory document path listing projection | Accepted locally in memory-projection-20261017-r6. Generic body-free exact/page metadata reads are implemented by real PostgreSQL/in-memory backends and the existing scoped/mount boundaries, with capability checks and no full-body fallback. Listing/preflight preserve kind/scope/sidecar filtering, canonical ordering and complete pagination; chunk cleanup collects every matching path before deletion. Actual PostgreSQL SELECT(path,kind,is_dir)-only credentials prove listing succeeds while body queries fail; several pages, large bodies/indexes, all scope axes, corrupted-header errors, native namespace/registered Memory/global/MCP callers and strict affected lint pass. Version-archive maximum scanning still reads full records and needs selected-field/integrity/overflow work; this does not certify all input allocations or full-platform/product acceptance. |
+| Network response/timeout defaults and HTTP Tool schema limits | The transport absolute 10 MiB ceiling and timeout-to-default clamp are removed. Frozen network-limits-20261012-r2 passed actual larger-response/delayed-response/invalid-value tests and network/host-runtime strict lint. Omitted request bounds now use live `default_http_request_timeout_millis` (30,000 ms) and `default_http_response_body_bytes` (10 MiB), with EN/DE WebUI help and native http-request-defaults-20261013-r4 acceptance. Accepted requests retain their captured limits. The HTTP Tool timeout now forwards omission to the live default and preserves explicit positive u32 values exactly; its fixed 30-second clamp and static wall-time ceiling are removed from the handler/native schema/resource manifest and packaged metadata. Native http-tool-timeout-20261013-r3 passed actual registered Tool sockets, 44 HTTP contracts, ordinary global execution and strict test-target lint. The complete HTTP Tool repair is accepted in native http-complete-response-20261013-r4: omitted response bounds reach the live default, strict overflow stays an error, and complete sanitized bodies/headers replace model-visible clipping. Fixed HTTP inline/save/output/header/upload ceilings and its shared 1 MiB input fallback are removed. Native tests cross each former bound (9 MiB escaped text, 2 MiB upload with 70+ headers, and 11 MiB real file save); all134 built-in contracts, ordinary global execution and strict test lint pass. Immutable upgrades of stored seed metadata, other Tool caps and SDK/ABI technical bounds remain separate work. Per-request limits are exact, finite and allocation/clock-representable. |
+| LLM response-cache entries / lifetime | Repaired: provider definitions now store enabled/capacity/lifetime, with Inference dialog controls and EN/DE help. Both selected role chains uptake edits; zero capacity/lifetime disables retention. Native `live-cache-policy-20261012-r2` covers actual DB/WebUI/HTTP policy changes, retained old chains and restart restoration. Full browser/remote and model/pricing publication remain open. |
+| Model discovery 5-second timeout, unbounded response decoding and static fallback lists | `brassclaw_llm/src/model_discovery.rs` replaces the removed name-based module. Candidate replaces name-based endpoint/credential shortcuts and fabricated fallback success; Inference provider dialogs expose total discovery timeout/response bytes with EN/DE help. Native `model-discovery-20261012-r6` covers policy/probe/credential capture and local HTTP adapters; browser, OAuth/signed discovery and final model-property cutover remain open. |
+| Provider request/timing policy | Eight Inference controls with EN/DE help govern request timeout, additional retries, circuit threshold/recovery, base/max backoff, jitter and provider-hint wait ceiling. Native `request-policy-20261012-r2` and `retry-timing-20261012-r2` cover actual primary/Sempai/HTTP/DB changes, retained deadlines, counts, 401 classification, circuit state/recovery and a real Retry-After ceiling. Optional model response bytes now have an Inference control and EN/DE help: null (UI 0) retains unrestricted behavior; a finite ceiling rejects overflow without replay or truncation. Frozen response-capacity-20261012-r5 passed real registry/direct HTTP and primary/Sempai changes, including Codex SSE decoding; finite unsupported transports fail before publication/construction. Complete dedicated auth/session controls, full model metadata and browser/remote acceptance remain open. |
+| Fallback model context and provider-chain values | Provider/model settings and gateway construction. Replace hidden model/URL overrides and publish exact model properties with the selected revision. A provider-level default is insufficient for arbitrary model changes. |
+| Bootstrap validation fixture limits and retention schedules | Installation qualification and persistence maintenance. Derive configurable finite profiles; preserve checksums and protected checkpoints. |
+
+The exact identifiers `cachemax` and `max_shared_code_cache_bytes` have no active
+Rust/Python implementation in the audited crates/vendor tree. The current
+Monty first-feed artifact cache holds weak references, checks live source bounds
+on hits and removes entries with no strong owner during preparation. There is
+no separate implemented setting with either old name; do not add a cosmetic
+control that changes no owner. Retained running generations still need their
+actual compiled definitions.
+
+This inventory needs the final production source scan, platform/release checks
+and test-machine acceptance after the outstanding owners are implemented.
+
+Embedding dimensions and vector-cache ceilings now come from exact model
+contracts in the selected provider's immutable DB revision, with per-model
+Inference editor fields and EN/DE help. Runtime model-name/dimension/endpoint
+fallbacks have been removed. Unknown model names require an explicit contract;
+zero cache entries disables retention. V151 preserves explicit maps, zero/empty
+values, removed providers and old revisions. A formerly selected unknown model
+retains its old expected 1536/10000 shape as explicit migration data, not a
+claim about the remote model or a future runtime fallback.
+
+Native metadata management/upgrade and repeated initialization passed; the
+custom-model HTTP path observes configured three-dimensional results and
+cache-off behavior. Frontend helper/syntax and WebUI handler checks passed;
+rendered browser acceptance is still open. Native ordinary-runtime memory attachment and same-dimension vector-space isolation are accepted. WebUI facade cache resizing/rejection/disable and safe source replacement are accepted in the scope recorded below; complete provider revision coordination and browser acceptance remain open.
+The approximate 32,000-byte
+input bound has been removed from the concrete adapters; the neutral interface
+now distinguishes an explicitly known byte limit from no artificial limit.
+Actual model/service input limits still apply. Full-input transport acceptance
+and affected-feature lint establish this repair separately from model metadata.
+The transport repair validates these current contracts and prevents backend
+truncation; it does not expose cosmetic controls or certify model metadata.
+
+The embedding cache adapter now supports a real zero/off ceiling, on-demand
+allocation, synchronous resize with LRU eviction, and clear/resize fencing of
+in-flight inserts. Frozen embedding-safety-20261014-r3 passed 23 neutral
+embedding contracts and the real PostgreSQL/provider/HTTP caller regression.
+The captured provider factory now uses the persisted per-model cache ceiling;
+ordinary first-party memory now attaches the DB-selected source before global Monty
+startup. Frozen live-memory-source-20261014-r6 accepts registered memory operations,
+model-space swaps, live Tool blocking, invalid configuration before write, lexical
+disable, synchronous WebUI facade cache 0/4 edits, DB rejection preserving the live
+cache and client retention for cache-only edits. Retired caches are emptied/fenced
+while active requests keep their results. Captured provider deadlines and response
+capacities reach the actual OpenAI-compatible/Ollama/NEAR AI adapters; overflow,
+timeout and redirects fail without truncation or replay. Help explains these controls
+in EN/DE. Writes report incomplete indexing explicitly after a committed document
+and retain text search; indexing failure never invites a write replay. Real PG/HTTP,
+52 memory tests, affected host/architecture checks and strict Bedrock-feature lint
+pass. This is native Tool/product-facade evidence, not rendered browser, complete
+desired/effective provider/model revision coordination or whole-v3 acceptance.
+Native embedding-safety-20261014-r4
+also accepts sanitized service/transport/decode errors and the sensitive NEAR
+AI bearer-header path with affected-feature lint; Bedrock is compile/lint
+evidence only, without a live AWS request.
+
+Network-boundary-20261012-r1 additionally passed real socket/subprocess proxy
+isolation and sanitized-error acceptance. This repairs egress integrity and
+credential privacy; it does not expose the outstanding network limits.
+
+Gemini request construction no longer injects the fixed 8,192-token thinking
+budget or forced HIGH level. Frozen dedicated-env-20261012-r3 verifies
+model-owned defaults and preserved explicit output limits; strict consumer
+lint passed. Dedicated authenticated transport/model metadata remains open.
+
+
+Captured typed-value execution/journal acceptance is recorded in the table above.
+Receipt `/private/tmp/brassclaw-typed-resource-accepted.json`; frozen runtime source
+and retained artifacts `target/validation/typed-resource-artifacts-20261014-r2`.
+The six unchanged retained-input cases reuse r1's passing evidence. Subsequent
+EN/DE help edits passed both Node syntax checks and diff review; rendered browser
+acceptance remains open. Transport/schema parser depth support, bootstrap/prefix trusted
+review helpers and metadata/storage quotas still need their own implementation.
+
+
+## Native registration startup consumer (2026-10-14)
+
+The earlier startup-native constructor used a separate fixed 1 GiB ceiling and
+default OS-verifier output/deadline limits. The ordinary factory now consumes one
+persisted preparation snapshot and requires explicit limits for all three values.
+The existing artifact-size EN/DE help names its startup effect. R4 native factory,
+global Monty, standalone retained execution/Q1 and strict native/default feature
+checks passed; see the implementation plan's exact scope and retained receipt.
+Existing retained artifacts survive reductions; invalid source reads fail startup.
+This is local macOS evidence. A Windows loaded-image candidate now passes local
+cross-compilation and affected lint; actual Windows mapping/rename/replacement
+checks are added to the existing native CI gate and remain required. Linux/Windows
+runtime acceptance remains open, alongside the fixed values already listed above.

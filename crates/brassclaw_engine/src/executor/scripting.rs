@@ -159,12 +159,6 @@ fn default_limits() -> ResourceLimits {
 
 // ── Validation ─────────────────────────────────────────────
 
-/// Maximum orchestrator source size accepted for syntax validation (256 KB).
-/// The compiled-in default is ~2 KB; this cap is generous but prevents
-/// pathological inputs from causing avoidable CPU/memory pressure on the
-/// store write path.
-pub const MAX_PYTHON_UTILITY_SOURCE_BYTES: usize = 256 * 1024;
-
 /// Check whether `code` is syntactically valid Python without executing it.
 ///
 /// Uses Monty's parser (same as execution) so the syntax check is identical
@@ -182,17 +176,26 @@ pub const MAX_PYTHON_UTILITY_SOURCE_BYTES: usize = 256 * 1024;
 /// Parsing runs in the packaged disposable worker, with a hard allocator
 /// limit and a kill/reap deadline. No Python executes in the application.
 pub async fn validate_python_syntax(code: &str) -> Result<(), String> {
-    if code.len() > MAX_PYTHON_UTILITY_SOURCE_BYTES {
+    validate_python_syntax_with_limits(code, default_utility_limits()).await
+}
+
+/// Validate using one explicitly accepted instance preparation policy.
+pub async fn validate_python_syntax_with_limits(
+    code: &str,
+    limits: brassclaw_monty_host::utility::UtilityLimits,
+) -> Result<(), String> {
+    if code.len() > limits.bounds.max_source_bytes {
         return Err(format!(
-            "orchestrator source too large: {} bytes (limit: {MAX_PYTHON_UTILITY_SOURCE_BYTES})",
-            code.len()
+            "orchestrator source too large: {} bytes (limit: {})",
+            code.len(),
+            limits.bounds.max_source_bytes
         ));
     }
     let request = brassclaw_monty_host::utility::UtilityRequest::Parse {
         source: code.to_owned(),
-        bounds: utility_bounds(),
+        bounds: limits.bounds,
     };
-    match execute_utility(request).await {
+    match execute_utility(request, limits).await {
         Ok(brassclaw_monty_host::utility::UtilityOutput::Parsed) => Ok(()),
         Ok(_) => Err("invalid syntax-worker reply".into()),
         Err(error) if error.is_syntax_error() => Err(format!("syntax error: {error}")),
@@ -200,19 +203,11 @@ pub async fn validate_python_syntax(code: &str) -> Result<(), String> {
     }
 }
 
-/// Technical transport bounds, independent of token accounting. The physical
-/// allocator backstop applies only to the disposable worker, including parsing.
-pub(super) fn utility_bounds() -> brassclaw_monty_host::VmBounds {
-    brassclaw_monty_host::VmBounds {
-        max_source_bytes: MAX_PYTHON_UTILITY_SOURCE_BYTES,
-        max_compiled_source_bytes: MAX_PYTHON_UTILITY_SOURCE_BYTES * 2,
-        max_feeds: 1,
-        max_stdout_bytes: 1024 * 1024,
-        execution_slice: Duration::from_secs(5),
-        max_value_depth: 64,
-        max_value_nodes: 262_144,
-        max_value_bytes: 8 * 1024 * 1024,
-    }
+/// Standalone compatibility callers use the same documented default policy.
+/// Product callers must resolve their acknowledged instance settings explicitly.
+fn default_utility_limits() -> brassclaw_monty_host::utility::UtilityLimits {
+    brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default())
+        .expect("default preparation policy is supported")
 }
 
 enum PythonUtilityFailure {
@@ -257,20 +252,13 @@ impl std::fmt::Display for PythonUtilityFailure {
 
 async fn execute_utility(
     request: brassclaw_monty_host::utility::UtilityRequest,
+    limits: brassclaw_monty_host::utility::UtilityLimits,
 ) -> Result<brassclaw_monty_host::utility::UtilityOutput, PythonUtilityFailure> {
     let executable = brassclaw_monty_host::process::installed_worker()
         .map_err(PythonUtilityFailure::Unavailable)?;
-    brassclaw_monty_host::utility::execute(
-        &executable,
-        request,
-        brassclaw_monty_host::process::ProcessLimits {
-            hard_memory_bytes: 64 * 1024 * 1024,
-            max_frame_bytes: 16 * 1024 * 1024,
-            response_timeout: Duration::from_secs(5),
-        },
-    )
-    .await
-    .map_err(|error| PythonUtilityFailure::Worker(Box::new(error)))
+    brassclaw_monty_host::utility::execute(&executable, request, limits.process)
+        .await
+        .map_err(|error| PythonUtilityFailure::Worker(Box::new(error)))
 }
 
 // ── Result types ────────────────────────────────────────────
@@ -1581,7 +1569,7 @@ fn classify_runtime_error(error_msg: &str) -> CodeExecutionFailure {
 /// # What is rejected
 /// - Tool / function calls (`FunctionCall`) → hard error, execution stops.
 /// - Host and OS operations are unavailable; their real interpreter errors propagate.
-/// - Resource limits: 5-second wall deadline including parsing, 64 MiB worker allocator.
+/// - Resource limits: the explicitly accepted preparation bounds, allocator and deadline.
 ///
 /// # Inputs
 /// `inputs` is a flat `Vec<(name, json_value)>` injected as top-level Python
@@ -1602,13 +1590,22 @@ pub async fn run_python_code_body(
     code: &str,
     inputs: &[(&str, serde_json::Value)],
 ) -> Result<Option<serde_json::Value>, String> {
-    if code.len() > MAX_PYTHON_UTILITY_SOURCE_BYTES {
+    run_python_code_body_with_limits(code, inputs, default_utility_limits()).await
+}
+
+/// Pure evaluation with the accepted preparation policy. No Tool dispatch.
+pub async fn run_python_code_body_with_limits(
+    code: &str,
+    inputs: &[(&str, serde_json::Value)],
+    limits: brassclaw_monty_host::utility::UtilityLimits,
+) -> Result<Option<serde_json::Value>, String> {
+    if code.len() > limits.bounds.max_source_bytes {
         return Err("Python utility source too large".into());
     }
     if !brassclaw_monty_host::utility::inputs_within_bounds(
         inputs.iter().map(|(name, value)| (*name, value)),
-        utility_bounds(),
-        16 * 1024 * 1024,
+        limits.bounds,
+        limits.process.max_frame_bytes,
     ) {
         return Err("Python utility inputs exceed technical transport bounds".into());
     }
@@ -1621,10 +1618,10 @@ pub async fn run_python_code_body(
     let request = brassclaw_monty_host::utility::UtilityRequest::Evaluate {
         source: code.to_owned(),
         inputs: values,
-        bounds: utility_bounds(),
-        max_compute_time: Duration::from_secs(5),
+        bounds: limits.bounds,
+        max_compute_time: limits.process.response_timeout,
     };
-    match execute_utility(request)
+    match execute_utility(request, limits)
         .await
         .map_err(|error| error.to_string())?
     {
@@ -3851,7 +3848,7 @@ except Exception as e:
         // Unicode identifiers are valid Python 3.
         assert!(validate_python_syntax("café = 1\n").await.is_ok());
         // Oversized input is rejected before parsing.
-        let oversized = "x = 1\n".repeat(50_000);
+        let oversized = "x = 1\n".repeat(default_utility_limits().bounds.max_source_bytes / 6 + 1);
         let err = validate_python_syntax(&oversized)
             .await
             .expect_err("oversized");

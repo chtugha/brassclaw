@@ -1,5 +1,6 @@
 //! Trusted first-party bootstrap owner for one exact packaged public reply
 //! combination. No authored input, human-Q2 bypass, activation or Tool grant.
+use crate::bootstrap_evidence::{checksum as digest, read_evidence as evidence};
 use crate::{
     RebornBuildError,
     bootstrap_reply_validation::{self as validation, hex, invalid},
@@ -98,9 +99,10 @@ impl BootstrapReplyApproval {
         let program =
             self.pin_program(prepare_retained_tool_program(compiled).map_err(invalid)?)?;
         Ok(Arc::new(
-            InspectedRetainedProgram::inspect(
+            InspectedRetainedProgram::inspect_with_limits(
                 RetainedProgram::Tools(Arc::new(program)),
                 &self.subject.worker_path,
+                self.subject.inspected.preparation_limits(),
             )
             .await
             .map_err(invalid)?,
@@ -141,6 +143,17 @@ impl BootstrapReplyApproval {
         }
         Ok(())
     }
+    /// Reuse an already reviewed usage in another Recipe without reviewing the
+    /// Recipe's steps again. The bootstrap provenance is verified separately.
+    pub(crate) fn usage_approval(
+        &self,
+        binding: &brassclaw_engine::memory::retained_tools::RetainedToolBinding,
+    ) -> Option<&AssociationApprovalDeclaration> {
+        self.approval
+            .require_selected_combination(binding.association(), binding.combination())
+            .ok()
+            .map(|()| &self.approval)
+    }
     pub(crate) fn approval_id(&self) -> Uuid {
         self.approval.approval_id()
     }
@@ -167,16 +180,22 @@ impl Subject {
     ) -> Result<Self, RebornBuildError> {
         // Own validation bytes rather than execute a mutable package pathname
         // after hashing. Repeat inspection under that same interpreter.
-        let worker_directory =
-            brassclaw_host_runtime::PackagedExecutableImage::capture(worker, 256 * 1024 * 1024)
-                .await
-                .map_err(invalid)?;
+        let worker_directory = brassclaw_host_runtime::PackagedExecutableImage::capture(
+            worker,
+            inspected.preparation_limits().max_native_artifact_bytes,
+        )
+        .await
+        .map_err(invalid)?;
         let worker_path = worker_directory.path();
         let worker_checksum = hex(worker_directory.checksum());
         let inspected = Arc::new(
-            InspectedRetainedProgram::inspect(inspected.program().clone(), &worker_path)
-                .await
-                .map_err(invalid)?,
+            InspectedRetainedProgram::inspect_with_limits(
+                inspected.program().clone(),
+                &worker_path,
+                inspected.preparation_limits(),
+            )
+            .await
+            .map_err(invalid)?,
         );
         let RetainedProgram::Tools(program) = inspected.program() else {
             return Err(invalid("bootstrap requires exact Tool usage"));
@@ -217,9 +236,16 @@ impl Subject {
                 return Err(invalid("only exact bundled public reply enters bootstrap"));
             }
         }
-        let image = brassclaw_host_runtime::NativeExecutableImage::capture(1024 * 1024 * 1024)
-            .await
-            .map_err(invalid)?;
+        let image = brassclaw_host_runtime::NativeExecutableImage::capture_with_verification(
+            inspected.preparation_limits().max_native_artifact_bytes,
+            brassclaw_host_runtime::NativeVerificationLimits::new(
+                inspected.preparation_limits().bounds.max_stdout_bytes,
+                inspected.preparation_limits().process.response_timeout,
+            )
+            .map_err(invalid)?,
+        )
+        .await
+        .map_err(invalid)?;
         let tool = instruction.snapshot().revisions()[&binding.tool().uuid]
             .draft()
             .document();
@@ -314,17 +340,10 @@ pub(crate) async fn qualify(
         return Ok(None);
     }
     let q1 = subject.q1_bytes();
-    let inserted = tx
-        .execute(
-            "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
-        VALUES($1,$2,$3) ON CONFLICT(evidence_id) DO NOTHING",
-            &[&subject.q1, &q1, &digest(&q1)],
-        )
-        .await
-        .map_err(invalid)?;
+    let inserted = crate::bootstrap_evidence::retain_intent(&tx, subject.q1, &q1).await?;
     tx.commit().await.map_err(invalid)?;
     drop(client);
-    if inserted != 1 {
+    if !inserted {
         return Err(invalid(
             "bootstrap evidence is incomplete; supervised reconciliation required, no automatic replay",
         ));
@@ -351,16 +370,19 @@ pub(crate) async fn qualify(
         .start()
         .await
         .map_err(invalid)?;
-    tx.execute("INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3)",&[&subject.behavior,&behavior,&digest(&behavior)]).await.map_err(invalid)?;
-    tx.execute("INSERT INTO reborn_skill_association_approvals(approval_id,approval_bytes,checksum) VALUES($1,$2,$3)",&[&subject.approval,&approval,&digest(&approval)]).await.map_err(invalid)?;
+    crate::bootstrap_evidence::retain_completed(
+        &tx,
+        subject.behavior,
+        &behavior,
+        subject.approval,
+        &approval,
+    )
+    .await?;
     let retained = read(&tx, &subject)
         .await?
         .ok_or_else(|| invalid("bootstrap approval readback missing"))?;
     tx.commit().await.map_err(invalid)?;
     Ok(Some(retained))
-}
-fn digest(value: &str) -> String {
-    hex(Sha256::digest(value.as_bytes()).into())
 }
 async fn reuse_or_require_unstarted(
     tx: &Transaction<'_>,
@@ -374,41 +396,16 @@ async fn reuse_or_require_unstarted(
     }
     Ok(approval)
 }
-async fn evidence(tx: &Transaction<'_>, id: Uuid) -> Result<Option<String>, RebornBuildError> {
-    let row=tx.query_opt("SELECT evidence_bytes,checksum FROM reborn_component_review_evidence WHERE evidence_id=$1",&[&id]).await.map_err(invalid)?;
-    row.map(|row| {
-        let bytes: String = row.get(0);
-        if digest(&bytes) != row.get::<_, String>(1) {
-            Err(invalid("bootstrap evidence integrity failed"))
-        } else {
-            Ok(bytes)
-        }
-    })
-    .transpose()
-}
 async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<BootstrapReplyApproval>, RebornBuildError> {
-    let coherent: bool = tx
-        .query_one(
-            "SELECT current_setting('transaction_isolation') IN ('repeatable read','serializable')",
-            &[],
-        )
-        .await
-        .map_err(invalid)?
-        .get(0);
-    if !coherent {
-        return Err(invalid(
-            "bootstrap approval requires coherent database view",
-        ));
-    }
-    let row=tx.query_opt("SELECT approval_bytes,checksum FROM reborn_skill_association_approvals WHERE approval_id=$1",&[&subject.approval]).await.map_err(invalid)?;
-    let Some(row) = row else {
+    crate::bootstrap_evidence::require_coherent(tx).await?;
+    let Some(bytes) = crate::bootstrap_evidence::read_association(tx, subject.approval).await?
+    else {
         return Ok(None);
     };
-    let bytes: String = row.get(0);
-    if bytes != subject.approval_bytes() || digest(&bytes) != row.get::<_, String>(1) {
+    if bytes != subject.approval_bytes() {
         return Err(invalid("bootstrap approval integrity differs"));
     }
     let declaration =

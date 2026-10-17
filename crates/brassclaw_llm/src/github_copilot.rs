@@ -31,6 +31,7 @@ use crate::provider::{
 /// GitHub Copilot provider with automatic token exchange.
 pub(crate) struct GithubCopilotProvider {
     client: Client,
+    max_response_bytes: Option<u64>,
     token_manager: Arc<CopilotTokenManager>,
     model: String,
     base_url: String,
@@ -44,6 +45,7 @@ impl GithubCopilotProvider {
     pub(crate) fn new(
         config: &RegistryProviderConfig,
         request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
     ) -> Result<Self, LlmError> {
         let oauth_token = config
             .api_key
@@ -55,13 +57,7 @@ impl GithubCopilotProvider {
                 }
             })?;
 
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(request_timeout_secs))
-            .build()
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "github_copilot".to_string(),
-                reason: format!("Failed to build HTTP client: {e}"),
-            })?;
+        let client = crate::registry_http_client(&config.provider_id, request_timeout_secs)?;
 
         let token_manager = Arc::new(CopilotTokenManager::new(client.clone(), oauth_token));
 
@@ -77,6 +73,7 @@ impl GithubCopilotProvider {
 
         Ok(Self {
             client,
+            max_response_bytes,
             token_manager,
             model: config.model.clone(),
             base_url,
@@ -146,62 +143,31 @@ impl GithubCopilotProvider {
         let status = response.status();
 
         if !status.is_success() {
-            // Use shared retry-after parser (supports HTTP-date, default 60s)
-            let retry_after = Some(crate::retry::parse_retry_after(
-                response.headers().get(reqwest::header::RETRY_AFTER),
-            ));
-
-            let response_text = response
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("(failed to read error body: {e})"));
-
-            tracing::debug!(
-                status = %status,
-                body = %brassclaw_common::truncate_for_preview(&response_text, 256),
-                "Copilot: API error response"
-            );
-
             if status.as_u16() == 401 {
-                // Invalidate the cached session token so the next attempt
-                // (driven by RetryProvider) gets a fresh one. We don't retry
-                // inline to avoid nested retries with the outer RetryProvider.
-                tracing::debug!("Copilot: 401 Unauthorized — invalidating session token for retry");
+                // The next explicit request can obtain a fresh session token.
+                // A credential rejection is not a transient model retry.
                 self.token_manager.invalidate().await;
-                return Err(LlmError::RequestFailed {
-                    provider: "github_copilot".to_string(),
-                    reason: "HTTP 401 Unauthorized".to_string(),
-                });
             }
-            if status.as_u16() == 429 {
-                tracing::debug!(retry_after = ?retry_after, "Copilot: rate limited");
-                return Err(LlmError::RateLimited {
-                    provider: "github_copilot".to_string(),
-                    retry_after,
-                });
-            }
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
-            return Err(LlmError::RequestFailed {
-                provider: "github_copilot".to_string(),
-                reason: format!("HTTP {status}: {truncated}"),
-            });
+            return Err(crate::response_body::rejection(
+                response,
+                self.max_response_bytes,
+                "github_copilot",
+            )
+            .await);
         }
 
-        let response_text = response.text().await.map_err(|e| LlmError::RequestFailed {
-            provider: "github_copilot".to_string(),
-            reason: format!("Failed to read response body: {e}"),
-        })?;
+        let response_text =
+            crate::response_body::text(response, self.max_response_bytes, "github_copilot").await?;
 
         serde_json::from_str(&response_text).map_err(|e| {
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
-            tracing::debug!(
-                error = %e,
-                body = %truncated,
-                "Copilot: failed to parse response JSON"
+            tracing::warn!(
+                line = e.line(),
+                column = e.column(),
+                "Copilot response JSON was invalid"
             );
             LlmError::InvalidResponse {
-                provider: "github_copilot".to_string(),
-                reason: format!("JSON parse error: {e}. Raw: {truncated}"),
+                provider: "github_copilot".into(),
+                reason: "provider response was not valid JSON".into(),
             }
         })
     }

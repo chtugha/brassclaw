@@ -1,3 +1,7 @@
+Shared compiler dependency: keep prefix_evidence.py beside the compiler script.
+When copying a compiler to another machine, copy this module too. Its checksum
+is included in new generation identities; existing generation artifacts remain intact.
+
 HOW TO CREATE A HOME ASSISTANT PREFIX — EXACT PROMPT
 
 Validated answers and generated configurations: see RESPONSE-VALIDATION-USAGE.txt.

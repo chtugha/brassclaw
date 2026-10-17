@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 use async_trait::async_trait;
@@ -11,7 +11,7 @@ use crate::{
     CancelRunRequest, CancelRunResponse, GetRunStateRequest, ResumeTurnRequest, ResumeTurnResponse,
     RunProfileResolver, SubmitChildRunRequest, SubmitTurnRequest, SubmitTurnResponse,
     TurnAdmissionPolicy, TurnCommittedEventObserver, TurnError, TurnEventKind, TurnEventSink,
-    TurnLifecycleEvent, TurnRunId, TurnRunRecord, TurnRunState, TurnSpawnTreeStateStore,
+    TurnLifecycleEvent, TurnRunId, TurnRunRecord, TurnRunState, TurnScope, TurnSpawnTreeStateStore,
     TurnStateStore, TurnStatus,
     events::{EventCursor, lifecycle_owner_user_id},
     runner::{
@@ -22,8 +22,6 @@ use crate::{
     },
     store::SpawnTreeReservation,
 };
-
-const MAX_DELIVERED_EVENT_CURSORS: usize = 4096;
 
 /// Lifecycle fanout abstraction used by the publishing store decorator.
 ///
@@ -64,14 +62,26 @@ pub trait TurnLifecycleEventBus: Send + Sync {
 /// store call. Plain stores have nothing to surface and use
 /// [`NoopLifecyclePublicationErrorPort`].
 pub trait LifecyclePublicationErrorPort: Send + Sync {
-    fn take_lifecycle_publication_error(&self, cursor: EventCursor) -> Option<TurnError>;
+    /// The failure remains observable until this exact event is acknowledged.
+    /// Concurrent callers must not consume one another's failure.
+    fn lifecycle_publication_error(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+        cursor: EventCursor,
+    ) -> Option<TurnError>;
 }
 
 #[derive(Debug, Default)]
 pub struct NoopLifecyclePublicationErrorPort;
 
 impl LifecyclePublicationErrorPort for NoopLifecyclePublicationErrorPort {
-    fn take_lifecycle_publication_error(&self, _cursor: EventCursor) -> Option<TurnError> {
+    fn lifecycle_publication_error(
+        &self,
+        _scope: &TurnScope,
+        _run_id: TurnRunId,
+        _cursor: EventCursor,
+    ) -> Option<TurnError> {
         None
     }
 }
@@ -204,6 +214,22 @@ impl TurnLifecycleEventBus for DefaultTurnLifecycleEventBus {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct LifecycleEventKey {
+    scope: TurnScope,
+    run_id: TurnRunId,
+    cursor: EventCursor,
+}
+impl LifecycleEventKey {
+    fn from_event(event: &TurnLifecycleEvent) -> Self {
+        Self {
+            scope: event.scope.clone(),
+            run_id: event.run_id,
+            cursor: event.cursor,
+        }
+    }
+}
+
 /// Decorates a turn-state store with post-commit lifecycle publication.
 ///
 /// The wrapper implements `TurnStateStore`, `TurnSpawnTreeStateStore`,
@@ -214,8 +240,9 @@ impl TurnLifecycleEventBus for DefaultTurnLifecycleEventBus {
 pub struct LifecyclePublishingTurnStateStore<S: ?Sized> {
     inner: Arc<S>,
     bus: Arc<dyn TurnLifecycleEventBus>,
-    delivered_event_cursors: Mutex<HashSet<EventCursor>>,
-    deferred_publication_errors: Mutex<HashMap<EventCursor, TurnError>>,
+    delivered_event_cursors: Mutex<HashSet<LifecycleEventKey>>,
+    deferred_publication_errors: Mutex<HashMap<LifecycleEventKey, TurnError>>,
+    publication_gates: Mutex<HashMap<LifecycleEventKey, Weak<tokio::sync::Mutex<()>>>>,
 }
 
 impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
@@ -225,6 +252,7 @@ impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
             bus,
             delivered_event_cursors: Mutex::new(HashSet::new()),
             deferred_publication_errors: Mutex::new(HashMap::new()),
+            publication_gates: Mutex::new(HashMap::new()),
         }
     }
 
@@ -234,41 +262,69 @@ impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
     /// successful publish, so a transient observer error allows idempotent
     /// retries to re-attempt publication instead of permanently dropping
     /// required side effects.
-    fn try_begin_publish(&self, cursor: EventCursor) -> Result<bool, TurnError> {
+    fn try_begin_publish(&self, key: &LifecycleEventKey) -> Result<bool, TurnError> {
         let delivered =
             self.delivered_event_cursors
                 .lock()
                 .map_err(|_| TurnError::Unavailable {
                     reason: "turn lifecycle event cursor mutex poisoned".to_string(),
                 })?;
-        Ok(!delivered.contains(&cursor))
+        Ok(!delivered.contains(key))
     }
 
-    fn mark_event_cursor_delivered(&self, cursor: EventCursor) -> Result<(), TurnError> {
+    fn mark_event_cursor_delivered(&self, key: &LifecycleEventKey) -> Result<(), TurnError> {
         let mut delivered =
             self.delivered_event_cursors
                 .lock()
                 .map_err(|_| TurnError::Unavailable {
                     reason: "turn lifecycle event cursor mutex poisoned".to_string(),
                 })?;
-        if delivered.len() >= MAX_DELIVERED_EVENT_CURSORS {
-            delivered.clear();
-        }
-        delivered.insert(cursor);
+        // Forgetting acknowledged events at a fixed count permits replay.
+        // These are small identity receipts, not retained task inputs/results.
+        delivered.insert(key.clone());
+        self.deferred_publication_errors
+            .lock()
+            .map_err(|_| TurnError::Unavailable {
+                reason: "turn lifecycle publication error mutex poisoned".to_string(),
+            })?
+            .remove(key);
         Ok(())
+    }
+
+    fn publication_gate(
+        &self,
+        key: &LifecycleEventKey,
+    ) -> Result<Arc<tokio::sync::Mutex<()>>, TurnError> {
+        let mut gates = self
+            .publication_gates
+            .lock()
+            .map_err(|_| TurnError::Unavailable {
+                reason: "turn lifecycle publication gate mutex poisoned".to_string(),
+            })?;
+        // Gates exist only while publishers/waiters own them. A retry after an
+        // error shares the existing gate; unrelated/reentrant events can run.
+        gates.retain(|_, gate| gate.strong_count() != 0);
+        if let Some(gate) = gates.get(key).and_then(Weak::upgrade) {
+            return Ok(gate);
+        }
+        let gate = Arc::new(tokio::sync::Mutex::new(()));
+        gates.insert(key.clone(), Arc::downgrade(&gate));
+        Ok(gate)
     }
 
     async fn publish_event_once_deferred(
         &self,
         event: TurnLifecycleEvent,
     ) -> Result<(), TurnError> {
-        let cursor = event.cursor;
-        if !self.try_begin_publish(cursor)? {
+        let key = LifecycleEventKey::from_event(&event);
+        let gate = self.publication_gate(&key)?;
+        let _publication = gate.lock().await;
+        if !self.try_begin_publish(&key)? {
             return Ok(());
         }
         match self.bus.publish_event(event).await {
             Ok(()) => {
-                self.mark_event_cursor_delivered(cursor)?;
+                self.mark_event_cursor_delivered(&key)?;
             }
             Err(error) => {
                 // Do NOT mark delivered on failure: idempotent retries of the
@@ -280,7 +336,7 @@ impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
                         reason: "turn lifecycle publication error mutex poisoned".to_string(),
                     }
                 })?;
-                errors.insert(cursor, error);
+                errors.insert(key, error);
             }
         }
         Ok(())
@@ -291,13 +347,15 @@ impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
         state: TurnRunState,
         event: TurnLifecycleEvent,
     ) -> Result<(), TurnError> {
-        let cursor = event.cursor;
-        if !self.try_begin_publish(cursor)? {
+        let key = LifecycleEventKey::from_event(&event);
+        let gate = self.publication_gate(&key)?;
+        let _publication = gate.lock().await;
+        if !self.try_begin_publish(&key)? {
             return Ok(());
         }
         match self.bus.publish_state(state, event).await {
             Ok(()) => {
-                self.mark_event_cursor_delivered(cursor)?;
+                self.mark_event_cursor_delivered(&key)?;
                 Ok(())
             }
             Err(error) => Err(error),
@@ -310,8 +368,16 @@ impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
         event: TurnLifecycleEvent,
         context: &'static str,
     ) {
-        let cursor = event.cursor;
-        let should_publish = match self.try_begin_publish(cursor) {
+        let key = LifecycleEventKey::from_event(&event);
+        let gate = match self.publication_gate(&key) {
+            Ok(gate) => gate,
+            Err(error) => {
+                debug!(error = %error, "turn lifecycle publication gate failed after {context}");
+                return;
+            }
+        };
+        let _publication = gate.lock().await;
+        let should_publish = match self.try_begin_publish(&key) {
             Ok(should_publish) => should_publish,
             Err(error) => {
                 debug!(error = %error, "turn lifecycle cursor check failed after {context}");
@@ -323,7 +389,7 @@ impl<S: ?Sized> LifecyclePublishingTurnStateStore<S> {
         }
         match self.bus.publish_state(state, event).await {
             Ok(()) => {
-                if let Err(error) = self.mark_event_cursor_delivered(cursor) {
+                if let Err(error) = self.mark_event_cursor_delivered(&key) {
                     debug!(error = %error, "turn lifecycle delivered mark failed after {context}");
                 }
             }
@@ -338,12 +404,27 @@ impl<S: ?Sized> LifecyclePublicationErrorPort for LifecyclePublishingTurnStateSt
 where
     S: Send + Sync,
 {
-    fn take_lifecycle_publication_error(&self, cursor: EventCursor) -> Option<TurnError> {
-        let mut errors = match self.deferred_publication_errors.lock() {
+    fn lifecycle_publication_error(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+        cursor: EventCursor,
+    ) -> Option<TurnError> {
+        let errors = match self.deferred_publication_errors.lock() {
             Ok(errors) => errors,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(_) => {
+                return Some(TurnError::Unavailable {
+                    reason: "turn lifecycle publication error mutex poisoned".to_string(),
+                });
+            }
         };
-        errors.remove(&cursor)
+        errors
+            .get(&LifecycleEventKey {
+                scope: scope.clone(),
+                run_id,
+                cursor,
+            })
+            .cloned()
     }
 }
 
@@ -499,6 +580,25 @@ where
             self.publish_event_once_deferred(event).await?;
         }
         Ok(response)
+    }
+
+    async fn request_cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        let responses = self.inner.request_cancel_tree(request).await?;
+        let mut failure = None;
+        for (request, response) in &responses {
+            if let Some(event) = cancel_event(request, response)
+                && let Err(error) = self.publish_event_once_deferred(event).await
+            {
+                failure.get_or_insert(error);
+            }
+        }
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(responses),
+        }
     }
 
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {

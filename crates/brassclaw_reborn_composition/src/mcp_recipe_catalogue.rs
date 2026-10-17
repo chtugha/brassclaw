@@ -1,7 +1,8 @@
 //! Read-only MCP discovery owned by the normal-chat catalogue. Declarations
 //! live in checksummed retained Recipe documents, not legacy INSERT fields.
-//! Parsing a declaration is not qualification. Only the installation catalogue
-//! owner currently publishes generations; authored activation has no adapter yet.
+//! Parsing a declaration is not qualification. The private catalogue owner
+//! publishes packaged and coherently activated authored generations only after
+//! their ordinary-chat command evidence qualifies.
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, RwLock},
@@ -19,7 +20,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-const MAX_COMMAND_BYTES: usize = 64 * 1024;
+const MAX_DECLARATION_BYTES: usize = 64 * 1024;
 const MAX_ENTRIES: usize = 1024;
 
 #[derive(Debug, Clone, Copy, thiserror::Error)]
@@ -90,7 +91,7 @@ impl CommandContract {
         // strict_json also bounds nested values. The enclosing retained revision
         // parser has already rejected duplicate keys in the original bytes.
         let bytes = raw.to_string();
-        if bytes.len() + task_inputs.to_string().len() > MAX_COMMAND_BYTES {
+        if bytes.len() + task_inputs.to_string().len() > MAX_DECLARATION_BYTES {
             return Err(invalid());
         }
         let value = strict_json(&bytes, REVISION_LIMITS).map_err(|_| invalid())?;
@@ -141,7 +142,7 @@ impl CommandContract {
             )
             || declaration.variant_key.trim().is_empty()
             || declaration.sentence.is_empty()
-            || declaration.sentence.len() > MAX_COMMAND_BYTES
+            || declaration.sentence.len() > MAX_DECLARATION_BYTES
             || declaration.variables.len() > 64
             || [
                 &declaration.purpose,
@@ -220,7 +221,9 @@ impl CommandContract {
     /// IBS input binding and all execution. Never interpret values as Python.
     pub(crate) fn bind(&self, command: &str) -> Result<Value, McpDiscoveryError> {
         let invalid = || McpDiscoveryError::Contract;
-        if command.is_empty() || command.len() > MAX_COMMAND_BYTES {
+        // Encoded request capacity is captured by the HTTP owner. The exact
+        // declared usage contract below still validates every bound value.
+        if command.is_empty() {
             return Err(invalid());
         }
         let count = self.declaration.variables.len();
@@ -276,7 +279,7 @@ impl CommandContract {
             declaration.error_description
         );
         json!({"name":declaration.name,"description":description,
-            "inputSchema":{"type":"object","properties":{"command":{"type":"string","minLength":1,"maxLength":MAX_COMMAND_BYTES}},"required":["command"],"additionalProperties":false}})
+            "inputSchema":{"type":"object","properties":{"command":{"type":"string","minLength":1}},"required":["command"],"additionalProperties":false}})
     }
 }
 
@@ -461,9 +464,25 @@ impl McpRecipeDiscovery {
             let Some(raw) = recipe.draft().document().get("mcp_call") else {
                 continue; // absence is explicitly private, never name inference
             };
-            let task = &recipe.draft().document()["input_layouts"]
-                [&instruction.variant().variant_key]["task_inputs"];
+            let variant_key = raw
+                .get("variant_key")
+                .and_then(Value::as_str)
+                .ok_or(McpDiscoveryError::Contract)?;
+            if !recipe.draft().document()["variants"]
+                .as_array()
+                .is_some_and(|variants| {
+                    variants
+                        .iter()
+                        .any(|variant| variant["variant_key"].as_str() == Some(variant_key))
+                })
+            {
+                return Err(McpDiscoveryError::Contract);
+            }
+            let task = &recipe.draft().document()["input_layouts"][variant_key]["task_inputs"];
             let mut contract = CommandContract::parse(raw, task)?;
+            if variant_key != instruction.variant().variant_key {
+                continue; // Other approved variants remain ordinary routing entries.
+            }
             if contract.declaration.variant_key != instruction.variant().variant_key
                 || instruction
                     .variant()

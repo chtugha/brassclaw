@@ -43,6 +43,9 @@ pub const WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN: &str =
 pub const WEBUI_V2_ROUTE_START_CODEX_LOGIN: &str = "webui.v2.start_codex_login";
 pub const WEBUI_V2_ROUTE_LIST_TOOLS: &str = "webui.v2.list_tools";
 pub const WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION: &str = "webui.v2.update_tool_permission";
+pub const WEBUI_V2_ROUTE_LIST_INSTANCE_TOOL_SETTINGS: &str = "webui.v2.list_instance_tool_settings";
+pub const WEBUI_V2_ROUTE_UPDATE_INSTANCE_TOOL_SETTING: &str =
+    "webui.v2.update_instance_tool_setting";
 
 // Automations CRUD routes.
 pub const WEBUI_V2_ROUTE_CREATE_AUTOMATION: &str = "webui.v2.create_automation";
@@ -73,16 +76,31 @@ pub const WEBUI_V2_ROUTE_SEND_COMPONENT_TO_REVISION: &str = "webui.v2.send_compo
 pub const WEBUI_V2_ROUTE_RE_REVIEW_COMPONENT: &str = "webui.v2.re_review_component";
 pub const WEBUI_V2_ROUTE_DELETE_COMPONENT: &str = "webui.v2.delete_component";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_component_audit_status";
+pub const WEBUI_V2_ROUTE_CATALOGUE_SOURCES: &str = "webui.v2.catalogue_sources";
+pub const WEBUI_V2_PATTERN_CATALOGUE_SOURCES: &str =
+    "/api/webchat/v2/catalogue/{generation}/sources";
+pub const WEBUI_V2_ROUTE_CATALOGUE_STATUS: &str = "webui.v2.catalogue_status";
+pub const WEBUI_V2_ROUTE_ACTIVATE_CATALOGUE: &str = "webui.v2.activate_catalogue";
+pub const WEBUI_V2_ROUTE_PREPARE_COMPONENT_DEPLOYMENT: &str =
+    "webui.v2.prepare_component_deployment";
+pub const WEBUI_V2_PATTERN_COMPONENT_DEPLOYMENT: &str = "/api/webchat/v2/component-deployment";
+pub const WEBUI_V2_PATTERN_CATALOGUE: &str = "/api/webchat/v2/catalogue";
 pub const WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW: &str = "webui.v2.prepare_association_review";
 pub const WEBUI_V2_ROUTE_APPROVE_ASSOCIATION: &str = "webui.v2.approve_association";
 pub const WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS: &str = "webui.v2.list_post_turn_reviews";
 pub const WEBUI_V2_ROUTE_INSPECT_POST_TURN_REVIEW: &str = "webui.v2.inspect_post_turn_review";
+pub const WEBUI_V2_ROUTE_RECONCILE_POST_TURN_REVIEW: &str = "webui.v2.reconcile_post_turn_review";
+pub const WEBUI_V2_PATTERN_RECONCILE_POST_TURN_REVIEW: &str =
+    "/api/webchat/v2/post-turn-reviews/{attempt_id}/reconcile";
 pub const WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION: &str = "webui.v2.record_review_disposition";
 pub const WEBUI_V2_PATTERN_POST_TURN_REVIEWS: &str = "/api/webchat/v2/post-turn-reviews";
 pub const WEBUI_V2_PATTERN_POST_TURN_REVIEW: &str =
     "/api/webchat/v2/post-turn-reviews/{attempt_id}";
 pub const WEBUI_V2_PATTERN_REVIEW_DISPOSITION: &str =
     "/api/webchat/v2/post-turn-reviews/{attempt_id}/dispositions";
+pub const WEBUI_V2_ROUTE_GET_COMPONENT_REVISION_HEAD: &str = "webui.v2.get_component_revision_head";
+pub const WEBUI_V2_PATTERN_GET_COMPONENT_REVISION_HEAD: &str =
+    "/api/webchat/v2/component-revision-heads/{component_id}";
 pub const WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW: &str = "webui.v2.submit_component_review";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION: &str =
     "webui.v2.get_component_review_submission";
@@ -98,6 +116,29 @@ pub const WEBUI_V2_PATTERN_APPROVE_ASSOCIATION: &str =
 // Phase 5.5 — Interceptor configuration routes.
 pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_interceptor_config";
 pub const WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG: &str = "webui.v2.update_interceptor_config";
+pub const WEBUI_V2_ROUTE_PREFIX_MODEL_DESIGNS: &str = "webui.v2.prefix_model_designs";
+pub const WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL: &str = "webui.v2.capture_prefix_model";
+pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_MODEL_ARTIFACTS: &str =
+    "webui.v2.retain_prefix_model_artifacts";
+pub const WEBUI_V2_PATTERN_PREFIX_MODEL_ARTIFACTS: &str = "/api/webchat/v2/prefix-model-artifacts";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_ARTIFACTS: &str = "webui.v2.get_prefix_model_artifacts";
+pub const WEBUI_V2_PATTERN_PREFIX_MODEL_ARTIFACT_DETAIL: &str =
+    "/api/webchat/v2/prefix-model-artifacts/{specification}/{artifact_set}";
+pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN: &str = "webui.v2.retain_prefix_design";
+pub const WEBUI_V2_PATTERN_PREFIX_MODEL_DESIGNS: &str = "/api/webchat/v2/prefix-model-designs";
+pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SPECIFICATIONS: &str =
+    "/api/webchat/v2/prefix-model-specifications";
+pub const WEBUI_V2_PATTERN_PREFIX_DESIGN_PROPOSALS: &str =
+    "/api/webchat/v2/prefixes/{name}/design-proposals";
+pub const WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES: &str = "webui.v2.list_prefix_sources";
+pub const WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE: &str = "webui.v2.register_prefix_source";
+pub const WEBUI_V2_PATTERN_PREFIX_SOURCES: &str = "/api/webchat/v2/prefixes/{name}/sources";
+pub const WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS: &str = "webui.v2.list_prefix_generations";
+pub const WEBUI_V2_ROUTE_GET_PREFIX_GENERATION: &str = "webui.v2.get_prefix_generation";
+pub const WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION: &str = "webui.v2.import_prefix_generation";
+pub const WEBUI_V2_PATTERN_PREFIX_GENERATIONS: &str = "/api/webchat/v2/prefixes/{name}/generations";
+pub const WEBUI_V2_PATTERN_PREFIX_GENERATION: &str =
+    "/api/webchat/v2/prefixes/{name}/generations/{generation}";
 pub const WEBUI_V2_ROUTE_LIST_PREFIXES: &str = "webui.v2.list_prefixes";
 pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
 // Automation sub-resource URL patterns.
@@ -228,6 +269,9 @@ pub const WEBUI_V2_PATTERN_START_NEARAI_LOGIN: &str = "/api/webchat/v2/llm/neara
 pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2/llm/nearai/wallet";
 pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
 pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
+pub const WEBUI_V2_PATTERN_LIST_INSTANCE_TOOL_SETTINGS: &str = "/api/settings/tool-policies";
+pub const WEBUI_V2_PATTERN_UPDATE_INSTANCE_TOOL_SETTING: &str =
+    "/api/settings/tool-policies/{tool_id}";
 pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
     "/api/webchat/v2/tools/{capability_id}/permission";
 
@@ -299,6 +343,28 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         start_codex_login_descriptor(),
         list_tools_descriptor(),
         update_tool_permission_descriptor(),
+        descriptor(
+            WEBUI_V2_ROUTE_LIST_INSTANCE_TOOL_SETTINGS,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_LIST_INSTANCE_TOOL_SETTINGS,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_UPDATE_INSTANCE_TOOL_SETTING,
+            NetworkMethod::Put,
+            WEBUI_V2_PATTERN_UPDATE_INSTANCE_TOOL_SETTING,
+            mutation_policy(
+                body_limit_kib(4),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
         list_recipes_descriptor(),
         list_tool_skills_descriptor(),
         get_recipe_descriptor(),
@@ -308,13 +374,59 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         record_recipe_outcome_descriptor(),
         // Phase 3 (Step 3.5) — generalized component validation routes.
         validate_component_descriptor(),
+        descriptor(
+            WEBUI_V2_ROUTE_CATALOGUE_SOURCES,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_CATALOGUE_SOURCES,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_CATALOGUE_STATUS,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_CATALOGUE,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_ACTIVATE_CATALOGUE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_CATALOGUE,
+            mutation_policy(
+                body_limit_kib(14 * 1024),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_PREPARE_COMPONENT_DEPLOYMENT,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_COMPONENT_DEPLOYMENT,
+            mutation_policy(
+                body_limit_kib(14 * 1024),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+            ),
+        ),
         association_review_descriptor(),
         association_approval_descriptor(),
         list_post_turn_reviews_descriptor(),
         inspect_post_turn_review_descriptor(),
         record_review_disposition_descriptor(),
+        reconcile_post_turn_review_descriptor(),
         submit_component_review_descriptor(),
         get_component_review_submission_descriptor(),
+        get_component_revision_head_descriptor(),
         reject_component_descriptor(),
         send_component_to_revision_descriptor(),
         re_review_component_descriptor(),
@@ -323,6 +435,116 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         // Phase 5.5 — Interceptor configuration routes.
         get_interceptor_config_descriptor(),
         update_interceptor_config_descriptor(),
+        descriptor(
+            WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_GENERATIONS,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_GENERATION,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_GENERATION,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_GENERATIONS,
+            mutation_policy(
+                body_limit_kib(64 * 1024),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_SOURCES,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_SOURCES,
+            mutation_policy(
+                body_limit_kib(16),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_PREFIX_MODEL_DESIGNS,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_DESIGNS,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_GET_PREFIX_MODEL_ARTIFACTS,
+            NetworkMethod::Get,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_ARTIFACT_DETAIL,
+            read_policy(
+                read_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProjectionOnly,
+                StreamingMode::None,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_RETAIN_PREFIX_MODEL_ARTIFACTS,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_ARTIFACTS,
+            mutation_policy(
+                body_limit_kib(64 * 1024),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_MODEL_SPECIFICATIONS,
+            mutation_policy(
+                body_limit_kib(16),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
+        descriptor(
+            WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN,
+            NetworkMethod::Post,
+            WEBUI_V2_PATTERN_PREFIX_DESIGN_PROPOSALS,
+            mutation_policy(
+                body_limit_kib(1024),
+                mutation_rate_limit(),
+                AuditTraceClass::UserAction,
+                AllowedEffectPath::ProductWorkflow,
+            ),
+        ),
         list_prefixes_descriptor(),
         regenerate_prefix_descriptor(),
         // Phase 6 — Settings UI routes (10-tab editor).
@@ -398,13 +620,31 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
     is_webui_v2_llm_config_route_id(route_id)
         || matches!(
             route_id,
-            WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW
+            WEBUI_V2_ROUTE_LIST_INSTANCE_TOOL_SETTINGS
+                | WEBUI_V2_ROUTE_UPDATE_INSTANCE_TOOL_SETTING
+                | WEBUI_V2_ROUTE_PREFIX_MODEL_DESIGNS
+                | WEBUI_V2_ROUTE_RETAIN_PREFIX_MODEL_ARTIFACTS
+                | WEBUI_V2_ROUTE_GET_PREFIX_MODEL_ARTIFACTS
+                | WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL
+                | WEBUI_V2_ROUTE_RETAIN_PREFIX_DESIGN
+                | WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES
+                | WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE
+                | WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS
+                | WEBUI_V2_ROUTE_GET_PREFIX_GENERATION
+                | WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION
+                | WEBUI_V2_ROUTE_PREPARE_COMPONENT_DEPLOYMENT
+                | WEBUI_V2_ROUTE_CATALOGUE_STATUS
+                | WEBUI_V2_ROUTE_CATALOGUE_SOURCES
+                | WEBUI_V2_ROUTE_ACTIVATE_CATALOGUE
+                | WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW
                 | WEBUI_V2_ROUTE_APPROVE_ASSOCIATION
                 | WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS
                 | WEBUI_V2_ROUTE_INSPECT_POST_TURN_REVIEW
+                | WEBUI_V2_ROUTE_RECONCILE_POST_TURN_REVIEW
                 | WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION
                 | WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW
                 | WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION
+                | WEBUI_V2_ROUTE_GET_COMPONENT_REVISION_HEAD
         )
 }
 
@@ -434,6 +674,19 @@ fn inspect_post_turn_review_descriptor() -> IngressRouteDescriptor {
         ),
     )
 }
+fn reconcile_post_turn_review_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_RECONCILE_POST_TURN_REVIEW,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_RECONCILE_POST_TURN_REVIEW,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
 fn record_review_disposition_descriptor() -> IngressRouteDescriptor {
     descriptor(
         WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION,
@@ -458,6 +711,20 @@ fn submit_component_review_descriptor() -> IngressRouteDescriptor {
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_component_revision_head_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_COMPONENT_REVISION_HEAD,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_COMPONENT_REVISION_HEAD,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
         ),
     )
 }

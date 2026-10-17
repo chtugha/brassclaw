@@ -55,6 +55,26 @@ impl PgComponentRevisionStore {
         Self { pool }
     }
 
+    /// Allocation metadata only. This does not select the latest revision or
+    /// establish approval/activation. Unknown identities have no allocated head.
+    pub async fn read_allocation_head(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<(i32, u64)>, RevisionStoreError> {
+        if id.is_nil() {
+            return Err(RevisionStoreError::Integrity);
+        }
+        let client = self.pool.get().await.map_err(database)?;
+        let row=client.query_opt("SELECT class_code,last_version FROM reborn_component_revision_heads WHERE component_id=$1",&[&id]).await.map_err(database)?;
+        row.map(|row| {
+            Ok((
+                i32::from(row.get::<_, i16>(0)),
+                u64::try_from(row.get::<_, i64>(1)).map_err(|_| RevisionStoreError::Integrity)?,
+            ))
+        })
+        .transpose()
+    }
+
     /// Resolve one explicitly named historical revision for authoring/review.
     /// This is not an active selection, approval or a latest-version lookup.
     pub async fn read_revision(
@@ -83,6 +103,36 @@ impl PgComponentRevisionStore {
             || actual.class_code != i32::from(row.get::<_, i16>(0))
             || actual.version != row.get::<_, i64>(1) as u64
             || digest_hex(actual.checksum) != row.get::<_, String>(3)
+        {
+            return Err(RevisionStoreError::Integrity);
+        }
+        Ok(revision)
+    }
+
+    /// Read comparison bytes for an exact historical root in the caller's
+    /// snapshot. This does not reconstruct that root's old dependency selection
+    /// or establish that it was ever approved.
+    pub async fn read_revision_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        expected: ComponentRevisionRef,
+    ) -> Result<RetainedComponentRevision, RevisionStoreError> {
+        let (ids, versions) = selection_arrays(&[expected])?;
+        require_snapshot(tx).await?;
+        let row = tx
+            .query_opt(
+                "SELECT class_code,version,revision_bytes,checksum FROM reborn_component_revisions
+                 WHERE component_id=$1 AND version=$2 AND octet_length(revision_bytes)::bigint<=$3::bigint",
+                &[&ids[0], &versions[0], &MAX_SNAPSHOT_BYTES],
+            )
+            .await
+            .map_err(database)?
+            .ok_or(RevisionStoreError::Integrity)?;
+        let bytes: String = row.get(2);
+        let revision = ComponentRevisionDraft::from_json(&bytes)?.at_version(expected.version)?;
+        if revision.reference() != expected
+            || expected.class_code != i32::from(row.get::<_, i16>(0))
+            || versions[0] != row.get::<_, i64>(1)
+            || digest_hex(expected.checksum) != row.get::<_, String>(3)
         {
             return Err(RevisionStoreError::Integrity);
         }
@@ -244,14 +294,24 @@ impl PgComponentRevisionStore {
         references: &[ComponentRevisionRef],
     ) -> Result<RetainedComponentSnapshot, RevisionStoreError> {
         let (ids, versions) = selection_arrays(references)?;
-        let coherent: bool = tx.query_one(
-            "SELECT current_setting('transaction_isolation') IN ('repeatable read','serializable')", &[]
-        ).await.map_err(database)?.get(0);
-        if !coherent {
-            return Err(RevisionStoreError::SnapshotIsolation);
-        }
+        require_snapshot(tx).await?;
         read_selected(tx, roots, references, &ids, &versions).await
     }
+}
+
+async fn require_snapshot(tx: &tokio_postgres::Transaction<'_>) -> Result<(), RevisionStoreError> {
+    let coherent: bool = tx
+        .query_one(
+            "SELECT current_setting('transaction_isolation') IN ('repeatable read','serializable')",
+            &[],
+        )
+        .await
+        .map_err(database)?
+        .get(0);
+    if !coherent {
+        return Err(RevisionStoreError::SnapshotIsolation);
+    }
+    Ok(())
 }
 
 fn selection_arrays(

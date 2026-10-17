@@ -17,6 +17,18 @@ pub(crate) struct AttemptRetentionLease {
     credit: Mutex<Option<RetainedAttemptCredit>>,
 }
 impl AttemptRetentionLease {
+    /// The factory verified service proof that this attempt never entered the
+    /// VM and acknowledged its durable cancellation/rejection. No VM receipt
+    /// or external-effect reconciliation is inferred by releasing this credit.
+    pub(crate) fn unsubmitted_settled(&self) -> Result<(), AgentLoopDriverError> {
+        let credit = self
+            .credit
+            .lock()
+            .map_err(|_| failed("monty_retention_registry_failed"))?
+            .take();
+        drop(credit);
+        Ok(())
+    }
     pub(crate) fn ensure_active(
         &self,
         host: &Arc<MontyTaskHost>,

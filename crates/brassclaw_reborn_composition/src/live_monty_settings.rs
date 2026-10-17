@@ -105,6 +105,7 @@ pub(crate) struct LiveMontySettingsStore {
     desired: PgMontyVmSettingsStore,
     service: ServiceClient,
     ownership: GlobalOwnerCheck,
+    http_cache: brassclaw_network::HttpClientCacheControl,
     wake: Arc<Notify>,
     edit: Arc<Mutex<MemoryControl>>,
     observed: watch::Sender<Observation>,
@@ -121,6 +122,7 @@ impl MontySettingsOwner {
         pool: Arc<PgPool>,
         service: ServiceClient,
         ownership: GlobalOwnerCheck,
+        http_cache: brassclaw_network::HttpClientCacheControl,
         initial: MontyVmSettings,
         measurement_status: &'static str,
     ) -> Result<Self, MontyVmSettingsError> {
@@ -138,6 +140,12 @@ impl MontySettingsOwner {
                 != service.worker_memory_status().frame.configured_frame_bytes
             || adapter_reserve(initial.execution_limits)?
                 != service.allocator_status().adapter_reserve_bytes
+            || service.worker_pool().as_ref().is_none_or(|pool| {
+                pool.capacity.desired != initial.execution_limits.max_workers
+                    || !pool.capacity.settled()
+            })
+            || initial.execution_limits.max_pending_host_calls
+                != service.pending_call_capacity().limit
             || initial.execution_limits.max_recipe_contexts
                 != service.recipe_context_capacity().limit
             || admission_limits(initial.execution_limits)? != service.admission_observation().limits
@@ -159,6 +167,20 @@ impl MontySettingsOwner {
                 "initial task revision mismatch".into(),
             ));
         }
+        let cache = http_cache.status().map_err(|_| {
+            MontyVmSettingsError::Internal("HTTP cache accounting unavailable".into())
+        })?;
+        http_cache
+            .publish_policy(
+                cache.revision,
+                initial.revision,
+                initial.execution_limits.max_http_client_cache_entries,
+                Duration::from_millis(initial.execution_limits.default_http_request_timeout_millis),
+                initial.execution_limits.default_http_response_body_bytes,
+            )
+            .map_err(|_| {
+                MontyVmSettingsError::Internal("initial HTTP cache revision mismatch".into())
+            })?;
         let last_sample =
             (initial.memory_policy.mode == MontyMemoryMode::Automatic).then(Instant::now);
         let edit = Arc::new(Mutex::new(MemoryControl {
@@ -183,6 +205,7 @@ impl MontySettingsOwner {
             desired: PgMontyVmSettingsStore::new(pool, "default", "default"),
             service,
             ownership,
+            http_cache,
             wake: Arc::new(Notify::new()),
             edit,
             observed,
@@ -291,6 +314,13 @@ async fn startup_heap_selection_with_deadline(
 pub(crate) fn execution_bounds(
     limits: MontyExecutionLimits,
 ) -> Result<VmBounds, MontyVmSettingsError> {
+    let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(limits)
+        .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
+    brassclaw_host_runtime::NativeVerificationLimits::new(
+        preparation.bounds.max_stdout_bytes,
+        preparation.process.response_timeout,
+    )
+    .map_err(|error| MontyVmSettingsError::Invalid(error.to_string()))?;
     limits
         .validate()
         .map_err(|reason| MontyVmSettingsError::Invalid(reason.into()))?;
@@ -386,8 +416,29 @@ pub(crate) fn hosting_deadlines(
     Ok(deadlines)
 }
 
+pub(crate) fn validate_http_defaults(
+    limits: MontyExecutionLimits,
+) -> Result<(), MontyVmSettingsError> {
+    brassclaw_network::HttpClientCacheControl::validate_defaults(
+        Duration::from_millis(limits.default_http_request_timeout_millis),
+        limits.default_http_response_body_bytes,
+    )
+    .map_err(|_| {
+        MontyVmSettingsError::Invalid(
+            "HTTP defaults must be positive and representable on this host".into(),
+        )
+    })
+}
+
 fn observed_limits(
-    resources: (VmBounds, brassclaw_monty_host::heap::WorkerMemoryStatus),
+    resources: (
+        VmBounds,
+        brassclaw_monty_host::heap::WorkerMemoryStatus,
+        MontyExecutionLimits,
+        brassclaw_network::HttpClientCacheStatus,
+        brassclaw_monty_host::global::PendingCallCapacity,
+        u32,
+    ),
     max_recipe_contexts: u32,
     admission: AdmissionLimits,
     max_pending_settings: u32,
@@ -399,13 +450,30 @@ fn observed_limits(
         crate::global_monty_owner::OwnershipLimits,
     ),
 ) -> MontyExecutionLimits {
-    let (bounds, memory) = resources;
+    let (bounds, memory, preparation, http_cache, pending_calls, max_workers) = resources;
     let allocator = memory.allocator;
     let (deadlines, settings_deadlines, ownership) = deadlines;
     MontyExecutionLimits {
+        utility_worker_memory_bytes: preparation.utility_worker_memory_bytes,
+        max_native_artifact_bytes: preparation.max_native_artifact_bytes,
+        max_catalogue_recipes: preparation.max_catalogue_recipes,
+        max_catalogue_components_per_recipe: preparation.max_catalogue_components_per_recipe,
+        max_catalogue_variants_per_recipe: preparation.max_catalogue_variants_per_recipe,
+        max_catalogue_bytes: preparation.max_catalogue_bytes,
+        max_catalogue_actor_bytes: preparation.max_catalogue_actor_bytes,
+        max_http_client_cache_entries: http_cache.capacity,
+        max_mcp_inflight_calls: preparation.max_mcp_inflight_calls,
+        max_mcp_request_bytes: preparation.max_mcp_request_bytes,
+        max_mcp_response_bytes: preparation.max_mcp_response_bytes,
+        default_http_request_timeout_millis: http_cache.default_timeout.as_millis() as u64,
+        default_http_response_body_bytes: http_cache.default_response_body_bytes,
+        default_memory_tree_depth: preparation.default_memory_tree_depth,
+        max_memory_tree_depth: preparation.max_memory_tree_depth,
         max_ipc_frame_bytes: memory.frame.configured_frame_bytes as u64,
         worker_adapter_reserve_bytes: allocator.adapter_reserve_bytes as u64,
+        max_workers,
         max_recipe_contexts,
+        max_pending_host_calls: pending_calls.limit,
         max_queued_tasks: admission.max_tasks,
         max_queued_bytes: admission.max_bytes as u64,
         max_pending_settings,
@@ -445,13 +513,20 @@ fn task_settings(settings: &MontyVmSettings) -> TaskSettings {
 }
 
 impl LiveMontySettingsStore {
+    /// Tests only: hold the same edit/reconciliation mutex used by upsert and
+    /// reconcile_loop, representing an in-flight settings transaction. This
+    /// must not prevent an unrelated attempt from acknowledging cancellation.
+    #[cfg(test)]
+    pub(crate) async fn hold_publication_for_test(&self) -> impl Send + 'static {
+        self.edit.clone().lock_owned().await
+    }
     fn deadlines(&self) -> SettingsDeadlines {
         SettingsDeadlines::from_limits(self.observed.borrow().effective.execution_limits)
     }
     /// Internal read port for retrieval. It returns the complete acknowledged
     /// snapshot, not a newer desired token mode or prior-knowledge ceiling.
     pub(crate) fn effective_view(self: &Arc<Self>) -> Arc<dyn MontyVmSettingsStore> {
-        Arc::new(EffectiveSettings(self.clone()))
+        Arc::new(EffectiveSettings(Arc::downgrade(self)))
     }
 
     pub(crate) fn recipe_capacity_source(
@@ -522,6 +597,24 @@ impl LiveMontySettingsStore {
             .map_err(|_| (revision, "ownership_accounting_unavailable"))?;
         let owner_limits =
             crate::global_monty_owner::OwnershipLimits::from_execution(desired.execution_limits);
+        let http_cache = self
+            .http_cache
+            .status()
+            .map_err(|_| (revision, "http_cache_accounting_unavailable"))?;
+        if http_cache.revision < acknowledged.revision
+            || http_cache.revision > effective.revision
+            || http_cache.revision > desired.revision
+            || (http_cache.revision == desired.revision
+                && (http_cache.capacity != desired.execution_limits.max_http_client_cache_entries
+                    || http_cache.default_timeout
+                        != Duration::from_millis(
+                            desired.execution_limits.default_http_request_timeout_millis,
+                        )
+                    || http_cache.default_response_body_bytes
+                        != desired.execution_limits.default_http_response_body_bytes))
+        {
+            return Err((revision, "http_cache_revision_conflict"));
+        }
         if owner_policy.revision < acknowledged.revision
             || owner_policy.revision > effective.revision
             || owner_policy.revision > desired.revision
@@ -529,6 +622,8 @@ impl LiveMontySettingsStore {
         {
             return Err((revision, "ownership_revision_conflict"));
         }
+        validate_http_defaults(desired.execution_limits)
+            .map_err(|_| (revision, "invalid_http_defaults"))?;
         let values = execution_bounds(desired.execution_limits)
             .map_err(|_| (revision, "invalid_execution_limits"))?;
         let reserve = adapter_reserve(desired.execution_limits)
@@ -566,6 +661,11 @@ impl LiveMontySettingsStore {
                         .frame
                         .configured_frame_bytes
                 || reserve != self.service.allocator_status().adapter_reserve_bytes
+                || self.service.worker_pool().as_ref().is_none_or(|pool| {
+                    pool.capacity.desired != desired.execution_limits.max_workers
+                })
+                || desired.execution_limits.max_pending_host_calls
+                    != self.service.pending_call_capacity().limit
                 || desired.execution_limits.max_recipe_contexts
                     != self.service.recipe_context_capacity().limit
                 || admission_limits(desired.execution_limits)
@@ -601,6 +701,10 @@ impl LiveMontySettingsStore {
                     values,
                     desired.execution_limits.max_recipe_contexts,
                     brassclaw_monty_host::service::ServiceHostingLimits {
+                        max_workers: Some(desired.execution_limits.max_workers),
+                        max_pending_host_calls: Some(
+                            desired.execution_limits.max_pending_host_calls,
+                        ),
                         max_frame_bytes: Some(frame),
                         adapter_reserve_bytes: Some(reserve),
                         admission: admission_limits(desired.execution_limits)
@@ -624,6 +728,15 @@ impl LiveMontySettingsStore {
                 .publish(owner_policy.revision, desired.revision, owner_limits)
                 .map_err(|_| (revision, "ownership_publication_failed"))?;
         }
+        self.http_cache
+            .publish_policy(
+                http_cache.revision,
+                desired.revision,
+                desired.execution_limits.max_http_client_cache_entries,
+                Duration::from_millis(desired.execution_limits.default_http_request_timeout_millis),
+                desired.execution_limits.default_http_response_body_bytes,
+            )
+            .map_err(|_| (revision, "http_cache_publication_failed"))?;
         // The service publishes the shared Rust revision only after its real
         // worker acknowledges the same limits. Keep retrieval's whole snapshot.
         self.observed.send_replace(Observation {
@@ -847,28 +960,42 @@ impl LiveMontySettingsStore {
         } else {
             MontyBudgetUptake::Pending
         };
+        let pool = self.service.worker_pool();
         let contexts = self.service.recipe_context_capacity();
+        let pending_calls = self.service.pending_call_capacity();
         let admission = self.service.admission_observation();
         let settings_capacity = self.service.settings_capacity();
         let retained_attempts = self.service.retained_attempts();
         let worker_memory = self.service.worker_memory_status();
         let allocator = worker_memory.allocator;
-        let hosting = actor.zip(deadlines).zip(ownership);
-        let limits = hosting.map(|((actor, deadlines), ownership)| {
-            observed_limits(
-                (self.service.vm_bounds(), worker_memory),
-                contexts.limit,
-                admission.limits,
-                settings_capacity.limit,
-                retained_attempts.limit,
-                actor.limits,
-                (deadlines, settings_deadlines, ownership.limits),
-            )
-        });
+        let http_cache = self.http_cache.status().ok();
+        let hosting = actor.zip(deadlines).zip(ownership).zip(pool.as_ref());
+        let limits =
+            hosting
+                .zip(http_cache)
+                .map(|((((actor, deadlines), ownership), pool), http_cache)| {
+                    observed_limits(
+                        (
+                            self.service.vm_bounds(),
+                            worker_memory,
+                            observation.effective.execution_limits,
+                            http_cache,
+                            pending_calls,
+                            pool.capacity.desired,
+                        ),
+                        contexts.limit,
+                        admission.limits,
+                        settings_capacity.limit,
+                        retained_attempts.limit,
+                        actor.limits,
+                        (deadlines, settings_deadlines, ownership.limits),
+                    )
+                });
         let limits_uptake = if closed {
             MontyBudgetUptake::Failed
         } else if desired.revision == effective.revision
             && ownership.is_some_and(|ownership| ownership.revision == desired.revision)
+            && http_cache.is_some_and(|cache| cache.revision == desired.revision)
             && Some(desired.execution_limits) == limits
         {
             MontyBudgetUptake::Applied
@@ -928,8 +1055,11 @@ impl LiveMontySettingsStore {
                     None
                 },
             }),
-            execution_limits: hosting.map(|((actor, _deadlines), ownership)| {
+            execution_limits: hosting.map(|(((actor, _deadlines), ownership), pool)| {
                 MontyExecutionLimitsStatus {
+                    effective_workers: pool.capacity.effective,
+                    dependent_workers: pool.capacity.active_dependent_workers() as u32,
+                    workers_draining: pool.capacity.has_draining_workers(),
                     configured_ipc_frame_bytes: worker_memory.frame.configured_frame_bytes as u64,
                     required_ipc_frame_capacity_bytes: worker_memory.frame.required_capacity_bytes
                         as u64,
@@ -955,6 +1085,9 @@ impl LiveMontySettingsStore {
                     queued_tasks: admission.tasks,
                     queued_bytes: admission.bytes as u64,
                     queue_over_capacity: admission.over_capacity(),
+                    pending_host_calls: pending_calls.pending,
+                    withheld_host_answers: pending_calls.withheld,
+                    minimum_pending_host_calls: pending_calls.minimum,
                     active_recipe_contexts: contexts.active as u64,
                     recipe_contexts_over_capacity: contexts.active > contexts.limit as usize,
                     desired_revision: desired.revision,
@@ -1033,6 +1166,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
             ));
         }
         if let Some(limits) = update.execution_limits {
+            validate_http_defaults(limits)?;
             adapter_reserve(limits)?;
             admission_limits(limits)?;
             let frame = ipc_frame(limits)?;
@@ -1046,7 +1180,7 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
                 )
                 .map_err(|error| MontyVmSettingsError::Invalid(match error {
                     ServiceFailure::Backpressure => "VM slice must fit current and pending IPC deadlines; increase the response deadline first and let earlier exchanges finish".into(),
-                    _ => "execution limits exceed current transport or response settings".into(),
+                    _ => "execution limits cannot accommodate the retained global root or current transport and response settings".into(),
                 }))?;
         }
         if update.active_orchestrator_id.is_some() {
@@ -1165,6 +1299,8 @@ impl MontyVmSettingsStore for LiveMontySettingsStore {
             let settings = task_settings(&expected);
             let values = execution_bounds(limits)?;
             let hosting = brassclaw_monty_host::service::ServiceHostingLimits {
+                max_workers: Some(limits.max_workers),
+                max_pending_host_calls: Some(limits.max_pending_host_calls),
                 max_frame_bytes: Some(ipc_frame(limits)?),
                 adapter_reserve_bytes: Some(adapter_reserve(limits)?),
                 admission: admission_limits(limits)?,
@@ -1410,11 +1546,30 @@ impl crate::global_recipe_ports::RecipeCapacitySource for EffectiveRecipeCapacit
         Ok(crate::global_recipe_ports::RecipeCapacity {
             revision: settings.revision,
             max_recipes: settings.max_recipes_per_task as usize,
+            data_limits: brassclaw_skills::value_contract::ContractLimits {
+                max_depth: settings.execution_limits.max_value_depth as usize,
+                max_nodes: usize::try_from(settings.execution_limits.max_value_nodes).map_err(
+                    |_| {
+                        brassclaw_monty_host::service::PortFailure::new(
+                            "recipe_capacity_unavailable",
+                        )
+                        .expect("static reason")
+                    },
+                )?,
+                max_bytes: usize::try_from(settings.execution_limits.max_value_bytes).map_err(
+                    |_| {
+                        brassclaw_monty_host::service::PortFailure::new(
+                            "recipe_capacity_unavailable",
+                        )
+                        .expect("static reason")
+                    },
+                )?,
+            },
         })
     }
 }
 
-struct EffectiveSettings(Arc<LiveMontySettingsStore>);
+struct EffectiveSettings(std::sync::Weak<LiveMontySettingsStore>);
 struct EffectiveCancellationPolicy {
     observed: watch::Receiver<Observation>,
 }
@@ -1468,10 +1623,13 @@ impl MontyVmSettingsStore for EffectiveSettings {
         _user: &str,
         _project: &str,
     ) -> Result<MontyVmSettings, MontyVmSettingsError> {
+        let owner = self.0.upgrade().ok_or_else(|| {
+            MontyVmSettingsError::Unavailable("settings owner unavailable".into())
+        })?;
         effective_snapshot(
-            self.0.observed.subscribe(),
-            &self.0.service.live_task_settings(),
-            &self.0.ownership,
+            owner.observed.subscribe(),
+            &owner.service.live_task_settings(),
+            &owner.ownership,
         )
         .await
     }

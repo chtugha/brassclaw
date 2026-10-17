@@ -667,7 +667,7 @@ where
             .model
             .completion(rig_req)
             .await
-            .map_err(|e| map_rig_error(&self.model_name, e))?;
+            .map_err(|e| map_completion_error(&self.model_name, e))?;
 
         let (text, _tool_calls, finish, _reasoning) =
             extract_response(&response.choice, &response.usage);
@@ -729,7 +729,7 @@ where
             .model
             .completion(rig_req)
             .await
-            .map_err(|e| map_rig_error(&self.model_name, e))?;
+            .map_err(|e| map_completion_error(&self.model_name, e))?;
 
         let (text, mut tool_calls, finish, reasoning) =
             extract_response(&response.choice, &response.usage);
@@ -796,6 +796,79 @@ where
 /// Detects context-length / payload-size errors in the error message and maps
 /// them to `ContextLengthExceeded` so the dispatcher can trigger compaction
 /// instead of retrying the same oversized payload.
+fn map_completion_error(model_name: &str, error: rig::completion::CompletionError) -> LlmError {
+    use rig::{completion::CompletionError, http_client::Error};
+    if let CompletionError::HttpError(Error::Instance(source)) = &error
+        && let Some(crate::response_body::ResponseBodyError::Capacity { limit }) =
+            source.downcast_ref::<crate::response_body::ResponseBodyError>()
+    {
+        return LlmError::ResponseTooLarge {
+            provider: model_name.into(),
+            limit: *limit,
+        };
+    }
+    if let CompletionError::HttpError(Error::Instance(source)) = &error
+        && let Some(rejection) =
+            source.downcast_ref::<crate::optional_auth_http::ProviderHttpRejection>()
+    {
+        if let Some(context) = crate::error::context_length_error(rejection.status, &rejection.body)
+        {
+            return context;
+        }
+        return match rejection.status {
+            401 | 403 => LlmError::AuthFailed {
+                provider: model_name.into(),
+            },
+            429 => LlmError::RateLimited {
+                provider: model_name.into(),
+                retry_after: rejection.retry_after,
+            },
+            500..=599 => LlmError::BadGateway {
+                provider: model_name.into(),
+                status: rejection.status,
+                retry_after: rejection.retry_after,
+            },
+            status => LlmError::RequestRejected {
+                provider: model_name.into(),
+                status,
+            },
+        };
+    }
+    let status = match &error {
+        CompletionError::HttpError(Error::InvalidStatusCode(status))
+        | CompletionError::HttpError(Error::InvalidStatusCodeWithMessage(status, _)) => {
+            Some(status.as_u16())
+        }
+        _ => None,
+    };
+    if let Some(status) = status {
+        if let CompletionError::HttpError(Error::InvalidStatusCodeWithMessage(_, body)) = &error
+            && let Some(context) = crate::error::context_length_error(status, body)
+        {
+            return context;
+        }
+        return match status {
+            401 | 403 => LlmError::AuthFailed {
+                provider: model_name.into(),
+            },
+            429 => LlmError::RateLimited {
+                provider: model_name.into(),
+                retry_after: None,
+            },
+            500..=599 => LlmError::BadGateway {
+                provider: model_name.into(),
+                status,
+                retry_after: None,
+            },
+            _ => LlmError::RequestRejected {
+                provider: model_name.into(),
+                status,
+            },
+        };
+    }
+    map_rig_error(model_name, error)
+}
+
 fn map_rig_error(model_name: &str, e: impl std::fmt::Display) -> LlmError {
     let msg = e.to_string();
     let lower = msg.to_ascii_lowercase();

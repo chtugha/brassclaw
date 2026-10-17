@@ -6490,3 +6490,3901 @@ affected-package lint; this unchanged evidence is reused. The omitted checkpoint
 had an unused-variable warning and incomplete observer behavior; it is not
 reported as a working cutover. Other unaccepted catalogue/review edits remain
 outside this checkpoint.
+
+### 2026-10-11 — Preparation policy (focused native acceptance)
+
+Disposable parsing, retained source inspection and pure formatter/validator work
+must accept explicit preparation limits from the acknowledged instance execution
+policy. Share the existing source/value/IPC/deadline settings rather than keep
+256 KiB source, 16 MiB frames, five-second wall waits, or a hidden AST depth of
+128. Add `utility_worker_memory_bytes` (132 MiB default, strictly larger than the
+configured frame) and `max_native_artifact_bytes` (1 GiB default for each capture)
+with English/German WebUI labels and explanations. The utility allocator is
+separate from the global shared heap; neither ceiling preallocates RAM. Executable
+capture streams the actual bytes, rejects oversized images and grants no approval.
+Remove the primitive's additional one-GiB rejection so a configured larger
+capture is supported. Fixed I/O buffer sizes remain implementation chunk sizes,
+not configurable resource ceilings.
+
+Initialize/read instance settings before installation catalogue preparation.
+Retain the accepted policy through repeated bootstrap inspection and immutable
+approval subject preparation. Later authored generation preparation captures
+one acknowledged settings snapshot for the complete operation. Bind its source
+after the global settings owner starts, using a weak effective-settings adapter
+to avoid a service/catalogue/settings ownership cycle. Existing operations and
+retained selections keep their prior limits; new operations use the acknowledged
+successor. Include preparation values in desired/effective status only after
+normal Rust/worker settings publication succeeds. No restart is needed for new
+preparation work. Source inspection remains preflight, not semantic Q1 or approval.
+
+V137 must preserve explicit fields, increase revision once for missing defaults,
+size the missing utility default for an already larger IPC frame, reject invalid
+numeric values and fail atomically at revision exhaustion. Legacy migration
+fixtures must remove this newer constraint when reconstructing an older schema.
+Real acceptance must cover migrations, operator HTTP rejection/acknowledgement,
+actual parsing of a source above the former 256-KiB ceiling, typed pure evaluation,
+immutable old selections, retained execution, artifact integrity and affected
+lints. Frozen `preparation-policy-20261011-r2` passed these focused gates:
+19 real migration cases, actual WebUI rejection/acknowledgement, Q1 preparation,
+global runtime, all six budget integrations, native image checks, utility checks,
+five retained-execution cases and affected strict library/caller lint. Receipt:
+`/private/tmp/brassclaw-preparation-policy-r2-accepted.json`. This establishes
+these preparation limits, not the whole validator/catalogue/settings plan.
+
+Standalone Engine compatibility APIs use the documented default execution policy;
+product preparation callers must supply their acknowledged instance policy.
+The currently unconnected legacy public Q1 coordinator now requires an explicit
+policy argument; this does not establish full validator Recipe activation or
+ordinary Q1 delivery. Its complete v3 integration remains a required plan gate.
+The wider fixed-value audit (global worker/pending-call capacity, catalogue and
+retention capacities, other caches and bootstrap behavioral fixture limits) and
+whole-plan/release/deployment acceptance remain open.
+
+### 2026-10-11 — Bootstrap fixture and migration diagnostics (native acceptance)
+
+CI `38171002964` at `863d02ae4d2574937202ee82a6178b759201cff3` passed
+755 composition library cases (one existing ignored), all six budget integration
+callers and 11 budget-cost cases. It then failed `builtin_bootstrap_seed` while
+applying V0. The fixture selected plain `postgres:16-alpine`, supplied no pgvector
+installation, and silently passed if Docker initialization failed. V000 requires
+`CREATE EXTENSION vector`; installation uses the verified bundled PostgreSQL plus
+its packaged pgvector support. This is a separate fixture/prerequisite failure,
+not evidence that the earlier intermittent retained-source failure is fixed.
+
+Replace that fixture with the existing native PostgreSQL owner. All real seed
+assertions remain, initialization fails visibly, and the production migration
+entry supplies the actual `BootedDb` token. Preserve idempotent migration readback
+and server/pool teardown order. Expose SQLSTATE or safe connection classification
+from refinery's native cause instead of reducing every failure to `db error`.
+Do not append private SQL diagnostics, request text or connection details.
+Required acceptance includes the complete native seed/reseed/idempotency caller
+and an actual read-only-server migration rejection that carries SQLSTATE 25006,
+plus affected PostgreSQL and integration-target lint. No fixture skip or manual
+successful approval substitutes for these checks. Frozen
+`bootstrap-migration-20261011-r5` passed both native tests (5.90 seconds),
+PostgreSQL/composition strict library lint and the integration-target lint.
+Receipt: `/private/tmp/brassclaw-bootstrap-migration-accepted.json`.
+The fixture asserts the actual complete seed inventory by Tool identity and
+component class, rather than outdated counts. No Docker/pgvector skip remains.
+
+
+### 2026-10-11 — PostgreSQL management readers and native verifier policy
+
+Frozen `provider-readers-20261011-r2` passed the actual database reader,
+product-command adapter, database CLI list/status and owned-instance lifecycle
+regressions. `provider-readers-20261011-r3` changes only the equivalent native
+client coercion and passes affected strict library, CLI and adapter lint; its
+receipt records exact evidence reuse. Active selection and provider definitions
+share one read-only repeatable-read snapshot. Malformed definition identities,
+conflicting aliases, unavailable stores and row decoding errors remain errors.
+These readers ignore contradictory legacy file/environment selections. This
+is reader acceptance, not completed §10: embedded registry/recurring seeder,
+remaining boot/auth/embedding/model consumers and provider revision/publication
+remain open. Receipt: `/private/tmp/brassclaw-provider-readers-accepted.json`.
+
+Frozen `native-verifier-policy-20261011-r1` passed native WebUI policy publication,
+global runtime, actual native image/verifier checks and strict affected lint.
+The accepted stdout and response-time settings govern macOS signature verifier
+output and execution; oversized output fails instead of truncating. The selected
+preparation policy governs artifact captures in installation/review/reply
+qualification. English/German setting explanations describe this scope.
+Receipt: `/private/tmp/brassclaw-native-verifier-policy-accepted.json`.
+Linux descriptor identity is retained; Windows loaded-file identity remains
+unsupported and is a required implementation/acceptance gap. File-copy latency
+has not been established as bounded by the verifier deadline.
+
+### 2026-10-11 — Atomic provider role publication (native acceptance)
+
+Role provider/model keys must commit or roll back together, including login
+completion. Clearing a role removes its stale model override. Kohai and Sempai
+may share a provider without sharing prompts, histories or model overrides.
+Sempai construction and credential reads precede publication; failed preparation
+or database writes preserve both keys and the actual preceding backend. The
+existing swappable provider is updated only after commit. Serialize settings and
+login publication through the same facade owner; this is not cross-process
+provider revision coordination. Expose reload/credential/row decoding failures
+instead of returning success or treating unavailable state as empty.
+
+Clearing Kohai must publish the production unconfigured backend through the
+existing reload handle, including the cheap slot, while retaining independently
+selected Sempai and preceding provider Arcs owned by existing work. Read named
+selection and active catalogue from one PostgreSQL snapshot. A missing named
+provider is invalid configuration, never a reason to clear the preceding working
+backend. Native acceptance must use production migrations, the encrypted secret
+store, actual reload adapter and real swappable providers, including deliberate
+second-key rejection and credential-store failure. Do not claim model inference,
+whole gateway/profile uptake, embedding runtime uptake or full provider revisions
+from these checks. Frozen `provider-role-publication-20261011-r2` passes
+all ten configuration-library tests, including the native PostgreSQL role test
+(3.77 seconds), and strict composition/LLM library lint (28.41 seconds). A CLI
+feature variant initially reused stale host-runtime metadata from an earlier
+`pg-policy-20261011-r2` snapshot, missing the native-verifier API present in source.
+Under the common Cargo lock, rebuilding just that package's artifacts makes the
+unchanged frozen source pass strict CLI binary/lifecycle/smoke lint (26.39 seconds).
+The r3 receipt retains the exact r2 executable/hash and reused test evidence:
+`/private/tmp/brassclaw-provider-role-publication-accepted.json`.
+
+
+### 2026-10-11 — Uncapped descendant cancellation baseline (focused native acceptance)
+
+Remove the silent 1,000-node cancellation traversal cutoff. Admission already
+owns the permitted spawn tree; cancellation must visit all its admitted nodes,
+with a visited set to prevent duplicate work or cycles. A terminal intermediate
+run does not imply terminal descendants: enumerate its children before skipping
+that run's own cancellation. Preserve durable cancellation idempotency, scope
+checks and error propagation; this change does not grant Tool permission or
+replay work. The set and traversal stack are local and freed at completion.
+
+Extend the existing native PostgreSQL state regression without a model override:
+stop the fixture turn worker, admit 1,001 root children plus one grandchild through
+the real store, cancel the intermediate child directly, then cancel the root.
+Require every root child and the queued grandchild to be Cancelled; do not accept
+Failed as successful cancellation. Production shutdown still joins the actual
+global Monty service. This exercises state traversal, not a latency or complete
+crash-recovery claim. Frozen `complete-cancellation-20261011-r4` passes the native large-tree
+regression (1,011.80 seconds including admission setup), cancellation acknowledgement
+regression (12.45 seconds) and affected strict library lint (25.68 seconds).
+Receipt: `/private/tmp/brassclaw-complete-cancellation-accepted.json`. The
+whole-regression time exposes a performance problem; the following atomic
+implementation replaces this accepted per-child baseline.
+
+### 2026-10-11 — Atomic tree cancellation and admission fencing (accepted scope)
+
+The uncapped native regression exposes repeated whole-aggregate decoding and
+CAS writes during per-child cancellation. Replace the runtime traversal with
+`TurnCoordinator::cancel_tree`: the in-memory state machine selects the complete
+scope-checked descendant graph and stages root and descendant cancellations on
+one private candidate under its admission lock. PostgreSQL and filesystem stores
+commit that candidate through their existing CAS boundary once, retrying the
+whole state-only transition on conflict. An invalid actor, scope, lineage or
+idempotency record leaves the original aggregate untouched. This is host-owned
+state authority, not a Rust Recipe runner or replay of Tool effects.
+
+Lifecycle delivery follows the commit, attempts every retained event even if an
+observer fails, and keeps original cursors for retry. Cancelled descendants must
+remain in retry selection; skipping all terminal runs would lose a failed
+cancellation event. Successful cursors are not republished. Normal cooperative
+cancellation still uses CancelRequested until runner acknowledgement. New child
+admission checks every ancestor under the state lock both before and after
+awaited profile resolution. A concurrent PostgreSQL submission either commits
+first and is included by the cancellation CAS retry, or loses its CAS and is
+rejected against the cancelled ancestry.
+
+Protect terminal intermediate records while descendants still reference their
+ancestry. Protected records stay in the pruning queue and become eligible when
+children/reservations are removed. Prune once after the atomic cancellation rather
+than once per descendant. Extend the native regression to assert exactly one
+snapshot version increment for the complete tree and report actual cancellation
+time. Add focused complete-tree, durable replay, observer-failure, actor rollback,
+retention and awaited-admission race checks. The frozen r2 source passed 136 turn contracts, filesystem contracts, native 1001-child cancellation, acknowledgement and strict affected-package checks (`/private/tmp/brassclaw-atomic-tree-accepted.json`). One durable commit is established; event delivery still took 192.97 seconds because each record lookup decoded the full aggregate. The projection repair below remains required. The earlier
+uncapped per-child binary continues as a separate frozen baseline.
+
+### 2026-10-11 — Stored provider credentials and Sempai boot uptake (candidate)
+
+The existing completed-turn review Recipe remains the workflow; this change
+repairs role construction in the infrastructure owning its provider boundary.
+Resolve encrypted stored credentials before required-key validation, preserving
+the provider definition's authentication requirement. Keep legacy environment/file
+resolution distinct until section 10's coordinated removal. Explicit DB selections
+use their own model and endpoint values; process-wide model/URL overrides cannot
+change a selected Sempai or Kohai model. Probes still attach stored credentials
+only to the persisted endpoint/adapter, with masked placeholders treated as
+unchanged credentials rather than outbound secrets.
+
+Restore Sempai from one consistent DB catalogue/selection snapshot before global
+Monty startup, worker admission, review delivery and ingress. Construct the actual
+shared provider chain before swapping; no settings write, UI service invocation,
+provider seeding or external inference is needed for restoration. An invalid
+named selection or credential-store error remains explicit. A cleared role
+restores the unconfigured backend and routing mode. Native acceptance must prove
+ordinary startup/restart without a model override or WebUI constructor, stored
+required-key construction for both roles, rejection without replacing a retained
+backend, and independence of role model choices. This does not complete provider
+revisions/soft-deactivation, gateway-profile/cost publication, embedding uptake,
+DB-only CLI boot, inference or prefix warmup. Acceptance is pending.
+
+
+### 2026-10-12 — Cancellation projections and private secret lease repair (candidate)
+
+Native atomic-tree acceptance exposed full-aggregate PostgreSQL decoding for every
+completion-observer record lookup. Replace only that lookup with a committed,
+child-link-aware projection of the selected run. Validate its typed record and
+exact scope; detect duplicate UUIDs rather than choosing an arbitrary row. Keep
+mutation CAS, lifecycle event delivery, cancellation fencing and durable state
+unchanged. The unchanged >1000-child production fixture must establish one commit,
+complete cancellation, scoped projection isolation and duplicate rejection, and
+report delivery time separately from admission setup. No performance claim before
+this native measurement.
+
+The credential-aware provider fixture also exposed failure to deserialize the
+reserved system scope from encrypted PostgreSQL lease storage. The private,
+authenticated lease decoder may reconstruct only the exact reserved system pair
+with no agent/project/thread; public identity deserialization remains strict.
+Consume/revoke must lock and authenticate the retained lease and verify the complete
+invocation scope before deletion. A wrong-scope attempt must not burn the valid
+lease. Concurrent consumers must yield exactly one material handoff. Scope listing
+must return actual authenticated active records, not an empty placeholder. Retain
+stored provider material across reloads. Remove the obsolete delayed credential
+overlay rather than suppressing its unused-function warning.
+
+Required acceptance includes real PostgreSQL leases, repeated required-key provider
+reload, Sempai startup before ingress, retained global Monty identity, affected
+contract and strict lint checks. Existing provider file/environment boot fallback,
+coordinated deactivation/revisions and prefix warmup remain required under section
+10; this repair does not establish their completion. Review the older secret row
+scope discriminator (missing user identity) and system-scope physical-tenant AAD
+before declaring complete storage isolation; implement compatible retained-row
+migration rather than silently discarding existing encrypted values.
+
+
+### 2026-10-12 — Atomic provider deactivation (candidate)
+
+Provider origin no longer blocks removal. The existing PostgreSQL repository
+locks the active definition and atomically soft-deletes it with all selections
+that reference its canonical ID or aliases (Kohai, Sempai, embedding and other
+retained LLM slots), including model/URL/env overrides. Retain the original row
+and encrypted credentials. The live service updates Sempai and primary roles
+after commit; retained calls retain their preceding provider Arc. A rejected
+selection deletion must roll back the entire operation without a live swap.
+The remaining historical builtin seeder cannot reactivate a soft-deleted row;
+its removal and replacement by the one-time database initialization are still
+required under section 10. The UI permits removal of initial and selected
+providers, with a short retained-data explanation.
+
+This slice still requires native rejection/success and restart acceptance. It
+is not the final immutable/revision-checked provider editing or cross-writer
+publication protocol: complete that protocol, remove recurring JSON seeding,
+provide explicit DB-backed reactivation and acknowledgement state, and test
+concurrent selection/deactivation before closing section 10.
+
+
+### 2026-10-12 — Committed run projection acceptance (limited native scope)
+
+The retained r2 composition executable passed required-key role publication
+(10 tests, 2.69 seconds), actual Sempai boot/restore (15.80 seconds) and the
+unchanged native >1000-child cancellation fixture (211.89 seconds total).
+Cancellation/event delivery itself measured 1.885918 seconds versus 192.973516291
+seconds for atomic-tree r2 before projection, with one durable snapshot commit
+in both. Exact child/parent scopes, foreign tenant/agent isolation and duplicate
+record rejection passed against PostgreSQL. Admission setup dominates the full
+fixture and remains a separate optimization question. This is not a claim about
+WebUI settings write latency or provider inference throughput.
+
+The new standalone lease test initially rejected its 26-byte fixture master key
+before exercising behavior. It has a valid >=32-byte test key in r3; do not count
+its r2 result as lease acceptance. R3 additionally changes provider deactivation,
+so its own native and lint acceptance remains required. Frozen source, retained
+executables and partial r2 results are recorded under
+`target/validation/provider-boot-credentials-artifacts-20261012-r2` and
+`/private/tmp/brassclaw-provider-boot-r2-continuation-accepted.json` once the final
+retained global-root test completes.
+
+
+### 2026-10-12 — Deactivation and scoped lease acceptance
+
+Frozen provider-deactivation r3 passes the real encrypted PostgreSQL lease
+scope/list/revoke/concurrent-consume fixture (3.16 seconds), ten role service
+checks including rejected and successful deactivation (2.87 seconds), actual
+Sempai startup/deactivation/restart (19.93 seconds), retained global-root
+acceptance (16.65 seconds), strict affected libraries (30.53 seconds) and CLI
+consumers (33.55 seconds). Native checks confirm builtin provenance does not
+block removal, aliases and embedding selections clear atomically, keys remain,
+startup synchronization cannot revive the removed row and retained calls keep
+their original backend. Receipt: `/private/tmp/brassclaw-provider-deactivation-accepted.json`.
+The archive copy had a filename mismatch after all checks passed; receipt,
+source and executable hashes were verified before repairing archive packaging.
+This acceptance does not cover later primary-boot changes.
+
+### 2026-10-12 — Primary database boot selection (accepted startup slice)
+
+Resolve the default slot, exact provider definition, encrypted key and model
+properties after service/database bootstrap and before model gateway construction.
+Selection and context/cache properties must come from the same repeatable-read
+catalogue snapshot. Remove CLI file/environment construction from the production
+runtime-input builder, embedded context/cache fallback and swallowed catalogue
+read errors. No selected primary yields the existing unconfigured gateway;
+a named missing/inactive provider or database failure stays an explicit error.
+Validate positive declared context windows and supported cache-retention values;
+invalid stored values cannot quietly fall back to a different policy.
+
+Extend the actual no-WebUI startup fixture to assert primary and Sempai selections
+before ingress, repeated startup, a deliberately unavailable provider table,
+retained desired selections after that failure and both cleared after deactivation.
+Run DB resolver properties and affected runtime/CLI lint checks. Complete database
+initialization, identity migration, legacy file import/removal, model-specific
+revisioned specifications, live gateway metadata and operator recovery remain
+required under section 10; do not mistake this startup slice for the full cutover.
+
+Frozen r4 passes catalogue resolution and property checks, real encrypted lease
+and role publication checks, primary/Sempai startup and explicit database failure
+(21.10 seconds), retained global Monty identity (16.66 seconds), and strict affected
+library/CLI lint checks. Receipt: `/private/tmp/brassclaw-primary-db-boot-accepted.json`;
+retained source and executables: `target/validation/primary-db-boot-artifacts-20261012-r4`.
+This establishes the ordinary PostgreSQL startup path, not embedding setup,
+catalogue initialization or complete live provider revision publication.
+
+### 2026-10-12 — Embedding catalogue/credential transport repair (candidate)
+
+Embedding maintenance must distinguish an absent role from a broken selected
+provider, unavailable database, missing retained master key or authentication.
+Read selection and catalogue in one repeatable-read snapshot; resolve aliases
+and encrypted keys using the canonical provider ID. Retain the runtime secret
+store's physical owner separately from the chat-memory data owner. Maintenance
+must read the existing serve master key, never generate a replacement. The CLI
+PostgreSQL path uses the same `home/db` root as serve's hybrid composition.
+
+Preserve the selected database endpoint for OpenAI-compatible, NEAR and Ollama
+adapters. Normalize an existing `/v1` and trailing slash without duplicating the
+API prefix. Optional-key endpoints send no invented Authorization header; a
+required missing/blank key fails explicitly. Unsupported embedding adapters
+are errors rather than implicit OpenAI dispatch. Endpoint credentials, queries,
+fragments and prohibited literal hosts are rejected before HTTP.
+
+Validate batch input lengths, output cardinality, dimensions and finite values;
+OpenAI-format replies use their explicit indexes to preserve input/vector
+correlation and reject duplicates/out-of-range indexes. See the
+[OpenAI response contract](https://developers.openai.com/api/reference/resources/embeddings).
+Ollama receives `truncate: false`, following its
+[explicit truncation control](https://docs.ollama.com/api/embed).
+A failed body read remains an error. Backfill rejects nonpositive batch sizes
+before secret/provider/indexing work. The existing cache consumes its actual
+config field instead of suppressing an unused setting warning.
+
+Acceptance requires actual PostgreSQL encrypted keys and HTTP transport checks,
+including required/optional authentication, aliases, distinct data/secret owners,
+custom endpoints, ordered batches, disabled versus broken selection, deletion,
+unavailable database and invalid configuration. The controlled protocol endpoint
+establishes transport correctness, not model inference quality. Full model-owned
+dimension/input/cache settings, live embedding uptake and the instance-wide
+provider ownership/initialization cutover remain required under section 10.
+
+Frozen embedding r1 passed adapter contracts (2.49 seconds), real PostgreSQL
+plus HTTP transport (3.60 seconds), primary/Sempai startup (21.09 seconds),
+retained global root (16.50 seconds), facade/secrets filesystem boundaries and
+strict affected library/CLI lint checks. Receipt:
+`/private/tmp/brassclaw-embedding-accepted.json`; retained source/executables:
+`target/validation/embedding-catalogue-artifacts-20261012-r1`.
+This does not cover the subsequent CLI custom-owner correction. `serve` threads
+configured installation identity into its physical secret-store owner;
+maintenance now reuses the same identity resolver instead of assuming its
+fallback owner. A real binary/PostgreSQL credential fixture must pass for that
+follow-up. A dev-only secrets dependency prepares genuine encrypted fixture
+rows; the normal CLI dependency boundary remains unchanged and checked.
+
+Embedding CLI custom-owner r2 passes the real binary/PostgreSQL fixture (4.77
+seconds), the normal-versus-dev dependency boundary (0.27 seconds) and strict
+CLI consumers (4.07 seconds). Receipt:
+`/private/tmp/brassclaw-embedding-cli-accepted.json`; archive:
+`target/validation/embedding-cli-owner-artifacts-20261012-r2`.
+The build ran in the stable workspace to reuse Cargo artifacts; all tracked and
+nonignored source hashes were checked against an immutable archive before and
+after each check. The provider transport/library evidence is retained from r1;
+this follow-up changes CLI owner wiring, its genuine encrypted fixture and the
+dev-only dependency contract. No deployment inference or complete section-10
+acceptance is claimed.
+
+### 2026-10-12 — PostgreSQL secret owner keys (candidate)
+
+The historical secret discriminator omitted logical tenant/user; metadata and
+delete checked existence without authenticating ownership. New secret keys
+include the complete owner/handle tuple using the existing length-prefixed AAD
+and a digest. New secret and lease envelopes additionally authenticate the
+physical store tenant and exact row identity. Metadata, replacement, deletion
+and consumption authenticate material before proceeding. Legacy secret access
+upgrades the authenticated record transactionally, preserving creation time and
+master-key version; conflicts, corrupt records and unknown versions remain
+visible errors. An old owner-incomplete record belonging to another owner must
+be reconciled by its actual owner; it is never overwritten by the new caller.
+Existing legacy leases remain readable until consumed or revoked. Historical
+envelopes cannot retroactively gain physical-owner binding before upgrade;
+credential-account/session envelopes still require their separate repair.
+
+Native acceptance must cover distinct logical users/tenants with the same
+handle, cross-invocation material reuse, physical-store ciphertext copying,
+wrong-key replacement rejection, authenticated legacy migration, injected
+transaction rollback and retained one-shot legacy leases. This is a candidate
+until those checks and affected caller/lint checks pass.
+
+Secret-owner candidate acceptance passed against the retained source
+`target/validation/secret-owner-20261012-r1` and paired artifacts; receipt:
+`/private/tmp/brassclaw-secret-owner-accepted.json`. Native isolation/legacy
+rollback took 4.109 seconds; one-shot leases 1.911 seconds; embedding credentials
+2.634 seconds; primary/Sempai startup 20.788 seconds. Secret contract suites and
+strict affected library/CLI lint passed. The physical-owner limitation for
+historical envelopes and separate credential broker work remain explicit.
+
+### 2026-10-12 — WebUI provider attachment (candidate)
+
+WebUI construction now attaches the existing live reload adapter without
+rebuilding the primary provider a second time. Runtime startup remains the
+sole boot selection owner. Native acceptance changes the desired database model
+between startup and facade construction, checks that the admitted model and
+Sempai Arc remain unchanged during attachment, and then verifies an explicit
+settings selection publishes the new primary without replacing Sempai.
+
+WebUI attachment native acceptance passed against
+`target/validation/provider-attachment-20261012-r1`; receipt:
+`/private/tmp/brassclaw-provider-attachment-accepted.json`. Startup/facade/live
+publication took 23.720 seconds, role publication 2.782 seconds, retained global
+Monty 16.412 seconds. Strict composition/CLI lint passed. This removes a
+redundant publication, not the outstanding revision/model-metadata cutover.
+
+### 2026-10-12 — Credential broker atomic use and envelopes (candidate)
+
+PostgreSQL session consumption now locks the row, authenticates its exact
+identity, checks expiry and remaining uses, increments without integer wrap
+and commits before returning. Validation includes spent-use limits. Reissuing
+an identical session retains its original counter; conflicting issuance fails.
+New credential account/session envelopes bind physical store and row identity,
+with an explicit envelope marker separate from master-key version. Existing
+logical-owner envelopes remain readable and upgrade on authenticated writes or
+consumption. Wrong keys cannot overwrite a retained account. Private trusted
+storage readers support the reserved system owner without loosening public
+ResourceScope deserialization. Historical envelopes retain their original
+physical-owner limitation until upgraded. Native acceptance must observe two
+consumers blocked on the actual database lock, exactly one final use, preserved
+limits after reissue, copied-envelope rejection, legacy compatibility, injected
+update rollback, expiry and system-owner round trips.
+
+Credential session/envelope acceptance passed against
+`target/validation/credential-sessions-20261012-r1`; receipt:
+`/private/tmp/brassclaw-credential-sessions-accepted.json`. The native broker
+concurrency/envelope/legacy/rollback fixture took 3.347 seconds. Retained secret
+upgrade and one-shot checks, embedding credentials, startup, storage contracts
+and strict affected library/CLI lint passed. Historical envelopes gain their
+physical-store binding on authenticated upgrade, not retroactively.
+
+### 2026-10-12 — Selected cache policy and cache correctness (candidate)
+
+Explicit catalogue resolution now uses the stored prompt-cache retention and
+rejects invalid values, independently of Anthropic cache environment overrides.
+OAuth material remains a separate credential input. Legacy environment-selected
+configuration keeps its explicit environment behavior. In-memory response caches
+retain nothing when capacity or TTL is zero; TTL begins when the answer becomes
+available. Native acceptance covers the actual PostgreSQL selection reader and
+real OpenAI HTTP requests to a controlled protocol endpoint, including a response
+slower than its configured cache TTL. These repairs do not complete database-owned
+chain policy, live cache controls, gateway model metadata or deployment inference.
+
+Selected cache-policy acceptance passed against
+`target/validation/selected-cache-policy-20261012-r1`; receipt:
+`/private/tmp/brassclaw-selected-cache-accepted.json`. The actual HTTP cache
+regression took 2.215 seconds and ordinary startup/WebUI publication 20.286
+seconds. PostgreSQL cache-policy selection, library cache/resolution contracts
+and strict composition/LLM/CLI lint passed. Live cache controls remain open.
+
+### 2026-10-12 — Live model dispatch selection (candidate)
+
+The ordinary primary gateway carried a fixed boot-time model override even
+after its provider wrapper changed. The repaired execution policy captures
+backend, canonical catalogue identity and selected model under one wrapper lock
+before dispatch, retaining that backend throughout the exchange. New calls use
+the acknowledged live selection; explicit profile overrides remain explicit.
+Sempai and completed-review gateways carry the selected catalogue identity too.
+Model-call sequence allocation is shared across requests and fails rather than
+wrapping. Native acceptance must send ordinary chats through global Monty to
+real controlled provider endpoints before/after a WebUI selection and verify
+request models and retained VM identity. Per-task durable model/design revisions,
+gateway technical metadata and pricing publication remain separate open work;
+the historical boot pricing table is not claimed live by this candidate.
+
+Live dispatch selection acceptance passed against
+`target/validation/live-model-selection-20261012-r1`; receipt:
+`/private/tmp/brassclaw-live-model-accepted.json`. The ordinary Monty/HTTP/live
+WebUI regression took 9.182 seconds, startup/WebUI 19.897 seconds, role publication
+2.766 seconds and retained global-root regression 15.671 seconds. All affected
+gateway contracts, named provider snapshots and strict library/CLI lint passed.
+The same VM served both exchanges and the retained first backend was not replayed.
+This is per-exchange selection evidence; durable per-task model/design selection,
+revision-aware pricing, context metadata and complete cache/settings publication
+still need their own implementation and acceptance.
+
+### 2026-10-12 — Coherent provider settings view (candidate)
+
+The WebUI settings service reads provider definitions/origin metadata and role
+selections from one read-only repeatable-read transaction. It releases that
+connection before credential metadata checks. Selected aliases resolve to the
+canonical active provider ID for each role; a named missing provider is a visible
+error, not an unconfigured selection. Required keys remain editable even when
+the definition has no environment reference, and blank environment values do
+not report a configured key. Native acceptance races atomic definition/model
+publications against settings reads and verifies all three roles belong to the
+same observed generation, plus alias handling and database failure. This read
+repair does not substitute for immutable model/provider revisions or coordinated
+desired/effective publication.
+
+Provider-view acceptance passed against
+`target/validation/provider-settings-view-20261012-r1`; receipt:
+`/private/tmp/brassclaw-provider-view-accepted.json`. Concurrent definition/model
+view checks took 4.145 seconds, ordinary live-model dispatch 6.977 seconds and
+role publication 2.816 seconds. Strict composition/CLI lint passed. The next
+focused fixture additionally constrains the same real PostgreSQL pool to one
+connection, to verify the documented connection-release behavior before
+credential metadata reads; that extension is not covered by the r1 receipt.
+
+The r2 provider-view fixture passed with the actual pool constrained to one
+connection before credential checks, and retained the concurrent-generation
+checks after restoring pool capacity. Receipt:
+`/private/tmp/brassclaw-provider-view-accepted.json` now identifies
+`target/validation/provider-settings-view-20261012-r2` and paired artifacts.
+Native acceptance took 4.141 seconds; strict composition/CLI lint passed.
+The retained r1 artifact directory preserves the earlier receipt.
+
+### 2026-10-12 — Provider revision storage (candidate prerequisite)
+
+V138 preserves existing provider configurations as revision 1 and records
+subsequent definition/origin/activity changes in immutable history. Identity and
+revision assignment are database-owned; revision exhaustion fails closed.
+Updates, deletion and truncation of retained history are rejected. The exact
+compare-and-replace repository seam is currently a native development-test seam,
+while the schema records production legacy writes too. It is not evidence of
+revision-aware HTTP/CLI publication, reactivation UI, immutable model specification
+records, coordinated credentials or desired/effective runtime acknowledgements.
+Those consumers must be wired before the coordinated provider cutover. Native
+acceptance covers migration preservation, history immutability, stale concurrent
+replacement, explicit reactivation and failure rollback. The provider dialog's
+missing Select import is also repaired; it otherwise prevented custom-provider
+creation from rendering.
+
+The first V138 native batch passed revision/migration preservation, stale
+replacement, history immutability and rollback, plus ordinary Monty and provider
+view regressions. Its JavaScript run exposed two ignored optional NEAR wallet
+callback contracts; the batch is not accepted. Those components now render a
+wallet action only when the caller supplies the real handler and invoke that
+handler. The shared shipped login hook still has no wallet signer, so wallet
+end-to-end browser wiring remains open; this conditional UI contract is not
+wallet authentication acceptance. Negative component cases require no wallet
+action when no handler is bound. Retain the failed r1 diagnostics and validate
+the coherent successor source before accepting the batch.
+
+Provider revision r2 acceptance passed against `target/validation/provider-revisions-20261012-r2`; receipt `/private/tmp/brassclaw-provider-revisions-accepted.json`. Native revision checks took 4.067 seconds; ordinary Monty live dispatch, coherent settings, role publication, 24 JavaScript cases and strict library/CLI lint passed. Wallet authentication remains outside that UI callback acceptance.
+
+### 2026-10-12 — Coordinated provider setup writes (candidate)
+
+CLI run/repl now carries its configured instance owner into the PostgreSQL build input. A neutral encrypted setup-write primitive can participate in a composition-owned transaction; it authenticates existing material and serializes absent-row writers before insertion. Provider edits use exact definition revisions and commit definitions, encrypted keys and requested primary role keys together. Failed database writes do not perform blind compensating writes over newer publications. Settings carry the revision from the same catalogue/config snapshot and the browser sends it with edits. This candidate still requires native acceptance; definition revisions alone do not claim immutable credential revisions, complete role desired/effective publication, inactive-provider selection UI or full DB-only cutover.
+
+The frozen atomic-setup r1 caller checks passed: ordinary Monty/HTTP provider edits and deliberate database failures (7.316 seconds), revision storage, coherent settings, role publication, HTTP contracts and strict library/CLI lint. The separate absent-row competing-writer fixture failed before dispatch because its test master key was too short. This is not complete acceptance of the neutral setup-write primitive. The successor corrects fixture material and must run that native case plus existing owner/lease checks. Retain r1 source/artifacts and the failed fixture output.
+
+### 2026-10-12 — Revision-checked provider deactivation/reactivation (candidate)
+
+Operator deactivation now requires the displayed revision through HTTP/facade/store. The row is locked and checked before any role changes. Settings return inactive definitions separately from the active routing catalogue; the WebUI offers those definitions for explicit review and re-addition using the same ID/revision. Reactivation validates endpoint/adapter/authentication and does not restore previous role selections. Origin is metadata; either origin can edit its adapter and other supported fields. Native acceptance must cover stale removal, failed setup writes, retained keys, same-row reactivation and another ordinary chat through the original global VM. Full DB-only startup migration, immutable credential/model properties and coordinated desired/effective role publication remain separate open requirements.
+
+Provider reset no longer reports a removal as a successful reset-to-defaults. That duplicate legacy-overlay action is retired; the actual removal path explains retained configuration/credentials and role clearing. Unsupported UI callback behavior is not reported as reset acceptance. Re-addition is explicit through the retained-definition dialog.
+
+Provider lifecycle acceptance passed against `target/validation/provider-lifecycle-20261012-r1`; receipt `/private/tmp/brassclaw-provider-lifecycle-accepted.json`. The corrected absent-row writer case took 3.984 seconds; owner migration/one-shot leases, actual revision history, coherent settings and role publication passed. The ordinary global Monty/HTTP sequence with stale edit/removal, transaction rejection, same-ID reactivation and third chat passed in 7.625 seconds. The same root served all three exchanges. Twenty-five component cases, actual HTTP extraction/dispatch contracts and strict library/CLI lint passed. The CLI owner handoff is compiled/source-traced; this receipt does not claim a fresh-install CLI owner migration or full test-machine acceptance.
+
+### 2026-10-12 — Response-cache context isolation (candidate)
+
+Cache keys previously omitted request metadata and used ambiguous concatenation for stop sequences. Metadata can carry provider chaining/task scope and prefix/component selection. The successor hashes one structured versioned tuple, sorts metadata by key and preserves temperature bits; serialization errors remain visible rather than omitting messages. Native HTTP acceptance must distinguish owner and prefix-generation metadata, retain hits across map insertion-order changes and distinguish embedded separators in different stop lists, while preserving zero-capacity/TTL and completion-based TTL behavior. Cache policy controls and full model/property publication remain open.
+
+### 2026-10-12 — Live response-cache controls (candidate)
+
+Provider definitions carry an explicit `response_cache` policy (enabled, entry capacity, lifetime seconds). Compatible historical definitions have the existing disabled/1000-entry/3600-second defaults; operator saves persist the exact policy in the revisioned DB definition. The explicit DB builder ignores cache environment overrides, including malformed values, while the separate legacy resolver remains to be removed in §10. Primary and selected Sempai chains rebuild through their existing role ports after a successful provider edit; retained old backends remain owned by earlier calls. Both zero capacity and zero lifetime disable retention. Settings → Inference → provider configuration exposes the controls with English/German explanations and defaults supplied by the API. Null policy updates are rejected rather than silently resetting/preserving them. Existing builtin merge temporarily preserves the cache policy; the recurring seeder/other structural-field overwrite path still needs the coordinated DB-only replacement.
+
+A local response-cache hit now reports zero upstream token/cache usage instead of billing the original call twice; cached content/reasoning remain available and hit counters remain observable. Required native acceptance covers real DB/WebUI provider writes and HTTP primary/Sempai chains, LRU capacity, disable/zero settings, expiry, retained old chains, rejected unbounded values, startup restoration and malformed cache environment variables. Separate cache-key acceptance covers complete metadata/list framing, deterministic map ordering and completion-based lifetime. This does not certify pricing/model properties, whole-task model selection or remote model-quality/prefix acceptance.
+
+Live cache-policy r2 acceptance passed against `target/validation/live-cache-policy-20261012-r2`; receipt `/private/tmp/brassclaw-live-cache-policy-accepted.json`. Real WebUI/DB primary/Sempai policy changes and startup restoration took 13.900 seconds; actual HTTP metadata/list framing and billing/lifetime checks took 2.223 seconds. Ordinary global Monty edits/removal/reactivation, library cache/resolution contracts, HTTP extraction/dispatch, 25 component cases and strict library/CLI lint passed. The r1 fixture's trait-interface compile error was repaired using the existing `retained_provider()` contract; no production fallback or warning suppression was added. Actual browser rendering and remote model-quality acceptance remain open.
+
+### 2026-10-12 — Database-owned provider initialization (candidate)
+
+V140 contains the versioned first-party initial data and an initialization marker. Its schema-bound initializer seeds a genuinely empty, uninitialized provider namespace once; if any provider rows already exist, it retains the inventory unchanged, including custom records and tombstones. Later boots only read the marker, never synchronize against a second catalogue. It touches no role selections or credentials and records immutable initialization provenance. A table lock protects the initial empty-inventory decision against concurrent operator insertion. Composition and the management read port call this one SQL-owned primitive before their actual namespace's first consumer. The WebUI recurring Rust/JSON seeder is removed; historical V047/V048 remain untouched. The legacy builtin writer is test-only. Legacy file/ENV readers/imports and CLI/runtime namespace reconciliation remain explicit §10 work; this candidate does not claim the full DB-only cutover or secured legacy-file migration. Native acceptance must cover fresh defaults, existing/tombstoned inventories, concurrent initialization, rollback and no resurrection or structural-field reset on later boots.
+
+The first initializer batch stopped before its assertions because another new migration already used version 139 (`prefix_profile_registry`). The unapplied provider initializer is now V140. Retain the failed r1 schema diagnostic and source. Successor validation compares the exact source inventory as well as hashes, so a newly added source/migration cannot enter a build without appearing in its frozen input manifest. Historical accepted receipts cover their recorded relevant files/artifacts; their older verifier did not independently detect additional source files. The successor must cover the current complete migration inventory before a release claim.
+
+Provider DB initialization r2 passed against `target/validation/provider-db-init-20261012-r2`; receipt `/private/tmp/brassclaw-provider-db-init-accepted.json`. The complete source inventory includes V139 prefix-profile metadata and the uniquely numbered V140 provider initialization. Native initialization/schema binding/rollback/provenance took 4.058 seconds, the actual CLI database readers 4.525 seconds, live cache/restart 14.030 seconds and ordinary Monty edits/removal/reactivation 7.247 seconds. Revision storage, role publication, coherent settings, HTTP/UI contracts and strict library/CLI lint passed. No source files were added or changed during that fenced batch. Remaining file/ENV readers, secured upgrade imports, namespace reconciliation and general desired/effective provider publication still prevent a full §10 cutover claim.
+
+### 2026-10-12 — Secured legacy provider inventory import (candidate prerequisite)
+
+The upgrade importer previously wrote the nonexistent `data` column, committed each provider independently, overwrote conflicts and replaced an existing backup. The successor uses the actual typed definition contract and one domain transaction; matching existing records retain origin/revision/tombstones, conflicts reject the whole inventory, and new aliases are checked against active DB identities. Dry-run validates the same inventory without writes. A private exact-byte backup is staged, synchronized and published without clobbering an existing backup before DB commit; incomplete writes cannot publish a partial final backup. Existing non-regular backup paths are rejected. The original source remains an upgrade artifact, including after a successful import. A changed source is retained and reported rather than deleted after commit. The original importer still needs its final controlled-upgrade extraction/removal after inventory preservation acceptance; it is not a runtime registry or evidence of completed §10 file removal. Required native checks include multi-record rollback, definition/alias/backup conflicts, tombstone retention, malformed/inline-secret input, dry-run, private byte-identical backup and replay after a commit whose acknowledgement is lost.
+
+
+Secured provider import acceptance passed against `target/validation/provider-import-20261012-r1`; receipt `/private/tmp/brassclaw-provider-import-accepted.json`. The real PostgreSQL multi-record/dry-run/conflict/tombstone/backup replay checks took 4.177 seconds and strict migration-feature lint passed. The explicit `brassclaw migrate` command is the current caller; ordinary startup does not invoke this importer. Original source and content-addressed backup remain upgrade artifacts. A crash or lost commit acknowledgement can safely repeat the exact inventory without revising matching rows; final controlled extraction/removal and broader legacy upgrade preservation remain open.
+
+### 2026-10-12 — CLI installation namespace and atomic config import (candidate)
+
+CLI model readers, config CRUD/import/export/init, repair and explicit migration now resolve the same validated bootstrap installation namespace as serve/run instead of independently guessing `default`. Malformed local bootstrap configuration is an error; explicit legacy `--tenant` access remains visible and does not move or overwrite other namespaces. Embedding maintenance defaults its data owner to the installation namespace while retaining an explicit data override and the installation's separate physical secret owner. This repairs current command divergence; it does not claim the final single-instance DB identity migration or automatic cross-namespace credential migration.
+
+Config import uses the existing atomic config publication primitive, validates the whole change set, rejects conflicting flat/nested references and propagates array-serialization failures. Export/show-all use TOML serialization rather than Rust debug escapes; control characters and quoted keys round-trip. Native acceptance must cover the actual binary, custom installation identity, retained legacy namespace, late database rejection, valid export/re-import, malformed bootstrap config and existing database ownership/embedding commands.
+
+
+CLI namespace/config acceptance passed against `target/validation/cli-namespace-20261012-r1`; receipt `/private/tmp/brassclaw-cli-namespace-accepted.json`. All seven actual-binary/native-PostgreSQL lifecycle tests passed in 25.446 seconds, including custom namespace, legacy explicit data access, transactional rejection, control-character TOML round-trip, malformed bootstrap config, secret ceremony and embedding maintenance; strict CLI lint passed. Full DB-only identity migration and general desired/effective provider publication remain open.
+
+### 2026-10-12 — Adjustable catalogue preparation and retained policy (candidate)
+
+V141 adds five revisioned execution controls: catalogue Recipe count, component references per Recipe, variants per Recipe, catalogue bytes and activation actor bytes. Settings → Monty VM exposes each with EN/DE explanations. New activation/deployment preparation captures one acknowledged policy before taking its DB transaction; this avoids nested settings/ownership pool acquisition while retaining a pooled client. Checks reject excessive selections before effects and use checked aggregate byte accounting. A committed activation retry returns its original receipt regardless of later admission caps and releases its DB client before restoration.
+
+New `authored-monty-catalogue/2` manifests retain the exact preparation limits. Restoration and deployment inspection parse/qualify with that retained policy instead of a newer, smaller admission policy. Existing component/association/Tool identity checks remain independent. Historical format 1 keeps its existing compatibility behavior and does not acquire unrecorded policy provenance; the controlled legacy/installation upgrade and durable crash recovery gates remain open. This candidate needs real migration/default/preservation/rejection checks, actual settings acknowledgement plus retained authored restoration/replay, component deployment and ordinary global execution before acceptance. The catalogue document's structural contract remains distinct from token accounting and retains the validator's supported recursion constraints; this is not a claim that every remaining system cap is adjustable.
+
+
+The catalogue-policy r1 build stopped on two new deployment error adapters using a string-only helper for typed errors. The successor uses fixed boundary diagnostics, preserving unavailable settings as a service error and serialization failure as invalid input. No r1 behavioral checks ran; its frozen source/compiler diagnostics remain retained. The complete successor batch must pass before a catalogue-control acceptance claim.
+
+
+The catalogue-policy r2 build stopped before native tests on concurrent prefix-generation facade fields (`interceptor_config_service` versus the actual `interceptor_config`). This is not catalogue-policy acceptance. The other chat is repairing its owned prefix slice and uses the independent `brassclaw-target2`; build-slot coordination is not required. Successor catalogue checks compile a frozen source copy so shared checkout edits cannot enter the compiler after capture. Original r2 diagnostics are retained; r1 diagnostics were captured from actual tool output after its shared-name log was overwritten. Successor build logs use revision-specific names.
+
+
+Frozen catalogue-policy r3 stopped before behavioral checks on a prefix-source fixture expression inside `json!`. The other chat independently corrected the source list into a Rust binding before the proposed local patch applied; that failed patch changed no file. Its actual compiler diagnostic is retained with r3 artifacts. No r3 acceptance is claimed. Subsequent frozen validation uses a stable, isolated compilation workspace plus immutable archived inputs, preserving incremental package identities without compiling the concurrently edited checkout.
+
+
+Catalogue policy r4 acceptance passed against archived `target/validation/catalogue-policy-20261012-r4`, compiled from the isolated `target/validation/catalogue-policy-workspace`; receipt `/private/tmp/brassclaw-catalogue-policy-accepted.json`. New migration/default/preservation/rejection checks took 4.124 seconds; acknowledged cap reductions with exact retained restoration/replay took 7.017 seconds; component deployment (including the then-current quarantined compiler-package storage caller) took 7.311 seconds; ordinary global matched/unmatched runtime took 15.909 seconds. Complete settings-object contract, UI/locale syntax and strict host/product/composition lint passed. The archived source and compilation copy stayed identical throughout. This covers the five catalogue controls and format-2 policy retention, not full legacy/binary-upgrade recovery, all resource controls, prefix job admission or browser/release acceptance.
+
+### 2026-10-12 — Remove composition file boot API and fence explicit credentials (candidate)
+
+Source tracing found no productive caller of the old composition-owned TOML/file/ENV provider boot resolvers. Those public APIs and their file-load error variant are removed; the obsolete overlay loader test is removed with the deleted capability, while actual invalid-DB/startup/reload acceptance remains required. Synthetic legacy environment selection stays test-local and is not exported. Provider construction errors and operator instructions now describe the selected DB configuration and encrypted credential setup. LLM registry file/ENV APIs, repository JSON, controlled upgrade extraction and remaining chain/model metadata cutover are still open.
+
+The explicit credential resolver previously fell back to `api_key_env` when the encrypted store supplied no key, even with environment resolution disabled. It now reads only the supplied credential on that path; both required and optional missing keys cannot inherit a process credential. Settings report stored key presence only. Existing external OAuth/SDK authentication paths remain separate. Required evidence includes a nonempty legacy environment key with missing required/optional stored credentials, real coherent PG settings under that environment, ordinary global HTTP model dispatch/lifecycle, role initialization and strict affected-consumer lint.
+
+
+Provider-boundary r2 passed the original frozen `target/validation/provider-boundary-20261012-r1` source with the corrected `registry-provider-factory` LLM test configuration; receipt `/private/tmp/brassclaw-provider-boundary-accepted.json` and successor artifact directory `provider-boundary-artifacts-20261012-r2`. The preceding r1 build omitted that feature and ran zero matching tests, which the acceptance guard rejected; it is not regression evidence. The nonempty-environment required/optional credential fence passed (0.484 seconds), 19 catalogue checks passed, real PG settings with the environment key present passed (2.995 seconds), ordinary global HTTP dispatch/lifecycle passed (7.949 seconds), startup Sempai restoration passed (20.076 seconds), and strict affected library lint passed. These results cover explicit credential custody and removal of the composition file-boot API; other legacy LLM registry/model-discovery/chain paths remain open.
+
+### Next provider slice — explicit model discovery
+
+`models::fetch_models_for` currently routes by provider name, ignores edited endpoints for named OpenAI/Anthropic providers, reads environment credentials and returns hardcoded model lists after network/auth failures. A stored key admitted for one persisted endpoint can therefore be sent to a different hardcoded endpoint. Replace that productive facade with typed adapter/explicit endpoint/credential input, visible classified failures and no static model-list success. Keep protocol authentication acquisition separate from catalogue/model selection. Reuse the LLM infrastructure owner; expose actual discovery deadlines/body bounds through revisioned provider settings with short help rather than adding hidden fixed values. Required acceptance includes custom IDs/protocol changes, both formerly named providers on local endpoints, no outbound redirect credential forwarding, no environment-key uptake, HTTP/auth/body/schema failures, actual WebUI/DB changes and restart/retained-request semantics. Model-name discovery is not a complete model-specification/design/activation certificate.
+
+
+### 2026-10-12 — Explicit model discovery and snapshot-bound probe credentials (candidate)
+
+Model discovery now uses the supplied adapter and exact captured endpoint, never a provider-name shortcut, environment credential or static model fallback. The previous public name-based models module and its fallback-specific tests are removed with that capability. The new transport returns classified HTTP/connection/deadline/body/schema failures and disables redirects. Anthropic pagination follows the documented last_id/after_id protocol under one total deadline/byte ceiling; incompatible pagination cannot silently return a partial list. Protocol source: [Anthropic model-list API](https://platform.claude.com/docs/en/api/models/list). Discovery names remain observations, not complete model-specification/quality/design evidence. Unsupported dedicated discovery adapters still require their actual auth/protocol support before the full provider-function cutover.
+
+Provider definitions/API snapshots expose a model_discovery policy (timeout seconds and combined response bytes), with revision-checked edits, omitted-policy retention across adapter edits and EN/DE form explanations. Fetch models uses the unsaved form policy; later requests use persisted settings. Response-cache policy omission now also retains the preceding policy when an adapter changes. Structural validation rejects invalid policies before setup writes.
+
+Connection probes and discovery capture their definition, endpoint and stored credential in one repeatable transaction. Existing authenticated one-shot lease creation/consumption now supports a caller-owned transaction; no direct decrypted-material read bypass is introduced. Consumption commits and the pooled connection is released before external effects. Concurrent key/endpoint updates can cause a visible serialization failure before I/O; they cannot send a successor key to the preceding endpoint. These neutral ports grant no permission and are internal host setup infrastructure, not plugin execution APIs.
+
+The candidate needs actual native PG/HTTP endpoint/header/redirect/error/deadline/body/pagination checks, one-connection capture, revisioned policy uptake, concurrent key/endpoint fencing, existing secret owner/lease compatibility, normal global model execution, HTTP DTO/UI coverage and strict affected-consumer lint. No acceptance/release claim is made yet. The same coherent credential/model revision capture still needs coordination in the remaining boot/role/embedding/task consumers; this probe slice does not certify full immutable credential/model task selection.
+
+
+### 2026-10-12 — Coherent selected-provider credentials and honest connection probes (candidate)
+
+The existing provider administration owner now captures primary, Sempai or embedding selection, canonical definition and authenticated one-shot credential in one repeatable-read transaction. It reuses its catalogue reader/alias checks and the existing encrypted broker transaction ports; no second registry, raw decryption reader or invocation grant is introduced. Provider/network construction begins only after consumption commits and the pool connection is released. The ordinary primary startup caller, live primary reload, Sempai restoration/construction and embedding maintenance use that capture. An unconfigured embedding preflight remains read-only and does not require a master key; configured maintenance captures again before constructing its adapter. This is coherent current selection, not immutable credential revision retention, whole-task model-specification pinning or complete desired/effective role coordination.
+
+Connection testing now uses the actual bounded model exchange instead of treating a provider constructor/default empty list as network success. Invalid, HTTP/auth, redirect, capacity and timeout results remain visible. Discovery supplies suggestions without replacing an operator's model with the first returned entry. Draft WebUI policy values reject invalid/partial/unsafe numbers before transmission. Explicit catalogue credentials also exclude environment-supplied extra authorization headers and Anthropic OAuth material; legacy environment resolution remains separate pending final removal.
+
+Preserved validation failures: r1's native settings save had no reload owner; the successor uses the real adapter and verifies its retained identity. r2 passed native discovery/owner/global/cache cases but strict lint rejected the obsolete NEAR environment-discovery constructor; that constructor was removed. r3 compilation caught an incorrect assumption that EmbeddingSection equals LlmSlotSelection; its actual provider/model fields now map explicitly, without credential/endpoint overrides. r4 passed native discovery, one-connection captures, all three role races and secret compatibility; ordinary startup found its remaining type-erased key-store caller. That caller now uses the existing PostgreSQL-aware runtime handle. None of these failed batches is full acceptance. The r5 frozen batch must establish ordinary startup/global exchange, Sempai restoration, embedding credentials, selected cache policy, HTTP/JS contracts, explicit header/OAuth fences and strict affected lint before this candidate is accepted.
+
+
+### 2026-10-12 — Native Gemini/Ollama/NEAR discovery adapters (candidate)
+
+The next transport revision adds Gemini native resource-name and nextPageToken/pageToken handling, retaining one total byte/deadline policy across all pages. API-key material travels in x-goog-api-key, not the URL. Sources: [Gemini model list](https://ai.google.dev/api/models) and [Gemini API-key HTTP authentication](https://ai.google.dev/gemini-api/docs/api-key). NEAR listing now composes the same versioned models path as its existing completion adapter; an explicitly supplied endpoint remains the only destination. Ollama consumes its actual tags schema. None of these paths supplies guessed model names or selects a discovered model for the operator. Local native acceptance must inspect actual URLs/headers, full pagination and repeated-cursor failure. Session/OAuth and signed AWS discovery still need their own existing authentication owners; API-key tests cannot certify those flows.
+
+
+Model-discovery r6 acceptance passed against frozen `target/validation/model-discovery-20261012-r6`; receipt `/private/tmp/brassclaw-model-discovery-accepted.json`. The expanded native PG/HTTP discovery/role-race case passed in 6.897 seconds, including Gemini/Ollama/NEAR URLs, actual authentication headers, complete pagination, repeated-cursor rejection, one-connection capture, policy edits and endpoint/key fencing. Strict affected library lint passed in 25.973 seconds. The receipt reuses r5's unchanged successful owner/global/cache/Sempai/embedding/HTTP/JS/explicit-credential cases, with an exact source-difference guard. R5's final lint failure was a misplaced prefix-source documentation comment, corrected without suppression; its original failure and all prior diagnostic/source/artifact records remain retained. Native r5 ordinary global execution took 8.996 seconds; Sempai startup took 20.582 seconds; embedding owner acceptance took 2.554 seconds. These are local constrained/ordinary caller observations, not browser/platform/remote release acceptance or full immutable credential/model/prefix/role cutover.
+
+### 2026-10-12 — Protocol-based provider construction (candidate)
+
+Provider-chain creation and metadata previously selected dedicated adapters using names such as nearai/bedrock/openai_codex. Editing those IDs to a registry protocol could dispatch through a different adapter, while a custom ID for a dedicated protocol could fail or report the wrong model/identity. The resolved LlmConfig now retains the exact protocol separately from its canonical provider ID. Main/cheap/dedicated construction and model metadata use that protocol, and published identity keeps the selected ID. Legacy manually constructed inputs have no resolved tag and retain their compatibility decoding; they are not database selection evidence. The ordinary global HTTP/in-flight/settings/lifecycle fixture now deliberately gives OpenAI-compatible definitions the IDs nearai and openai_codex. A focused resolver case checks renamed dedicated protocols' identity/model metadata. The next frozen batch must cover those production/constructor consumers and strict lint before accepting this candidate. Dedicated authentication and remaining ENV-based chain/session configuration remain separate open requirements.
+
+
+Protocol-dispatch r1 passed against `target/validation/protocol-dispatch-20261012-r1`; receipt `/private/tmp/brassclaw-protocol-dispatch-accepted.json`. Ordinary global matched/unmatched/provider-settings handoff with colliding dedicated names and retained in-flight identity took 10.393 seconds; live primary/Sempai cache policies, startup Sempai restoration, renamed dedicated identity/model metadata, cheap-provider compatibility, actual model-route consumers and strict affected library lint passed. This proves protocol/identity separation through those callers, not dedicated live service authentication or the remaining explicit chain/session-policy cutover.
+
+### 2026-10-12 — Registry SDK endpoint/deadline/credential transport (candidate)
+
+The next trace found that most registry SDK factories did not inject the supplied request timeout, and Gemini discarded any proxy URL ending in a legacy shim suffix, sending its credential to the SDK default authority. Registry SDK clients now receive one common positive representable deadline and disabled redirect policy. Invalid configured OpenAI/OpenRouter headers return a sanitized error instead of being silently skipped. Gemini v1beta/shim normalization preserves the selected host and proxy prefix; a stable-v1 URL cannot silently become this SDK's hardcoded v1beta API and is rejected for explicit configuration repair. The existing optional-auth HTTP adapter translates the SDK-generated Gemini query key to a sensitive x-goog-api-key header before sending, preserving other query parameters such as alt=sse and rejecting missing/duplicate/invalid credential transport. Required acceptance uses the actual SDK completion path through local HTTP, header/URL inspection, redirect rejection, one-second timeout, absent-auth compatibility and malformed-header rejection; helper source/tests alone are insufficient. Full DB-owned request/retry/circuit/session controls and common egress/client ownership remain open.
+
+
+Registry transport r1 compilation exposed SDK generic constraints: replacing the builder's HTTP type removes inference for its original transport, and Rig 0.30's Gemini Capabilities<H> names its default model type. The successor explicitly names reqwest for all original builders and uses Gemini's existing public generic CompletionModel::new with the actual adapter. No dependency patch, provider substitution or warning suppression is used. R2 passed the real SDK proxy/header/redirect/deadline case (3.664 seconds), absent-auth compatibility, endpoint normalization, ordinary global dispatch, live role-cache settings and strict library lint. Its source/artifacts/receipt remain preserved; that acceptance precedes the separately traced NEAR failover fence.
+
+The r3 source now prevents a NEAR fallback configuration from changing a failed request on another selected protocol. Its real SDK regression constructs the existing complete static chain with a deliberately populated, different NEAR endpoint/key/model and verifies that a rejected Gemini request remains on Gemini with no extra provider effect. This is a provider-chain protocol fence, not a Rust agent-loop fallback or a Recipe retry implementation. The r3 batch must also pass the ordinary global and selected-role callers and lint before the successor is accepted. Remaining ENV-based chain/session configuration and adjustable request/retry/circuit controls are still required by the provider/settings cutover.
+
+
+Registry transport r4 accepted frozen `target/validation/registry-transport-20261012-r4`; receipt `/private/tmp/brassclaw-registry-transport-accepted.json`. It reuses r3's unchanged, actually regenerated SDK/ordinary-global/role caller results (3.738, 9.599 and 13.602 seconds for the main cases) and reruns strict library/consumer lint with explicitly invalidated source timestamps (27.653 seconds, with actual Checking output). The frozen-copy runner now stamps changed compilation inputs when applying a snapshot: a preserved source mtime could predate an older build that finished while the shared checkout was edited. R3's prior full receipt is marked partial with that limitation; the original receipt, logs, sources and artifacts remain retained. Content hashes/inventory verification alone cannot establish that Cargo regenerated a stale fingerprint. Future batches must retain the timestamp invalidation and explicit evidence-reuse guards; changed/removed compiler inputs need relevant revalidation. This repairs current registry transport lint freshness, not a blanket recertification of every historical cached command or the unfinished plan.
+
+
+### 2026-10-12 — Explicit model-request policy and four Inference controls (candidate)
+
+Provider definitions now carry request_policy with per-HTTP-request timeout, additional retries, optional positive circuit threshold and recovery seconds. Omitted edits preserve the existing policy even across adapter changes; explicit null, invalid bounds and unrepresentable durations are rejected. Historical definitions lacking the object retain compatible common defaults, and actual edits persist it in the immutable provider-definition revision. API snapshots supply those defaults; Inference dialogs expose four controls with EN/DE help. Zero retries sends once; the UI's zero circuit threshold encodes an explicit disabled/null threshold. Discovery and VM compute time remain separate controls.
+
+The productive DB-selected chain uses explicit request/cache policy without parsing generic request/retry/circuit/cheap/fallback environment overrides. Its unselected NEAR placeholder contains no environment key, model or fallback. An explicitly selected NEAR definition now requires its configured endpoint rather than inferring a different service from key presence or environment. Remaining dedicated auth/session fields and their controlled upgrade are still open; this is not the full §10 cutover. Legacy generic/file/ENV entry points remain distinct until coordinated removal.
+
+SDK completion errors now retain typed HTTP classification: credential failures do not retry; rate limits and 5xx are transient; other HTTP rejections are nonretryable and carry no upstream body/URL. Context-overflow classification remains intact. Host model adapters map permanent rejections to invalid request/configuration instead of transient unavailable. Required acceptance: real PG/live primary and Sempai clients, one-second vs retained deadlines, exact additional attempts for a 503, no retry on 401, pre-network circuit rejection, independent role state, configured recovery, invalid-write rollback, policy omission/null contracts, explicit malformed environment isolation, HTTP/JS extraction and strict affected lint. Source/JS helper checks alone do not certify those runtime claims.
+
+
+Request-policy r1 passed against `target/validation/request-policy-20261012-r1`; receipt `/private/tmp/brassclaw-request-policy-accepted.json`. The real PG/live primary/Sempai deadline/retry/circuit/401/recovery/revision case took 12.485 seconds. Explicit invalid-environment isolation, real SDK transport, ordinary global protocol identity (8.055 seconds), live cache policies, Sempai startup, HTTP DTOs, 28 JS cases/syntax and fresh strict affected lint (28.150 seconds) passed. The four controls are accepted through these local callers; actual browser/rendering, platform/release/remote acceptance and complete auth/model/desired-effective cutover remain open.
+
+The extended retry-count range exposed an older unsigned-to-signed backoff overflow and an unchecked host-clock sleep deadline. The successor uses bounded u128 intermediate arithmetic without signed wrap and checks host-clock representability before sleeping. It never silently changes the selected attempt count or supplies a second model/provider. Pure boundary acceptance must include the full u32 attempt range, and the existing actual 503/401/circuit caller must still pass. Retry timing/jitter/Retry-After controls remain an explicitly recorded next policy requirement; this arithmetic repair does not certify their configurability.
+
+
+Request-policy r2 passed against `target/validation/request-policy-20261012-r2`; the updated receipt preserves r1's unchanged caller evidence and records full-u32 backoff boundary coverage, the real selected-client policy case (12.304 seconds), explicit environment isolation and fresh strict lint (28.939 seconds). Unsigned jitter cannot wrap into a negative/signed sleep, and an unrepresentable deadline returns an error before a timer is created. Pending retry timing controls must carry their ceilings into every actual wait; parsing a Retry-After header and silently clipping it to an older constant would not establish live configurable uptake.
+
+
+### 2026-10-12 — Model-discovery capability metadata (candidate)
+
+Settings previously reported model listing through stale setup-label flags or absent labels, including false for now-implemented Gemini/custom adapters. The transport owner now exposes its actual implemented protocol capability, and the settings view uses that fact. This describes technical support, not credential validity or permission; individual endpoint/auth failures remain visible. The existing real PG/HTTP discovery regression additionally verifies that an active custom definition without a setup label advertises its implemented listing capability. Session/OAuth and signed discovery remain false until their actual authentication/transport path is implemented and qualified.
+
+
+Discovery-view r1 passed against `target/validation/discovery-view-20261012-r1`; receipt `/private/tmp/brassclaw-discovery-view-accepted.json`. The real PG/HTTP discovery/capture/policy/role-race regression (6.743 seconds) verified the technical capability view, and fresh affected lint passed (28.953 seconds). Endpoint/credential validity remains separate; dedicated session/OAuth/signed discovery is still unimplemented.
+
+### 2026-10-12 — Configurable retry timing and retained HTTP hints (candidate)
+
+request_policy now includes a compatible defaulted retry_timing object: initial delay milliseconds, maximum backoff milliseconds, jitter percent and maximum provider-requested wait seconds. Its four Inference controls have EN/DE help. Validation requires a representable clock delay, positive base/ceilings, maximum covering the base and 0–100 percent jitter. Every actual wait uses the selected policy. Unbounded exponents use unsigned arithmetic before the configured ceiling; no signed casts or fixed 100-millisecond floor remain. Existing retry-count/config constructor interfaces retain a safe common default; DB-selected chains carry their persisted policy through primary/cheap/fallback wrappers.
+
+Protocol Retry-After parsing preserves the original valid hint without an independent one-hour clamp or missing-header 60-second sleep. Selected retry consumers apply the configured wait ceiling, and missing/invalid hints use their configured backoff. The existing SDK HTTP adapter retains typed status/hint information; its rejection Display/Debug carries no upstream body, URI or key. Only context rejection needs its private error body. SDK success-body and context-error-body capacity still need the coordinated response-resource control; timing acceptance cannot certify those byte limits. Registry adapters share this existing transport rather than losing headers through the SDK's status-only error representation. Dedicated Gemini text-hint arithmetic now rejects overflow instead of wrapping.
+
+Required acceptance adds full-attempt boundary/hint preservation, actual 503 Retry-After:2 through a configured one-second ceiling, existing selected-role timeout/retry/circuit/auth/capture behavior, SDK endpoint/auth compatibility, HTTP/UI extraction, omitted nested-policy compatibility, and strict affected lint. The current candidate is not accepted yet and does not finish dedicated auth, model specs, full role desired/effective publication or all remaining resource caps.
+
+
+Retry-timing r2 accepted `target/validation/retry-timing-20261012-r2`; receipt `/private/tmp/brassclaw-retry-timing-accepted.json`. R1's exact source passed the actual selected primary/Sempai policy case including Retry-After:2 clipped at the operator's one-second ceiling (12.222 seconds), complete SDK transport, full-u32 timing boundaries, existing retry/Gemini hint contracts, normal global execution (7.596 seconds), live cache policies, Sempai startup, HTTP extraction, 29 JS cases and locale/form syntax. Its final lint rejected an import left unused by the parser change. R2 removes that import and passes fresh strict affected lint (27.087 seconds), with exact source/inventory guards reusing the unchanged passing caller results. Eight request/timing controls now have local native acceptance and EN/DE help; complete response-byte bounds, dedicated auth/model/role publication, browser/platform/release and remote acceptance remain open.
+
+
+### Candidate: explicit model-response capacity (2026-10-12)
+
+Provider request policy gains optional `max_response_bytes` (null = unrestricted;
+positive finite values must fit host allocation indices). Existing definitions
+retain unrestricted behavior, rather than receiving an undocumented new cap.
+Inference settings expose bytes and explain decoded bodies, streams, errors,
+retained clients and unsupported dedicated adapters in English and German.
+Selected chains carry the immutable value into all six registry SDK HTTP clients,
+including multipart/streaming transports, and direct NEAR AI, Copilot and
+Anthropic OAuth model readers. Declared and received decoded lengths are checked;
+no partial buffered answer or overflowing stream chunk is returned. A typed
+capacity failure is nonretryable, does not trip a transient circuit and maps to
+the model gateway's resource error. Exact-boundary responses remain valid.
+
+Dedicated Bedrock, Gemini OAuth and Codex transports remain implementation work.
+Finite limits for those adapters are rejected before publication/construction;
+null is supported. The legacy Codex ChatGPT compatibility path similarly rejects
+a finite value rather than claiming uptake. This is a candidate until frozen
+native HTTP/PostgreSQL/role/ordinary-global and affected consumer validation pass;
+it does not certify full-provider auth, metadata, browser or release acceptance.
+
+
+### Accepted registry response-capacity slice; dedicated successor (2026-10-12)
+
+Frozen `response-capacity-20261012-r1` passed actual bounded HTTP readers,
+exact-boundary/declared/chunked/context-error/streaming cases, policy validation,
+ordinary global execution, primary/Sempai live PostgreSQL updates and retained
+clients, cache/Sempai startup/HTTP/UI consumers, and strict affected-package lint.
+Evidence is `/private/tmp/brassclaw-response-capacity-accepted.json`, retained in
+`target/validation/response-capacity-artifacts-20261012-r1`. This certifies that
+snapshot and the recorded OpenAI-compatible native path, not concurrent source
+extensions or full dedicated authentication/remote acceptance.
+
+The successor carries the optional ceiling into dedicated Codex and Gemini
+OAuth completion bodies. Gemini OAuth also uses the selected request timeout
+instead of a hidden 300-second model timeout. NEAR AI/Copilot/Codex model clients
+use the common no-redirect transport. Codex and Copilot classify status-only
+rejections without copying private bodies; Copilot 401 invalidates its credential
+cache for the next explicit request and remains a permanent authentication error.
+Anthropic OAuth keeps its credential-renewal attempt but drops the first 401 body
+and reports the actual renewed-request failure; normal/refreshed malformed JSON
+reports safe coordinates rather than private response text. Finite Bedrock and
+legacy Codex ChatGPT limits still reject before construction; their transport
+support remains open. The actual Codex SSE request receives a local HTTP capacity
+regression. Dedicated OAuth service setup and complete role/auth/model selection
+remain separate acceptance requirements.
+
+
+The first dedicated successor (`response-capacity-20261012-r2`) stopped at the
+new Codex regression's unqualified `json!` macro. Its complete compiler output
+and frozen inputs are retained. Qualifying the four test macro calls with
+`serde_json::json!` repairs that source error; no runtime behavior or warning
+suppression is used. A successor must rerun the unfinished behavioral checks.
+
+
+### Accepted dedicated response slice; bounded allocation successor
+
+`response-capacity-20261012-r3` passed the dedicated Codex HTTP/SSE capacity and
+safe 503 classification regression, the existing direct NEAR AI regressions,
+selected primary/Sempai native/ordinary-global/cache/startup paths, HTTP/UI
+consumers and strict lint. Its acceptance retains r2's failed compiler evidence.
+Gemini OAuth's selected timeout/body reader is wired, but a real authenticated
+Gemini service exchange remains unverified. Bedrock and legacy ChatGPT finite
+body limits remain explicitly unsupported; no cosmetic acknowledgement is made.
+
+The next candidate uses bounded geometric buffer growth instead of exact
+reallocation on every small chunk, and adds actual multipart response acceptance.
+NEAR AI diagnostics retain status, received length and JSON coordinates while
+removing prompt/answer/upstream-body exposure; remaining permanent HTTP failures
+are typed rejections rather than retryable raw-body messages. This candidate
+requires relevant bounded-reader/direct-provider and selected-role checks.
+
+The import inspection also found remaining unsafe legacy paths in `migration.rs`:
+`rename_migrated` can replace an existing backup; config/Sempai writes can partially
+commit or replace newer operator values; SQLite copying needs a consistent WAL
+snapshot; raw-master migration can overwrite the canonical key/change its DB
+ceremony and its wipe follows a replaceable pathname. The explicit importer must
+use validated snapshots, conflict-preserving atomic writes and synchronized
+no-clobber backups, retaining source artifacts unless deletion can be fenced.
+Repair the secret ceremony through its existing owner and never mutate an
+unverified replacement source. These remain release-blocking implementation work,
+not an approval gate or evidence that automatic migration is safe.
+
+
+The allocation/diagnostic successor r4 stopped before tests because the same
+legacy permanent-error block also appeared in `list_models_inner`; its replacement
+needed a local status code there. Both compiler diagnostics and that frozen source
+are retained. The successor binds the already captured response status explicitly,
+then repeats the unfinished checks. No failed batch is accepted or silenced.
+
+
+### Response capacity accepted; settings importer candidate (2026-10-12)
+
+Frozen `response-capacity-20261012-r5` passed the complete current bounded-reader
+slice: declared/chunked/context-error/streaming/multipart HTTP, exact boundary,
+actual dedicated Codex SSE, direct NEAR AI including private permanent rejection
+through the retry wrapper, live native primary/Sempai and ordinary global execution,
+HTTP/frontend consumers and strict affected-package lint. The no-replay native
+case took 13–14 seconds for its deliberate timeout/retry/circuit waits; this is
+not a production settings-write latency claim. Diagnostics from failed r2/r4
+remain preserved. Native tests certify local adapters and the selected paths;
+Gemini OAuth service credentials, Bedrock/legacy ChatGPT, browser/platform and
+release acceptance remain open. The optional ceiling defaults to null; no hidden
+fixed response cap was added. Bounded geometric reservation prevents per-chunk
+whole-body copying. See the scoped accepted receipt/artifacts, not earlier
+candidate summaries, for the certified source.
+
+Config/Sempai import now captures and parses one regular-file snapshot, validates
+all settings, checks retained database values in one transaction and preserves
+matching rows/timestamps. Differing settings fail explicitly. Real writes lock
+absent-row writers, create a synchronized content-addressed no-clobber backup,
+then commit the complete pending set; dry-run is read-only and creates no backup.
+Sources remain present and a changed source after commit is reported explicitly.
+The provider importer reuses that backup primitive. Atomic/failure/idempotency
+native acceptance is still required. SQLite snapshot/backup and raw-master
+ceremony/wipe paths are unchanged and remain the next importer repairs.
+
+### Settings import accepted; raw-master preservation candidate
+
+Frozen `settings-import-20261012-r1` passed both native settings/provider imports,
+including deliberate rollback, read-only dry-run, synchronized no-clobber backups,
+retained source, unchanged matching timestamps and refusal to overwrite newer
+values. The affected legacy integration target builds; strict composition/CLI
+lint passed with `migrate-from-libsql` explicitly enabled. Receipt/artifacts retain
+this exact feature/source scope. Full SQLite import and whole-upgrade acceptance
+are not established.
+
+Raw-master migration now uses the existing validated master-file reader and a
+shared no-clobber writer in `secrets_master.rs`, also called by explicit CLI rewrap.
+It validates before writing, restricts private permissions before publishing,
+synchronizes the key and preserves existing canonical material. One database
+transaction serializes absent ceremony rows; existing versions are preserved and
+wrapped ceremonies take precedence over stale raw sources. A rejected DB write
+leaves recoverable matching files. The source is retained because no supported
+portable conditional unlink exists in this owner. The old whole-file allocation,
+zero-fill and replaceable-path deletion were removed from this migration path.
+Native rollback/conflict/version/wrapping acceptance is still required; CLI's
+separate post-wrap cleanup and SQLite snapshot/backup remain to be repaired. The
+existing Windows ACL command path is preserved, not claimed as locally exercised.
+
+
+The raw-master r1 batch compiled the new cases but its copied runner still used
+the settings-import filter under a misleading master label. It then failed strict
+lint on one collapsible conditional. It is not master acceptance. The successor
+uses the intended full master and concurrent-publisher filters, records actual
+filters in its receipt and verifies they appear in test output; the conditional
+uses the required let-chain style without a lint allowance. Failed r1 inputs,
+outputs and artifacts remain preserved.
+
+### Raw-master acceptance; consistent SQLite import candidate
+
+Frozen `master-import-20261012-r2` passed the intended named master rollback,
+concurrent no-clobber publisher, retained version/wrapped priority, and affected
+settings/provider import cases; receipt entries record their actual filters.
+Strict composition/CLI lint passed. Source files remain private and retained.
+CLI post-wrap cleanup and Windows ACL runtime acceptance remain open.
+
+SQLite import now opens the original read-only, takes one private consistent
+logical snapshot with a bound `VACUUM INTO` destination, and imports every selected
+table from that snapshot into one PostgreSQL transaction. Read-only preflight
+converts eligible rows without executing insert statements; actual database
+constraints/triggers still require the real write path. Successful writes retain
+a synchronized content-addressed backup without replacing the original database,
+its WAL or older backups. Only absent known optional tables are skipped; existing
+malformed tables/columns and invalid optional values produce explicit errors.
+The previous column `.ok()` and invalid-value-to-default conversions were removed,
+and destination-read failure never becomes a default owner. Unknown trigger
+states never become scheduled work; recognized terminal states remain terminal.
+
+SQLite documents `VACUUM INTO` as a consistent transactional logical backup, and
+warns that unfinished output is not a completed backup. This owner synchronizes
+completed output before publishing it and committing PostgreSQL:
+[SQLite VACUUM INTO contract](https://www.sqlite.org/lang_vacuum.html).
+Native real SQLite WAL/standalone backup/PostgreSQL rejection/type-corruption
+acceptance remains required. Full table mapping, cross-source atomic upgrade,
+conflicting historical row classification and trigger effect reconciliation are
+not established by this candidate.
+
+
+The first SQLite native write exposed older broken mappings: the importer and
+its historical fixture assumed key/value safety, section/key/value token settings
+and path-based memory documents, while the real stores use categorized rules,
+provider-owned JSON token settings and typed titled documents. r1's failure and
+snapshot are retained. The successor reads the authoritative legacy stores/DDL
+and maps those actual fields to V014/V015/V016, including strict booleans,
+provider token JSON, tags, metadata and nullable source-thread values. The fixture
+now creates that actual source shape; it does not add fake target columns to
+make the importer pass. Unknown legacy settings keys remain explicit errors
+until their supported disposition is implemented. Filesystem, capability and
+other historical mappings still require the same authoritative reconciliation.
+
+Authoritative mapping repair extends to V018 filesystem entries/index declarations/
+events, V015 legacy capability metadata and epoch-millisecond hook timestamps.
+Data fields preserve opaque bytes, versions, owners, tags and nullable values;
+text-to-date/numeric casts use PostgreSQL's actual parameter types. Event sequence
+restart uses transactional DDL under the event-table lock, since `setval` is not
+rolled back. Recognized terminal triggers stay terminal. Legacy runnable triggers
+are preserved paused with a structured count printed by the explicit CLI; their
+missing schedule/effect correspondence must be reconciled before activation,
+preventing an upgrade from inventing a new execution. This is not a new Component
+approval gate. Full-original snapshots retain the old configuration for that
+reconciliation. Native coverage now exercises these actual tables and a future
+event append in addition to WAL, rollback and malformed nullable data.
+
+The historical migration integration test is now a real native PostgreSQL/SQLite
+case rather than an environment-driven successful skip. Its source fixture uses
+the authoritative categorized safety, provider-token JSON, typed memory-document
+and filesystem/index/event layouts; assertions check content, tags, owners,
+versions, epoch time, numeric hook values and paused trigger state. The retained
+source/backup and dry-run checks remain. The next frozen batch must execute this
+integration target, not merely build it. Retired global settings keys and unknown
+legacy layouts fail explicitly; their disposition and historical conflict
+reconciliation remain open. No target-only dummy columns are created.
+
+### Native SQLite mapping acceptance; retained-row conflict candidate
+
+Frozen `sqlite-import-20261012-r3` passed WAL/standalone backup and all-table
+rollback/type-corruption cases, the actual all-source native integration and
+read-only preflight, affected master/settings/provider cases, and strict
+composition/CLI lint. Source files, original WAL and previous backups survive.
+The integration no longer returns success when PostgreSQL is unavailable.
+
+The next candidate makes SQLite row conflicts explicit. Each static mapped
+insert retains an existing row only when PostgreSQL confirms every imported
+field is identical, with null-safe comparisons and the same actual parameter
+casts. A differing retained payload aborts the whole transaction instead of
+silently disappearing behind `ON CONFLICT DO NOTHING`. Matching imports do not
+update timestamps or old state. SQL identifiers/expressions are owned static
+strings; runtime values remain parameters. Native acceptance will cover a
+changed legacy token payload and preservation of both retained and earlier
+pending rows. Cross-source atomicity, retired global settings and CLI cleanup
+remain separate open requirements.
+
+
+### Retained-row conflicts accepted; post-wrap key cleanup candidate
+
+Frozen `sqlite-import-20261012-r4` passed explicit differing-row rejection with
+whole-table rollback/preservation, matching retained rows, full native public
+migration integration, read-only preflight and strict composition/CLI lint.
+Historical source bytes remain available. No upsert silently replaces newer rows.
+
+CLI post-wrap cleanup now moves the current public pathname into a private
+capture before rechecking the exact superseded key. A differing replacement is
+restored without clobbering any newly created pathname; if restoration is not
+possible it remains in a persistent private recovery directory. All failure
+paths preserve captured material. Only verified material in that private capture
+is zeroed and removed, and a concurrently recreated canonical pathname is never
+unlinked. Database ceremony locking/rechecking still precedes cleanup. Physical
+erasure on SSDs/snapshots is not promised. The replacement-key regression and
+actual CLI rewrap consumers require validation; private-directory ownership is
+not protection against a malicious installation owner with unrestricted OS access.
+
+Frozen `key-cleanup-20261012-r1` passed the named CLI replacement-key capture/
+restore test and matching-key removal, with actual CLI test-target compilation
+and strict composition/CLI lint. The receipt does not certify complete rewrap,
+restore failure/new-path collision, or Windows filesystem/ACL runtime behavior.
+Those are required follow-up checks before release. The implementation remains
+within explicit local operator maintenance; it does not change Recipe sequencing,
+component approval or task/Tool authority.
+
+### 2026-10-12 — CLI ceremony and network boundary acceptance
+
+Frozen `key-ceremony-20261012-r1` executed the actual CLI ceremony against
+PostgreSQL, including failed encrypted-data queries, deliberate late DB
+rejection, passphrase wrapping, wrong passphrase, conflicting raw files,
+version preservation and symlink rejection. Two private-capture regressions
+cover mismatched material, failed no-clobber restoration and recreation of the
+public pathname. All post-capture errors identify the recovery directory.
+The actual binary acceptance took 10.598 seconds; affected strict lint passed.
+This is macOS evidence, not Windows ACL/filesystem acceptance.
+
+Frozen `network-boundary-20261012-r1` executed real connection and incomplete
+response failures with credential-bearing URLs. Safe error categories preserve
+failure classification without copying backend URLs, query credentials or
+response data. Real subprocess acceptance with all ambient HTTP/HTTPS/ALL proxy
+variables set proved dispatch to the vetted resolved address; the transport
+explicitly disables ambient proxies. Network unit/contract tests and strict
+all-target lint passed. Adjustable network capacities, cache eviction,
+cross-platform runtime and full product acceptance remain separate work.
+
+Neither milestone completes the v3 plan or authorizes early release claims.
+
+### 2026-10-12 — Dedicated-provider environment isolation
+
+Frozen `dedicated-env-20261012-r2` passed actual resolver regressions with
+`registry-provider-factory`, all Gemini request-construction regressions and
+a subprocess with poisoned generation environment. Database-selected
+configuration no longer reads Bedrock region/profile/cross-region, Gemini
+credential-path or Codex endpoint/client/session/refresh overrides. A selected
+Codex endpoint reaches its dedicated config. Database-selected Gemini requests
+do not read generation, cache, safety, custom-header or alternate-key/API-version
+environment options. The retained legacy resolver explicitly enables its own
+compatibility behavior; this is not completion of the removal required by §10.
+Strict LLM/composition consumer lint passed (40.280 seconds).
+
+The r1 command omitted the feature containing resolver tests. Its zero-test
+guard rejected acceptance; the failed logs remain beside retained artifacts.
+r2 enabled the owning feature and ran the intended tests. This evidence covers
+resolution and request construction, not authenticated OAuth HTTP execution,
+complete database-owned dedicated setup metadata, credential-session migration,
+whole-task selection retention, browser acceptance or the final product cutover.
+
+`dedicated-env-20261012-r3` extends the accepted environment isolation with
+removal of the hidden Gemini 8,192-token thinking budget and forced HIGH level.
+Actual request-construction regressions verify model-owned defaults for Gemini
+2.5/3 and preserve an explicit 20,000-token output limit. Gemini/resolver
+regressions and affected strict lint passed. Google documents model-managed
+thinking defaults at https://ai.google.dev/gemini-api/docs/generate-content/thinking.
+This is request-construction evidence, not authenticated OAuth execution.
+
+Frozen `database-architecture-20261012-r1` passed the updated provider-selection
+architecture guard and strict architecture lint. The guard now requires coherent
+PostgreSQL role selection, explicit credentials and selected technical policies
+in composition, and rejects file/environment resolver calls there. It no longer
+requires removed public file-catalogue composition APIs. This source-boundary
+check does not certify complete provider-library/file removal or the full
+architecture matrix.
+
+### 2026-10-12 — Network limits retain supplied values
+
+Frozen `network-limits-20261012-r2` passed actual sockets with a response larger
+than the former 10 MiB transport ceiling and a delayed response requiring a
+timeout above the constructor default. Explicit positive representable values
+are retained exactly; zero/nonrepresentable values fail before URL parsing or
+dispatch. Buffer growth uses fallible reservation and returns a sanitized
+allocation error. Configured overflow still returns its explicitly classified
+bounded partial response, without a successful truncated result. Existing
+privacy/proxy, policy, address and response-limit regressions passed, together
+with network/host-runtime all-target strict lint.
+
+The r1 behavioral checks passed but strict lint rejected an unchecked read count
+in the new delayed test server. r2 checks the amount read and passes without
+warning suppression. Failure logs remain retained. Constructor defaults, HTTP
+Tool schema ceilings and the 128-entry client cache still need actual global
+settings controls/acknowledgement; this milestone does not claim that work is
+complete, nor cross-platform or full product acceptance.
+
+### 2026-10-12 — Provider library consumes captured database data only
+
+Frozen `provider-library-cutover-20261012-r2` removed public file/environment
+provider resolvers, compiled-in/user catalogue loaders, their fail-open
+load fallback and the unused model-env fallback helper. Composition's
+compatibility branch now uses the same explicit captured definition, broker
+credential and technical-policy builder as the database caller. Gemini no
+longer retains an environment-override branch for generation, safety, headers,
+API-version or alternate credentials. Its request options remain explicit.
+
+The repository provider JSON, Docker copies, CI path references and E2E
+rebuild input were removed. LLM unit catalogue fixtures derive the exact V140
+installation payload; they do not establish another runtime catalogue. Stored
+provider-edit tests use explicit metadata fixtures instead of a file loader.
+Old CLI file/env smoke expectations were replaced with an actual PostgreSQL
+CLI inventory/status regression: malformed/stale provider files and contradictory
+TOML/LLM environment are retained, while list/alias/status return database-only
+definitions and the database model (4.430 seconds). Required-key rejection
+remains tested by explicit credential resolution.
+
+34 registry, 7 resolver and 31 Gemini regressions passed. Composition catalogue
+and immutable stored-edit tests, real PostgreSQL initialization preserving
+operator inventory, and ordinary matched/unmatched global-host regression
+passed; the latter retained one global root (18.631 seconds). Affected strict
+LLM/composition/CLI lint passed (67.151 seconds). r1 failed compilation after
+a mechanical edit altered a boolean test matrix; r2 restores that matrix.
+The failed source/logs remain retained, and no failed run is accepted.
+Mandatory disk cleanup removed only this chat's Cargo target between preserved
+CLI and composition artifacts; target2 remains independent.
+
+This does not finish §10: dedicated setup/session and complete model properties,
+remaining authentication consumers, migration-product separation, browser and
+cross-platform acceptance still require work. The explicit legacy importer
+remains an upgrade-only path with retained source/backup and conflict checks.
+The full v3 plan and release are not complete.
+
+Operator documentation now describes database Inference controls. Mintlify
+4.2.1012 requires LTS Node: initial Node25 check rejected startup, and bundled
+Node24.19.0 runs the real validator. It found 84 existing syntax/import warnings
+and link checking stops on malformed architecture Markdown. Nineteen literal
+host examples now use inline-code formatting; remaining syntax/source-publication
+errors and full documentation validation remain open. Installation warned on
+Sucrase3.34→glob7.1.6→inflight1.0.6 and optional keytar7.9→prebuild-install7.1.3.
+Those warnings are retained. Sucrase3.35.1 removes the obsolete glob dependency,
+but a compatible tool dependency update and keychain-addon replacement still
+need validation; do not claim latest Mintlify's dependencies are repaired.
+
+### 2026-10-12 — Live host HTTP client retention
+
+Frozen `http-cache-policy-20261012-r2` passed the complete new resource-owner
+path. `max_http_client_cache_entries` is a persisted execution control (128
+default; zero disables retention) with EN/DE help. V144 backfills missing values
+with a new revision and retains explicit zero/larger values. New capacity is
+acknowledged by the existing Monty/Rust settings publication before the full
+effective snapshot is exposed. Status derives the actual cache capacity and
+revision; persisted values alone cannot report uptake.
+
+The hardened transport and metadata-only cache control are attached together
+through HostRuntimeServices. Replacing either HTTP egress port removes that
+attachment. LRU eviction uses randomized keys containing host, port, vetted
+addresses and timeout. Capacity is not an up-front allocation. Actual socket
+acceptance proves evicted clients remain usable by active handles. A real SDK
+builder queued behind an occupied blocking worker proves an older accepted
+build cannot repopulate a new positive-capacity generation. Real host-mediated
+HTTP also verifies retention/zero-disable/re-enable through the owning facade.
+
+Native PostgreSQL acceptance preserves missing/default, disabled and larger
+values and rejects negative/fractional/null/overflow rows. Deliberate DB
+rejection leaves persisted settings and the running cache unchanged. Live
+edits to 2,0,5 clients have matching effective revisions and retain the same
+global VM. The ordinary matched/unmatched global regression passed (17.210s),
+and strict affected lint passed (42.527s); EN/DE and settings JS syntax passed.
+
+The r1 frozen batch captured two V144 migrations during concurrent source work
+and failed real initialization with SQLSTATE23505. The current prefix migration
+is V145; r2 checks all142 migration numbers are unique before compilation and
+passes. Failed logs/source remain retained. No warning is suppressed and no
+failed batch is accepted.
+
+This is macOS native/facade/settings-owner evidence, not rendered-browser,
+Windows/Linux runtime or release acceptance. Network defaults and HTTP Tool
+schema bounds, global worker/pending-call counts, remaining runtime caps,
+durable recovery and full prefix/model/validator work remain open. Documentation
+syntax repairs additionally quote literal brace examples and escape pipe
+alternatives in Markdown tables; full Mintlify validation is still pending.
+
+
+### Host HTTP omitted-bound defaults — native acceptance (2026-10-13)
+
+`default_http_request_timeout_millis` and `default_http_response_body_bytes`
+are persisted instance execution settings with English/German WebUI controls
+and short explanations. V146 backfills only missing fields and advances one
+revision; it preserves explicit values, including partially populated rows.
+Invalid zero/noninteger/null/overflow values fail the SQL checks; native clock
+and allocation representability are checked before a live edit and before
+startup catalogue preparation. These defaults are independent of model-provider
+limits and do not grant network or Tool permission.
+
+The actual hardened transport publishes capacity and both defaults atomically
+under its revision mutex, after shared runtime acknowledgement. Its effective
+view comes from actual transport state. Requests capture both bounds before
+asynchronous work; accepted requests keep those bounds after edits. Explicit
+per-request bounds remain exact and independent. Native sockets verify response
+limit failure, real timeout failure and an older request completing with its
+retained bounds even after waiting longer than the successor timeout.
+
+Frozen `http-request-defaults-20261013-r4` passed network contracts, actual host
+egress, PostgreSQL preservation/rejection and the ordinary matched/unmatched
+global regression (27.261 s), including invalid live edits and unchanged VM
+identity. Strict affected library lint passed (24.269 s), affected test-target lint
+passed (67.293 s), and EN/DE/settings JS syntax passed. Receipt: `/private/tmp/brassclaw-http-request-defaults-accepted.json`.
+This is local native acceptance; rendered browser and cross-platform deployment
+remain open. HTTP Tool handlers still provide explicit defaults and impose their
+own schemas/resources, so this slice does not certify all HTTP Tool limits.
+
+The intermediate r2 test assumed a universally invalid enormous clock duration;
+clock ranges actually differ. It failed without accepting the batch. The corrected
+test derives invalidity from the host clock. The r3 runner rejected an obsolete
+compilation-copy baseline before compilation; r4 verified the actual r2 baseline
+and completed. Failed logs and frozen sources are retained. No warnings were
+suppressed and no execution fallback was introduced.
+
+Documentation validation ran with supported Node 24 and actual preview-cache
+permissions. It still reports parser failures in historical documents and video
+source imports treated as Mintlify snippets. Literal comparison/placeholder
+examples were quoted narrowly. Full documentation validation and the correct
+video publication boundary remain unfinished; no warning exclusions were added.
+
+
+### HTTP Tool timeout consumes the live transport default (2026-10-13)
+
+`builtin.http` and `builtin.http.save` no longer substitute a fixed 10-second
+timeout or silently clamp explicit values to 30 seconds. Omission remains absent
+through the host port and is resolved by the actual transport's acknowledged
+default. Explicit positive milliseconds must fit the current u32 request type
+and are preserved exactly. Zero, fractions, negative/overflow numbers, null and
+null strings fail before dispatch. Optional numeric null normalization no longer
+turns those invalid values into missing inputs. The native schema removes its
+fixed default/max and the HTTP resource manifest removes its separate static
+wall-time ceiling/estimate; configured transport timeout, task compute, live
+network policy and independent resources remain enforced.
+
+Packaged Tool/ToolSkill metadata describes the same timeout contract. Existing
+stored rows remain untouched by insert-only seeding, so this is not a certificate
+of immutable successor activation on an upgraded instance. Body/inline/output/
+header/request bounds remain separate outstanding work. No new workflow Tool,
+Rust-loop fallback, permission grant or metadata execution path was added.
+
+Frozen `http-tool-timeout-20261013-r3` passed the actual registered Tool through
+native sockets (2.015 s): omitted timeout fails under a 300 ms effective default,
+an explicit 120,000 ms value permits a delayed answer, and a 2-second successor
+is used by the next omitted request. Typed boundary tests additionally verify
+the exact forwarded override and absence plus rejection before egress. All44
+HTTP contracts passed; ordinary matched/unmatched global execution retained
+one VM (19.409 s). Strict affected test-target lint passed (60.686 s) and existing
+settings/i18n JS syntax passed. Receipt:
+`/private/tmp/brassclaw-http-tool-timeout-accepted.json`.
+
+The initial validation runner exited on an indentation error before Cargo and
+was corrected after syntax verification. The first compiled snapshot exposed
+a concurrent component-deployment test using a nonexistent WebUI bundle builder;
+the current shared source already contained the correct product facade builder,
+which the successor snapshot captured without adding a compatibility shim.
+The second run exposed a native fixture's accepted nonblocking socket being read
+as blocking; r3 explicitly sets blocking mode with a bounded read timeout. All
+failed scripts, source snapshots and logs remain retained. This is local native
+acceptance, not full component/prefix/model, platform/release or remote acceptance.
+
+
+HTTP Tool facade follow-up: frozen `http-tool-boundary-20261013-r1` passed the
+existing no-lower-substrate-handle and single-runtime-network-boundary guards,
+plus strict architecture lint. The inline hardened-transport constructor reuses
+the existing staged policy/secret pipeline and actual resource controller. It
+adds no dispatch, policy or credential access to that controller. Receipt:
+`/private/tmp/brassclaw-http-tool-boundary-accepted.json`.
+
+
+### Complete HTTP Tool data and live response defaults (2026-10-13)
+
+The HTTP primitive forwards an omitted response bound to the actual acknowledged
+transport default. Explicit positive allocation-representable bounds are exact.
+Both inline and saved responses use the existing strict, sanitized host port;
+network overflow is a classified failure, not converted into a partial success.
+The formatter preserves every sanitized header and complete text or base64 data;
+it does not impose another model-visible byte budget. Redaction can expand data
+and JSON/base64 encoding can use more bytes than the fetched body. The raw
+network byte bound and model/execution representation limits remain independent.
+
+Removed the HTTP Tool's fixed inline48KiB/save10MiB defaults and 256KiB/10MiB
+response ceilings, 15MiB output ceiling, 256KiB upload cap, fixed request/response
+header count/name/value caps, formatting overhead budgets and shared1MiB input
+fallback. The generic first-party input/output limits for OTHER Tools remain
+unchanged. JSON accounting now uses a bounded counting writer, including the
+runtime adapter, instead of allocating a second full serialized copy. It retains
+exact accounting and the existing error classifications/bounds for other Tools.
+Protocol validation, current kernel/network policy, credential blocking/redaction,
+scoped filesystem authority and task/frame limits remain enforced.
+
+Save results must identify the exact requested scoped path; metadata cannot
+silently substitute another destination. Bundled metadata agrees with full data
+and strict overflow. Bundled authentication guidance no longer suggests raw
+credentials in headers or obtaining them from memory/session data; a qualified
+kernel-staged injection binding is required before that usage can activate.
+PATCH guidance no longer asserts inherent idempotence or permission to retry an
+unknown effect. These metadata corrections do not establish full library/usage
+qualification or immutable seed-successor activation; those gates remain open.
+
+Frozen `http-complete-response-20261013-r4` passed actual registered HTTP/native
+sockets and scoped REAL FILE writes (9.707 s): a4-byte live default rejects5 bytes,
+a12MiB successor admits full9MiB escaped text with over32/long response headers,
+tiny binary data survives base64 encoding, a2MiB upload with over64 headers and
+long public names/values arrives intact, and an11MiB binary response is saved
+through the actual narrowed write grant. All134 built-in Tool contracts passed
+(14.933 s), including credential/network/input checks, exact large-output usage,
+redaction expansion and other Tools' unchanged limits. The actual filesystem
+worker panic is classified without the former unreachable-code suppression.
+Ordinary matched/unmatched global execution retained one VM (20.568 s). Strict
+affected test-target lint passed (53.751 s); settings/i18n JS syntax passed.
+Receipt: `/private/tmp/brassclaw-http-complete-response-accepted.json`.
+
+Failures remain retained. The first two native runs rejected the SAVE operation
+because the test requested /workspace but its real mounted filesystem exposed
+/host; the production authority check was correct. The initial diagnosis calling
+it an upload rejection was wrong; /host fixed the fixture without broadening
+permissions. The next full matrix found two obsolete assertions: all tools had
+static output estimates and a bound above256KiB was invalid. New assertions
+require unknown HTTP estimates/no static ceiling, preserve other Tool estimates,
+and reject nonrepresentable numbers instead of newly valid explicit bounds.
+No test was deleted to hide a defect and no warnings were suppressed.
+
+Frozen `http-complete-boundary-20261013-r1` additionally passed the no-lower-handle
+and single-runtime-network-boundary guards plus strict architecture lint. The
+legacy partial port remains a compatibility interface; the HTTP Tools no longer
+select it. This is local native primitive/resource acceptance, not the full
+catalogue/model/durable-recovery/platform/release/test-machine completion gate.
+
+
+### Immutable authoring: lineage is independent of allocation (2026-10-13)
+
+The prior review-submission contract incorrectly required candidate version to
+be exactly base+1 and used that base as the allocation CAS. An intervening
+unactivated package/author draft could therefore block editing a retained base
+or force a misleading rebase. New format2 subjects retain an explicit observed
+allocation counter, while the exact UUID/class/version/checksum base remains
+review lineage. The next allocated version is counter+1; the base may precede
+that counter. New identities still require zero/no base. Existing format1 bytes,
+checksums and adjacent-version semantics remain readable. V148 changes only
+the relevant constraints, preserving immutable receipts and foreign keys.
+
+The operator facade adds a read-only allocation metadata route, never a latest
+selection, approval or Tool grant. The WebUI reads/displays this counter with
+English/German help, invalidates it when candidate identity/text changes, rejects
+browser-unsafe integers and preserves the exact counter with an uncertain POST.
+A matching retry returns its original receipt before checking newer counters.
+Changed request fields under that ID conflict. Staging, graph validation, head
+advance and subject retention remain one transaction; failed writes roll back
+all of them. Activation still independently verifies the active review base.
+
+Frozen `review-lineage-20261013-r1` passed real PostgreSQL/operator HTTP regressions
+(13.690 s): base1 + package-draft2 produces unreviewed candidate3 based on1;
+a later package4 does not alter exact retry/readback; old1/2 bytes survive;
+stale/changed counters and malformed identities fail; operator auth is enforced;
+legacy format1 migration preserves exact text; deliberate DB rejection leaves
+no candidate3 or head advance; invalid format2 SQL fails constraints. No active
+catalogue pointer is changed. Ordinary global execution retains one VM (17.445 s).
+Strict affected test-target lint passed (67.536 s), four UI state tests and JS
+syntax passed. This fixes an authoring prerequisite; it does not activate an
+override, migrate mutable editors or implement complete seed-upgrade rules.
+Receipt: `/private/tmp/brassclaw-review-lineage-accepted.json`.
+
+The new route's locked descriptor table and crate dependency direction passed
+in `review-lineage-boundary-20261013-r2`, with strict WebUI/architecture lint
+(19.089 s). The first boundary batch caught a missing public route-constant
+export, which was corrected without a shim or test deletion. Failed evidence
+remains retained. Rendered browser and full component/seed/activation acceptance
+remain open; the full plan is not complete.
+
+
+### Accepted persistent Recipe routing choices (2026-10-13)
+
+The catalogue API/UI now carries a separate generation-bound ordinary-routing
+choice. Format-3 manifests retain stable disabled Recipe UUIDs; omitted choices
+preserve prior disables, including withdrawn/reintroduced Recipes. Matching
+eligibility and MCP discovery use the same generation filter; internal
+reply/history, component approvals and live Tool policy remain independent.
+The existing activation CAS, immutable receipt and exact uncertain-commit retry
+are reused. Whole-Recipe disables are operator management decisions, not edits
+of approved executable definitions. Historical manifests restore their exact
+format/identity. The UI displays current generation, complete selections and
+persistent disables, with EN/DE explanation and locked uncertain retries.
+
+Local native acceptance passed against frozen `routing-overrides-20261013-r3`:
+real publication rejection rolls back pointer/receipt; duplicate/unknown/stale
+rules fail without publication; captured tasks retain their original match;
+disabled custom and packaged routes use actual No-Match while internal
+reply/history continue; one global VM remains; withdrawal/reintroduction
+preserves disables; full ordinary startup reseeding does not re-enable; explicit
+re-enable restores matching. Native routing took 14.712 seconds, existing authored
+activation 7.067 seconds, reviewed deployment 8.956 seconds and ordinary global
+execution 17.552 seconds. Strict affected test-target lint and nine UI state tests
+pass. The native fixture uses a controlled model gateway; this is not external
+provider or rendered-browser acceptance.
+
+The r4 successor adds actual historical format-1/2 byte-identical restoration;
+its native case and strict affected lint pass. Hash comparison proves its only
+source change from accepted r3 is this expanded test, so existing authored,
+deployment and global results are reused. Receipts:
+`/private/tmp/brassclaw-routing-overrides-r3-accepted.json` and
+`/private/tmp/brassclaw-routing-overrides-r4-accepted.json`.
+
+Preserved failures: r1 incorrectly expected a receipt to remain historical after
+identical selections reactivated the same immutable generation. The assertion
+now checks during withdrawal; no production behavior was weakened. R2 then
+found a prefix/deployment fixture master key shorter than the existing 32-byte
+minimum. The fixture now supplies a valid retained test key; security checks are
+unchanged. Both failed snapshots/logs remain retained.
+
+Component-body override selection, changed seed-base qualification/upgrade,
+individual intent editing/pagination and full prefix publication coordination
+remain open. Before enabling reserved-role body overrides, reconcile complete
+Recipe revision review with the current per-usage approval checks and preserve
+internal role input/completion contracts. Do not remove reserved-ID guards alone
+or treat reviewed usages as approval of an arbitrary changed workflow. This
+milestone does not mark the wider plan complete.
+
+
+### Accepted complete catalogue eligibility and batched routing verification
+
+(2026-10-13)
+
+The neutral retained-eligibility builder no longer adds fixed instruction,
+reference, visit, row, character or aggregate-byte limits below the catalogue
+owner’s acknowledged preparation policy. It inspects shared immutable snapshots
+once, compares complete exact revisions across distinct graphs, borrows strings
+until sorting/deduplication, and allocates output with checked sizes and fallible
+reservation. Inconsistency and allocation failure remain errors; no partial set
+or No-Match is manufactured. Empty links/templates remain invalid.
+
+Routing metadata verification now reads all requested canonical anchors in one
+repeatable-read aggregate. Missing rows, reviewed-state exclusions and a corrupt
+nonpreferred input-class row remain errors. Ordered input-class arrays and the
+complete checksum document match the prior reader, including all packaged
+aliases. This eliminates the per-template database round trips by construction;
+there is no comparative latency benchmark or broad speed claim.
+
+The five real-PG/retained compiler tests pass, including 22,000 repeated selected
+instructions and a complete validated in-memory graph above 4096 references.
+Those graph fixtures are not component-approval or production-activation evidence.
+Native operator/global acceptance activates 9,000 templates and confirms exact
+replies and actual Recipe outcomes at indices 0, 4096, 8192 and 8999 with one VM.
+The native catalogue case took 52.255 seconds including startup, staging and
+seeding; it is not a per-turn measurement. Existing routing/restart (11.942s),
+authored activation (6.985s), reviewed deployment (8.742s), ordinary global
+execution (16.964s) and strict affected test-target lint (58.207s) pass.
+
+Receipt `/private/tmp/brassclaw-catalogue-eligibility-accepted.json` covers frozen
+`catalogue-eligibility-20261013-r2`. It reuses r1’s unchanged engine-test evidence:
+r2 changes only the native composition checksum fixture, which had incorrectly
+expected just the primary template. The reference now covers every alias; no
+production check was weakened. Both frozen captures/logs are retained. The model
+gateway in these tests is controlled; external-model, browser and platform
+acceptance remain separate.
+
+Store/parser limits, physical database/index constraints, full Recipe review,
+component-body overrides, compatible changed-seed-base upgrades and all other
+full-plan gates remain open. In particular, V106’s selected-variant structural
+and step-execution observations explicitly exclude semantic/task-completion
+approval. Do not manufacture a full Recipe approval from them or merely remove
+reserved role guards. Validator Step 6’s private, globally orchestrated review
+entry point and Step 7’s eight qualified workflows must supply the missing
+producer/admission path before the complete review/override cutover.
+
+
+### Named internal Recipe admission verified (2026-10-13)
+
+Host admission now supplies `TaskEntry::Chat` or a named `InternalRecipe`. The
+global Python root resolves private work through `resolve_internal_recipe`,
+composes its retained Recipe and sequences the same steps. Completed-turn review
+uses `completed-turn-review`; it no longer calls public matching or manufactures
+an `internal_review` match status. Ordinary chat text cannot select the entry.
+Opaque internal completion is verified by the owning task ports against its actual
+durable receipt; ordinary chat ports reject it. Exact worker envelope validation
+covers both the pre-token and VM boundaries, while historical chat payloads remain
+valid on the matching wire version. Protocol 15 rejects older workers before
+readiness. This is an ABI revision, not a new component architecture or Tool grant.
+
+Native protocol-15 global tests pass: completed-turn review (13.403s), lost-write
+reconciliation (10.086s), partial batch (10.436s), routing/restart (11.894s), authored
+activation (6.956s), reviewed deployment (9.423s), and ordinary global execution
+(19.654s). These use controlled model fixtures and actual PostgreSQL/worker/kernel
+paths. All26 actual service/worker tests and strict host test-target lint pass in
+`named-internal-entry-20261013-r8`; exact queued/fatal input expectations include
+the new entry. Isolated frame rejection (0.552s), opaque model handoff (3.689s), IBS
+effects/no replay (16.037s) and focused lint (42.141s) pass in r10. Worker artifacts
+are hash-verified and preserved before mandatory own-target cleanup. The isolated
+workspace lock refresh changes only the network path package’s dependency list;
+existing registry versions remain unchanged. Protocol mismatch checks use actual
+old/new worker executables. Receipts are
+`/private/tmp/brassclaw-named-internal-entry-host-accepted.json` and
+`/private/tmp/brassclaw-named-internal-entry-outside-accepted.json`, with r6 native
+logs retained separately. R6 full composition lint remains a recorded failure,
+not a full-matrix acceptance claim.
+
+Failures were retained and repaired in sequence: the pre-token adapter still
+checked the old six-field shape; current exact shapes now include the optional
+host entry. Out-of-crate fixtures were missing that field and fatal-retention
+expectations omitted it; constructors and complete expectations now agree.
+Adjacent prefix compile/registration issues found before task ownership was split
+were corrected without disabling checks. The user now assigns prefix work to the
+other chat; no further prefix implementation edits are part of this goal.
+
+The updated goal owns simplified-v3, validator-v3 and Monty composition plans;
+prefix_v3_upgrade.md is implemented independently by its owning chat and consumed
+at integration. This entry transport is a prerequisite for validator Step6’s
+private named selection. It does not qualify or schedule the eight validator
+Recipes, approve changed component bodies, migrate mutable editors, complete
+changed-seed-base upgrades or satisfy protected-root recovery GateA1. Continue
+those implementations; do not mark the plan complete from this evidence.
+
+
+### Complete validator subjects and pure rule aggregation (2026-10-13)
+
+The immutable submission reader now prepares `component-validator-subject/1`
+inside the caller's repeatable-read/serializable transaction. It retains the
+complete typed candidate and proposed dependency envelopes, exact bytes and
+references, original submission bytes/checksum and exact base-root comparison.
+It never selects latest, executes candidate source or writes a review verdict.
+The comparison root is explicitly not a retained old dependency-version graph
+or proof of approved ancestry. Preparation bounds reject whole inputs and an
+initial byte lower-bound check precedes transport duplication.
+
+A reusable pure class-22 `aggregate_validator_checks` preload export requires
+complete unique rule coverage and consistent typed outcomes/diagnostics. The
+required list belongs to the retained validator; it is not candidate authority.
+No Rule aggregation result by itself is trusted successful Q1 evidence.
+
+Frozen `validator-subject-20261013-r4` passed actual retained IBS/source/preload
+qualification with required IDs bound as Recipe constants, positive and negative
+execution in the contained Monty worker, and strict skills/composition test-target
+lint (`skills-db,test-support,migrate-from-libsql`, Rust 1.96.0). The exact final
+reader passed real PostgreSQL in frozen r3, including advanced heads, distinct
+historical base dependencies, invalid/missing refs, bounds, isolation rejection
+and no activation writes. Its unchanged result is reused in r4. Seven existing
+submission/inspection/lineage regressions passed in r2; their applicable evidence
+is retained. R1's SQL parameter-width failure and r3's incorrect test expectation
+are preserved as failed captures, not successful acceptance.
+
+This closes input-preparation and aggregation prerequisites only. It does not
+complete validator-v3 Step2's writer migration, eight class-specific validation,
+private approved validator catalogue selection, durable review admission,
+semantic/behavioral coverage, trusted Q1/Q2/activation writers or full cutover.
+The legacy three-string utility validator and its seeded labels remain legacy.
+The existing mechanical source inspector must be exposed through a registered
+bounded generic primitive for validator Recipe use; there is no accepted
+`validate_class_N` workflow Tool. Prefix work remains owned by the other chat.
+
+
+### Registered mechanical source facts (2026-10-13)
+
+`builtin.source_inspection` now has a real native registration, exact input
+schema and neutral backend port. Ordinary skills-db startup binds the actual
+contained parser backend to a privately retained packaged worker and the
+acknowledged settings view before ingress. Parsing/compilation stays in the
+existing disposable worker; candidate code is never executed. This is a generic
+fact operation, not a Rust class validator or review workflow.
+
+The matching Skill, associated preload export, ToolSkill and canonical execution
+Recipe are packaged drafts in `validator_components::source_inspection_drafts`.
+The actual native Tool identity is supplied separately, not invented by those
+drafts. Retained IBS/source qualification verifies their binding/export pair.
+No new validator route, approval, maturity label or catalogue activation is
+manufactured. Exact class routing and trusted verdict writers remain open.
+
+The backend captures the effective preparation revision and all finite worker,
+source, value and frame limits per operation. It has no additional static 1 MiB
+builtin fallback or wall-time ceiling. Source/null/extra-field errors, current
+policy denial and capacity failures remain distinct; parser source/node resource
+exhaustion is classified as Resource. Complete source/fact data is never trimmed.
+Observed process/time usage and actual serialized output bytes are accounted.
+Unsafe source reductions below the retained global root fail before persistence;
+the error now explains that retained-root constraint rather than implying only
+that a limit is too large. Packaged worker copies use an `.exe` filename on
+Windows; this fixes their executable naming, not the still-open Windows loaded
+native image/whole-product qualification.
+
+Native frozen r6 proves startup registration/artifact identity, nonexecution of
+source containing `raise`, full checksum preservation above 1 MiB after live
+budget growth, safe reduction, unchanged settings on unsafe reduction, current
+policy denial/re-enablement, actual parser node exhaustion and one retained
+global VM. Native r4's unchanged ordinary matched/unmatched runtime result is
+reused. Host r5 proves the unavailable backend, registered/visible package
+contracts, retained packaged-copy integrity and affected-package strict lint.
+The final r6 lint result is recorded by the retained validation receipt; do not
+infer it from test success alone. Evidence is limited to these primitives,
+draft assembly and ordinary startup; the eight complete validator workflows,
+semantic/behavioral coverage, durable global review delivery and full Q1/Q2
+activation/cutover still require implementation.
+
+Contract and settings explanation: [source-inspection.md](../reborn/source-inspection.md).
+Prefix implementation remains owned by the other chat. Its missing package-test
+expectation was reported and repaired by that owner; no prefix implementation
+was edited here.
+
+
+### Durable component review intent and complete IBS flow emission (2026-10-13)
+
+V149 atomically links every immutable submission to one immutable review request
+with the same ID and exact subject checksum. A deferred database invariant
+prevents committing a subject without its work reference. Upgrade backfills old
+subjects without rewriting them. Application acknowledgement/read/retry verifies
+that link. The narrow sealed request reader uses a coherent snapshot without
+loading the full component graph again. These are work intents, not attempts,
+selected validators, Q1 passes, Tool grants or activation.
+
+Frozen review-request-r1 passes all eight real PostgreSQL submission/inspection/
+lineage regressions, actual upgrade backfill and forced commit rollback, the
+ordinary global Sempai candidate-submission path and strict affected lint.
+Old review evidence must be reconciled by the eventual delivery owner before
+new effects; a backfilled request cannot authorize replay. Global validator
+selection/admission, observed coverage, trusted verdict/Q2 writers remain open.
+
+The retained IBS emitter's stale 255-step and 16-field-path guards are removed.
+Current global Python uses live data bounds rather than those obsolete quotas.
+Frozen retained-flow-r1 preserves all 300 executable steps and the final result
+reference plus a recursive typed 17-field path; existing native retained-input
+selection and invalid-binding regressions and strict engine lint pass. This
+covers preparation, not arbitrary repeated Tool effects or complete control-tree
+support. Store/parser/transport guards listed in the limits audit remain separate.
+
+The validator-coverage/1 revision-document reader and catalogue preparation
+consumer pass frozen validator-coverage-r2: private selected class routes,
+exact unique rules/selected steps, executed collection of every whole rule result
+and pinned aggregation IDs. See [validator-coverage.md](../reborn/contracts/validator-coverage.md).
+Actual preparation negative cases, the sealed full-subject PostgreSQL reader,
+contained aggregation behavior, ordinary authored-catalogue activation and strict
+engine/composition test-target lint pass. No declaration proves actual rule
+execution, semantic sufficiency, approval or successful Q1 by itself.
+
+Frozen validator-coverage-r5 additionally rejects ambiguous class routes,
+validator metadata missing its private tag and empty activated variant lists.
+The real PostgreSQL catalogue preparation regression checks precise rejection
+and unchanged active selection before ordinary activation/restoration succeeds.
+The reusable collector now requires each complete result's label to equal its
+pinned input name. Retained IBS rejects renamed rule bindings; actual contained
+Monty execution rejects swapped labels and preserves rejection diagnostics across
+collection/aggregation and subsequent successful invocations. Skills, engine and
+composition strict test-target lint pass. These are component preparation and
+contained behavior results, not an implemented full class-review delivery or
+approval writer. The eight class validators and production Q1/Q2 gates remain open.
+
+### Immutable typed structural seed successor (2026-10-13)
+
+`validator_components::structural_presence_draft` packages one shared pure
+PythonCode export taking explicit non-null name/description/content strings.
+It checks only stripped presence and emits a typed `structural_presence` result.
+Installation retains it through the immutable revision store without activation,
+confidence changes, legacy source rewriting or replacement of the eight old
+validator rows. A later authored allocation head remains intact after reseeding.
+See [structural-presence-check.md](../reborn/contracts/structural-presence-check.md).
+
+Frozen structural-seed-r1 passes actual contained execution with quotes, Unicode,
+newlines, marker-looking data and Python-looking content, unchanged packaged
+source/checksum and rejection/success isolation. Ordinary matched/unmatched global
+runtime passes. Its integration test initially failed compilation because a new
+local binding shadowed an existing row variable; structural-seed-r2 changes only
+that binding. The actual native installation/reseed test then passes with retained
+authored head, original immutable revision and all eight legacy bodies/checksums.
+Strict affected skills/engine/composition test-target lint passes. Unchanged runtime
+evidence is retained from r1 rather than rerun. This finishes the limited typed
+successor staging prerequisite, not complete class validators, trusted Q1/behavior
+provenance, production review admission or approval/activation.
+
+### Executor-owned validator checking observations (2026-10-13)
+
+The retained executor can enable observations beneath its actual same-task
+parent. `RetainedValidatorCoverage::observe` constructs an opaque audit result
+only from a complete matching selection, actual ordered settled fingerprints,
+whole correlated rule results and consistent aggregation. Concrete values alone,
+an incomplete executor, missing/changed results or another selection cannot
+produce it. Owner report limits reject overflow without granting replay.
+
+Frozen validator-observations-r2 passes a real constrained root/task/parent/child
+fixture executing the rule, collection and aggregation feeds, including the
+observation negative cases. Existing native HTTP human association review also
+passes. Strict affected test-target lint passes after sharing the already-loaded
+test runtime module instead of suppressing its duplicate-module warning.
+The observation report explicitly disclaims semantic approval and Q1 qualification;
+this is not production class-review admission or a complete class validator.
+
+The Skill guide assigns semantic agreement to author review, supported Q1 audits,
+behavioral evidence and human Q2 together. A structural Q1 record's explicit
+`semantic_approval=false` is not by itself an invalid audit. No blanket rejection
+of that supported usage-review combination was added. Whole-class requirements,
+the approved private review owner, sealed subject/attempt linkage, actual task
+settlement and trusted qualifying evidence persistence remain required.
+
+### Durable validator preparation selection (2026-10-13)
+
+V150 retains one immutable `component-validator-selection/1` preparation record
+per submitted subject, linked to its exact request/checksum. Strict readers verify
+the candidate, exact validator root/closure references, private class route,
+embedded variant, layout, invocation map and selection byte digest in one coherent
+snapshot. Identical retries retain the original bytes; different bytes conflict.
+Newer validator drafts do not replace the original selection. The operator
+submission view exposes it read-only as optional `review_selection_bytes`.
+
+Frozen validator-selection-r3 passes actual PostgreSQL retention/retry/conflict/
+immutability, a successor-draft preservation case and the operator read path with
+unchanged unreviewed status. All eight native submission regressions and strict
+affected product-workflow/skills/engine/composition test-target lint pass. Earlier
+r1/r2 test macro and local-shadowing compilation failures were corrected without
+changing runtime semantics or suppressing warnings. Migration versions were checked
+for uniqueness, preserving the other chat's prefix migrations.
+
+The explicit `scope="preparation-only"` is not an approved active selection,
+execution claim, attempt, Q1 verdict or activation. The production review owner
+must still establish approved private catalogue selection, full class requirements,
+retained implementations and attempt/effect fencing before global Monty admission.
+It must capture actual checking results and settlement through the trusted writer
+before qualifying Q1. Existing store/parser/inspection bounds remain part of the
+outstanding resource-control cutover; this milestone does not certify those limits
+or completion of the eight validators and full review delivery.
+
+### Typed restoration of retained validator preparation (2026-10-13)
+
+The sealed preparation reader now retains the exact verified revision graph for
+typed restoration. The engine recompiles the original selected variant and
+bindings, rechecks coverage and compares complete canonical selection bytes,
+including derived order and retained approval references. Operator inspection
+uses this restoration too. Checksummed but reordered preparation metadata remains
+an explicit error; no newest selection or executable feed is substituted.
+
+Frozen validator-restore-r1 passes actual PostgreSQL restoration, successor
+retention and the checksummed-order-corruption case through the operator reader.
+All eight native submission regressions and strict affected test-target lint pass.
+These remain preparation checks: source qualification, actual Tool artifact
+restoration, approved private catalogue selection, durable attempt/admission and
+the complete trusted review/evidence/activation owner are still required before
+claiming production class-review delivery or full-plan completion.
+
+### Remove the artificial embedding input quota (2026-10-13)
+
+Concrete OpenAI-compatible, NEAR AI, Ollama and Bedrock adapters no longer impose
+the approximate fixed 32,000-byte input limit. `EmbeddingProvider::max_input_length`
+now distinguishes an explicitly known byte limit from no artificial limit; cache
+and adapter forwarding preserve that contract. Model token limits are not converted
+to guessed byte limits. Actual model/service rejection still propagates, and
+Ollama requests continue to disable truncation.
+
+Frozen embedding-input-r1 passes 21 embedding/cache contracts, provider contract
+checks and a real PostgreSQL/HTTP transport regression with complete larger UTF-8
+input, cached-hit/miss ordering and one actual provider rejection without replay.
+Strict affected test-target lint including the changed Bedrock feature passes.
+This proves transport/caching behavior, not deployed model quality or live AWS
+inference. The model-name dimension fallback, vector-cache controls, dedicated
+model metadata and full class-review owner remain outstanding requirements.
+
+### Embedding cache control and provider error privacy (2026-10-14)
+
+The neutral cache now treats zero as disabled and exposes its actual entry
+ceiling plus synchronous resizing. It allocates entries on demand rather than
+reserving the configured maximum, evicts least-recent entries on shrink and
+releases its map when disabled or cleared. Both operations fence cache inserts
+from requests already in flight, while still returning those request results
+to their original callers. A same-value edit preserves the generation; hashing
+and provider awaits do not hold the cache lock.
+
+Frozen embedding-safety-20261014-r3 passes 23 neutral contracts, including
+actual single/batch await interleavings and a maximum-size logical ceiling
+without upfront reservation. The real PostgreSQL/provider/HTTP caller passes
+complete UTF-8 input and ordered cache behavior, actual 401/429/500/decode
+failures and a refused connection. Errors preserve their classification/status
+without exposing upstream bodies, credentials, input text or transport URLs;
+failed requests are not replayed. Bedrock now uses the shared finite-vector
+validation and sanitized SDK classifications. Strict affected-feature lint,
+including Bedrock, passed; no live AWS service was exercised.
+
+This accepts the cache API and error boundary, not the full provider/resource
+cutover. Persisted model-owned dimensions/cache limits, ordinary memory-tool
+embedding attachment, safe live provider replacement/vector-space isolation,
+embedding transport timeout/body uptake and WebUI controls/help remain open.
+Frozen embedding-safety-20261014-r4 separately passes the final NEAR AI
+sensitive bearer-header change through the native PostgreSQL/provider/HTTP
+caller (5.09 seconds) and strict composition lint including Bedrock (85.30
+seconds). Its cache source, neutral crate inputs, workspace manifests and
+lockfile are unchanged from r3; both scripts pin the same Rust toolchain, so
+the 23 neutral contracts are reused. No live AWS, browser/platform or full-plan
+acceptance is claimed. No prefix implementation is changed here.
+
+### Provider-revision embedding model contracts (2026-10-14; live attachment open)
+
+`embedding_models` now stores exact model names with positive u32 dimensions
+and a nonnegative u32 cache ceiling in the provider definition. It is part of
+the existing immutable definition/revision and consistent selection snapshot,
+not another provider catalogue. Strict decoding rejects duplicate names, null,
+missing/unknown fields and invalid numeric values. The management port retains
+omitted maps, accepts explicit empty maps, enforces expected revisions and
+rejects metadata incompatible with the protocol before publication.
+
+The embedding factory consumes the selected model's stored dimension/cache
+contract. Unknown names are supported when explicitly configured; there is no
+1536 fallback or implicit provider/model/endpoint in the raw constructor. Zero
+cache entries bypasses retention. Captured old adapters retain their selection;
+this does not implement live replacement of ordinary memory consumers.
+
+V151 changes only missing metadata, preserves explicit empty/zero/custom maps,
+tombstones, roles and credentials, and retains prior revision JSON. An already
+selected unknown model keeps its historic expected shape as explicit migration
+data, without claiming remote-model evidence. The historical V140 initializer
+is retained by the successor wrapper; only a genuinely fresh catalogue gets
+installation-owned default metadata. Repeated startup does not rewrite edits.
+
+Native r2 management/upgrade (3.31 seconds) and initialization (1.84 seconds)
+passed. R3 passed real custom-model/dimension/cache-off and privacy HTTP (3.52
+seconds), discovery (6.14 seconds), WebUI handler contract and all 28 dependency
+boundary checks. HTTP fixture hosting moved to cfg(test)-guarded common test
+support; production ingress rules were not weakened. Strict affected-package
+lint including Bedrock passed on r4 (88.94 seconds). The unchanged typed model
+contract tests and 17 frontend helper checks also passed. Controls include
+EN/DE explanations of dimension validation, zero/off and memory payload cost;
+real browser rendering, live AWS and remote installation remain unverified.
+
+The ordinary global startup regression initially failed on a missing prefix
+profile row before ingress; that failure remains recorded, rather than hidden
+as a passing metadata result. The prefix owner added initialization ordering;
+the separate native global-Monty regression passed on the exact r4 snapshot
+(37.35 seconds), retaining VM identity across matched and unmatched turns.
+Full acceptance still requires ordinary memory attachment, vector-space
+identity, live role/cache/transport policy consumers and the remaining full-plan
+gates. These metadata checks do not establish full v3 completion.
+
+### Explicit embedding spaces before live memory attachment (2026-10-14)
+
+Memory embeddings now carry a host-selected space identity independent of
+dimensionality. Composition hashes the configured provider namespace/identity,
+protocol/endpoint, exact model, dimension and semantic vector revision. Cache
+edits preserve compatibility; an explicit vector revision separates a changed
+embedding function under the same name. This is configured compatibility, not
+attestation of an externally served model's weights. V153 accepts the optional
+positive vector revision without rewriting historic provider or vector rows;
+initial version one keeps the previous serialized contract compatible.
+
+Indexer outputs stamp their selected provider space. VFS projection uses an
+exact space-specific field and index specification; ranking queries select that
+field before top-k. PostgreSQL filters candidate projections by the requested
+key before loading/ranking vectors. FTS retains untagged historical chunks;
+vector queries never infer their compatibility. Supplied queries require a
+space and finite, nonempty, representable vectors before index effects, and
+configured backends reject a mismatched provider space. Changing a query vector
+clears its old tag. All provider wrappers preserve the selected identity.
+
+Frozen embedding-spaces-r3 passes all 52 memory tests and strict seven-package
+lint with Bedrock (58.22 seconds). Applicable r2 evidence passes real PostgreSQL
+competing same-dimension/untagged vector isolation before ranking (4.12 seconds),
+model metadata upgrade and initialization, actual configured HTTP cache edits/
+vector-revision changes (4.05 seconds), ordinary global Monty startup (35.17
+seconds), WebUI handler and all 28 architecture contracts. Production model/
+space/migration inputs are hash-verified unchanged between these snapshots;
+only an equivalent condition cleanup followed the integration run. Frontend
+helper/syntax checks pass and EN/DE version guidance is present. Live AWS and
+rendered browser behavior remain unverified.
+
+This establishes the storage prerequisite. Ordinary memory-tool provider
+attachment, safe live source/snapshot replacement and cache/transport policy
+uptake remain required, alongside the rest of the full implementation plan.
+The initial PG test fixture failure is retained: it omitted the filesystem
+backend's migrations; the corrected fixture invokes real backend initialization.
+No production validation or ingress boundary was weakened.
+
+
+### Live memory embedding attachment and captured transport controls (2026-10-14; candidate)
+
+The ordinary first-party registry now receives one installation-owned embedding
+source slot. Runtime startup attaches the existing PostgreSQL role/definition/key
+reader using the runtime configuration namespace and actual secret/session owners
+before global Monty starts. Search/write capture a coherent current provider per
+operation; reads/tree do not require model resolution. Stable selections reuse the
+same provider/client/cache. Invalid selected configuration fails before write
+effects; only an absent embedding selection permits lexical-only operation.
+Previously captured requests retain their selected adapter and vector space.
+No Recipe sequencing or Rust-loop fallback is introduced by this infrastructure.
+
+Captured provider request timeout and optional response-byte capacity now reach
+OpenAI-compatible, Ollama and NEAR AI embeddings. The deadline covers auth, batch
+execution and response reads; construction is separately bounded before effects.
+The existing bounded decoded-body reader is shared with LLM transports. Redirects
+are rejected, overflow is an error, inputs/results are never truncated and failures
+never trigger implicit embedding retries. Unsupported Bedrock body limits remain
+explicit configuration errors. Existing provider controls have EN/DE help describing
+embedding uptake and retained request limits.
+
+Validation is pending. Frozen live-memory-source-r1 failed on test-owned runtime
+shutdown through an Arc; r2 compiled but correctly returned no provider because the
+fixture wrote to `default` while its runtime selected `reborn-cli`. The successor
+fixture explicitly supplies its configuration namespace. Neither failure is a
+production acceptance claim. Required successor acceptance covers real PG/HTTP,
+registered native memory operations, live Tool blocking, source changes, invalid
+configuration before effects, lexical disable behavior, transport deadline/body/
+redirect failures, old captured limits, ordinary global startup and affected lint.
+
+Immediate revision-aware WebUI effective-state acknowledgement/cache resizing,
+complete approved memory Recipe chat acceptance, browser/platform/release evidence
+and the other plan gates remain open; lazy request-time DB capture does not prove
+those publication requirements.
+
+
+Live-memory-source-r5 acceptance passed for the attachment/transport scope above:
+real registered memory operations and current DB selection (19.876 s), four
+actual embedding protocol transports/limits/privacy (15.964 s), adapter contracts
+(0.832 s), matched/unmatched global startup (34.847 s), all 52 memory tests
+(1.858 s), affected host memory contracts (0.479 s), architecture (1.586 s) and
+strict affected test-target lint with Bedrock (61.750 s). Receipt:
+`/private/tmp/brassclaw-live-memory-source-accepted.json`; retained source/artifacts:
+`target/validation/live-memory-source-artifacts-20261014-r5`.
+R3 and r4 failures were test JSON-output and whole-policy-revision assumptions;
+the actual kernel/storage validation remained unchanged. Their logs are retained.
+
+The next candidate adds actual WebUI publication through that source, synchronous
+cache-only resizing without replacing the client, and retirement/disable fencing
+of obsolete cache entries while accepted requests keep their results. The existing
+settings owner calls preparation after commit and propagates uptake failure;
+failed persistence never invokes the runtime publication. This is not yet complete
+desired/effective provider/model revision coordination or a browser acceptance claim.
+
+A related current-source finding is also repaired in this successor: memory backend
+writes discarded indexing failures after document persistence. Each operation now
+retains an advisory indexing-failure observation. A committed write stays successful,
+but reports `indexing_status: incomplete` and an explicit warning rather than hiding
+the failure or inviting a repeat of the effect. File/text search persistence remains
+independent of vector-index success. Observations contain no provider payload/key
+and stay isolated between operations. Actual native outage, retained read/text search,
+warning isolation, API cache edits/rejection/disable and affected regressions/lint
+must pass before this successor is accepted.
+
+
+Live-memory-source-r6 acceptance passed: native registered memory/WebUI facade
+cache/outage case (20.238 s), protocol transports/limits/privacy (16.056 s),
+adapter contracts (0.827 s), ordinary global startup (35.506 s), all 52 memory
+contracts (1.850 s), affected host memory tests (0.475 s), architecture
+(1.563 s) and strict affected test-target Bedrock lint (59.160 s). The accepted
+receipt and retained archive now identify `live-memory-source-artifacts-20261014-r6`.
+This closes the exact native cache-publication and indexing-warning slice above;
+complete desired/effective coordination, approved ordinary memory Recipe execution,
+browser/platform/deployment and all remaining plan gates are still required.
+
+### Retained dependency graph depth (2026-10-14; candidate)
+
+The retained snapshot's fixed 64-level dependency traversal is replaced by an
+iterative DFS. It reserves at most one iterator frame per selected revision,
+checks cycles/missing dependencies/shared subgraphs and retains exact roots,
+versions/checksums and association class checks. Allocation failure is explicit;
+there is no native recursive stack growth or new depth quota. Engine preload and
+source-dependency consumers already use iterative traversals. This changes
+structural eligibility, never review evidence, activation or a Tool grant.
+
+Pending checks include a 2,048-node exact graph with deep cycle/missing/unrelated/
+duplicate cases, shared roots and dependencies, plus real PostgreSQL deep exact
+selection preserving older references after successors are staged and rejecting
+a deep cyclic selection. These are unreviewed retention fixtures, not activated
+Recipes. The independent parser/store byte/node/count caps in the limits audit
+remain separate required work. Affected caller/lint and global startup acceptance
+must pass before this graph slice is accepted.
+
+
+Retained-graph-depth-r1 acceptance passed: both neutral graph cases (0.344 s),
+real PostgreSQL exact retention/successor/cycle checks (4.477 s), ordinary global
+startup (37.148 s) and strict skills/engine/composition test-target Bedrock lint
+(61.262 s). Receipt `/private/tmp/brassclaw-retained-graph-depth-accepted.json`;
+source/artifacts `target/validation/retained-graph-depth-artifacts-20261014-r1`.
+No review/activation claim is made for the graph fixtures, and independent
+store/parser capacities remain open.
+
+
+### Correlated lifecycle delivery receipts (2026-10-14; candidate)
+
+Lifecycle delivery formerly cleared every acknowledged cursor at 4,096 marks and
+used cursor alone as event identity. PostgreSQL snapshots have separate per-thread
+cursor sequences. The successor keys delivery and deferred failures by exact
+scope/run/cursor, never clears acknowledged marks because a count was crossed,
+and serializes publication only for the same event using weakly retained gates.
+Different events, including reentrant observer transitions, remain independent.
+Deferred errors are non-consuming observations until that exact event is delivered;
+concurrent callers cannot steal another caller's failure. All coordinator mutation
+paths use the correlated error port; poisoned error state fails visibly.
+
+Pending acceptance covers a real store with 4,100 heartbeats followed by an old
+idempotent submission, controlled concurrent required publication without timing
+sleeps, reentrant cancellation, all existing coordinator/cancellation contracts,
+and real PostgreSQL same-cursor independent chats with observer failure isolation.
+Required-observer restart/durable acknowledgement, safe receipt reclamation and
+other fixed retention/lease policies remain required work; these small identities
+are not retained task inputs/results, and this slice does not establish their
+complete durable recovery contract. No Task/Recipe sequencing moves to Rust.
+
+
+Lifecycle-delivery-r4 acceptance passed: all 139 coordinator contracts (0.905 s),
+real PostgreSQL equal-cursor/error-isolation case (4.214 s), ordinary global
+startup (35.761 s) and strict turns/reborn/composition test-target Bedrock lint
+(93.536 s). Receipt `/private/tmp/brassclaw-lifecycle-delivery-accepted.json`;
+retained source/artifacts `target/validation/lifecycle-delivery-artifacts-20261014-r4`.
+Failed batches are preserved: r1 lacked the development-only Tokio multithread
+feature; r2's test assumed heartbeat fanout; r3's fixture used an invalid opaque
+gate ID. The successor uses 1,367 real claim/block/resume cycles and the supported
+ID grammar. Validation/production heartbeat behavior was not weakened.
+This accepts in-process identity/coalescing/retention and exact failure attribution,
+not the remaining durable observer restart/reclamation or other capacity owners.
+
+
+### Prepared identity fencing and child cleanup (2026-10-14; candidate)
+
+The compatibility coordinator's prepared-ID guard consumed its scope entry before
+checking a mismatched submission; a second wrong-scope request then bypassed the
+check. Admission failures also discarded the binding, while the explicit child
+submission path never released its prepared entry. Scope checks now retain the
+entry on rejection, successful submissions/explicit abort release it, and child
+submission accepts only its supported prepared parent or child scope. Poisoned
+identity state fails explicitly. Committed submissions are woken before any
+post-commit cleanup failure is returned; IDs remain data/attempt relationships,
+not Tool permission. Parent-to-child handoff stays supported.
+
+Pending tests cover repeated wrong-scope rejection without admission, preservation
+after a real unavailable-profile admission error, correct-scope retry, wrong child
+origin rejection, successful parent/child handoff and capacity reclaimed after child
+submission/abort. This fixes an identified compatibility-contract defect, not the
+complete prepared-ID live-capacity/retention owner. Source search found definitions,
+tests and forwarding methods but no current ordinary product prepare_turn caller;
+confirm actual ownership before adding a cosmetic WebUI setting or removing the
+port. Dynamic typed-value and retained-store/parser limits remain required work.
+
+
+Prepared-identity-r1 acceptance passed: all 141 coordinator contracts (0.929 s),
+ordinary native cancellation propagation (227.909 s), global Monty startup
+(36.650 s) and strict turns/reborn/composition Bedrock test-target lint (65.268 s).
+Receipt `/private/tmp/brassclaw-prepared-identity-accepted.json`; frozen source and
+artifacts `target/validation/prepared-identity-artifacts-20261014-r1`. This accepts
+compatibility scope fencing and successful child cleanup, not durable reservation
+ownership, configurable prepared-ID retention or the full plan.
+
+
+### Captured typed-value execution bounds (2026-10-14; candidate)
+
+Ordinary global Recipe input preparation and each requested child step now read
+acknowledged resource bounds. Borrowed contract APIs preserve selected schemas,
+missing/null/default rules and exact associations without cloning reviewed code
+or large defaults merely to overlay limits. Step input/result validation, Tool
+argument binding and behavioral fingerprints share the captured profile. Actual
+Tool dispatch passes that profile into its durable intent; answer retention uses
+the same profile even after a later settings edit. V155 retains depth/node/byte
+bounds as immutable intent data and replaces the journal's fixed 64 MiB checks
+with the admitted byte bound. Historical intents retain their previous profile;
+no effect is replayed and no scope or component approval changes.
+
+Pending acceptance covers 300,000-node retained data above the former 262,144-node
+consumer limit, explicit reductions and schema-invalid rejection, unchanged
+fingerprints/contracts, ordinary global replies/history with two effective live
+profiles and immutable persisted bounds, plus affected native/lint consumers.
+This slice does not remove the transport/schema parser's 64-level depth support
+restriction or immutable metadata caps. Other trusted review/qualification helpers
+still need explicit profile propagation and complete durable recovery/dispatch
+revision coordination. These remaining owners must not be represented as shipped
+or adjustable merely because the WebUI already exposes value controls.
+
+
+Typed-resource-r1 retained-input acceptance passed (six cases, 9.400 s); the
+composition test build exposed a test-only u64-to-i64 conversion and a directly
+included native fixture missing the new invocation profile argument. Those are
+corrected, and all standalone `tests/monty_control` journal callers/capacity
+constructors now declare their explicit test profile or carry the actual
+executor-captured profile. The failed batch is retained, not full acceptance.
+Source review also replaced unbounded journal JSON serialization with bounded
+streaming and removed the extra answer graph copy. The PortAnswer envelope does
+not consume the returned value's node/depth budget; complete escaped/envelope
+bytes still obey the journal byte bound. R2 adds exact encoded-byte/escaped-data
+regressions and actual kernel/PG late-answer retention with a one-level/five-node
+profile, as well as global live-profile and standalone affected-caller checks.
+
+
+Typed-resource-r2 acceptance passed: reused six retained-input cases from r1
+(9.400 s), bounded encoding (1.350 s), ordinary global Monty live profiles with
+immutable journal bounds (37.086 s), strict affected Bedrock test lint (73.382 s),
+all six standalone retained-execution cases (124.015 s), real kernel/PG late-answer
+retention after cancellation (16.204 s), actual global IBS/effect retention
+(15.745 s) and strict standalone test-target lint (17.779 s). Receipt
+`/private/tmp/brassclaw-typed-resource-accepted.json`; frozen source and retained
+artifacts `target/validation/typed-resource-artifacts-20261014-r2`. The original
+r1 composition build failure is retained and not described as acceptance.
+Separate EN/DE help edits explain step/answer retention, encoded journal bytes
+and the still-supported transport depth maximum; both files passed Node syntax
+checks and diff review. Browser acceptance, other trusted review-helper profiles,
+transport/parser depth support and the remaining plan gates stay open.
+
+
+### Behavioral review retains each step's data profile (2026-10-14; candidate)
+
+Executor-owned observations now retain the exact acknowledged depth/node/byte
+profile captured when their step began. Workflow and usage behavioral-review
+producers compare expected values with that observation's profile, instead of the
+old fixed checksum limits or a later step's current settings. Evidence records
+include only the finite profile and existing fingerprints, never raw values or
+a caller-provided success/profile assertion. Exact selected revisions, order,
+failure/negative expectations, persistence integrity and independent semantic
+Q1/human Q2/activation contracts remain unchanged.
+
+Pending native coverage uses the actual global Recipe helper, selected preload
+exports and same-task parent/child contexts to carry a 300,000-item result into
+the next step after changing bounds. It verifies complete data, per-step retained
+profiles, immutable persisted workflow evidence, wrong-value comparison and
+oversize expectation rejection without manufacturing activation/task completion.
+A separate real kernel/PG JSON usage preserves a 300,000-node Tool answer and
+exact negative output expectations through behavioral review. Its numeric data
+fits the primitive's existing input/output ceilings; this test does not certify
+removal of those separate first-party ceilings.
+
+Source inspection additionally confirms fixed shared first-party input/output
+1 MiB, coding input 6/21 MiB and manifest wall-time 5 s policies in
+`first_party_tools/mod.rs`. They require an actual live kernel/handler/profile
+cutover and upgrade of retained primitive metadata, with adjustable defaults and
+user explanations; they must not be bypassed merely to make this review test pass.
+Remaining transport/parser/store capacities and these Tool-policy owners stay in
+the required limits audit and must close before full plan/release acceptance.
+
+
+Review-data-profile-r1 compiled, but its first native case correctly rejected
+the new draft's input contracts for missing explicit `checks` arrays before
+execution. The fixture now declares them for each input; parsing and production
+validation were not weakened. The failed source/artifacts/logs are retained.
+R2 must establish the complete handoff and actual usage/review/persistence cases
+plus affected ordinary caller and strict root/standalone lint before acceptance.
+
+
+Review-data-profile-r2 acceptance passed: real Monty complete 300,000-item
+handoff across an acknowledged inter-step reduction with retained per-step
+profiles (5.520 s); real kernel/PG large answer and exact negative expectations
+(4.733 s); existing behavioral persistence/failure evidence (6.110 s); ordinary
+global Monty startup (35.618 s); strict affected Bedrock test lint (55.649 s);
+all nine standalone review cases (58.676 s) and strict standalone lint (3.395 s).
+Receipt `/private/tmp/brassclaw-review-data-profile-accepted.json`; frozen source
+and artifacts `target/validation/review-data-profile-artifacts-20261014-r2`.
+The first batch's missing fixture `checks` rejection is preserved. No validation
+rule, review success gate or warning was suppressed.
+
+This accepts resource-profile coordination in executor observations and the
+usage/workflow behavior producers. The fixtures remain unapproved drafts; no
+activation, semantic review, human Q2 or product completion is inferred. Other
+bootstrap/prefix review helpers, transport/schema/store limits, global Tool
+technical-policy/WebUI publication and the remaining plan gates still require
+implementation and their corresponding acceptance.
+
+
+### Global Tool-policy management port (2026-10-14; candidate)
+
+The legacy Tools permission UI reads registry defaults/scoped permission modes;
+its production facade has no attached permission store, so mutation is unavailable.
+It is not the global UUID-keyed policy source used by retained Monty Recipes.
+A distinct instance-wide management port now lists existing global policy rows
+and changes enabled/block state by exact Tool UUID and expected revision. It
+creates no rows, maps no aliases to authority, and grants no component approval.
+Retained declared aliases are display metadata; a new draft does not replace a
+running task's identity. V156 constrains policy rows to class-0 heads without
+resetting existing overrides/revisions.
+
+The actual runtime facade attaches this port. GET `/api/settings/tool-policies`
+and PUT `/api/settings/tool-policies/{tool_id}` use product handlers and the
+existing instance-token operator route classification/mounting. Revision fields
+use exact quoted-decimal wire values, preventing JavaScript rounding. Concurrent
+edits, stale/invalid/unknown inputs and database rejection remain distinct and
+leave coherent state. Native acceptance must cover database CAS/rollback/retained
+aliases/class integrity, actual router/facade/kernel blocking under an independent
+operator data scope, bearer ingress exclusion of ordinary session credentials,
+existing startup/block restoration and affected contracts plus strict lint.
+
+This port is a cutover prerequisite, not a declaration that all Tools are unified.
+The ordinary model-call factory still uses legacy GrantAuthorizer and separate
+capability-grant construction; registered primitive identity enrollment, full live
+technical parameters, retained alias/version coordination and the coordinated
+no-operation-approval dispatch cutover remain required. Do not replace the existing
+UI with a misleading global toggle until those callers are coupled to this source.
+No Rust workflow loop/fallback or approval bypass is introduced here.
+
+
+Instance-tool-admin-r1 passed native CAS/class/rollback (4.214 s) and actual
+router/facade/global-kernel blocking, restoration and startup (36.125 s). A later
+default-feature library test build exposed an existing bootstrap dependency gap:
+PostgreSQL seeding used the Skill revision store and a runner-gated catalogue ID
+helper without declaring that dependency. PostgreSQL composition now includes
+the required Skill/store dependency. The unchanged installation ID algorithm
+lives in the component-library bootstrap owner and is shared by seeding and the
+optional runner; no seed is skipped, no check bypassed or activation manufactured.
+This does not silently enable a different runtime/runner feature. R2 must cover
+the supported default library consumer plus full candidate/API/ingress/lint checks.
+The preceding failed batch is preserved and is not full acceptance.
+
+
+Instance-tool-admin-r2 passed native CAS/class integrity (4.411 s), actual router/
+facade/global-kernel blocking and restart (36.261 s), default library revision wire
+(0.277 s), complete WebUI descriptor contracts (0.166 s) and existing handlers
+(6.400 s), real bearer/operator classification (0.350 s) and operator-route mount
+exclusion (0.013 s). Strict lint then found duplicate loading of a shared native
+PostgreSQL fixture. The new test now imports the crate's existing canonical native
+fixture; no warning is suppressed. R3 retains unchanged behavioral evidence and
+must run the changed fixture plus strict affected lint before acceptance.
+
+
+Instance-tool-admin-r3 acceptance passed: canonical native fixture CAS/rollback/
+class integrity (4.273 s), strict affected Bedrock test-target lint (53.929 s),
+with unchanged r2 actual router/global-kernel/restart (36.261 s), exact wire
+(0.277 s), complete descriptor (0.166 s) and handler contracts (6.400 s), and
+real bearer/mount exclusion (0.350/0.013 s) retained. Receipt
+`/private/tmp/brassclaw-instance-tool-admin-accepted.json`; source/artifacts
+`target/validation/instance-tool-admin-artifacts-20261014-r3`. The r1 default-
+feature dependency failure and r2 duplicate-fixture lint failure are preserved.
+Both are repaired; no check/seed/warning was suppressed. The feature repair keeps
+all existing installation UUIDs and separates mandatory PostgreSQL metadata
+seeding from optional runner selection.
+
+The global policy management prerequisite is accepted through the actual API and
+existing retained dispatcher. It does not establish ordinary model-requested Tool
+identity enrollment/global authority, full technical parameters, the final UI
+replacement, the full authorization cutover or overall plan completion.
+
+
+### Host-selected instance authority in the model-call adapter (2026-10-14; r3)
+
+`DispatchAuthorityModel` is a nonserialized host contract, not a request field,
+operator setting or permission. `InstanceToolAuthorizer` reports `InstancePolicy`;
+`DefaultHostRuntime` forwards its immutable authorizer's model. The adapter captures
+that model from the trusted host with its private surface snapshot. Instance-policy
+invocations discard scoped grants while preserving task/data scope, host-selected
+mounts, provider trust evaluation and fresh invocation identity. Legacy hosts keep
+their existing scoped behavior. Disabling operation approval alone does not select
+the new model. Actual dispatch still passes through current kernel policy and
+technical enforcement; no new grant, approval or workflow fallback is introduced.
+
+The native caller regression uses the actual model-call port factory, registered
+JSON primitive, real kernel, versioned stable-UUID policy source and PostgreSQL
+input/result storage. A foreign stale scoped grant cannot authorize or prevent
+the instance-policy call. The same advertised surface survives live block and
+effect-ceiling changes; denied calls retain no successful result, and a subsequent
+allowed revision returns the real parsed JSON result. This source is a controlled
+policy fixture, not installation identity enrollment or component approval.
+
+R1 compiled but its fixture omitted the visibility policy (the host's default
+hides every capability); the corrected fixture uses the production adapter's
+visibility policy. R2 then exposed a real existing denial-conversion defect:
+the fixed `authorization` category was incorrectly validated as arbitrary text
+and rejected as a sensitive marker. R3 represents it as a known typed denial
+category with the intended exact wire value. Unknown reasons retain all sensitive
+marker checks; credential-shaped suffixes remain rejected. Neither failed batch
+is accepted evidence. Their logs/artifacts are preserved.
+
+R3 native adapter/kernel/PG acceptance passed (4.210 s), ordinary global Monty
+matched/unmatched/restart regression passed (36.564 s), all five invocation-context
+cases passed (0.321 s), 83 existing capability-port cases passed (0.055 s), all 67
+turn-host contract cases passed (0.235 s), and strict affected Bedrock test-target
+lint passed (66.650 s). Receipt `/private/tmp/brassclaw-instance-policy-adapter-accepted.json`;
+source and executables are retained under `target/validation/instance-policy-adapter-20261014-r3`
+and `target/validation/instance-policy-adapter-artifacts-20261014-r3`.
+
+This completes the host/adapter prerequisite, not Phase 8 or the overall plan.
+Ordinary factories still construct `GrantAuthorizer`; local-dev wiring constructs
+scoped grants and the pure-PostgreSQL factory omits provider trust. Complete actual
+registered Tool/retained-alias enrollment and the durable current-policy source,
+attach instance authority before admission/ingress, and coordinate those factories'
+context/surface construction before claiming production uptake. Preserve kernel
+sandbox/network/secret/resource checks and existing task selections. Full technical
+settings and the final WebUI replacement remain required. Do not switch these
+factories to an empty/incomplete policy source or claim an API toggle controls
+unregistered Tools.
+
+
+Affected architecture boundary acceptance also passed against the same frozen
+source (1.541 s). Its executable, hashes and log are retained under
+`target/validation/instance-policy-adapter-architecture-20261014-r3`; the acceptance
+receipt includes this case. No dependency-boundary exemptions were introduced.
+All eleven changed dispatch/contract/compiler inputs in the working checkout
+were verified against the tested r3 snapshot. Later plan prose is not compiler
+input and does not invalidate this evidence.
+
+
+### Native startup registration preparation limits (2026-10-14; r4 accepted)
+
+Source inspection of the production identity path found an extra fixed 1 GiB
+artifact ceiling in `factory.rs`, before the global settings owner was started.
+Its native constructor also used default verifier output and response deadlines.
+The ordinary PostgreSQL factory now reads one complete persisted execution-limit
+snapshot before native capture, converts it with the existing preparation adapter,
+and explicitly passes artifact bytes, verifier output bytes and response timeout.
+The native registration constructors require these explicit verifier limits;
+no production caller can silently select their former verifier defaults. A failed
+or invalid settings read stops startup before native registration. First-install
+absence uses the settings store's canonical defaults; local-only fixtures supply
+the same explicit defaults. No Tool grant or component approval is created.
+
+The existing artifact-size control already has EN/DE help. Its explanation now
+states that the saved limit applies at startup before Tools load, while retained
+artifacts remain unchanged. The response-time and captured-output help already
+explains native verification and required termination acknowledgement.
+
+The actual factory/native test persists a one-byte artifact ceiling through the
+supported settings store, observes real capture rejection, restores capacity and
+verifies the actual native registration and retained artifact. Lowering the next
+capture limit rejects a new build without resizing/replacing the old registration.
+On macOS it additionally persists a one-byte verifier-output limit and observes
+actual OS-verifier rejection before restoration. An unsupported persisted settings
+key exercises failed source validation without bypassing database constraints.
+It restores the exact valid payload with proper revision increments. Worker
+readiness remains off during this factory-only acceptance.
+
+Failed batches are retained: r1's deliberate corruption omitted the required
+revision increment; r2 attempted an invalid zero byte ceiling which the database
+correctly rejected. The successor respects both guards and uses an unsupported
+persisted key to test read validation. R3 compilation exposed two standalone
+support callers missed by a crate-only search; both now pass explicit fixture
+preparation limits and have their own actual standalone acceptance. No constraint,
+check or warning was suppressed or disabled.
+
+R4 passed all eight local-factory cases including the native capacity/verifier
+case (8.472 s), the ordinary global Monty regression (36.135 s), strict affected
+Bedrock test-target lint (57.912 s), default-feature strict library lint (32.364 s),
+all six standalone retained-execution cases (124.128 s), all nine standalone Q1
+review cases (56.928 s) and their strict lint (10.359 s). EN/DE JavaScript syntax
+and diff checks passed. Receipt `/private/tmp/brassclaw-native-startup-capacity-accepted.json`;
+source/artifacts are retained at `target/validation/native-startup-capacity-20261014-r4`
+and `target/validation/native-startup-capacity-artifacts-20261014-r4`. All seven
+changed native registration/test/help inputs in the worktree match that snapshot.
+
+This establishes configurable native startup preparation and preservation of
+already captured artifacts on this local platform. It does not establish Windows
+or Linux execution, all installation Tool identity enrollment, general live
+technical Tool parameters, factory instance-authority attachment, the remaining
+scheduler/transport/store limits or overall plan completion. In particular,
+`native_image.rs::loaded_file` still explicitly lacks Windows support; this needs
+an actual loaded-image contract and native acceptance, not a mutable-path fallback.
+
+
+### Explicit pending metadata and the legacy prompt repair boundary (2026-10-14; r2 accepted)
+
+Tracing installation Tool identities exposed three legacy inserts that silently
+changed a caller's `validation_status=pending` into `validated` when `source=system`.
+Tool, ToolSkill and Skill stores now honor their existing explicit status input.
+Conflicting inserts retain the original identity/state rather than rewriting it.
+A source label does not establish native registration, immutable v3 approval,
+a complete Skill interface or an active routing selection. This change does not
+rewrite historical rows or manufacture approvals.
+
+R1 native metadata acceptance passed, but the ordinary restart regression then
+found a second incorrect coupling: the prefix-generation Tool deliberately has
+pending raw metadata and separate controlled bootstrap qualification, while a
+legacy boot helper rejected every source-labeled pending row in the seed scope.
+That helper is now explicitly `repair_packaged_legacy_prompts`. Its responsibility
+is limited to compiled-in legacy prompt projections and exact live-prose hashes;
+changed protected prose or an incompatible prompt state remains an error.
+Unselected draft metadata remains untouched. It is not promoted and is not a
+boot prerequisite by label. Required active workflow qualification remains in
+the subsequent global catalogue owner before workers/ingress start. This is not
+a replacement for the full Phase 0a/3a/7/8 activation and recovery gates.
+
+The actual PostgreSQL regression checks all three explicit pending statuses,
+conflicting inserts, absence of pending intent projection and immutable revision
+creation, and rejection/preservation of altered protected prose. The ordinary
+global matched/unmatched/blocked-Tool restart regression and existing supported
+active-catalogue guards passed. R2 timings: native metadata/repair 4.158 s,
+global runtime/restart 36.102 s, catalogue activation/forged-approval guards
+16.437 s, strict affected Bedrock test-target lint 52.990 s. The r1 failed restart
+batch remains preserved; no row status was rewritten to make it pass and no
+integrity/active-catalogue check or warning was suppressed.
+
+Receipt `/private/tmp/brassclaw-pending-seed-metadata-accepted.json`; source and
+executables are retained under `target/validation/pending-seed-metadata-20261014-r2`
+and `target/validation/pending-seed-metadata-artifacts-20261014-r2`. All eight
+changed current writer/repair/test/caller inputs match the tested snapshot.
+
+Remaining: Recipe/PythonCode/ExtensionCatalogue legacy inserts still derive
+status from source and lack the same explicit insert-state input. They need the
+coordinated authoring/bootstrap/projection cutover, not a label-based approval
+exception. Complete installation qualification across all component classes,
+immutable workflow approval, native Tool/retained-alias identity enrollment and
+ordinary factory global-authority attachment remain implementation work. No
+external maintainer Q2 gate is requested for shipped first-party components.
+
+
+### Separate authored insertion from installation projection (2026-10-14; r1 accepted)
+
+The remaining Recipe, PythonCode and ExtensionCatalogue stores previously derived
+`validated` status from a `source=system` field. Ordinary insert and transactional
+`create_and_submit` now always create pending metadata, irrespective of source.
+A deterministic-looking Recipe marker cannot assign maturity or Wilson evidence
+on the authored path. Installation owners explicitly call the private Rust
+`insert_installation_projection` methods; only those named call sites choose the
+legacy validated/tier projection. Their source consistency check is not provenance.
+No serialized request field selects this path, and it does not create immutable
+v3 approval, a registered primitive or activation. Full trusted bootstrap still
+requires its actual integrity/Q1/behavioral contracts; authored changes still
+require their own trusted Q1/behavior/human Q2.
+
+The builtin, builtin-host and Zencoder installation owners now use the explicit
+projection method. Model/operator/DocPlan authoring stays on pending insertion.
+Historical metadata/projections are not rewritten. This preserves the shipped
+legacy projection while eliminating field-derived state promotion; it is not a
+replacement for the complete component cutover.
+
+Tracing queue submission exposed another real defect: ExtensionCatalogue inserted
+its row before separately enqueuing review. It now uses the same connection and
+transaction for the row and queue intent, like Recipe and PythonCode. A database
+queue rejection rolls back the newly inserted catalogue; it cannot leave an
+orphan while returning failure.
+
+Actual PostgreSQL checks cover plain/queued system-labeled authored inserts for
+all three classes, pending state/tier/queue identity, misuse rejection of the
+installation method and deliberate class-23 queue rejection with zero orphan
+rows. The prior explicit-pending and protected-prompt tests also pass. Timings:
+two native cases 5.912 s; ordinary global match/unmatch/blocked-Tool restart
+36.163 s; supported active catalogue/forged-approval guards 16.394 s; strict
+affected Bedrock test-target lint 53.056 s. No warning, queue error or approval
+check is suppressed. Receipt `/private/tmp/brassclaw-explicit-installation-projection-accepted.json`;
+source/artifacts `target/validation/explicit-installation-projection-20261014-r1`
+and `target/validation/explicit-installation-projection-artifacts-20261014-r1`.
+All seven changed current writer/owner/test files match the tested snapshot.
+
+All six legacy stores inspected in this work no longer contain a source-label
+`CASE` that silently promotes an ordinary insert. Legacy validated projections
+are still not proof of v3 approval. Complete all-class qualification, immutable
+workflow/version enforcement, Tool identity/retained-alias enrollment and ordinary
+factory current-policy attachment before claiming Phase 8 or overall completion.
+
+
+### Windows loaded-image candidate (2026-10-14; local checks passed)
+
+The native image owner now has a Windows candidate using a pinned main-module
+mapping and its OS-reported device filename. It opens that file while denying
+write/delete sharing and rechecks the mapping before staging. It does not use a
+mutable `current_exe` path or a request-supplied artifact as production identity.
+UTF-16 names grow on truncation, with allocation/representation errors explicit.
+
+Existing native-image regressions on this macOS host and strict affected lint
+passed. A local Windows GNU test-target cross-check also passed. Receipt:
+`/private/tmp/brassclaw-windows-native-image-candidate-checked.json`; frozen inputs
+and executable are retained under `target/validation/windows-native-image-20261014-r1`
+and `target/validation/windows-native-image-artifacts-20261014-r1`.
+
+This is not Windows runtime acceptance. The existing Ubuntu/macOS/Windows native
+CI gate now also runs native-image tests, including the Windows-only real copied
+executable rename/replacement and write-fencing cases. Their actual Windows
+results are required before claiming this identity contract works there. Linux
+execution and complete installation/retained Tool qualification remain open.
+
+
+### Instance Tool-policy browser editor (2026-10-15; r3 accepted)
+
+Settings → Tool Permissions now reads the existing UUID-keyed instance policy
+API and edits only `enabled`, with the exact quoted `expected_revision` retained.
+The old scoped capability-permission client/editor and unused manager are removed.
+There is no `ask` choice. Retained declared aliases and stable UUIDs are displayed;
+this editor creates no Tool, policy row, approval or activation. EN/DE text explains
+instance-wide allow/block, subsequent dispatch, completed actions and independent
+sandbox/network/secret/resource checks. Ordinary model-call registration and its
+remaining authority cutover are still separate required work.
+
+Mutation handling fences double events immediately. Failures, stale revisions
+and inconsistent acknowledgements lock editing until an explicit successful
+refresh. Refresh reads current state; it never rebases or repeats the old edit.
+An old read is cancelled before publishing an exact successful acknowledgement
+into the browser cache. Malformed/duplicate identities and imprecise numeric
+revisions fail visibly instead of becoming editable defaults.
+
+The existing native global runtime test exposes its real router/facade/PostgreSQL
+to the optional `tests/browser/instance-tool-policy.mjs` acceptance. Chromium runs
+original React/Query/static modules. It checks real allow/block persistence, a
+second operator's concurrent write, 409 fencing and refresh without replay. A
+transport fault closes the browser response after the real database commit;
+one application `fetch` is issued and one revision is saved. Chromium can retry
+that idempotent PUT internally, always with the same stale revision; CAS rejects
+any repeated mutation. The test separately records application calls, complete
+HTTP attempt bodies and persisted revisions. No response/result is fabricated.
+
+R1 failed because the browser inherited German while the test selected an English
+label. R2 found the legitimate transport retry after the deliberate connection
+loss; its fixed HTTP-attempt assertion did not describe the application invariant.
+The corrected fixture pins its language and verifies exact application requests
+and one durable edit across transport retries. Both failed batches remain retained;
+no product integrity, dispatch, policy or approval checks were weakened. R2/r3
+reuse the unchanged r1 Rust executable instead of compiling unchanged inputs.
+
+R3 native browser plus surrounding matched/unmatched/blocked-Tool/global restart
+regression passed (43.263 s). Strict affected Bedrock test-target lint passed
+(91.554 s). Four client-only precision/schema/error cases, changed JS syntax and
+diff checks passed. Receipt `/private/tmp/brassclaw-instance-policy-ui-accepted.json`;
+source/artifacts `target/validation/instance-policy-ui-20261015-r3` and
+`target/validation/instance-policy-ui-artifacts-20261015-r3`. All nine changed
+current acceptance inputs match this tested snapshot; the legacy manager remains
+removed.
+
+Scope: actual browser component and native actor-injected router/facade/database,
+not a new bearer-authentication claim or final packaged CLI/release qualification.
+Existing operator/bearer boundary evidence remains independently applicable.
+Persistent native Tool/alias enrollment, ordinary factory global authority,
+complete technical parameters, fixed scheduler/store/transport limits,
+Linux/Windows acceptance and full-plan/release/test-machine completion remain open.
+
+
+### Global pending host-call capacity (2026-10-15; r2 accepted)
+
+The former startup constant of 128 now has an explicit
+`execution_limits.max_pending_host_calls` setting. V158 preserves explicit
+operator values, adds 128 only where missing, advances those rows' revisions,
+and extends the preceding database default without invoking that expression
+during migration. The new database/type contract rejects invalid/nonpositive
+or unrepresentable counts. Worker count remains an independent scheduler issue.
+
+Startup consumes this exact setting. Live publication includes it in the existing
+complete durable settings candidate. The sole worker validates it against actual
+pending futures, late answers still retained in the VM and the root's worker
+count before any durable write. Unsafe reductions reject the edit while retaining
+all continuations and the previous revision; accepted edits update the existing
+root without executing Python or replacing its identity. The actual worker
+receipt and Rust watch expose its effective limit/occupancy/minimum. Product
+status derives this field from that observation, not the desired database value.
+EN/DE WebUI help explains the control, and status displays live pending calls.
+
+Private worker protocol 16 carries the new settings candidate and capacity
+receipt; old workers must be rejected rather than falsely acknowledging uptake.
+Existing callers that supply no pending-call edit retain their actual current
+limit. The native interpreter regression uses the supported worker-coroutine gather
+pattern with 129 real work-wait futures. It checks growth beyond the former
+product constant, rejects smaller limits without losing keys and accepts a safe
+reduction. This is a mechanical static-worker probe, not implementation of live
+worker-slot resizing. PostgreSQL migration and ordinary WebUI/global runtime
+tests cover persistence, rejected precommit reductions, acknowledged growth/
+reduction and existing worker identity. Non-default 257 is configured before
+ordinary startup and explicitly observed again after same-database restart.
+
+R1 compiled and passed native migration (5.009 s), authenticated live edits
+(106.976 s), ordinary global/restart (37.146 s) and strict root lint (66.733 s).
+Its first mechanical probe used an unsupported direct-future gather expression
+and failed; no interpreter/authority boundary was relaxed. R2 uses the supported
+worker-coroutine gather and adds explicit non-default startup/restart acceptance.
+The unchanged worker, migration and live-edit evidence are retained and reused.
+An initial wrapper syntax error occurred before any r2 build and was corrected.
+Both failed records remain; no command, warning or product check was suppressed.
+
+R2 passed non-default global/restart (38.884 s), strict affected Bedrock test-target
+lint (91.446 s), all22 process contracts including129work waits (6.864 s), all26
+service contracts (1.506 s), all6 retained execution cases (124.285 s), all9 Q1
+cases (58.025 s) and their strict lint (15.913 s). The remaining affected actor
+consumer passed all15 actual transport cases and strict lint (0.793 s/0.441 s).
+All executables are retained/verified. Receipt
+`/private/tmp/brassclaw-pending-host-calls-accepted.json`, source/artifacts
+`target/validation/pending-host-calls-20261015-r2` and
+`target/validation/pending-host-calls-artifacts-20261015-r2`; actor artifacts are
+in `pending-host-calls-actor-artifacts-20261015-r2`. Twenty current changed
+runtime/interface/test inputs match the tested source. EN/DE help received a
+prose-only clarification of idle work waits after freeze; syntax checks passed.
+
+This closes this local pending-call control and its actual worker/Rust uptake.
+Rendered resource-form interaction, packaged CLI/platform/release qualification,
+worker-slot sizing, remaining limits, Tool identity/authority cutover and overall
+plan/test-machine completion remain required. No runtime speed improvement or
+full-plan acceptance is claimed.
+
+## 2026-10-15 — Reusable global-worker scheduling prerequisite
+
+The isolated Monty extension now exposes the private
+`asyncio._replace_sibling(slot, coroutine)` operation. An executing gather child
+can append a coroutine at exactly the next group slot or replace an already
+completed slot. It cannot replace an active sibling, select another group,
+reuse a started coroutine or create a detached task. The original group waiter,
+host futures and normal failure propagation remain. Replacement releases the
+previous coroutine and result instead of retaining a growing result history.
+Python still owns scheduling and Recipe sequencing; this adds no Rust workflow
+loop, Tool grant or alternate VM.
+
+Reference-count diagnostics exposed an existing ownership defect when a
+suspended one-shot or REPL snapshot was destroyed. The owning snapshot now
+releases stacks, frame namespaces, scheduler references, pending effects and
+globals before destroying its heap, without executing Python or claiming an
+external effect was cancelled. Resume transfers the original owned state;
+explicit REPL recovery retains the original namespace. Dump fields retain their
+existing non-null representation. No dump ABI or application-protocol bump was
+needed for these ownership changes.
+
+Accepted evidence: `tests/monty_scheduler` enables the actual interpreter's
+`memory-model-checks` and `test-hooks`. All eight new cases pass, including
+2,000 replacements, active-slot rejection with no rejected code execution,
+extension/failure propagation, an actual pending host checkpoint with only two
+remaining scheduler tasks, dump/load and REPL namespace recovery. The three
+existing native coroutine-accounting cases also pass. Strict test-target Clippy
+passes. Source/artifacts are retained under
+`target/validation/sibling-scheduler-20261015-r5` and
+`target/validation/sibling-scheduler-artifacts-20261015-r5`; receipt:
+`/private/tmp/brassclaw-sibling-scheduler-accepted.json`. Nine current own code
+inputs and both executables match their recorded hashes. The refreshed
+`CONTROL.patch` reconstructs all 228 vendored source/manifest files from the
+hash-verified upstream checkout. Initial compiler/test failures remain recorded;
+no diagnostic was silenced or reference-count checking disabled.
+
+**Worker sizing remains unfinished.** Do not expose a cosmetic admission setting
+or use this operation in the production root before these owning paths are
+implemented together:
+
+1. Retire host accounting entries for actual completed coroutine contexts while
+   preserving cumulative execution/preparation/adaptation totals. The current
+   `RootControl` retains a bounded lifetime map, which rejects repeated context
+   replacement. Retirement must follow the interpreter's real lifecycle and must
+   never discard an active task budget, pending host answer or unresolved effect.
+   Inspect the current task-release handshake: it happens at the next work wait,
+   so returning a worker immediately after `finish_task` cannot simply drop its
+   still-owned account.
+2. Implement a permanent Python capacity coordinator in the same owning gather.
+   Growth starts actual workers; reduction drains existing work before removing
+   workers. Reuse completed slots instead of accumulating nested gather frames.
+   Preserve active Recipe selections, waits, attempt fences and intermediate
+   values. Shutdown must also stop the coordinator and all retained workers.
+3. Coordinate the configured admission capacity, actual coroutine capacity,
+   context bound and pending-call minimum through the complete revision-checked
+   settings transaction. Preflight before persistence, publish actual worker
+   uptake, report desired/effective/draining status, and preserve one root VM.
+   Reject impossible simultaneous reductions; do not acknowledge uptake from
+   Rust semaphore capacity alone.
+4. Exercise ordinary matched/unmatched tasks, provider/MCP waits, concurrent
+   settings edits, cancellation, growth, draining reductions and shutdown through
+   the paired native product worker. This isolated interpreter gate does not
+   establish product resizing, full resource controls, fatal recovery, Windows
+   execution, complete v3 acceptance or release/test-machine completion.
+
+## 2026-10-15 — Actual coroutine-account retirement accepted
+
+`ExecutionControl::context_exited` now reports real spawned-coroutine success or
+unhandled failure after closing the final execution interval. Snapshot creation,
+suspension and destruction do not report an exit. Retirement rejection latches
+an uncatchable control failure and does not clear prior failure or cumulative
+clocks. Existing controls have a default no-op hook; the global host implements
+its ownership checks explicitly.
+
+The global host moves exited-context execution, preparation and adaptation into
+separate cumulative totals and removes the live map entries. It refuses to
+retire any context still owning an admitted task. Answer import preparation can
+remain owned by a coroutine that has just exited; the host retains one pending
+retirement through that serialized scope's final sample, then retires it when
+the exact scope closes. This prevents dropping preparation time or falsely
+rejecting ordinary idle-worker shutdown. It acknowledges neither task completion
+nor cancellation of an external effect and releases no durable attempt state.
+
+Accepted source/artifacts:
+`target/validation/context-retirement-20261015-r3` and
+`target/validation/context-retirement-artifacts-20261015-r3`; receipt
+`/private/tmp/brassclaw-context-retirement-accepted.json`. All13 actual global-host
+cases pass (0.558 s), including 2,000 replacements, real work-wait readiness,
+live-map plus retired-total equality and shutdown with retained VM identity.
+An unexpected worker exit retains its unfinished task budget and fails closed.
+All10 scheduler/ownership cases and3 existing coroutine-accounting cases pass
+(0.406 s/0.400 s), including real-exit callbacks, no callback on snapshot
+teardown and uncatchable callback rejection. Both strict test-target lints pass
+(8.619 s/4.975 s). Five current changed inputs and three retained executable
+hashes match the accepted source; the vendor patch reconstructs all228 files.
+
+The initial host checks caught retirement before the answer-import scope closed;
+that ordering was repaired and its failed evidence retained. The next check
+caught a test coordinator returning a list as the final root result, which the
+existing host correctly rejects; the fixture now uses the normal async main
+with a `None` result. No production boundary was weakened.
+
+This closes the context-retirement prerequisite in the preceding milestone.
+Live worker sizing, actual coordinator/draining behavior, settings publication,
+paired native worker/product acceptance and the full plan remain unfinished.
+Retirement must never be used to discard an unfinished task. The existing
+`release_task` work-wait handshake still deserves separate completion/receipt
+fencing review before expanding the root pool; its current implementation removes
+an account without inspecting its phase. The ordinary protected Python root
+calls `finish_task` before returning to that wait, but a root host invariant must
+not rely only on that source ordering.
+
+## 2026-10-15 — Exact completion acknowledgement fences worker handoff
+
+The global host now distinguishes a pending `finish_task` call from other task
+ports. Its exact retained continuation/context must receive the trusted service's
+null completion acknowledgement before the task enters the finished phase.
+The service already emits that acknowledgement only after the completion owner
+confirms its exact outcome. Failed, aborted, withheld or non-null answers do not
+qualify. A subsequent `await_next_task` releases an account only from the finished
+phase; otherwise the VM fails closed and retains its task ownership and actual
+rejected answer. No completion, effect or Tool permission is inferred merely
+from source ordering or a worker reaching the next wait.
+
+An old admission fixture intentionally swallowed a task-port error and resumed
+its work wait without finishing. Its expectation now reflects the required
+invariant: oversized/duplicate admissions remain rejected before binding, and
+that unfinished handoff fails with its original task budget retained. Positive
+reuse is verified through the ordinary native product instead of inventing a
+successful durable finish for that fixture. Negative root checks also cover a
+refused finish answer and an invalid completion payload.
+
+Accepted receipt: `/private/tmp/brassclaw-task-handoff-accepted.json`; final
+source/artifacts `target/validation/task-handoff-20261015-r3` and
+`target/validation/task-handoff-artifacts-20261015-r3`. All14 global-host cases,
+27 real-worker service cases and22 process cases pass. The additional service
+case reads a real input file, writes and verifies the real reply, then has its
+completion owner refuse confirmation. The reply remains written exactly once;
+queued work is fenced without dispatch or replay, and the service retains its
+unfinished task state while settling held I/O before containment completes.
+
+The paired worker was rebuilt from the changed source. Native PostgreSQL
+ordinary matched/unmatched/MCP chat and same-DB restart acceptance passes
+(38.015 s), preserving root identity across task reuse. Strict affected
+host/service/process test-target lint passes. The final additional test changed
+only `service_host.rs`; all other9148 frozen inputs and reused executable hashes
+were verified unchanged before reusing the native result. The updated service
+suite/lint pass (1.918 s/0.653 s). The validation wrapper initially rejected an
+unchanged fresh Cargo artifact it had already retained; the corrected wrapper
+accepts that repetition only with Cargo's fresh flag and exact hash agreement.
+No production warning or boundary was suppressed.
+
+This closes the unfinished completion-fence finding in the preceding milestone.
+Live worker-pool sizing/coordinator/draining, full durable recovery, remaining
+resource and authority cutovers, platform execution, release and fresh-machine
+acceptance remain required. This is no full-plan completion or throughput claim.
+
+## 2026-10-15 — Actual root worker-pool hosting prerequisite accepted
+
+`GlobalVm` now has an explicitly selected private `await_pool_update` hosting
+boundary. A root declaring that alias starts one unowned coordinator alongside
+its workers. The host rejects a second coordinator or a coordinator context
+already owning a worker/task. Startup counts the control wait as an additional
+pending call, and readiness requires the actual coordinator/work waits. Roots
+without that alias retain their existing static-pool path; the shipped Python
+root has not yet been changed or activated with this new interface.
+
+The host can deliver a typed `{workers, active_ids}` event to that existing
+Python coordinator. Python owns creation/reuse through the verified gather
+operation. Rust records actual worker-ID/coroutine-context membership at each
+work wait and removes it through actual context retirement. Desired capacity is
+independent of the observed effective count; draining workers remain effective
+until they exit. Admission respects the smaller desired count, including debt
+from still-busy workers and refusal to admit work on draining IDs. Idle draining
+workers receive the trusted hosting stop event; busy futures are never answered,
+replaced or cancelled as a side effect of resizing. Shutdown separately closes
+the coordinator after stopping the workers.
+
+`WorkerPoolCapacity::settled` requires a parked coordinator and the exact
+contiguous desired worker-ID set, not count equality alone. Pending-call minimum
+is `max(desired, effective) + 1` for this interface; the extra control future is
+never hidden from occupancy. Context bounds grow before Python spawns workers
+and shrink after actual drains. Invalid bounds/control envelopes are rejected
+before mutation. Ordinary task-port resolution cannot answer the private pool
+wait, and task account/completion fencing remains enforced.
+
+Accepted source/artifacts:
+`target/validation/worker-pool-core-20261015-r1` and
+`target/validation/worker-pool-core-artifacts-20261015-r1`; receipt
+`/private/tmp/brassclaw-worker-pool-core-accepted.json`. All17 global-host cases
+pass (0.592 s) and strict test-target Clippy passes (3.114 s). The new actual-VM
+cases exercise 50 grow/drain/reuse cycles with the same root and original idle
+worker continuation, rejection of an insufficient pending-call budget, a busy
+worker outside the reduced target retaining its exact future/budget, admission
+debt, regrowth without duplicating that worker, and complete worker/coordinator
+shutdown. Boot rejects an unbudgeted control wait and a duplicate coordinator.
+Both current changed inputs and all retained executable hashes match the tested
+source. There were no compiler or test failures in this batch.
+
+**This is not live product sizing yet.** Before activating the production root:
+
+- Extend the paired private IPC protocol/snapshot with exact desired/effective
+  worker membership and coordinator state. Current `process.rs` validates
+  `pending.minimum == root.workers()` and `outstanding.len == boot.workers`; these
+  fixed-pool assumptions must be replaced coherently. Keep boot identity immutable
+  and validate live membership separately. Every outstanding key still belongs
+  to the same root generation.
+- Add complete candidate preflight and actual VM progression to the revision-held
+  settings commit/publication path. A count setter or early coordinator call is
+  not an acknowledgement. Publish effective/draining status only from validated
+  observations. Preserve in-flight tasks, host results and attempt references.
+- Wire service control-wait handling, drain selection, actual admission limits,
+  dynamic shutdown inventory and cancellation. Counts alone cannot prove settled
+  membership; do not admit draining IDs or discard active capacity debt.
+- Add the persisted/WebUI worker setting and short EN/DE help. Existing profiles
+  with pending-call budget2 are valid for the current two-worker static root but
+  cannot support two workers plus the new control wait. Migrate that dependency
+  with a new settings revision and visible effective state; preserve larger
+  operator settings. Do not hide the extra future or publish an impossible count.
+- Upgrade/qualify the shipped protected Python root and test the paired native
+  worker, authenticated settings, actual PostgreSQL persistence/rejection,
+  ordinary matched/unmatched/MCP/provider waits, growth, draining, cancellation
+  and shutdown. This isolated root gate is no replacement for those acceptance
+  requirements or the rest of the full plan.
+
+## 2026-10-15 — Paired pool protocol and retained admission capacity accepted
+
+Private worker protocol17 now carries `WorkerPoolSnapshot`: actual desired/
+effective membership, sorted worker IDs, parked-coordinator state and its exact
+continuation. This is separate from immutable boot `RootExecutionIdentity`.
+Receivers require the selected root's pool mode, unique/sorted worker waits,
+unique outstanding keys, the same VM generation, a distinct owned coordinator
+key and the observed pool's pending-call minimum. Boot counts the extra control
+wait and requires settled actual membership. Static-root observations remain
+explicitly pool-less. Older protocol workers are rejected before readiness.
+
+Mechanical `RequestWorkerPool`, `DrainWorker` and `ClosePoolCoordinator` commands
+reach the existing global VM. Accepted target changes also update the retained
+Recipe/task registry's admission capacity, preserving existing task records and
+reduction debt. Without that registry update, a grown VM would still reject
+admission above its initial task count. These commands are private hosting
+infrastructure, not a Recipe workflow or an exposed operator settings API.
+
+Accepted source/artifacts:
+`target/validation/worker-pool-wire-20261015-r1` and
+`target/validation/worker-pool-wire-artifacts-20261015-r1`; receipt
+`/private/tmp/brassclaw-worker-pool-wire-accepted.json`. All17 root-host,24 actual
+process,27 service and15 actor cases pass (0.653 s/6.566 s/1.558 s/0.452 s), with
+strict affected test-target lint (3.969 s). Six current source/fixture inputs and
+six retained executable hashes match the tested source. The actual subprocess
+performs20 grow/drain/reuse cycles and complete worker/coordinator shutdown with
+unchanged boot identity, process ID and original idle continuation. A second
+case admits three real unresolved task scopes beyond the boot capacity of two,
+reduces capacity without discarding their futures or registry records, rejects
+new admission debt, then regrows without duplicating those workers. No successful
+intent/model/Tool/task-completion result is fabricated. This batch had no
+compiler or test failures.
+
+The remaining cutover must still include complete revision-held candidate
+preflight/publication, service control handling and dynamic shutdown, persisted
+worker settings and EN/DE help, dependency migration for existing pending-call
+budget2 profiles, qualification of the shipped Python coordinator and ordinary
+native PostgreSQL/WebUI/provider/MCP acceptance. Settings preflight must also
+check that the future membership/continuation observations fit the configured
+frame/value limits before committing a requested growth; an early small control
+reply does not prove the eventual expanded snapshot will fit. No production root
+or WebUI worker setting has been activated by this prerequisite. General durable
+recovery, all other resource/authority/validator gates and full-plan/release/fresh
+machine acceptance remain required.
+
+## 2026-10-15 — Sparse draining membership counted before regrowth
+
+Settings-preflight tracing found a gap in the preceding pool-count rule. After
+shrinking, a busy worker can retain a high ID outside a subsequent target range.
+The required worker set is therefore the union of target IDs0..desired-1 and
+actual retained active IDs. Its pending minimum is
+`desired + count(active_id >= desired) + 1` for the coordinator. The earlier
+`max(desired, effective) + 1` assumption is superseded by this correction.
+
+The host validates that complete prospective union before changing desired count,
+context bounds or VM state. Its nonmutating `validate_worker_pool_target` also
+checks coordinator quiescence, proposed typed-value bounds and current pending/
+withheld occupancy. It reserves no memory and does not prove future frame size.
+Actual pending observations and context-bound resizing use the same union,
+including the interval before newly created workers reach their work waits.
+Private protocol18 gives the paired receiver that corrected minimum contract;
+protocol17 workers are rejected before readiness. Dump ABI remains unchanged.
+
+Accepted source/artifacts:
+`target/validation/worker-pool-union-20261015-r1` and
+`target/validation/worker-pool-union-artifacts-20261015-r1`; receipt
+`/private/tmp/brassclaw-worker-pool-union-accepted.json`. All17 root-host,25 actual
+process,27 service and15 actor cases pass (0.617 s/6.555 s/1.545 s/0.456 s), with
+strict affected test-target lint (3.995 s). Three current changed inputs and all
+six retained executable hashes match. No compiler/test failures occurred.
+The new real-process case holds worker7 busy, drains to actual IDs[0,7], then
+requests target IDs0–6. An eight-call budget rejects the request with original
+membership/future intact. After increasing the pending limit to nine, regrowth
+keeps all eight actual workers, original root identity and unresolved task scope,
+with nine observed calls including the coordinator. No host-effect or task-finish
+result is fabricated.
+
+This repair precedes complete worker-settings publication. Remaining work still
+includes the future expanded-snapshot frame/value projection, the revision-held
+candidate/DB/VM publication path, service draining/shutdown, persisted/WebUI
+worker settings and help, shipped coordinator qualification and ordinary native
+product acceptance. A projection is not an actual pool observation. No live
+worker setting or full-plan completion is claimed by this gate.
+
+## 2026-10-15 — Complete worker-settings candidate and bounded projection accepted
+
+Private protocol19 extends `RuntimeSettingsCandidate` and
+`RecipeCommand::UpdateRuntimeSettings` with optional `max_workers`; `None` retains
+current capacity. `RuntimeSettingsObservation` reports the actual desired pool
+limit separately from effective membership. The durable transport owner carries
+the field into its existing preflight/commit/publication barrier. Revision
+validation precedes expensive worker sizing. All construction/pattern sites and
+legacy callers were updated; no persisted or WebUI worker field is exposed yet.
+
+Preflight validates the target/retained-ID union, current occupancy, typed control
+bounds and prospective wire size before mutation. The new private
+`process_pool_projection.rs` retains the real DTO's remaining fields and streams
+future worker IDs, wait tuples, outstanding/boundary keys and coordinator through
+a bounded counting writer. It uses maximum-width key ordinals and allocates no
+arrays or output buffer proportional to requested capacity. The repeated sizing
+keys are projections only and never become observations, selections or grants.
+
+Publication applies the complete revision/limits and lets Python advance the
+existing coordinator. Rust pumps only the private hosting waits and control
+yields, never a task port or workflow. It acknowledges only when the coordinator
+is parked and every target ID is present. Retained workers outside the target
+remain observed/draining. A coordinator that omits a target fails containment
+instead of reporting successful uptake. The retained task registry's admission
+target changes without resetting its existing records/budgets. The existing parent
+transport deadline contains a broken coordinator; it is no global VM lifetime.
+
+Accepted receipt: `/private/tmp/brassclaw-worker-pool-candidate-accepted.json`;
+source/artifacts `target/validation/worker-pool-candidate-20261015-r2` and
+`target/validation/worker-pool-candidate-artifacts-20261015-r2`. All17 root-host,
+27 actual process,27 service,15 actor and9 Q1 checks pass (0.596 s/6.710 s/1.519 s/
+0.467 s/55.923 s), with strict affected test-target lint (4.483 s). Ten current
+source/fixture inputs and seven retained executable hashes match. A real
+million-worker probe is rejected by streamed frame sizing with its original
+root, settings, membership, outstanding keys and process identity intact. A valid
+four-worker candidate publishes revision2 and actual settled membership; a stale
+candidate remains rejected. An intentionally incomplete coordinator cannot emit
+a settings ACK. No compiler/test failure occurred in these batches; the latter
+fault test intentionally contains its worker.
+
+Remaining work includes the public service settings field/observation, orderly
+service draining after completed task/child cleanup, dynamic shutdown, persisted
+worker setting and EN/DE help, pending-call dependency migration, shipped root
+qualification and authenticated native product acceptance. Reductions report
+actual effective/draining membership; they must not drop active tasks or infer
+cleanup from a count. The ordinary shipped root remains static until this
+coordinated cutover. No full-plan or release acceptance is claimed.
+
+
+## 2026-10-15 — Service worker-pool publication and cleanup accepted
+
+`ServiceHostingLimits.max_workers` now reaches the complete revision-held worker
+candidate. Legacy/static product callers explicitly preserve their existing
+policy with `None`; this milestone does not expose a persisted/WebUI setting or
+activate the shipped coordinator. A nonzero pool target requires a pool-enabled
+root. Startup requests must agree with the actual boot count.
+
+The service retains a credited settings request while settling real root host
+calls/control yields before consuming the parked pool coordinator. It publishes
+Rust settings only after the worker reports the requested target, all required
+actual worker IDs and a parked coordinator. Target and effective membership stay
+distinct during reductions; service and transport expose actual pool observations.
+It never restores a root continuation consumed by a pool change.
+
+Admission respects the new desired count and busy-worker debt. Finished task
+accounts/child heaps are released and their actual completion receipts delivered
+before surplus idle workers drain. Busy host futures remain owned. Shutdown
+closes the actual work-wait inventory and coordinator, including workers added
+since startup, rather than iterating the boot-time count.
+
+Accepted source/artifacts: `target/validation/worker-pool-service-20261015-r3`
+and `worker-pool-service-artifacts-20261015-r3`; final receipt
+`/private/tmp/brassclaw-worker-pool-service-accepted.json`. Its new actual-file
+service regression rejects an infeasible eight-worker target before polling the
+durable writer, acknowledges a synced real write before worker/Rust publication,
+and preserves the pool/revision after a real create-new write rejection. It grows
+two workers to four, retains four busy tasks (one holding a real child heap)
+through reduction to one, blocks queued admission while over target, verifies
+actual file replies and task receipts, drains only after cleanup, regrows and
+shuts down the unchanged root/process gracefully. All 28 service tests and strict
+host-target lint pass on r3. The preceding r2 full batch passed 17 root, 27
+process, 28 service, 15 actor and 9 Q1 tests plus strict lint; r3 changes only the
+service test's durable-write assertions. Initial r1 test compilation found two
+moves through Arc; borrowed observations fixed them. No warnings were suppressed.
+
+Remaining: persisted worker setting and EN/DE help, pending-call dependency
+migration, shipped coordinator qualification and ordinary native product
+acceptance. This is service acceptance, not full-plan or production-pool completion.
+
+
+## 2026-10-15 — Persisted live global-worker control accepted locally
+
+The former `workers: 2` startup literal is now the positive instance setting
+`execution_limits.max_workers` (default two). Startup reads it, declares the
+private coordinator port and starts the shipped Python pool coordinator before
+ingress. The coordinator adds/replaces actual gather siblings; Rust retains
+hosting/admission/resource enforcement. No per-chat VM, Rust workflow loop or
+historical static-root fallback was added. Test fixtures now declare the real
+shipped root's coordinator and close it explicitly after its actual workers.
+Constrained draft entries that only reuse definitions keep their own entry ports.
+
+Both live publication paths carry the requested target through the worker/Rust
+revision barrier. Observation derives desired capacity from the actual root,
+with effective membership and draining reported separately. Admission debt and
+post-task release precede retirement. An unchanged target in a complete settings
+save is normalized only at the serialized current revision, preserving duration
+edits while a coroutine executes CPU work. A regression proves that a supported
+one-second limit reaches that executing task, retains pre-terminal consumption
+and reports explicit terminal ComputeExceeded accounting instead of invented zero.
+
+V159 adds missing worker defaults with one settings revision, preserves explicit
+larger values and raises pending-call capacity only to cover workers plus the
+coordinator. Positive integer/range/dependency checks apply in Rust and PostgreSQL.
+A pure SQL default wrapper preserves the previous default expression and evaluates
+it exactly once per insert, never during migration. Actual PostgreSQL acceptance
+covers small legacy limits, overrides, a counted volatile default, invalid writes
+and revision-overflow rollback. V158's predecessor regression explicitly removes
+the successor constraint when constructing its historical schema.
+
+WebUI exposes the field, validates its pending-call dependency and shows actual
+versus desired slots/draining. EN/DE help explains the default, one-VM semantics,
+absence of per-slot memory reservation, safe retirement and pending-call minimum.
+JavaScript syntax checks passed for the tab and both language files; this does not
+claim rendered-browser, external-model or remote-machine acceptance.
+
+Final receipt: `/private/tmp/brassclaw-worker-pool-product-accepted.json`;
+source/artifacts `target/validation/worker-pool-product-20261015-r8` and
+`worker-pool-product-artifacts-20261015-r8`. R8 passed 17 root, 15 actor, 27
+process and 28 service tests plus strict root (including Bedrock compilation)
+and standalone host test-target lint. Six retained-Recipe and nine Q1 tests plus
+four actual native PostgreSQL/settings/global-runtime cases passed on r7 and
+are retained with that exact source/paired-worker archive. R8 differs only by
+replacing a negated optional-map predicate with its equivalent `is_none_or`
+form; the runner verifies that exact sole diff, documents all three truth cases,
+and reruns the worker identity/lifecycle callers. No warning was suppressed.
+The native settings case uses the supported HTTP settings route; global acceptance
+starts four slots, shrinks/drains to one, regrows four, retains the same root/PID,
+then exercises ordinary Match/No-Match, MCP ingress and restart. Its model gateways
+are test fixtures; no live external-provider inference claim is made.
+
+Earlier failures remain in their archives: old pending minimum/reduction values,
+missing coordinator declarations in fixtures, an unsupported millisecond test
+setting and a mistaken numeric assumption for terminal budget accounting were
+corrected. The root-workspace lint also found the optional-map simplification,
+which was fixed before final acceptance. Current source and retained binaries'
+hashes were verified. Reusing unaffected evidence avoids another full native
+compile solely for the equivalent predicate.
+
+This closes the local worker-setting wiring gate, not the full plan. Correlated
+MCP child admission when parent slots are saturated still needs its separate
+acceptance/implementation; a configurable worker count alone does not solve that
+case. Durable fatal-runtime reconciliation, the complete validator/authority/store
+cutovers, remaining limits, platform execution and release/fresh-install/model/
+prefix/function acceptance remain required. No commit/tag/release or remote build
+was performed for this milestone.
+
+
+## 2026-10-15 — Fenced dependent-slot VM primitive accepted; MCP cutover still open
+
+Saturation is a real remaining Phase 3a issue: `McpChatBridge::call` durably stores
+`parent_run_id` and allocates the child `call_id` before ordinary correlated chat
+submission. The global driver later calls `submit_when_available`; the service
+retains a waiting parent in its worker slot. All parent slots can therefore await
+children that cannot enter the same pool. Increasing the setting alone cannot
+establish progress. MCP must continue to send an ordinary message through matching
+and the pinned Recipe runner; it must not call Monty/IBS/Tools directly.
+
+`global_dependents.rs` now supplies an in-process hosting primitive, not a new
+workflow Tool. A reservation binds one actual parked parent continuation/token
+to one typed child-run UUID. The parent must still own a running, uncancelled,
+nonterminal task scope. Reservations are exclusive per parent and child. One
+related coroutine can be added/reused without changing the ordinary target count
+or replacing the VM; its actual work wait is observed separately from reserving
+it. Normal/retained/reserved slots plus the coordinator remain bounded by the
+live pending-call policy and typed control-input limits. Counts use unions without
+allocating an array proportional to the desired target.
+
+Both slot selection and final task-account insertion fence the exact child run.
+A different idle slot cannot consume the reserved run. Existing-run, nil-run,
+duplicate-parent/child and stale/cancelled-parent requests fail before entering a
+child. Normal admission still respects ordinary capacity/debt; a related binding
+requires the actual reservation and live parent, not an increased global limit.
+Rejected conversion rolls back only an untouched, unbound reservation in a Ready
+VM. An entered/unknown attempt retains its identity and evidence. The idle slot
+cannot drain until explicit owner release; an entered child additionally needs
+its exact token and actual finish acknowledgement/work-wait return. A ready
+parent answer is retained without consuming its continuation until dependent
+release; fatal Abort stays available for instance containment. The real-file
+regression resumes that exact held parent answer after release and observes its
+next requested effect without executing/replaying it. Separate child-context
+cleanup remains the process/service owner's obligation.
+
+The private coordinator update now includes `borrowed_ids`. Ordinary production
+updates supply an empty list, which the current shipped coordinator ignores.
+Only the constrained dependency fixture consumes it so far. No process command,
+borrowed-capacity snapshot schema, registry/service admission or MCP production
+entry has been activated, and protocol remains19. Reservation is not proof of
+coroutine creation: a future transport handler must drive real hosting boundaries
+and verify the requested dependent work wait before acknowledging capacity.
+
+Accepted receipt `/private/tmp/brassclaw-dependent-slot-core-accepted.json`;
+source/artifacts `target/validation/dependent-slot-core-20261015-r5` and
+`dependent-slot-core-artifacts-20261015-r5`. All21 actual global-VM,27 subprocess
+and28 service tests pass, plus strict host-target and root host-package lint.
+New cases run a real parent/child/grandchild with unresolved host futures in one
+VM, reject the next reservation at actual pending capacity, preserve exact keys
+on wrong/oversized inputs and cancellation, prevent ordinary-slot run theft,
+and read/write/sync a real child file result before acknowledging finish and
+releasing/draining its exact slot. No successful matcher, model, Recipe or Tool
+result is invented. This proves hosting mechanics, not full Recipe/kernel/MCP or
+durable recovery acceptance. Initial test compilation used a nonexistent cancel
+method and was corrected to the existing API. The first child-entry regression
+then exposed the second ordinary-capacity guard; it was fixed rather than bypassed
+or weakening ordinary admission. R5 additionally fences early parent resume
+and passes the same21/27/28 tests and strict lints. All diagnostics remain retained.
+
+### Required next integration, before claiming saturation resolved
+
+1. Extend the paired worker protocol and actual pool observation to distinguish
+   requested dependent IDs, active dependent slots and draining surplus workers.
+   Preserve complete frame/pending/context preflight and retained task accounting.
+   Add explicit reserve/release commands; verify actual coroutine creation, fail
+   closed on a missing target, and release only after registry child cleanup.
+2. Thread trusted parent-wait and child-run identities through ordinary admission.
+   MCP already records lineage before submitting, but a run UUID alone cannot
+   identify an attempt. Bind the originating provider surface/exchange to the
+   live parent TaskPorts/attempt and exact continuation; reject stale generations,
+   conflicting lineage and cycles. Reuse existing turn lineage contracts where
+   applicable. Keep correspondence metadata separate from Tool permission.
+3. The service must reserve a related slot while retaining the parent's real host
+   future, prioritize that child without letting unrelated queued work steal its
+   slot, preserve normal target/debt and reuse/drain only after real completion.
+   Multiple children of one waiter need bounded, cancellation-aware sequencing;
+   cancellation/rejected preparation must not orphan reservations. No polling,
+   Rust Recipe executor, per-chat VM or automatic Tier-2 replay is permitted.
+4. Upgrade/qualify the shipped Python coordinator to create these same-root
+   coroutines. Expose dependent versus draining observations and explain their
+   relationship to the ordinary worker setting in WebUI. Running tasks retain
+   their original exports, budgets and attempt identities.
+5. Accept through actual saturated ordinary MCP/child chat ingress, including one
+   parent slot, every parent slot occupied, nested dependencies, sibling calls,
+   low pending/retention limits, live policy/settings edits, cancellation/disconnect,
+   duplicate requests, failure containment and effect preservation. Re-run the
+   ordinary match/no-match/restart path with paired artifacts. Until then this is
+   a prerequisite and the parent/child saturation gate remains open.
+
+Additional source finding for the same transport owner: `Exchange.calls` retains
+completed cancellation tokens and rejects a new request at the fixed4096 map
+size. Its in-flight lifecycle and capacity must be repaired under the full limit
+inventory; durable request/outcome deduplication must remain authoritative. Do not
+replace the durable cache with a fresh execution or hide this cap behind a label.
+
+## 2026-10-15: dependent-slot worker transport accepted, production producer open
+
+The first next-integration prerequisite above is implemented in paired protocol20.
+The shipped coordinator now consumes `borrowed_ids`; snapshots distinguish
+reserved IDs, actual dependent coroutines and ordinary surplus draining workers.
+Validate is nonmutating, bounded prospective-frame projection precedes reserve,
+and reserve acknowledges actual coroutine creation. A deliberately noncompliant
+coordinator fails closed. Release rejects a child before its real finish ACK or
+while its Recipe registry context remains retained. An early parent answer keeps
+its exact unconsumed continuation, without another host effect.
+
+Receipt `/private/tmp/brassclaw-dependent-slot-wire-accepted.json` identifies
+`target/validation/dependent-slot-wire-20261015-r3` and its preserved executable
+artifacts. R2 passed21 global,15 actor,29 process,28 service,6 retained-execution
+and9 Q1 checks; native PostgreSQL worker/pending migrations, live WebUI settings
+and ordinary match/no-match/MCP/restart acceptance; and strict affected main and
+standalone lints. R3 changes only the subprocess regression: all29 process tests
+and process lint pass again; its receipt explicitly reuses unaffected r2 results.
+It grows ordinary capacity1→3 and shrinks3→1 around a child retaining1 MiB,
+rejects an unsafe pending-capacity reduction without changing the revision,
+drains only the unrelated surplus and verifies the child's actual retained
+value. Final child cleanup frees its heap before releasing the parent result.
+The real production worker and test artifact hashes are retained with the receipt.
+
+Remaining next-integration items2,3 and5 are still required. In particular,
+ordinary service admission has no producer for the reserve command, and the
+provider exchange is not yet tied to its exact live parent attempt/surface.
+The normal-path native checks use their existing gateway fixtures, not the live
+inference endpoint. This milestone does not close the saturated MCP, complete
+fatal-recovery, Linux/Windows or full-plan gates. Protocol19 notes above describe
+the preceding accepted stage and are not a compatible worker alternative.
+
+
+## 2026-10-15: MCP in-flight ownership and live capacity accepted
+
+`mcp_chat_bridge.rs` now retains cancellation state only while HTTP waiters own
+it. Exact duplicates share one registration; the last waiter cancels its token
+and removes the registration on completion, error or future drop. Explicit
+waiter counts are updated under the index mutex. Empty batches release the
+index backing allocation. Durable PostgreSQL correlation remains authoritative
+for request identity and original outcomes; late cancellation of a completed
+request does not poison recovery or submit another chat.
+
+The former fixed 4096-entry bound is now `max_mcp_inflight_calls`, a positive
+u32 execution setting with default 4096 and EN/DE WebUI help. The bridge captures
+the existing acknowledged effective settings rather than a desired database
+write. Live reductions preserve accepted registrations and duplicate waiters,
+while rejecting new identities until occupancy permits them. V160 adds missing
+values with one revision, preserves explicit values and evaluates an existing
+custom default expression once. Invalid or exhausted revisions fail atomically.
+
+Accepted receipt `/private/tmp/brassclaw-mcp-call-lifecycle-accepted.json` points
+to `target/validation/mcp-call-lifecycle-20261015-r3` and retained paired worker/
+composition artifacts. Native ordinary global chat/MCP/restart acceptance passes
+with 4097 simultaneous cancellation registrations, reduction to one without
+canceling them, 128 synchronized concurrent-drop rounds, retained state
+references, aborted waiters, more than 4096 completed IDs, late cancellation and
+original durable cached replies. This exercises registrations, not thousands of
+simultaneous Recipe effects. Strict composition test-target lint also passes.
+The receipt explicitly reuses unchanged r2 product complete-update tests, native
+V160 migration, live WebUI/runtime uptake and strict host API/Monty/product/
+composition lint. Current selected source and executable hashes were verified.
+JavaScript syntax checks pass; rendered resource-form acceptance remains open.
+
+Earlier r1/r2 source used Arc reference counts for cleanup. Review exposed a race
+between concurrent Drop bodies and their later field destruction. Those outputs
+remain historical evidence, not certification of concurrent cleanup. R3 uses
+serialized waiter counts and adds the corresponding regression coverage.
+
+This closes the cancellation-index leak and its fixed active capacity. It does
+not close ordinary service dependent admission, exact provider-surface/attempt
+correlation, pending-admission cancellation, full fatal recovery or platform/
+release gates. The provider response ceiling, server request default and
+request-ID size remain in the limits audit. No direct MCP-to-Monty execution
+path, Rust task loop, fake approval or effect replay was introduced.
+
+
+## 2026-10-15: pre-enqueue cancellation and abandoned admission waits accepted
+
+Task preparation no longer waits indefinitely for queue capacity or memory
+admission after its host is cancelled. The instance service separates waiting
+from enqueue and can return sealed proof that this particular input was never
+queued. The proof identifies the original root, run and actual port owner; it
+is not a VM receipt, checkpoint, permission or synthetic execution outcome.
+Accepted tasks still return their real ticket and follow VM/host-future settlement.
+
+The driver retains its shared submission future before polling it. An abandoned
+drive waiter therefore leaves the actual submission with its attempt owner.
+After fencing, the supervisor polls that same future, retains any accepted
+control, or obtains the real pre-enqueue cancellation proof. It never recreates
+input, ports, catalogue selection or an admission. The future uses a weak attempt
+reference and records ownership before exposing its result. Cancellation and
+ordinary settlement retain distinct acknowledgement paths.
+
+The factory verifies and retains proof before database I/O. Only an unstarted
+reservation with no Recipe selection, Tool record or observed dispatch can
+close through `cancel_unsubmitted`. The existing monotonic schema records its
+failed/cancelled admission without inventing an execution report or No-Match
+review event. A failed or uncertain write keeps the exact proof and private
+address for acknowledgement; only a durable success releases retained state.
+Already started admissions are rejected. The existing acknowledged, configurable
+cancellation timeout bounds the wait; there is no new product timer or cap.
+
+Receipt `/private/tmp/brassclaw-cancel-preparation-accepted.json` identifies
+`target/validation/cancel-preparation-20261015-r3` and preserved paired protocol20
+artifacts. All 28 service tests and six focused real PostgreSQL/model-host cases
+pass, including full queue/memory waits, a rejected deferred COMMIT followed by
+an exact acknowledgement retry, a dropped drive waiter while admission remains
+paused, refusal to reclassify started work, active cancellation, late answers,
+completed replies and retained interrupted catalogue preparation. The ordinary
+runtime test uses real correlated chat ingress and cancellation while holding the
+actual settings publication mutex and admission pause. It verifies zero dispatch,
+no fabricated service receipt, durable cancellation, refunded queue/retention
+credits and a later matched reply on the same global instance. Accepted live
+cancellation-policy and global match/no-match/MCP/restart tests also pass.
+Strict affected main and standalone test-target lints pass; selected current
+source, retained executables and the paired worker hashes were verified.
+
+R1 found a missing test namespace and r2 found that the shared service fixture
+used a dependency available only in the standalone workspace. The native test
+now uses its qualified token type and the shared fixture uses existing Tokio
+notifications. No dependency or warning suppression was added. R3 also covers
+ownership after a dropped admission waiter; earlier happy-path evidence alone
+does not establish that case.
+
+This closes cancellation during completed port preparation and admission waits.
+An abandoned catalogue/database preparation before that boundary still retains
+its original uncertain evidence. Non-cancellation admission errors must not be
+relabeled as cancellation. Ordinary dependent-slot admission, immutable provider
+surface/parent-attempt correlation, full fatal recovery and platform/release
+acceptance remain required. No Rust workflow loop, per-chat VM, direct MCP
+execution connection or effect replay was introduced.
+
+## 2026-10-15 — MCP provider-surface provenance accepted; dependent admission validation follows
+
+Production provider exchanges now persist the exact selected live capability
+surface and use that port's pinned advertisement. The bridge rejects a wrong or
+finished surface, including a port fenced while exchange persistence waits.
+Migration V161 preserves historical NULL provenance and makes all exchange
+identity columns immutable; it cannot assign a historical call to a successor.
+The ingress native test graph explicitly declares its shared fixture's
+`tokio-postgres` dependency and enables composition's test-only transport seam.
+Production connections require live provider provenance.
+
+Receipt `/private/tmp/brassclaw-mcp-parent-origin-accepted.json` identifies frozen
+`target/validation/mcp-parent-origin-20261015-r4` and preserved paired artifacts.
+Exact live-session/HTTP/PG provenance passed (20.74 seconds), ordinary global
+match/no-match/MCP/restart passed (36.46 seconds), the real ingress listener passed
+(18.32 seconds), the ingress architecture boundary passed (0.43 seconds), and
+strict composition/ingress test lint passed (94.36 seconds). The first two
+results reuse unchanged r2 source/artifacts; r4 adds only the ingress dev
+dependency and Cargo-generated lockfile repair. The frozen receipt does not
+cover subsequent dependent-service edits or prove parent/child saturation.
+That production admission wiring and its new native/contained-worker regressions
+are the next validation batch; the remaining full-plan gates stay open.
+
+## 2026-10-15 — Ordinary dependent admission reaches the single global VM
+
+The ordinary task factory now correlates a persisted MCP child call with its
+immutable exchange surface and the exact retained parent host/provider/port
+owner. It checks the actual parent claim and started private admission without
+starting an operation. Historical NULL provenance never guesses a successor.
+These identities supply scheduling correspondence, not Tool authority or a
+Recipe executor.
+
+The service resolves that parent port against its actual live task and parked
+continuation. Related work has queue priority and uses existing protocol20
+Validate/Reserve/Release commands when ordinary slots are occupied. Every child
+still enters ordinary chat, matching, IBS and Recipe execution. Parent answers
+remain retained until their children settle. Descendant cancellation fences
+actual controls; overload and stale/finished parent relationships are errors,
+never fabricated cancellation or No-Match. Queue preparation cannot wait on a
+sibling's last queue credit; a new admission pause rejects unstarted dependants
+while accepted work keeps progressing.
+
+Completion closes the real child registry/heap before releasing the dependent
+slot and acknowledging its receipt. The service first defers the completed
+work-wait call so the Python pool coordinator is quiescent. Ordinary reductions
+still count busy surplus debt. A parent host panic triggers containment
+immediately even while its normal answer would be held for a child; late child
+I/O and task evidence remain retained.
+
+Receipt `/private/tmp/brassclaw-dependent-service-accepted.json` identifies frozen
+`target/validation/dependent-service-20261015-r10` and paired preserved artifacts.
+All34 actual worker service cases pass (3.07 seconds), including nested loans,
+held parent answers, descendant cancellation, low capacity, admission pauses,
+a full sibling queue and fatal parent panic with a retained real child read.
+The native PostgreSQL regression passes real HTTP MCP sibling calls while their
+parent holds the only ordinary slot (20.84 seconds); both children settle through
+normal Recipes with the same VM/PID and cleaned loans. It also checks cached
+request delivery and live Tool-policy denial. The ordinary global match/no-match/
+MCP/restart regression passes (35.90 seconds). Strict host/composition/ingress
+lint with tests passes (55.21 seconds). r10 reuses unchanged r9 service/global
+results and rebuilds the HTTP test; selected current source and executable
+hashes, including the worker pair, were verified. Gateway fixtures supply model
+responses; this is not live inference or remote deployment acceptance.
+
+Remaining integration requirements stay open. In particular, definitive
+pre-admission capacity/value/shutdown rejections need sealed no-VM proof and a
+durable non-cancellation settlement contract, including exact retry after unknown
+COMMIT and release of retained attempt capacity only after acknowledgement.
+Current error retention is safe against replay but must not accumulate forever
+under repeated overload. Extend V099/V107's currently cancellation-only unstarted
+settlement rules through a coordinated migration and proof/driver/factory change;
+never relabel rejection as task_cancelled or fabricate an execution report.
+Uncertain Admit/worker outcomes must remain reconciliation evidence. Further
+native multi-parent/nested/settings/cancellation/recovery cases and remaining
+transport limit settings are required before closing the full saturation and
+plan acceptance gates. No release or full-plan completion is claimed here.
+
+## 2026-10-15 — Durable pre-VM rejection acknowledgement accepted
+
+The service now issues sealed `UnsubmittedTask` proof with a distinct cancelled
+or rejected cause. Preparation errors return explicit rejected submissions;
+queued rejections publish proof before their error waiter wakes. Uncertain Admit
+or worker failures issue no such proof. The proof binds the original root, run
+and actual port owner and grants no authority. A rejected value retains its
+proof even if cleanup of an unused dependent slot subsequently fails.
+
+The driver retains the actual proof before durable I/O, shares acknowledgement
+across abandoned drive/stop waiters, and applies the acknowledged lifecycle wait
+deadline. It returns the original rejection cause, never cancellation or No-Match.
+The factory verifies the original host/ports and zero execution evidence and
+retains its private admission through unknown writes. V162 permits the exact
+classified unstarted rejection outcomes while keeping identity and terminal
+settlement immutable; no fake VM receipt or execution report is added. Capacity
+is refunded only after durable acknowledgement of the same proof. The existing
+WebUI acknowledgement control now explains cancellation and rejection in EN/DE;
+its API key remains compatible.
+
+Receipt `/private/tmp/brassclaw-unsubmitted-rejection-accepted.json` initially
+identifies `target/validation/unsubmitted-rejection-20261015-r1`. All34 service
+cases passed (3.15 seconds). New actual PostgreSQL/worker cases passed: a COMMIT
+response withheld by a real TCP proxy after server commit (3.54 seconds), repeated
+driver rejections with retained capacity one (2.04 seconds), and queued history
+rejection after a live value limit reduction (2.13 seconds). The committed but
+unacknowledged outcome retained its slot, then retrying the original proof
+acknowledged it without re-execution. Existing cancellation, opaque driver,
+failed preparation, uncertain invocation and confirmed-reply regressions passed.
+Native ordinary HTTP MCP/global/restart and cancellation passed (20.11/35.60/
+15.84 seconds); strict host/composition/ingress and standalone service/model test
+lint passed (67.14/18.69 seconds). Both translation modules passed syntax checks.
+No suppressed diagnostics or external inference is part of this evidence.
+
+A remaining integration issue was identified from actual MCP consumers: terminal
+and cached receipts require a matched Recipe, but these rejected chats correctly
+have no Recipe or assistant reply. Extend terminal verification to accept only
+an exact settled pre-VM failure with no selection/invocation and the original
+correlated user reference, preserving all existing matched execution proof.
+Verify the error over real HTTP with live queue limits, cached duplicate delivery,
+chat closure and restored admission, and retain unresolved/uncertain originals
+without replay at startup. These subsequent MCP edits are not covered by r1 and
+are the next frozen validation batch; the wider plan gates remain open.
+
+## 2026-10-15 — MCP rejected-chat receipts and exact request ownership accepted
+
+Terminal and cached MCP receipts now recognize a definitive pre-VM failure only
+from the exact settled admission, original accepted user reference, supported
+two-field failure outcome and absence of Recipe selections/Tool invocations.
+They require a terminal unsuccessful run with no assistant text/reply reference.
+Other results retain the complete existing matched-Recipe qualification checks.
+The transport returns its existing error result; no Recipe, reply, execution
+report, cancellation or No-Match outcome is fabricated.
+
+The real HTTP regression lowers the live queue-byte ceiling, receives a durable
+rejection, reads the same cached error on duplicate delivery, restores admission
+and completes another ordinary child in the same global VM. A deferred PostgreSQL
+trigger then rejects final MCP chat closure after the error response was durably
+saved. An actual runtime restart with the same persisted operator identity
+reconciles that response and closes the original chat without submitting a new
+command or calling the model again. Startup now verifies cached receipts and
+propagates turn-storage/decode and close failures instead of marking itself
+prepared after those errors. Missing/unfinished original runs remain unresolved.
+The regression corrupts the actual stored turn snapshot, requires a storage
+error, restores its exact original payload and retries the same startup owner.
+
+In-memory request ownership now uses exact normalized decimal identities matching
+the durable JSONB reservation. Numeric spellings such as `1` and `1.0` share one
+waiter/cancellation entry. Normalization never converts integer IDs through f64;
+large distinct integers, string IDs and distinct finite numbers stay distinct.
+Actual PostgreSQL comparisons cover signed zero, exponents, integer/float bounds
+and very small/large finite numbers. Capacity-one duplicate leases share their
+owner, cancellation through the equivalent ID reaches it, and final release
+reclaims the entry.
+
+Receipt `/private/tmp/brassclaw-mcp-request-identity-accepted.json` identifies
+frozen `target/validation/mcp-request-identity-20261015-r2`. Native HTTP/provider-
+surface/restart acceptance passed (32.72 seconds), ordinary global Match/No-Match/
+MCP lifecycle acceptance passed (36.27 seconds), and strict host/composition/
+ingress test lint with Bedrock passed (60.26 seconds). Unchanged service/model/
+proxy and standalone-lint evidence is retained from the earlier rejection
+batches, with its original source/artifacts and limits. Ten selected current
+source hashes, all six retained executable hashes and the paired worker were
+verified. Concurrent prefix changes were compiled intact; these MCP results do
+not certify their separate authoring/qualification acceptance.
+
+The preserved r5 failure exposed one additional cached-recovery mapping to
+Unresolved; the accepted successor repairs it. The earlier source-inventory
+failure occurred before Cargo and involved only two verified documentation
+changes; it is not a behavioral pass. No warnings were suppressed.
+
+Remaining startup classification work includes the transcript-reference helper:
+it currently wraps missing, ambiguous and storage failures together. Separate
+those outcomes at their owning interface and prove real transcript-store failure
+propagation before claiming every recovery storage error is classified. The
+fixed request/response byte ceilings and request-ID storage/index capacity,
+native multi-parent/recovery cases, platform/release/fresh-install and all other
+open plan gates remain required. No full-plan or release completion is claimed.
+
+## 2026-10-15 — Typed transcript recovery errors accepted; MCP byte controls candidate
+
+The exact transcript-reference helper now retains typed Missing, Inconsistent
+and Storage failures. Missing thread/message evidence remains unresolved;
+backend/decode failures abort recovery, while conflicting commands or ambiguous
+references produce a distinct correlation error. Terminal recording and cached
+receipt verification use that classification, so a failed transcript read cannot
+be counted as missing and seal startup as prepared. No command is resubmitted.
+
+Frozen `target/validation/mcp-transcript-recovery-20261015-r1`, receipt
+`/private/tmp/brassclaw-mcp-transcript-recovery-accepted.json`, passed the real
+PostgreSQL/HTTP parent/restart regression (35.21 seconds), ordinary global/MCP
+lifecycle (37.37 seconds) and strict affected test lint (55.97 seconds). The new
+regression mutates the original stored transcript to remove its message, corrupt
+its collection and duplicate its accepted user reference, restores exact original
+data, verifies distinct outcomes and retries the same startup owner successfully.
+It also rejects a conflicting command. The existing no-replay/call-count checks
+remain. This closes the specific transcript classification follow-up above;
+subsequent byte-control edits are outside that accepted snapshot.
+
+The next candidate adds `max_mcp_request_bytes` and `max_mcp_response_bytes` to
+acknowledged execution limits and the WebUI with EN/DE help. V163 preserves full
+and partial overrides, adds missing defaults once per row/revision and evaluates
+the prior INSERT default once. Both values are positive u32 bytes, additionally
+allocation-representable on the executing host. Production ingress authenticates
+before decoding and captures the acknowledged request limit for that body read;
+Kohai captures the response limit before each HTTP operation. Overflow is an
+error without truncation or automatic replay. Existing reads keep captured bounds.
+
+Required candidate acceptance includes the real facade/PG migration and invalid
+updates, a body beyond the former 1 MiB ceiling, a held body read across a live
+reduction, the actual gateway consuming a complete answer beyond 1 MiB, and a
+response overflow after a completed effect followed by the original cached
+receipt without another invocation. Run affected protocol/ingress checks and
+strict lint after the coherent edit. Frontend syntax currently passes; neither
+runtime uptake nor rendered form acceptance is claimed yet. The separate
+256-byte request-ID/index issue, total transport buffering/admission, platform/
+release and all other open plan gates remain required.
+
+The byte-control r1/r2 acceptance failures are preserved. R1 exposed a separate
+64 KiB command guard in the catalogue binder, advertised schema and provider
+adapter; the candidate now removes that extra invocation quota while keeping
+exact typed usage validation and the captured HTTP bound. Declaration/metadata
+and catalogue-count limits are separate remaining preparation work.
+
+R2 then reached an ordinary matched Recipe but returned a failed chat. A read-only
+inspection of that retained test executable's own PostgreSQL cluster, discovered
+through its actual pg_ctl child and live postmaster port, established the exact
+sequence: the reply Tool answered successfully, then another Tool answered
+`retained_tool_resource`, and the admission settled with `recipe_execution_failed`
+and `intent_outcome=match`. Receipt log:
+`/private/tmp/brassclaw-mcp-large-response-inspect.log`. The shared 1 MiB fallback
+at `BuiltinFirstPartyTools::bounded_input_size` rejected the subsequent history
+memory write. The response reader is not the cause of that failed Recipe.
+
+The candidate removes that additional fixed fallback for memory_write. Monty
+callers retain their captured typed-value/IPC bounds; direct calls retain native
+representation limits, and memory backend, kernel, mounts, current Tool policy
+and freshness remain effective. Memory output and other primitive caps are not
+changed or claimed resolved. Re-run the unchanged complete-large-answer assertion
+and the existing memory authority/input regressions; never replay the completed
+reply or route this failure through Tier 2. The candidate remains unaccepted until
+its complete caller-level tests and lint pass.
+
+## 2026-10-15 — Live MCP byte controls and complete history handoff accepted locally
+
+V163 and the acknowledged settings projection now supply independent positive
+`max_mcp_request_bytes` and `max_mcp_response_bytes` controls, defaulting to 1 MiB.
+The actual WebUI exposes both with EN/DE explanations. Production ingress checks
+authentication before JSON decoding and captures the request bound once per body
+read. The real Kohai HTTP consumer captures its response bound before sending,
+uses fallible buffer growth and rejects overflow without truncation or replay.
+A live reduction preserves a read already accepted under its previous bound.
+
+The extra 64 KiB invocation checks and advertised command maxLength were removed
+from the command binder/provider adapter. Exact typed usage contracts still
+apply. The fixed shared input fallback for memory_write was also removed: it
+previously rejected the history step after the reply had already been posted.
+The task's typed-value/IPC and backend/kernel/mount/freshness checks remain.
+Other memory output and primitive caps are separate open work.
+
+Receipt `/private/tmp/brassclaw-mcp-transport-bytes-accepted.json` identifies frozen
+`target/validation/mcp-transport-bytes-20261015-r3` and retained r8 artifacts.
+The parent/single-VM HTTP regression passed (38.03 seconds), including a complete
+answer beyond 1 MiB with its history, held-body reduction, authentication before
+decode and a failed response read after a completed effect followed by the same
+cached run with unchanged invocation count. That result is reused from r3's
+passing case; subsequent browser-harness failures did not change Rust or assets.
+
+The ordinary global/MCP regression with the exact repository browser script
+passed (52.29 seconds). Real Chromium/React uses the native facade/PostgreSQL;
+it saves both controls, verifies persisted/effective revisions, reads EN/DE help
+and restores the original values. `tests/browser/monty-vm-resource-limits.mjs`
+has no machine-specific report path and supports an explicitly installed native
+browser executable. The tested copy and repository source have the same SHA-256.
+This is native facade/browser evidence; packaged ingress authentication, browser
+CI automation, Windows/Linux execution and remote deployment are not inferred.
+
+Additional passing cases: native authenticated WebUI (95.34 seconds), migration
+preserving full/partial overrides and one evaluation of a volatile default
+(1.84 seconds), five MCP protocol tests, the complete-settings update contract,
+actual ingress listener (17.37 seconds), eleven existing memory/input/mount tests,
+three MCP declaration/catalogue contract tests and strict host_api/product_workflow/
+host_runtime/monty_host/composition/ingress test lint with Bedrock (108.80 seconds).
+All 44 execution controls have one nonempty label/help entry in both EN and DE;
+changed modules pass syntax checks. Fourteen selected current runtime/asset inputs,
+nine retained executable hashes, the paired worker and the exact browser source
+were verified. Cargo remained serial in the local target. Mandatory disk cleanup
+at 91% preserved executables first and did not touch the other chat's target2.
+
+Browser r3-r6 failures were test interaction failures: off-screen controls were
+not opened/edited. The final harness explicitly scrolls and uses fresh observed
+references, verifies actual field values and requires a real PUT. There was no
+API-response mock, replacement Recipe, weakened large-answer assertion, Rust-loop
+fallback, extra approval or replay of the reply which the earlier failed test
+had already published. Earlier failed batches remain preserved.
+
+Remaining required work includes request-ID256/raw JSONB index admission,
+aggregate transport buffering, structural declaration/catalogue capacities,
+other primitive input/output and memory-search result limits, complete immutable
+component/validator/policy/recovery cutovers and all remaining platform/release/
+fresh-install/model gates. These local results do not finish the full v3 plan.
+
+
+## 2026-10-15 — Explicit Memory-search counts accepted locally
+
+Frozen `target/validation/memory-search-counts-20261015-r1`, receipt
+`/private/tmp/brassclaw-memory-search-counts-accepted.json`, retained executables
+in `target/validation/memory-search-counts-artifacts-20261015-r1` establish:
+
+- `builtin.memory_search` preserves explicit positive integer counts. Omission
+  still defaults to five; zero, negatives, fractional/string/null values and
+  values outside the backend count representation fail instead of defaulting
+  or silently clamping. The generic optional-null normalizer preserves this
+  field for validation. The native schema and bundled Tool/ToolSkill/Skill
+  descriptions agree with the count contract.
+- `MemorySearchRequest` no longer clamps final/candidate counts to 1,000/5,000.
+  Both repository and backend reject invalid counts before index/provider work.
+  Candidate counts remain at least the explicit final count in either builder
+  order. The u32 representation of backend counts/ranks remains a technical
+  boundary; requests do not preallocate their declared maximum.
+- FTS uses the existing filesystem paging owner until the requested candidate
+  count or actual exhaustion. Per-page limits are batching, not a total cap.
+  Actual returned rows are reserved fallibly, repeated chunk paths are not
+  scored twice, and offset overflow errors. Enumeration keeps its existing
+  live-read semantics; this is not a point-in-time database snapshot.
+
+Evidence: all 113 memory tests pass, including 5,205 actual indexed documents
+and 1,050/5,205 requested results across pages (filesystem suite145.078s);
+12 registered memory/input/mount cases0.509s; native retained Tool/PostgreSQL
+count/default/live-policy/source checks21.503s; ordinary global Monty
+Match/No-Match/MCP/restart38.346s; strict memory/host-runtime/composition test
+lint with Bedrock73.810s. Toolchain1.96.0, locked dependencies, serial screen,
+NVMe target, debug0/incremental0. The longer filesystem test includes document
+creation and indexing; it is not a query-performance measurement.
+
+The successor adds 1,050 writes/search results through the actual registered
+PostgreSQL Tool and passes in the MCP request-digest batch recorded below. The remaining
+Memory output/input guards, other primitive limits, authored component cutover,
+platform/browser CI, packaged, remote and full-plan release gates remain open.
+This changes infrastructure and existing primitive contracts, not Recipe
+sequencing or the global VM lifecycle; no Rust workflow fallback is introduced.
+
+
+## 2026-10-15 — MCP long request identity and native paged Memory accepted
+
+Frozen `target/validation/mcp-request-digest-20261015-r1`, retained artifacts
+`target/validation/mcp-request-digest-artifacts-20261015-r2` and receipt
+`/private/tmp/brassclaw-mcp-request-digest-accepted.json` establish:
+
+- The 256-byte MCP request-ID guard is removed. Existing acknowledged HTTP
+  request/response bounds still govern the transport. IDs remain strings or
+  numbers; this does not change routing, component qualification or authority.
+- V164 retains the original JSONB ID and adds a generated SHA-256 uniqueness
+  key. Numeric normalization preserves PostgreSQL scalar equality, including
+  decimal/exponent spellings and signed zero, without converting via f64.
+  `trim_scale` preserves numeric value while removing insignificant fractional
+  zeroes ([PostgreSQL mathematics](https://www.postgresql.org/docs/15/functions-math.html)).
+  Strings stay distinct from numbers. Lookups require the digest **and exact
+  original JSONB equality**; a hypothetical collision fails before admission
+  rather than returning another request's receipt. The predecessor unique
+  constraint is located by its ordered columns, avoiding guessed truncated names.
+- Actual native HTTP/global-Monty acceptance sends an incompressible ID over
+  14 KiB, preserves its response ID, reads the original run on repetition and
+  rejects reuse with a different command. Equivalent numeric IDs retain that
+  same durable ownership, cancellation index and effect count.
+- The same real database reconstructs the predecessor index over populated
+  completed correlation rows and executes the shipped migration transactionally.
+  All original IDs, timestamps, phases, commands, references and responses are
+  identical after backfill. Normal correlation immutability guards remain.
+- The registered retained Memory Tool performs 1,050 writes and returns the
+  requested 1,050 lexical results through PostgreSQL, crossing the actual
+  filesystem page size. Missing limits still default to five, an explicit count of 25 is
+  honored, invalid optional values fail, current Tool policy/source changes
+  remain enforced and disabled embeddings make no provider calls.
+
+Evidence: native held-parent/ordinary HTTP39.253s; registered PostgreSQL Memory
+104.222s (including all writes/startup/other source-policy checks); ordinary
+Match/No-Match/MCP/restart38.259s; strict PG/composition test lint with Bedrock
+66.138s. Locked Rust1.96.0, serial screen, same NVMe target and debug0 profile.
+Current migration/runtime/test hashes and retained executable hashes verified.
+No release/performance claim follows from these integration timings.
+
+The initial new harness stopped before Cargo because two independently changed
+prefix/skills test files needed review for worker reuse; they were inspected,
+left untouched, and included in the frozen compilation. The r2 harness reuses
+only the unchanged worker and successfully checks the complete frozen inputs.
+Earlier `mcp-request-identity` evidence concerns decimal waiter ownership and is
+separate; it has not been replaced by this digest receipt.
+
+MCP declaration/catalogue quotas, aggregate transport buffering, remaining
+primitive resource profiles, full authored/bootstrap/component acceptance,
+platform/browser-CI, packaged, remote/model and release gates remain open.
+
+
+## 2026-10-16 — Complete Memory data accepted locally; remaining controls traced
+
+Accepted source removes the generic 1 MiB JSON input/output fallback for the
+four Memory primitives. Output accounting still counts the full encoded value
+and kernel obligations still enforce explicitly supplied output ceilings. Memory
+manifests stop advertising the shared five-second/one-MiB ceiling and invented
+input-independent estimates. Source tracing shows `hard_ceiling` itself was
+metadata on this path; do not claim that removing it speeds up a formerly
+five-second-limited operation. Actual read/search outputs and live kernel policy
+pass in `memory-complete-data-20261015-r1`.
+
+Two additional fixed controls remain in `first_party_tools/memory.rs` and must
+be repaired before the full-plan resource cutover is complete:
+
+1. Replace `memory_tree`'s silent depth1–10 clamp with strict optional-value
+   validation and explicit-depth semantics under an acknowledged, explained
+   resource policy. Build/serialize deeply nested output without risking the
+   native stack; retain the admitted task's recursive value bounds and preserve
+   directory ordering/result format. A larger requested depth must not silently
+   become10. Missing, null and invalid values must remain distinct.
+2. Replace `MAX_MEMORY_PATCH_RETRIES=8` with a persisted, revisioned setting and
+   WebUI help, captured for the primitive invocation. Count the initial CAS
+   attempt, retry only confirmed no-effect conflicts, preserve actual arguments
+   and stop for cancellation/current technical policy. A completed write must
+   never be repeated because indexing, output or a subsequent step fails.
+
+The existing Tool-policy WebUI/port/store currently exposes only enabled/CAS
+revision, and `PgSelectedToolPolicy` currently supplies no resource ceiling.
+Do not represent a native fixture's configured output rule as an implemented
+WebUI technical-control editor. Wire real settings/kernel consumers and their
+acknowledgement before claiming that broader technical-policy gate complete.
+
+
+Accepted receipt `/private/tmp/brassclaw-memory-complete-data-accepted.json` and
+retained artifacts `target/validation/memory-complete-data-artifacts-20261015-r1`
+cover:13 registered Memory cases0.858s; surface metadata0.011s; actual retained
+Tool/PostgreSQL caller104.697s including complete escaped/Unicode data above
+2 MiB, exact encoded-output accounting and configured kernel output8-byte denial
+followed by immediate4-MiB acceptance; ordinary MCP/history36.036s; global
+Match/No-Match/restart37.682s; strict host-runtime/composition test lint with
+Bedrock62.618s. Source/test and retained executable hashes were verified against
+the frozen snapshot. Rust1.96.0, locked dependencies, serial screen, same NVMe
+target/debug0 profile. Prefix-owned edits were frozen but left untouched.
+
+The actual worker was rebuilt because `brassclaw_resources` has an unconditional
+PostgreSQL dependency; an unchanged protocol alone is insufficient evidence for
+an unchanged complete source graph after a migration. The rebuilt worker has
+exactly the prior SHA-256 `d1938fae7f3fe752f0b4e26cd66a1c16fb38e4b04219df6c48044f0f84bb2bf3`.
+This confirms the prior compatible-worker bytes, without inventing a different
+VM or transport. Earlier source-graph reuse reasoning must be read with this
+additional build evidence.
+
+That source review identified a concrete performance issue in `FilesystemMemoryDocumentRepository`
+(repaired by the accepted successor below):
+write/create/append conflict checks call `list_documents(scope)`, which loads
+all document/chunk/version bodies in the scope to inspect path relationships.
+Replace that unrelated enumeration with scoped ancestor/target-subtree reads
+using existing filesystem primitives, preserving the exact document-kind,
+reserved-sidecar/path filtering, conflict/error and CAS behavior. Review actual
+backend atomicity and concurrent parent/child writes before changing this path;
+add focused real backend coverage rather than assuming a preflight check is a
+transaction. Keep complete listing/search behavior unchanged. The existing
+5,205-document and native1,050-write fixtures provide real caller coverage, not
+an independently controlled query-performance benchmark. The accepted successor below repairs this path; independently controlled
+production performance acceptance remains open.
+
+
+## 2026-10-16 — Narrow Memory preflight and atomic filesystem namespace accepted locally
+
+Memory writes now inspect exact ancestors and the requested target subtree,
+using the same document-kind, scope, sidecar filtering and original conflict
+validator as complete listing. Unrelated documents/chunks/version bodies are
+not enumerated. Existing CAS and complete listing/search behavior are retained.
+
+Source inspection also exposed a preexisting correctness gap: InMemory `put`
+checked descendants but not file ancestors; PostgreSQL checked only before its
+mutation, permitting conflicting parent/child creation. The implementation fixes
+these at the actual storage boundary. PostgreSQL put/opaque write/append and
+directory creation use shared ancestor/exclusive leaf advisory transaction locks,
+validation and the actual mutation/commit in explicit ReadCommitted transactions.
+Sibling leaves share ancestor locks and can proceed independently. There is no
+application-global filesystem mutex or new resource/deadline cap. InMemory
+checks the same namespace under its existing state mutex. Opaque append resets
+stale metadata in both implementations. Byte-only LocalFilesystem continues to
+reject versioned CAS/records and relies on its native filesystem namespace.
+
+The locking/read-snapshot rationale follows PostgreSQL's documented
+[advisory transaction locks](https://www.postgresql.org/docs/15/explicit-locking.html#ADVISORY-LOCKS)
+and [Read Committed](https://www.postgresql.org/docs/15/transaction-iso.html#XACT-READ-COMMITTED).
+Existing invalid stored hierarchies are not silently rewritten or deleted;
+conflicting mutations fail. Mixed old writers or direct SQL do not acquire this
+new protocol, so this is not evidence for unrestricted mixed-version rolling
+writes. The instance cutover/recovery gate must retain one fenced writer generation.
+
+Native acceptance now passes sequential ancestor rejection, concurrent
+parent/child put/write/append, CAS winner counts, directory-vs-file creation,
+observed blocking with independent sibling progress, abort/rollback lock release
+and DB rejection without effects (4.290s). All Memory contracts pass, including
+complete scope/sidecar/conflict behavior and the 5,205-document case. Registered
+Memory cases pass (3.718s), as do the native 1,050-write/full-result caller
+(87.960s), MCP/history (36.050s), global Monty (final successor50.989s), architecture
+and strict affected-package test lint with PostgreSQL/Bedrock (70.489s).
+
+Receipt `/private/tmp/brassclaw-memory-namespace-accepted.json` retains exact
+frozen source, executable hashes and test provenance under
+`target/validation/memory-namespace-artifacts-20261016-r8`. Unchanged filesystem
+and Memory results are explicitly retained from earlier snapshots. The final
+successor rebuilds composition and rechecks global execution after an equivalent
+settlement-condition lint correction. The bootstrap observer also converts its
+classified service/port errors explicitly, rather than requiring an unsupported
+Display implementation. There is no error suppression or alternate workflow.
+The removed full-scope read is established by source and caller coverage; these
+fixture durations are not a controlled production performance benchmark.
+
+Crate guides now list actual supported backends rather than a removed LibSQL
+RootFilesystem implementation; migration/import support remains separate.
+
+## 2026-10-16 — Existing native settings browser checks wired into CI
+
+The `native-settings-browser` job in `.github/workflows/reborn-tests.yml` runs
+both existing scripts through the real PostgreSQL/global-Monty fixture, using
+Node24, a locked `agent-browser@0.27.1` development dependency and Chromium.
+Changes under `tests/browser/` now select Reborn validation. The classifier's
+regressions, JavaScript syntax and full workflow actionlint checks pass. Actual
+local browser runs pass Tool allow/block, stale-edit fencing and lost committed
+acknowledgement (45.320s), plus MCP byte controls, EN/DE help, persistence/effective
+revision and restoration (49.693s). Receipt:
+`/private/tmp/brassclaw-settings-browser-ci-accepted.json`. The freshly installed
+locked CLI and the tested CLI have the identical native binary SHA-256; npm
+reports zero dependency vulnerabilities. See [browser instructions](../../tests/browser/README.md).
+
+A later shared edit to `bootstrap_recipe_flow.rs` makes worker shutdown/join
+run after admission or settlement errors. It landed after the frozen r8 build
+and is explicitly excluded from those earlier native/browser executable claims.
+The Memory tree successor below compiles it and accepts ordinary global/MCP paths;
+its dedicated failure-cleanup qualification remains in the prefix owner's gate.
+
+This is local browser acceptance and verified workflow wiring. The job still
+needs execution on GitHub; Linux/Windows/macOS installed-product and remote/model
+release gates remain open. Memory depth, patch attempts and complete technical
+Tool-policy editing remain the separate work identified above. No full-plan
+completion or release readiness is claimed.
+
+
+## 2026-10-16 — Memory tree policy and iterative construction accepted locally
+
+Replace the hidden depth10 clamp with live `default_memory_tree_depth` (1) and
+`max_memory_tree_depth` (10). Both are positive u32 values, default<=maximum,
+with EN/DE WebUI help. Explicit requests are preserved or rejected, never
+clamped. V165 preserves complete/partial overrides, advances incomplete rows
+once, retains an operator default's single evaluation and rejects malformed
+values or revision overflow transactionally.
+
+A registered host primitive captures the complete acknowledged resource view
+before backend I/O. Production binds that view before ingress and fails closed
+while unavailable; it does not read newer desired rows. Tree construction uses
+a flat directory arena and bottom-up statistics for actual JSON depth, nodes
+and encoded bytes before creating nested Values. Ordering and directory/file
+format remain unchanged. Existing task/transport/kernel limits remain effective;
+the separate transport/parser depth64 restriction has not been removed. A high
+requested/configured tree depth cannot bypass the result's acknowledged typed
+value profile. Old task profiles continue to apply at the retained outer port.
+
+Native acceptance now passes invalid/null values surviving normalization,
+exact depth13 after publication, omitted live defaults, rejected database edits
+without runtime changes, restoration, one global VM and actual retained Tool/PG
+callers (91.888s). Algorithm tests cover ordering, exact byte/node/depth boundaries,
+JSON escaping and a rejected 4,096-directory path before nested Value creation
+(0.416s). Registered Memory cases and declaration contracts also pass (0.800s).
+V165's actual PostgreSQL upgrade/default/override/constraint/overflow test passes
+(3.368s), along with rendered EN/DE tree and byte controls, save/effective revision
+and restoration through global Monty (60.059s), MCP/history (44.187s), architecture
+(1.613s) and strict affected test lint with Bedrock/PostgreSQL (96.686s).
+
+Receipts `/private/tmp/brassclaw-memory-tree-accepted.json` and
+`/private/tmp/brassclaw-memory-tree-api-accepted.json` retain frozen
+`target/validation/memory-tree-20261016-r2`, actual binary hashes, paired worker
+and per-check provenance. The canonical API parser regressions pass (0.211s):
+new controls participate automatically in required-field checks; stale clients
+cannot silently omit/reset them. The prefix owner corrected its own typed UUID
+SQL parameter before the r2 native build. No prefix source was changed here.
+Later additions of two prefix-test module declarations in composition `lib.rs`
+are excluded from this frozen executable's claims. All other owned runtime,
+seed, migration, UI and test inputs still match the snapshot. GitHub execution,
+platform/installed-product and complete matched-library acceptance remain open.
+Seed Tool/ToolSkill/Skill metadata is aligned with the new parameter semantics;
+this does not certify the separate full-library preload/immutable-upgrade gates.
+Patch conflict attempts and complete live technical Tool policy remain open.
+
+
+### Required follow-up: project Memory document paths without full bodies
+
+At the time of this finding, `FilesystemMemoryDocumentRepository::list_documents` obtained complete
+scope records, including document/chunk/version bodies, through `query_all` and
+only then filters names. The new tree result preflight does not bound those
+unrelated input bodies. Before full resource/performance acceptance, add a real
+metadata/path projection at the owning RootFilesystem boundary and use it for
+complete document listing. Inspect every backend and scoped/mount wrapper;
+preserve exact kind/scope/sidecar/path filtering, permissions, ordering and
+complete pagination. Do not substitute a row/byte cap or truncate the listing.
+Prove the actual PostgreSQL and in-memory paths across several pages, with large
+stored bodies, sibling sidecars, all scope axes and the registered Memory tree.
+The local acceptance below now resolves this document-listing finding. Its
+separate version-archive scan and full-plan gates remain open.
+
+
+## 2026-10-17 — Body-free Memory listing/preflight accepted locally
+
+Add explicit structural entry metadata reads to the one RootFilesystem trait,
+with native PostgreSQL/in-memory implementations, capability advertisement and
+existing composite/scoped boundaries. No full-body fallback, new Tool/workflow,
+query predicate over payloads, or blanket permission is introduced. In-memory
+paths use an ordered map for direct prefix ranges and body-free pages; canonical
+VirtualPath ordering agrees with PostgreSQL's explicit C path collation.
+
+Memory listing filters each metadata page immediately, retains only eligible
+document paths, deduplicates across pages and preserves complete enumeration,
+scope/sidecar rules and ordering. Narrow conflict checks use metadata for exact
+ancestors and target descendants. Chunk cleanup collects all matching metadata
+paths before deleting so offset pages cannot skip shifted rows; unrelated kinds
+are preserved. The version-archive maximum scan in `save_document_version` still
+requests full records and remains separate required work: audit its selected
+fields and integrity contract before changing it, without deriving a logical
+version from an unchecked path or hiding a damaged index record. Its unchecked
+increment and signed index conversion also need explicit representation bounds;
+damaged version indexes must not silently disappear from the maximum scan.
+Keep the distinction between a rejected document CAS (no write occurred) and an
+archive failure after a committed document write. The latter must never become
+a retryable conflict or cause the completed write to be replayed.
+
+Native evidence covers several real metadata pages with large bodies
+and indexed values, scoped read/read+list denial, longest-mount routing and
+capability overclaim rejection. The PostgreSQL test uses a real login role with
+SELECT only on path/kind/is_dir: metadata and repository listing must work while
+full body/query reads fail, proving no body fallback. All four scope axes,
+reserved sidecars, corrupted-header errors, caller contracts, complete chunk
+cleanup and ordinary registered Memory/Monty consumers pass.
+
+The retained receipt `/private/tmp/brassclaw-memory-projection-accepted.json`
+identifies frozen `target/validation/memory-projection-20261017-r6`, its actual
+composition binary and paired worker. Unchanged filesystem evidence is reused
+from r3 (96 tests); memory (115), secrets (49), outbound (7) and registered Memory
+Tool (13) evidence is reused from r4. Native restricted-column PostgreSQL
+acceptance passes (5.272s), namespace/CAS races (1.927s), the registered Memory
+workflow with large results/live tree settings (50.963s), global Match/No-Match
+(37.248s), MCP/history (36.436s), dependency boundaries (1.588s) and strict
+affected-package test lint with PostgreSQL/Bedrock (68.368s). These elapsed test
+times are evidence of execution, not comparative performance measurements.
+
+The fixture now explicitly initializes the real filesystem schema. Shared
+unit/integration contract imports and private fixture path calls were corrected;
+the prefix owner repaired its own unrelated bootstrap error conversions. No
+tests, diagnostics or runtime checks were suppressed. Source/hash verification
+confirms the tested runtime inputs and retained artifacts match the current
+checkout; later prose changes do not expand the runtime claim. This completes
+the local projection repair, not the version-archive, complete matched-library,
+platform, installed-product, release or full v3 acceptance gates.
+
+
+## 2026-10-17 — Selected archive-index projection candidate
+
+Keep the existing Memory write usage and Recipe path. Add a generic native
+RootFilesystem projection of one explicitly selected indexed field, with a
+distinct capability, PostgreSQL/in-memory support, scoped read+list and existing
+mount routing. It returns no body or unrelated indexed fields; invalid selected
+data fails rather than becoming missing. Propagate it through capability-forwarding
+wrappers. No new workflow Tool or parallel storage plane is needed.
+
+The version allocator scans complete pages and retains only its running maximum.
+Validate each relevant archive's positive i64 index against its canonical path;
+reject missing/wrong/negative/zero/inconsistent counters. Use checked signed
+addition and exact conversion to the existing unsigned address API. Preserve
+unrelated record kinds. No total row limit or unchecked path-derived version is
+introduced. Remove the now-unused full-record scan wrapper and keep existing
+tests on the supported pagination helper.
+
+Required acceptance: real in-memory/PostgreSQL selected-field pages and types,
+scoped/mount/capability gates, actual indexed-column permission denial, malformed
+selected JSON, multi-page archives, last representable counter/exhaustion and
+malformed/mismatched paths. Verify that an archive failure after a committed
+document write is an error, never a no-write conflict; a stale retry must not
+replay or alter the committed document. These checks do not implement durable
+effect reconciliation or the separate live patch retry policy.

@@ -54,12 +54,31 @@ pub(crate) trait MontyTaskCatalogue: Send + Sync {
     async fn refresh_command_qualification(&self);
 }
 
+/// Host-owned private work selection. Implementations pin an approved program
+/// for production; closed pre-readiness qualification uses its separate observer
+/// constructor. Neither a name nor a receipt string grants approval or Tool use.
+#[async_trait]
+pub(crate) trait InternalRecipeSource: Send + Sync {
+    fn name(&self) -> &str;
+    fn reference(&self) -> &str;
+    async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure>;
+    /// Check actual retained native effects/answers and correlated durable rows.
+    /// This may read evidence, but must never replay effects or select next work.
+    async fn verify_receipt(
+        &self,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<(), PortFailure>;
+}
+
 /// An acknowledged instance resource policy, independent of task selection and
 /// component approval. Reading it grants no Tool authority.
 #[derive(Clone, Copy)]
 pub(crate) struct RecipeCapacity {
     pub(crate) revision: u64,
     pub(crate) max_recipes: usize,
+    pub(crate) data_limits: brassclaw_skills::value_contract::ContractLimits,
 }
 #[async_trait]
 pub(crate) trait RecipeCapacitySource: Send + Sync {
@@ -78,6 +97,7 @@ struct State {
     // Errors retain this state; they are never reported as No-Match.
     intent_outcome: Option<&'static str>,
     completed_reply: Option<(String, String)>,
+    completed_receipt: Option<String>,
     recipes: BTreeMap<Uuid, Arc<Selection>>,
     selection_order: Vec<Uuid>,
     checked_capacity: Option<RecipeCapacity>,
@@ -88,17 +108,22 @@ struct State {
 pub(crate) struct GlobalRecipePorts {
     host: Arc<MontyTaskHost>,
     admission: Arc<PgMontyAdmission>,
-    catalogue: Arc<dyn MontyTaskCatalogue>,
+    catalogue: Option<Arc<dyn MontyTaskCatalogue>>,
     user_input: String,
-    ownership: crate::global_monty_owner::GlobalOwnerCheck,
+    ownership: Option<crate::global_monty_owner::GlobalOwnerCheck>,
+    internal: Option<Arc<dyn InternalRecipeSource>>,
+    observe_behavior: bool,
     capacity: Arc<dyn RecipeCapacitySource>,
     state: Mutex<State>,
     task_context: Mutex<Option<RetainedTaskContext>>,
     fenced: std::sync::atomic::AtomicBool,
+    dependency_parent: Option<Arc<dyn TaskPorts>>,
 }
 impl GlobalRecipePorts {
     pub(crate) async fn refresh_command_qualification(&self) {
-        self.catalogue.refresh_command_qualification().await;
+        if let Some(catalogue) = &self.catalogue {
+            catalogue.refresh_command_qualification().await;
+        }
     }
     #[cfg(test)]
     pub(crate) async fn matched_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
@@ -121,14 +146,85 @@ impl GlobalRecipePorts {
         Self {
             host,
             admission,
-            catalogue,
+            catalogue: Some(catalogue),
             user_input,
-            ownership,
+            ownership: Some(ownership),
+            internal: None,
+            observe_behavior: false,
+            capacity,
+            state: Mutex::new(State::default()),
+            task_context: Mutex::new(None),
+            fenced: std::sync::atomic::AtomicBool::new(false),
+            dependency_parent: None,
+        }
+    }
+
+    pub(crate) fn with_dependency_parent(mut self, parent: Option<Arc<dyn TaskPorts>>) -> Self {
+        self.dependency_parent = parent;
+        self
+    }
+
+    /// Private bounded pre-readiness behavior qualification only. The admitted
+    /// claim and normal kernel/journal checks remain live. No installed API or
+    /// catalogue row can request observer execution or construct this port.
+    #[cfg(test)]
+    pub(super) fn for_bootstrap(
+        admitted: &crate::bootstrap_validation::Admitted,
+        source: Arc<dyn InternalRecipeSource>,
+        capacity: Arc<dyn RecipeCapacitySource>,
+    ) -> Self {
+        Self {
+            host: admitted.host.clone(),
+            admission: admitted.admission.clone(),
+            catalogue: None,
+            user_input: source.reference().to_owned(),
+            ownership: None,
+            internal: Some(source),
+            observe_behavior: true,
+            dependency_parent: None,
             capacity,
             state: Mutex::new(State::default()),
             task_context: Mutex::new(None),
             fenced: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    /// Read actual immutable observations after quiescence. A callback cannot
+    /// alter the executor, approve code or advance/replay a workflow step.
+    #[cfg(test)]
+    pub(super) async fn observe_internal_execution<T>(
+        &self,
+        observe: impl FnOnce(&RetainedRecipeExecution) -> T,
+    ) -> Result<T, PortFailure> {
+        if self.internal.is_none() {
+            return Err(failure("internal_recipe_unavailable"));
+        }
+        let selection = {
+            let state = self.state.lock().await;
+            if state.recipes.len() != 1 {
+                return Err(failure("internal_recipe_selection_invalid"));
+            }
+            state
+                .recipes
+                .values()
+                .next()
+                .cloned()
+                .ok_or_else(|| failure("internal_recipe_selection_invalid"))?
+        };
+        let execution = selection.execution.lock().await;
+        Ok(observe(execution.as_ref().ok_or_else(|| {
+            failure("internal_recipe_execution_missing")
+        })?))
+    }
+
+    async fn check_ownership(&self) -> Result<(), PortFailure> {
+        if let Some(ownership) = &self.ownership {
+            ownership
+                .check()
+                .await
+                .map_err(|_| failure("monty_instance_ownership_failed"))?;
+        }
+        self.check_fence()
     }
 
     fn check_fence(&self) -> Result<(), PortFailure> {
@@ -145,7 +241,7 @@ impl GlobalRecipePorts {
         &self,
         receipt: &TaskReceipt,
     ) -> Result<Value, PortFailure> {
-        let (task, recipes, capacity, intent_outcome, completed_reply) = {
+        let (task, recipes, capacity, intent_outcome, completed_reply, completed_receipt) = {
             let state = self.state.lock().await;
             (
                 state.task,
@@ -157,6 +253,7 @@ impl GlobalRecipePorts {
                 state.checked_capacity,
                 state.intent_outcome,
                 state.completed_reply.clone(),
+                state.completed_receipt.clone(),
             )
         };
         if task.is_some_and(|task| {
@@ -202,7 +299,15 @@ impl GlobalRecipePorts {
                 })),
             }));
         }
-        let completed = matches!(receipt.outcome, TaskOutcome::Completed { .. });
+        let completed = matches!(
+            receipt.outcome,
+            TaskOutcome::Completed { .. } | TaskOutcome::InternalCompleted { .. }
+        );
+        if let TaskOutcome::InternalCompleted { receipt_ref } = &receipt.outcome
+            && (self.internal.is_none() || completed_receipt.as_ref() != Some(receipt_ref))
+        {
+            return Err(failure("internal_receipt_evidence_missing"));
+        }
         if let TaskOutcome::Completed { reply_ref } = &receipt.outcome
             && completed_reply
                 .as_ref()
@@ -235,8 +340,7 @@ impl GlobalRecipePorts {
             })
         });
         let (model_exchanges, capability_dispatches) = self.host.review_dispatch_counts();
-        Ok(
-            json!({"format":"monty-task-execution/1", "root":root, "root_completed":completed,
+        let mut report = json!({"format":"monty-task-execution/1", "root":root, "root_completed":completed,
             "all_selected_recipes_complete":complete, "recipes":progress,
             "intent_outcome":intent_outcome.unwrap_or("not_started"),
             "reply":completed_reply.or_else(|| self.host.finalized_reply_evidence().map(|(reference, content)| {
@@ -248,8 +352,12 @@ impl GlobalRecipePorts {
             "accounting":account, "withheld_root_answers":receipt.withheld.len(),
             "withheld_host_answers":self.host.has_withheld_results(),
             "model_exchange_count":model_exchanges,"capability_dispatch_count":capability_dispatches,
-            "semantic_approval":false,"catalogue_activation":false}),
-        )
+            "semantic_approval":false,"catalogue_activation":false});
+        if self.internal.is_some() {
+            report["format"] = json!("monty-internal-task-execution/1");
+            report["internal_receipt"] = json!(completed_receipt);
+        }
+        Ok(report)
     }
 
     async fn retain_selection(
@@ -288,10 +396,7 @@ impl GlobalRecipePorts {
         args: Vec<Value>,
     ) -> Result<Value, PortFailure> {
         self.check_fence()?;
-        self.ownership
-            .check()
-            .await
-            .map_err(|_| failure("monty_instance_ownership_failed"))?;
+        self.check_ownership().await?;
         self.admission
             .check_and_start()
             .await
@@ -306,7 +411,41 @@ impl GlobalRecipePorts {
             state.task = Some(task);
         }
         match name {
+            "resolve_internal_recipe" => {
+                let source = self
+                    .internal
+                    .as_ref()
+                    .ok_or_else(|| failure("internal_recipe_unavailable"))?;
+                if args != vec![json!(source.name()), json!(source.reference())] {
+                    return Err(failure("internal_recipe_identity_invalid"));
+                }
+                {
+                    let mut state = self.state.lock().await;
+                    if state.intent_started {
+                        return Err(failure("internal_recipe_selection_repeated"));
+                    }
+                    state.intent_started = true;
+                    state.intent_outcome = Some("internal_error");
+                }
+                let selected = source.select().await?;
+                if selected.normal_match.is_some() {
+                    return Err(failure("internal_recipe_selection_invalid"));
+                }
+                let inputs = selected
+                    .inputs
+                    .clone()
+                    .ok_or_else(|| failure("internal_recipe_inputs_missing"))?;
+                self.check_fence()?;
+                let (id, step_link) = self.retain_selection(selected).await?;
+                self.state.lock().await.intent_outcome = Some("internal_recipe");
+                Ok(
+                    json!({"status":"internal_recipe","component_id":id,"step_link":step_link,"inputs":inputs}),
+                )
+            }
             "resolve_intent" => {
+                if self.internal.is_some() {
+                    return Err(failure("internal_recipe_routing_invalid"));
+                }
                 let [query] = args.as_slice() else {
                     return Err(failure("intent_resolution_failed"));
                 };
@@ -322,7 +461,12 @@ impl GlobalRecipePorts {
                     state.intent_started = true;
                     state.intent_outcome = Some("error");
                 }
-                let selected = self.catalogue.resolve_intent(&self.user_input).await?;
+                let selected = self
+                    .catalogue
+                    .as_ref()
+                    .ok_or_else(|| failure("intent_resolution_failed"))?
+                    .resolve_intent(&self.user_input)
+                    .await?;
                 self.check_fence()?;
                 match selected {
                     MontyIntentSelection::NoMatch
@@ -352,6 +496,9 @@ impl GlobalRecipePorts {
                 }
             }
             "resolve_component_by_name" => {
+                if self.internal.is_some() {
+                    return Err(failure("internal_recipe_routing_invalid"));
+                }
                 let [name, class] = args.as_slice() else {
                     return Err(failure("recipe_composition_failed"));
                 };
@@ -362,7 +509,12 @@ impl GlobalRecipePorts {
                 if class.as_i64() != Some(21) {
                     return Err(failure("recipe_composition_failed"));
                 }
-                let selected = self.catalogue.resolve_named_recipe(name).await?;
+                let selected = self
+                    .catalogue
+                    .as_ref()
+                    .ok_or_else(|| failure("recipe_composition_failed"))?
+                    .resolve_named_recipe(name)
+                    .await?;
                 self.check_fence()?;
                 let (id, step_link) = self.retain_selection(selected).await?;
                 Ok(json!({"id":id,"step_link":step_link}))
@@ -394,9 +546,18 @@ impl GlobalRecipePorts {
                 {
                     return Err(failure("recipe_composition_failed"));
                 }
+                let bounds = *transport.live_vm_bounds().borrow();
+                let limits = brassclaw_skills::value_contract::ContractLimits {
+                    max_depth: bounds.max_value_depth,
+                    max_nodes: bounds.max_value_nodes,
+                    max_bytes: bounds.max_value_bytes,
+                };
                 let inputs = program
                     .inputs()
-                    .bind_task_inputs(selected.selected.inputs.as_ref().unwrap_or(envelope))
+                    .bind_task_inputs_with_limits(
+                        selected.selected.inputs.as_ref().unwrap_or(envelope),
+                        limits,
+                    )
                     .map_err(|_| failure("recipe_composition_failed"))?;
                 // Retain selection before any child feed, including pure logic.
                 // A failed or uncertain commit cannot expose a program reference.
@@ -429,11 +590,19 @@ impl GlobalRecipePorts {
                         .map_err(|_| failure("recipe_context_failed"))?
                 };
                 self.check_fence()?;
-                let execution = RetainedRecipeExecution::new_child(
-                    task,
-                    parent,
-                    selected.selected.inspected.clone(),
-                )
+                let execution = if self.observe_behavior {
+                    RetainedRecipeExecution::new_child_for_behavioral_validation(
+                        task,
+                        parent,
+                        selected.selected.inspected.clone(),
+                    )
+                } else {
+                    RetainedRecipeExecution::new_child(
+                        task,
+                        parent,
+                        selected.selected.inspected.clone(),
+                    )
+                }
                 .map_err(|_| failure("recipe_composition_failed"))?;
                 *execution_slot = Some(execution);
                 Ok(
@@ -501,6 +670,9 @@ impl GlobalRecipePorts {
             // by calling the lower transcript adapter as a transport port.
             "post_reply" => Err(failure("task_port_invalid")),
             _ => {
+                if self.internal.is_some() {
+                    return Err(failure("internal_recipe_port_invalid"));
+                }
                 let [payload] = args.as_slice() else {
                     return Err(failure("task_port_invalid"));
                 };
@@ -541,7 +713,7 @@ fn retain(
     if let Some(inputs) = &selected.inputs {
         program
             .inputs()
-            .bind_task_inputs(inputs)
+            .bind_task_inputs_with_limits(inputs, capacity.data_limits)
             .map_err(|_| failure("recipe_composition_failed"))?;
     }
     if state.recipes.contains_key(&id) {
@@ -569,6 +741,10 @@ fn failure(reason: &str) -> PortFailure {
     PortFailure::new(reason).expect("static classified reason")
 }
 impl TaskPorts for GlobalRecipePorts {
+    fn dependency_parent(&self) -> Option<Arc<dyn TaskPorts>> {
+        self.dependency_parent.clone()
+    }
+
     fn call(
         self: Arc<Self>,
         task: TaskHandle,
@@ -590,8 +766,41 @@ impl TaskPorts for GlobalRecipePorts {
         outcome: TaskOutcome,
     ) -> BoxFuture<'static, Result<TaskOutcome, PortFailure>> {
         async move {
-            if matches!(outcome, TaskOutcome::InternalCompleted { .. }) {
-                return Err(failure("recipe_reply_invalid"));
+            if let TaskOutcome::InternalCompleted { receipt_ref } = &outcome {
+                self.check_ownership().await?;
+                let source = self
+                    .internal
+                    .as_ref()
+                    .ok_or_else(|| failure("recipe_reply_invalid"))?;
+                let selection = {
+                    let state = self.state.lock().await;
+                    if state.recipes.len() != 1
+                        || state.intent_outcome != Some("internal_recipe")
+                        || state.completed_receipt.is_some()
+                    {
+                        return Err(failure("internal_recipe_completion_invalid"));
+                    }
+                    state
+                        .recipes
+                        .values()
+                        .next()
+                        .cloned()
+                        .ok_or_else(|| failure("internal_recipe_completion_invalid"))?
+                };
+                let execution = selection.execution.lock().await;
+                let execution = execution
+                    .as_ref()
+                    .filter(|execution| execution.is_complete())
+                    .ok_or_else(|| failure("recipe_execution_incomplete"))?;
+                source
+                    .verify_receipt(receipt_ref, &selection.selected.inspected, execution)
+                    .await?;
+                self.check_ownership().await?;
+                self.state.lock().await.completed_receipt = Some(receipt_ref.clone());
+                return Ok(outcome);
+            }
+            if self.internal.is_some() && matches!(outcome, TaskOutcome::Completed { .. }) {
+                return Err(failure("internal_recipe_completion_invalid"));
             }
             if let TaskOutcome::Completed { reply_ref } = &outcome {
                 self.check_fence()?;

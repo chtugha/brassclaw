@@ -66,69 +66,6 @@ const STATE_CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW
 /// Matches the value used by the official Gemini CLI.
 const SYNTHETIC_THOUGHT_SIGNATURE: &str = "skip_thought_signature_validator";
 
-/// Default safety settings matching Gemini CLI defaults.
-/// BLOCK_NONE allows all content through — the agent's own safety layer handles filtering.
-fn default_safety_settings() -> Vec<serde_json::Value> {
-    vec![
-        serde_json::json!({ "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE" }),
-        serde_json::json!({ "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE" }),
-        serde_json::json!({ "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" }),
-        serde_json::json!({ "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE" }),
-        serde_json::json!({ "category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE" }),
-    ]
-}
-
-/// Parse `GEMINI_CLI_CUSTOM_HEADERS` env var in format `key:value,key:value`.
-/// Commas inside values are preserved — splits only on commas followed by a
-/// valid HTTP header-name pattern (`[A-Za-z0-9_-]+:`).
-fn parse_custom_headers() -> std::collections::HashMap<String, String> {
-    let mut headers = std::collections::HashMap::new();
-    let env_val = match std::env::var("GEMINI_CLI_CUSTOM_HEADERS") {
-        Ok(v) if !v.is_empty() => v,
-        _ => return headers,
-    };
-
-    // Manual split: a comma is a separator only when followed (after optional
-    // whitespace) by `<header-name>:` where header-name is `[A-Za-z0-9_-]+`.
-    let bytes = env_val.as_bytes();
-    let mut start = 0;
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b',' {
-            // Check if the text after the comma looks like a header name + colon
-            let rest = &env_val[i + 1..];
-            let trimmed = rest.trim_start();
-            let hdr_len = trimmed
-                .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'-' || *b == b'_')
-                .count();
-            if hdr_len > 0 && trimmed.as_bytes().get(hdr_len) == Some(&b':') {
-                // This comma is a real separator
-                let entry = env_val[start..i].trim();
-                if let Some(sep) = entry.find(':') {
-                    let name = entry[..sep].trim();
-                    let value = entry[sep + 1..].trim();
-                    if !name.is_empty() {
-                        headers.insert(name.to_string(), value.to_string());
-                    }
-                }
-                start = i + 1;
-            }
-        }
-        i += 1;
-    }
-    // Last entry
-    let entry = env_val[start..].trim();
-    if let Some(sep) = entry.find(':') {
-        let name = entry[..sep].trim();
-        let value = entry[sep + 1..].trim();
-        if !name.is_empty() {
-            headers.insert(name.to_string(), value.to_string());
-        }
-    }
-    headers
-}
-
 /// Context window size (tokens) for Gemini Pro models (2M).
 const GEMINI_PRO_CONTEXT_TOKENS: u32 = 2_000_000;
 /// Context window size (tokens) for Gemini Flash models (1M).
@@ -924,6 +861,7 @@ pub(crate) struct GeminiOauthProvider {
     config: GeminiOauthConfig,
     cred_manager: CredentialManager,
     http_client: Client,
+    max_response_bytes: Option<u64>,
     /// Latest response metadata (updated after each request).
     last_response_meta: std::sync::Mutex<GeminiResponseMeta>,
     /// Captured thought signatures keyed by tool-call ID. Gemini 3.x models
@@ -936,20 +874,19 @@ pub(crate) struct GeminiOauthProvider {
 type GeminiParsedResponse = (CompletionResponse, Vec<ToolCall>, HashMap<String, String>);
 
 impl GeminiOauthProvider {
-    pub(crate) fn new(config: GeminiOauthConfig) -> Result<Self, LlmError> {
+    pub(crate) fn new(
+        config: GeminiOauthConfig,
+        request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
+    ) -> Result<Self, LlmError> {
         let cred_manager = CredentialManager::new(&config.credentials_path)?;
-        let http_client = Client::builder()
-            .timeout(Duration::from_secs(300))
-            .build()
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "gemini_oauth".to_string(),
-                reason: format!("Failed to create HTTP client for GeminiOauthProvider: {e}"),
-            })?;
+        let http_client = crate::registry_http_client("gemini_oauth", request_timeout_secs)?;
 
         Ok(Self {
             config,
             cred_manager,
             http_client,
+            max_response_bytes,
             last_response_meta: std::sync::Mutex::new(GeminiResponseMeta::default()),
             thought_signatures: std::sync::Mutex::new(HashMap::new()),
         })
@@ -1208,7 +1145,7 @@ impl GeminiOauthProvider {
 
             // Format is equivalent to the Google Generative Language API
             // https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
-            let (url, request_body, mut headers) = if self.uses_cloud_code_api() {
+            let (url, request_body, headers) = if self.uses_cloud_code_api() {
                 // Use Cloud Code API for new models
                 let url =
                     "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse"
@@ -1276,76 +1213,28 @@ impl GeminiOauthProvider {
                 );
                 (url, req, headers)
             } else {
-                // Legacy / Standard fallback
-                // Respect GOOGLE_GENAI_API_VERSION env var (default: v1beta)
-                let api_version = std::env::var("GOOGLE_GENAI_API_VERSION")
-                    .unwrap_or_else(|_| "v1beta".to_string());
+                // Standard OAuth API. API-key providers use the separately
+                // selected Gemini protocol, never an ambient-key substitute.
                 let url = format!(
-                    "https://generativelanguage.googleapis.com/{}/models/{}:generateContent",
-                    api_version, self.config.model
+                    "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+                    self.config.model
                 );
-
                 let mut headers = reqwest::header::HeaderMap::new();
                 headers.insert(
-                    "Content-Type",
-                    "application/json"
-                        .parse()
-                        .map_err(|_| LlmError::RequestFailed {
-                            provider: "gemini_oauth".to_string(),
-                            reason: "invalid Content-Type header value".to_string(),
-                        })?,
+                    reqwest::header::CONTENT_TYPE,
+                    reqwest::header::HeaderValue::from_static("application/json"),
                 );
-
-                // Support GEMINI_API_KEY for non-OAuth auth + GEMINI_API_KEY_AUTH_MECHANISM
-                let api_key = std::env::var("GEMINI_API_KEY").ok();
-                let auth_mechanism = std::env::var("GEMINI_API_KEY_AUTH_MECHANISM")
-                    .unwrap_or_else(|_| "x-goog-api-key".to_string());
-
-                let (final_url, auth_header_name, auth_header_value) =
-                    if let Some(ref key) = api_key {
-                        if auth_mechanism == "bearer" {
-                            (url, "Authorization".to_string(), format!("Bearer {}", key))
-                        } else {
-                            // x-goog-api-key: append key as query param or header
-                            (url, "x-goog-api-key".to_string(), key.clone())
-                        }
-                    } else {
-                        (
-                            url,
-                            "Authorization".to_string(),
-                            format!("Bearer {}", credential.access_token),
-                        )
-                    };
-
-                headers.insert(
-                    reqwest::header::HeaderName::from_bytes(auth_header_name.as_bytes()).map_err(
-                        |_| LlmError::RequestFailed {
-                            provider: "gemini_oauth".to_string(),
-                            reason: "invalid auth header name".to_string(),
-                        },
-                    )?,
-                    reqwest::header::HeaderValue::from_str(&auth_header_value).map_err(|_| {
-                        LlmError::AuthFailed {
-                            provider: "gemini_oauth".to_string(),
-                        }
-                    })?,
-                );
-
-                (final_url, original_request.clone(), headers)
+                let mut authorization = reqwest::header::HeaderValue::from_str(&format!(
+                    "Bearer {}",
+                    credential.access_token
+                ))
+                .map_err(|_| LlmError::AuthFailed {
+                    provider: "gemini_oauth".into(),
+                })?;
+                authorization.set_sensitive(true);
+                headers.insert(reqwest::header::AUTHORIZATION, authorization);
+                (url, original_request.clone(), headers)
             };
-
-            // Inject custom headers from GEMINI_CLI_CUSTOM_HEADERS env var
-            let custom_headers = parse_custom_headers();
-            for (name, value) in &custom_headers {
-                if let (Ok(hname), Ok(hval)) = (
-                    reqwest::header::HeaderName::from_bytes(name.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(value),
-                ) {
-                    headers.insert(hname, hval);
-                } else {
-                    debug!(header = %name, "Skipping invalid custom header");
-                }
-            }
 
             debug!(
                 url = %url,
@@ -1366,13 +1255,9 @@ impl GeminiOauthProvider {
                 })?;
 
             let status = response.status();
-            let body_bytes = response
-                .bytes()
+            let body_bytes = crate::response_body::read(response, self.max_response_bytes)
                 .await
-                .map_err(|e| LlmError::RequestFailed {
-                    provider: "gemini_oauth".to_string(),
-                    reason: format!("Failed to read response body: {}", e),
-                })?;
+                .map_err(|error| error.into_llm("gemini_oauth"))?;
 
             // Cloud Code returns SSE stream, we need to parse it
             let mut final_response = serde_json::json!({});
@@ -1607,13 +1492,25 @@ impl GeminiOauthProvider {
         });
 
         let caps = RE.captures(message)?;
-        let hours: u64 = caps.get(1).map_or(0, |m| m.as_str().parse().unwrap_or(0));
-        let minutes: u64 = caps.get(2).map_or(0, |m| m.as_str().parse().unwrap_or(0));
-        let seconds: u64 = caps.get(3).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        let hours: u64 = caps
+            .get(1)
+            .map_or(Ok(0), |m| m.as_str().parse::<u64>())
+            .ok()?;
+        let minutes: u64 = caps
+            .get(2)
+            .map_or(Ok(0), |m| m.as_str().parse::<u64>())
+            .ok()?;
+        let seconds: u64 = caps
+            .get(3)
+            .map_or(Ok(0), |m| m.as_str().parse::<u64>())
+            .ok()?;
 
-        let total_secs = hours * 3600 + minutes * 60 + seconds;
+        let total_secs = hours
+            .checked_mul(3600)?
+            .checked_add(minutes.checked_mul(60)?)?
+            .checked_add(seconds)?;
         if total_secs > 0 {
-            Some(Duration::from_secs(total_secs + 2))
+            Some(Duration::from_secs(total_secs.checked_add(2)?))
         } else {
             None
         }
@@ -1782,79 +1679,12 @@ impl GeminiOauthProvider {
             );
         }
 
-        // Extended generation config from environment variables.
-        // These allow fine-tuning without changing the shared CompletionRequest trait.
-        if let Ok(v) = std::env::var("GEMINI_TOP_P")
-            && let Ok(top_p) = v.parse::<f64>()
-        {
-            gen_config.insert("topP".to_string(), serde_json::Value::from(top_p));
-        }
-        if let Ok(v) = std::env::var("GEMINI_TOP_K")
-            && let Ok(top_k) = v.parse::<u32>()
-        {
-            gen_config.insert("topK".to_string(), serde_json::Value::from(top_k));
-        }
-        if let Ok(v) = std::env::var("GEMINI_SEED")
-            && let Ok(seed) = v.parse::<i64>()
-        {
-            gen_config.insert("seed".to_string(), serde_json::Value::from(seed));
-        }
-        if let Ok(v) = std::env::var("GEMINI_PRESENCE_PENALTY")
-            && let Ok(pp) = v.parse::<f64>()
-        {
-            gen_config.insert("presencePenalty".to_string(), serde_json::Value::from(pp));
-        }
-        if let Ok(v) = std::env::var("GEMINI_FREQUENCY_PENALTY")
-            && let Ok(fp) = v.parse::<f64>()
-        {
-            gen_config.insert("frequencyPenalty".to_string(), serde_json::Value::from(fp));
-        }
-        // Response schema / JSON mode
-        if let Ok(mime) = std::env::var("GEMINI_RESPONSE_MIME_TYPE")
-            && !mime.is_empty()
-        {
-            gen_config.insert(
-                "responseMimeType".to_string(),
-                serde_json::Value::String(mime),
-            );
-        }
-        if let Ok(schema_str) = std::env::var("GEMINI_RESPONSE_JSON_SCHEMA")
-            && let Ok(schema) = serde_json::from_str::<serde_json::Value>(&schema_str)
-        {
-            gen_config.insert("responseJsonSchema".to_string(), schema);
-        }
-
-        // thinkingConfig:
-        // - Gemini 3.x: level-based (thinkingLevel: HIGH)
-        // - Gemini 2.5.x: budget-based (thinkingBudget: 8192)
-        // Budget cap of 8192 prevents runaway thinking loops.
-        //
-        // NOTE: We do NOT set includeThoughts=true. The original Gemini CLI
-        // sets it because it displays thoughts to the user. BrassClaw's reasoning
-        // layer (reasoning.rs) strips all <thinking> tags from responses, so
-        // including thoughts just adds text that gets stripped, potentially
-        // leaving an empty response.
-        let is_gemini_3 = model.contains("gemini-3");
-        let is_gemini_25 = model.contains("gemini-2.5");
-        let is_thinking_model = model.contains("thinking") || is_gemini_3 || is_gemini_25;
-        if is_thinking_model {
-            let thinking_config = if is_gemini_3 {
-                serde_json::json!({ "thinkingLevel": "HIGH" })
-            } else {
-                serde_json::json!({ "thinkingBudget": 8192 }) // 8192 tokens: default thinking budget cap
-            };
-            gen_config.insert("thinkingConfig".to_string(), thinking_config);
-        }
+        // Leave thinking to the selected model's protocol default. Do not
+        // impose an unconfigured token cap or infer a forced reasoning level
+        // from a model-name substring. Explicit output limits above remain.
 
         if !gen_config.is_empty() {
             req["generationConfig"] = serde_json::Value::Object(gen_config);
-        }
-
-        // Cached content support via GEMINI_CACHED_CONTENT env var.
-        if let Ok(cached) = std::env::var("GEMINI_CACHED_CONTENT")
-            && !cached.is_empty()
-        {
-            req["cachedContent"] = serde_json::Value::String(cached);
         }
 
         if let Some(choice) = tool_choice {
@@ -1869,16 +1699,6 @@ impl GeminiOauthProvider {
                     "mode": mode
                 }
             });
-        }
-
-        // Safety settings — only inject BLOCK_NONE when explicitly enabled via env var.
-        // The Cloud Code API may reject BLOCK_NONE for certain tiers.
-        // The original Gemini CLI does not set default safety settings.
-        if std::env::var("GEMINI_SAFETY_BLOCK_NONE")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-        {
-            req["safetySettings"] = serde_json::Value::Array(default_safety_settings());
         }
 
         // Thought signature injection for models that support modern features (Gemini 3.x).
@@ -2182,6 +2002,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn database_request_does_not_read_generation_environment() {
+        const CHILD: &str = "BRASSCLAW_GEMINI_ENV_ACCEPTANCE_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "gemini_oauth::tests::database_request_does_not_read_generation_environment",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .env("GEMINI_TOP_P", "0.25")
+                .env("GEMINI_TOP_K", "3")
+                .env("GEMINI_SEED", "4")
+                .env("GEMINI_PRESENCE_PENALTY", "0.5")
+                .env("GEMINI_FREQUENCY_PENALTY", "0.75")
+                .env("GEMINI_RESPONSE_MIME_TYPE", "application/json")
+                .env("GEMINI_RESPONSE_JSON_SCHEMA", "{\"type\":\"object\"}")
+                .env("GEMINI_CACHED_CONTENT", "unselected-cache")
+                .env("GEMINI_SAFETY_BLOCK_NONE", "true")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "stdout: {} stderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+            return;
+        }
+        let messages = [ChatMessage::user("selected prompt")];
+        let signatures = HashMap::new();
+        let explicit = GeminiOauthProvider::to_gemini_request(
+            &messages,
+            None,
+            Some(0.8),
+            Some(2048),
+            None,
+            None,
+            "gemini-1.5-pro",
+            &signatures,
+        );
+        assert_eq!(std::env::var("GEMINI_TOP_P").unwrap(), "0.25");
+        assert_eq!(
+            std::env::var("GEMINI_CACHED_CONTENT").unwrap(),
+            "unselected-cache"
+        );
+        assert_eq!(explicit["generationConfig"].as_object().unwrap().len(), 2);
+        assert_eq!(explicit["generationConfig"]["maxOutputTokens"], 2048);
+        assert!(explicit.get("cachedContent").is_none());
+        assert!(explicit.get("safetySettings").is_none());
+    }
+
+    #[test]
     fn test_deobfuscate_reconstructs_credentials() {
         let client_id = oauth_client_id();
         assert!(client_id.ends_with(".apps.googleusercontent.com"));
@@ -2409,7 +2283,7 @@ mod tests {
     }
 
     #[test]
-    fn test_thinking_config_for_gemini3_thinking_level() {
+    fn test_gemini3_keeps_model_thinking_default() {
         let messages = vec![ChatMessage::user("Reason about this")];
 
         let req = GeminiOauthProvider::to_gemini_request(
@@ -2423,33 +2297,27 @@ mod tests {
             &HashMap::new(),
         );
 
-        let thinking = &req["generationConfig"]["thinkingConfig"];
-        assert_eq!(thinking["thinkingLevel"], "HIGH");
-        assert!(thinking.get("includeThoughts").is_none());
-        assert!(thinking.get("thinkingBudget").is_none());
+        assert!(req.get("generationConfig").is_none());
     }
 
     #[test]
-    fn test_thinking_config_for_gemini25_budget() {
+    fn test_gemini25_keeps_model_thinking_default_and_explicit_output_limit() {
         let messages = vec![ChatMessage::user("Think about this")];
 
         let req = GeminiOauthProvider::to_gemini_request(
             &messages,
             None,
             None,
-            None,
+            Some(20_000),
             None,
             None,
             "gemini-2.5-flash-thinking",
             &HashMap::new(),
         );
 
-        let thinking = &req["generationConfig"]["thinkingConfig"];
-        assert_eq!(thinking["thinkingBudget"], 8192);
-        // includeThoughts is NOT set — reasoning.rs strips thinking tags,
-        // so returning thoughts just causes empty responses.
-        assert!(thinking.get("includeThoughts").is_none() || thinking["includeThoughts"].is_null());
-        assert!(thinking.get("thinkingLevel").is_none());
+        let generation = req["generationConfig"].as_object().unwrap();
+        assert_eq!(generation.len(), 1);
+        assert_eq!(generation["maxOutputTokens"], 20_000);
     }
 
     #[test]

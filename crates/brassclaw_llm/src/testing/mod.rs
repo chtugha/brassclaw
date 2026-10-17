@@ -4,6 +4,7 @@
 //! can opt in by depending on this crate with `features = ["testing"]`.
 
 pub mod fault_injection;
+pub mod provider_seed;
 
 // ── Config builders ─────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ pub mod fault_injection;
 pub fn nearai_test_config(model: impl Into<String>) -> crate::config::LlmConfig {
     crate::config::LlmConfig {
         backend: "nearai".to_string(),
+        resolved_protocol: None,
         session: crate::session::SessionConfig::default(),
         nearai: crate::config::NearAiConfig {
             model: model.into(),
@@ -43,6 +45,8 @@ pub fn nearai_test_config(model: impl Into<String>) -> crate::config::LlmConfig 
         bedrock: None,
         gemini_oauth: None,
         request_timeout_secs: 120,
+        retry_timing: Default::default(),
+        max_response_bytes: None,
         cheap_model: None,
         smart_routing_cascade: true,
         openai_codex: None,

@@ -55,6 +55,12 @@ function NearAiSetupMenu({ provider, isBusy, login, t, onSetUp }) {
       disabled: isBusy,
       run: () => onSetUp(provider),
     },
+    ...(typeof login.startNearaiWallet === "function" ? [{
+      id: "wallet",
+      label: t("onboarding.nearWallet"),
+      disabled: login.nearaiBusy || isBusy,
+      run: () => login.startNearaiWallet(),
+    }] : []),
     {
       id: "github",
       label: "GitHub",

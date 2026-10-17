@@ -21,6 +21,7 @@ pub mod retained_instruction;
 #[cfg(feature = "skills-db")]
 pub mod retained_reviews;
 pub mod retained_tools;
+pub mod retained_validator;
 pub mod retrieval_source;
 pub mod similarity_checker;
 pub mod skill_tracker;

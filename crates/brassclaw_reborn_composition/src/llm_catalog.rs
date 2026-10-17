@@ -1,8 +1,8 @@
 //! Provider-catalog resolution for the assembled Reborn runtime.
 //!
 //! After V047/V048 the source of truth for all providers (builtins and custom)
-//! is the `brassclaw_llm_providers` DB table, seeded at boot by
-//! `webui::seed_builtin_providers`. The active slot selection is stored in
+//! is the `brassclaw_llm_providers` DB table, initialized once by V140 before
+//! catalogue consumers start. The active slot selection is stored in
 //! `brassclaw_config` via `db_config`.
 //!
 //! This module resolves a selection into a concrete `brassclaw_llm::LlmConfig`
@@ -10,47 +10,40 @@
 //! `root-llm-provider` feature so the substrate-only composition stays free
 //! of `brassclaw_llm`.
 
-use std::path::Path;
-
 use thiserror::Error;
 
 use brassclaw_llm::{
     ProviderRegistry, ProviderResolutionError, ProviderSelection, registry::ProviderDefinition,
 };
-use brassclaw_reborn_config::{
-    LlmSlotSelection, RebornBootConfig, RebornConfigFile, reject_inline_secret,
-};
-
-use crate::runtime_input::ResolvedRebornLlm;
+use brassclaw_reborn_config::{LlmSlotSelection, reject_inline_secret};
 
 /// Errors surfaced when resolving an `LlmSlotSelection` against the
-/// merged provider catalog.
+/// coherent active database catalogue.
 #[derive(Debug, Error)]
 pub enum RebornLlmCatalogError {
-    /// Selection didn't name a provider. Boot TOML carried
-    /// `[llm.default]` with no `provider_id` field.
+    /// The persisted role selection did not name a provider.
     #[error(
-        "llm slot selection has no `provider_id`; set `[llm.<slot>] provider_id = \"...\"` in config.toml"
+        "llm slot selection has no provider_id; configure the provider in Settings → Inference"
     )]
     MissingProviderId,
-    /// `provider_id` doesn't exist in the merged catalog.
+    /// `provider_id` does not exist in the active catalogue.
     #[error(
         "llm provider id `{requested}` not found in the provider catalog; known ids: [{known}]"
     )]
     UnknownProvider { requested: String, known: String },
-    /// Provider requires an API key but the resolved env var isn't set.
+    /// A required credential is absent. The retained environment-reference
+    /// field is compatibility metadata, not an alternate runtime key source.
     #[error(
-        "llm provider `{provider}` requires API key env var `{env}` to be set; \
-         export it (e.g. `export {env}=...`) or override with `[llm.<slot>] api_key_env = ...`"
+        "llm provider `{provider}` requires a credential in the encrypted store; \
+         configure it in Settings → Inference"
     )]
     ApiKeyEnvUnset { provider: String, env: String },
     /// Provider says it needs an API key but doesn't expose an
     /// `api_key_env` setting (and the selection didn't override it).
     /// Theoretically impossible in a sane catalog; defensive guard.
     #[error(
-        "llm provider `{provider}` requires an API key but the catalog entry has no \
-         `api_key_env`; add `api_key_env` to the provider catalog entry or override via \
-         `[llm.<slot>] api_key_env = ...`"
+        "llm provider `{provider}` requires a credential in the encrypted store; \
+         configure its authentication in Settings → Inference"
     )]
     ApiKeyEnvUnconfigured { provider: String },
     /// Provider's API-key env-var name is malformed. Do not echo it:
@@ -63,7 +56,7 @@ pub enum RebornLlmCatalogError {
     /// Catalog field is malformed or secret-shaped. Do not echo it:
     /// values may be pasted secret material from the provider catalog.
     #[error(
-        "llm provider `{provider}` at providers.json[{catalog_index}] has an invalid catalog field `{field}`; \
+        "llm provider `{provider}` at catalogue index {catalog_index} has an invalid catalog field `{field}`; \
          provider catalog fields must not contain inline secret material"
     )]
     CatalogFieldInvalid {
@@ -78,15 +71,9 @@ pub enum RebornLlmCatalogError {
          `default_base_url` nor the selection's `base_url` override are set"
     )]
     BaseUrlUnconfigured { provider: String },
-    /// Explicit Reborn provider overlay could not be loaded.
-    #[error("could not load Reborn provider catalog: {source}")]
-    CatalogLoad {
-        #[source]
-        source: brassclaw_llm::registry::ProviderRegistryLoadError,
-    },
-    /// Environment fallback could not be resolved by the LLM provider layer.
-    #[error("could not resolve LLM environment fallback: {source}")]
-    EnvResolution {
+    /// The shared provider constructor rejected the selected configuration.
+    #[error("could not construct the selected LLM provider: {source}")]
+    ProviderConstruction {
         #[source]
         source: brassclaw_llm::LlmError,
     },
@@ -96,124 +83,11 @@ pub enum RebornLlmCatalogError {
     DbError { reason: String },
 }
 
-/// Resolve the default Reborn runtime LLM from boot config, TOML selection,
-/// and environment fallback.
+/// Resolve the default selection from the authoritative PostgreSQL catalogue.
 ///
-/// This is the composition-owned provider/auth seam for standalone Reborn
-/// ingress. Callers pass boot inputs; provider-specific auth details stay in
-/// `brassclaw_llm` and never leak into CLI commands.
-pub fn resolve_reborn_runtime_llm(
-    boot: &RebornBootConfig,
-    config_file: Option<&RebornConfigFile>,
-) -> Result<Option<ResolvedRebornLlm>, RebornLlmCatalogError> {
-    if let Some(selection) = config_file.and_then(|file| file.default_llm_slot()) {
-        match resolve_llm_selection_against_catalog(
-            selection,
-            Some(&boot.home().path().join("providers.json")),
-        ) {
-            Ok(config) => return Ok(Some(ResolvedRebornLlm::from_llm_config(config))),
-            // Provider is named in config.toml but a required field (base_url,
-            // api_key) is not yet filled in.  Boot with the placeholder so the
-            // WebUI is reachable and the operator can finish configuration there,
-            // instead of crashing into a systemd restart loop.
-            //
-            // Exception: if the env var is explicitly set to an empty string the
-            // operator made a deliberate (broken) configuration — surface the error
-            // rather than silently ignoring it.
-            Err(RebornLlmCatalogError::BaseUrlUnconfigured { ref provider }) => {
-                tracing::warn!(
-                    provider = %provider,
-                    "LLM provider is configured in config.toml but base_url is missing. \
-                     Starting without a live LLM — configure it via Settings → Inference."
-                );
-                return Ok(None);
-            }
-            Err(RebornLlmCatalogError::ApiKeyEnvUnset {
-                ref provider,
-                ref env,
-            }) => {
-                // If the var is absent entirely → graceful start.
-                // If the var is present but empty → hard error (misconfiguration).
-                if std::env::var(env).is_ok() {
-                    // var present but empty — treat as misconfiguration
-                    return Err(RebornLlmCatalogError::ApiKeyEnvUnset {
-                        provider: provider.clone(),
-                        env: env.clone(),
-                    });
-                }
-                tracing::warn!(
-                    provider = %provider,
-                    env = %env,
-                    "LLM provider is configured but the API key env var is not set. \
-                     Starting without a live LLM — set the env var or configure via the WebUI."
-                );
-                return Ok(None);
-            }
-            Err(other) => return Err(other),
-        }
-    }
-
-    resolve_llm_from_env(boot)
-}
-
-fn resolve_llm_from_env(
-    boot: &RebornBootConfig,
-) -> Result<Option<ResolvedRebornLlm>, RebornLlmCatalogError> {
-    match brassclaw_llm::resolve_llm_config_from_env(Some(
-        &boot.home().path().join("providers.json"),
-    )) {
-        Ok(maybe_config) => Ok(maybe_config.map(ResolvedRebornLlm::from_llm_config)),
-        // MissingBaseUrl and MissingApiKey convert to RequestFailed / AuthFailed
-        // respectively via ProviderResolutionError::into_llm_error.
-        //
-        // Only treat these as "not configured yet" (graceful start) when the
-        // operator has NOT explicitly set LLM_BACKEND.  When LLM_BACKEND is set
-        // the operator made a deliberate configuration choice that is broken —
-        // surface the error so they know to fix it.
-        Err(brassclaw_llm::LlmError::RequestFailed { ref reason, .. })
-            if reason.contains("base URL is required") && std::env::var("LLM_BACKEND").is_err() =>
-        {
-            tracing::warn!(
-                "LLM env vars are partially set but base_url is missing. Starting without \
-                 a configured LLM provider — configure one via Settings → Inference in the WebUI."
-            );
-            Ok(None)
-        }
-        Err(brassclaw_llm::LlmError::AuthFailed { .. })
-            if std::env::var("LLM_BACKEND").is_err() =>
-        {
-            tracing::warn!(
-                "LLM env vars are partially set but api_key or provider is not resolvable. \
-                 Starting without a configured LLM provider — configure one via Settings → \
-                 Inference in the WebUI."
-            );
-            Ok(None)
-        }
-        Err(source) => Err(RebornLlmCatalogError::EnvResolution { source }),
-    }
-}
-
-/// Resolve an `LlmSlotSelection` against the merged provider catalog.
-///
-/// Steps:
-/// 1. Build the catalog (`ProviderRegistry::load_from_path(user)`).
-/// 2. Look up the requested `provider_id`.
-/// 3. Validate Reborn-specific secret/env-var policy on catalog and selection.
-/// 4. Let `brassclaw_llm` resolve provider fields and build the full config.
-pub fn resolve_llm_selection_against_catalog(
-    selection: &LlmSlotSelection,
-    user_providers_path: Option<&Path>,
-) -> Result<brassclaw_llm::LlmConfig, RebornLlmCatalogError> {
-    let registry = ProviderRegistry::try_load_from_path(user_providers_path)
-        .map_err(|source| RebornLlmCatalogError::CatalogLoad { source })?;
-    resolve_against_registry(selection, &registry)
-}
-
-/// DB-backed variant of `resolve_llm_selection_against_catalog`.
-///
-/// Reads the active LLM selection and provider definition from Postgres rather
-/// than from `config.toml` + `providers.json`. Called on the live-reload path
-/// and in `runtime.rs` when a pool is available.
+/// Reads the active selection and provider definition from one coherent
+/// database snapshot. Used by startup and live reload; no file/ENV catalogue
+/// fallback is available.
 ///
 /// If no `provider_id` is set in `brassclaw_config` (first run, no provider
 /// configured yet), returns `Ok(None)`.
@@ -221,53 +95,67 @@ pub fn resolve_llm_selection_against_catalog(
 pub async fn resolve_llm_selection_against_catalog_db(
     pool: &brassclaw_pg::PgPool,
     tenant_id: &str,
+    keys: &crate::LlmKeyStore,
 ) -> Result<Option<brassclaw_llm::LlmConfig>, RebornLlmCatalogError> {
-    use crate::db_config::load_config_snapshot;
-    use crate::pg_provider_repo::PgProviderRepo;
+    Ok(resolve_provider_selection_db(pool, tenant_id, keys)
+        .await?
+        .map(|(config, _)| config))
+}
 
-    // Read active selection from brassclaw_config.
-    let snapshot = load_config_snapshot(pool, tenant_id).await.map_err(|e| {
-        RebornLlmCatalogError::DbError {
-            reason: e.to_string(),
-        }
-    })?;
-    let Some(selection) = snapshot.default_llm_slot() else {
+#[cfg(feature = "postgres")]
+pub(crate) async fn resolve_provider_selection_db(
+    pool: &brassclaw_pg::PgPool,
+    tenant_id: &str,
+    keys: &crate::LlmKeyStore,
+) -> Result<Option<(brassclaw_llm::LlmConfig, ProviderDefinition)>, RebornLlmCatalogError> {
+    let captured = crate::RebornProviderAdmin::new(pool.clone(), tenant_id)
+        .capture_selection(
+            crate::provider_admin::ProviderSelectionSource::Role(
+                brassclaw_llm::ProviderRole::Kohai,
+            ),
+            keys,
+        )
+        .await
+        .map_err(|error| RebornLlmCatalogError::DbError {
+            reason: error.to_string(),
+        })?;
+    let Some(captured) = captured else {
         return Ok(None);
     };
-    let Some(provider_id) = selection.provider_id.as_deref().filter(|id| !id.is_empty()) else {
-        return Ok(None);
-    };
-
-    // Load the provider definition from DB.
-    let pg_repo = PgProviderRepo::new(pool.clone(), tenant_id.to_string());
-    let Some(definition) =
-        pg_repo
-            .get(provider_id)
-            .await
-            .map_err(|e| RebornLlmCatalogError::DbError {
-                reason: e.to_string(),
-            })?
-    else {
-        // Provider configured in DB config but no definition row exists yet
-        // (race between seeding and reload, or operator entered unknown id).
-        tracing::warn!(
-            provider_id = %provider_id,
-            "DB-backed LLM resolution: provider_id set in config but no definition found; \
-             starting without a live LLM"
-        );
-        return Ok(None);
-    };
-
-    let registry = ProviderRegistry::new(vec![definition]);
-    Ok(Some(resolve_against_registry(selection, &registry)?))
+    let registry = ProviderRegistry::new(vec![captured.definition.clone()]);
+    Ok(Some((
+        resolve_against_registry_with_credentials(
+            &captured.selection,
+            &registry,
+            captured.credential,
+        )?,
+        captured.definition,
+    )))
 }
 
 /// Resolve a selection against a pre-built registry. Useful in tests
 /// where a synthetic registry can be assembled without touching the
 /// filesystem.
-pub fn resolve_against_registry(
+#[cfg(test)]
+fn resolve_against_registry(
     selection: &LlmSlotSelection,
     registry: &ProviderRegistry,
+) -> Result<brassclaw_llm::LlmConfig, RebornLlmCatalogError> {
+    resolve_registry_selection(selection, registry, None)
+}
+
+pub(crate) fn resolve_against_registry_with_credentials(
+    selection: &LlmSlotSelection,
+    registry: &ProviderRegistry,
+    key: Option<secrecy::SecretString>,
+) -> Result<brassclaw_llm::LlmConfig, RebornLlmCatalogError> {
+    resolve_registry_selection(selection, registry, key)
+}
+
+fn resolve_registry_selection(
+    selection: &LlmSlotSelection,
+    registry: &ProviderRegistry,
+    key: Option<secrecy::SecretString>,
 ) -> Result<brassclaw_llm::LlmConfig, RebornLlmCatalogError> {
     validate_catalog(registry)?;
 
@@ -297,16 +185,15 @@ pub fn resolve_against_registry(
 
     validate_selection(selection, provider, catalog_index)?;
 
-    let resolved = brassclaw_llm::resolve_provider_config_from_selection(
-        ProviderSelection {
-            provider_id: provider.id.clone(),
-            api_key_env: selection.api_key_env.clone(),
-            base_url: selection.base_url.clone(),
-            model: selection.model.clone(),
-        },
-        registry,
-    )
-    .map_err(|source| map_selection_resolution_error(source, selection, provider))?;
+    let selection_config = ProviderSelection {
+        provider_id: provider.id.clone(),
+        api_key_env: selection.api_key_env.clone(),
+        base_url: selection.base_url.clone(),
+        model: selection.model.clone(),
+    };
+    let resolved =
+        brassclaw_llm::resolve_provider_config_with_credentials(selection_config, registry, key)
+            .map_err(|source| map_selection_resolution_error(source, selection, provider))?;
 
     validate_catalog_text(
         provider,
@@ -316,34 +203,12 @@ pub fn resolve_against_registry(
     )?;
     validate_catalog_text(provider, catalog_index, "resolved_model", resolved.model())?;
 
-    brassclaw_llm::build_llm_config_from_resolved_provider(resolved)
-        .map_err(|source| RebornLlmCatalogError::EnvResolution { source })
-}
-
-/// Overlay an operator-stored API-key value onto a resolved `LlmConfig`.
-///
-/// The catalog/selection only ever carry an `api_key_env` *name* — values are
-/// rejected as inline secrets. When the operator pastes a key through the
-/// webui2 settings surface it is stored in the scoped secret store and applied
-/// here, after catalog/env resolution, so a stored value takes precedence over
-/// whatever `api_key_env` resolved to. Both the startup resolution and the live
-/// reload path call this so the two never drift.
-///
-/// Custom providers that rely on a stored key must be written into the overlay
-/// with `api_key_required = false`, otherwise resolution fails closed on the
-/// missing env var before this injection runs.
-pub(crate) fn apply_stored_api_key(
-    config: &mut brassclaw_llm::LlmConfig,
-    key: secrecy::SecretString,
-) {
-    if let Some(provider) = config.provider.as_mut() {
-        provider.api_key = Some(key);
-    } else if config.backend == "nearai" {
-        config.nearai.api_key = Some(key);
-    }
-    // Dedicated codex/gemini/bedrock backends authenticate via OAuth/session or
-    // AWS credential chains rather than a pasted key; surfacing those in the UI
-    // is a follow-up, so they are intentionally left untouched here.
+    let result = brassclaw_llm::build_llm_config_with_provider_policy(
+        resolved,
+        provider.request_policy,
+        provider.response_cache,
+    );
+    result.map_err(|source| RebornLlmCatalogError::ProviderConstruction { source })
 }
 
 fn validate_selection(
@@ -395,13 +260,13 @@ fn map_selection_resolution_error(
         } if error_provider == provider.id => RebornLlmCatalogError::BaseUrlUnconfigured {
             provider: provider.id.clone(),
         },
-        source => RebornLlmCatalogError::EnvResolution {
+        source => RebornLlmCatalogError::ProviderConstruction {
             source: source.into_llm_error(),
         },
     }
 }
 
-fn validate_catalog(registry: &ProviderRegistry) -> Result<(), RebornLlmCatalogError> {
+pub(crate) fn validate_catalog(registry: &ProviderRegistry) -> Result<(), RebornLlmCatalogError> {
     for (catalog_index, provider) in registry.all().iter().enumerate() {
         validate_catalog_provider(provider, catalog_index)?;
     }
@@ -412,6 +277,55 @@ fn validate_catalog_provider(
     provider: &ProviderDefinition,
     catalog_index: usize,
 ) -> Result<(), RebornLlmCatalogError> {
+    provider
+        .embedding_models
+        .validate_for_protocol(provider.protocol)
+        .map_err(|_| RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "embedding_models",
+        })?;
+    provider
+        .request_policy
+        .validate_for_protocol(provider.protocol)
+        .map_err(|_| RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "request_policy",
+        })?;
+    provider.model_discovery.validate().map_err(|_| {
+        RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "model_discovery",
+        }
+    })?;
+    provider
+        .response_cache
+        .validate()
+        .map_err(|_| RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "response_cache",
+        })?;
+    if provider.context_window_tokens == Some(0) {
+        return Err(RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "context_window_tokens",
+        });
+    }
+    if provider
+        .cache_retention
+        .as_deref()
+        .is_some_and(|value| value.parse::<brassclaw_llm::CacheRetention>().is_err())
+    {
+        return Err(RebornLlmCatalogError::CatalogFieldInvalid {
+            provider: safe_catalog_display_value("providers.<id>", &provider.id),
+            catalog_index,
+            field: "cache_retention",
+        });
+    }
     validate_catalog_text(provider, catalog_index, "id", &provider.id)?;
     if let Some(base_url) = provider.default_base_url.as_deref() {
         validate_catalog_text(provider, catalog_index, "default_base_url", base_url)?;
@@ -496,8 +410,32 @@ mod tests {
     use super::*;
     use brassclaw_llm::registry::{ProviderProtocol, ProviderRegistry};
 
+    #[test]
+    fn invalid_context_and_cache_properties_fail_before_resolution() {
+        for (context, cache, field) in [
+            (Some(0), None, "context_window_tokens"),
+            (Some(131072), Some("invalid-retention"), "cache_retention"),
+        ] {
+            let mut definition = provider_no_key_required("alpha");
+            definition.context_window_tokens = context;
+            definition.cache_retention = cache.map(str::to_owned);
+            let registry = ProviderRegistry::new(vec![definition]);
+            let selection = LlmSlotSelection {
+                provider_id: Some("alpha".into()),
+                ..Default::default()
+            };
+            assert!(
+                matches!(resolve_against_registry_with_credentials(&selection, &registry, None),
+                Err(RebornLlmCatalogError::CatalogFieldInvalid { field: actual, .. }) if actual == field)
+            );
+        }
+    }
+
     fn provider_with_required_key(id: &str, env: &str) -> ProviderDefinition {
         ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: id.to_string(),
             aliases: Vec::new(),
             protocol: ProviderProtocol::OpenAiCompletions,
@@ -515,11 +453,15 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         }
     }
 
     fn provider_no_key_required(id: &str) -> ProviderDefinition {
         ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: id.to_string(),
             aliases: Vec::new(),
             protocol: ProviderProtocol::Ollama,
@@ -537,11 +479,15 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         }
     }
 
     fn provider_no_base_url_required(id: &str) -> ProviderDefinition {
         ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: id.to_string(),
             aliases: Vec::new(),
             protocol: ProviderProtocol::OpenAiCompletions,
@@ -559,6 +505,7 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         }
     }
 
@@ -571,6 +518,9 @@ mod tests {
 
     fn provider_github_copilot_no_key_required(id: &str) -> ProviderDefinition {
         ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: id.to_string(),
             aliases: Vec::new(),
             protocol: ProviderProtocol::GithubCopilot,
@@ -588,11 +538,15 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         }
     }
 
     fn provider_with_protocol(id: &str, protocol: ProviderProtocol) -> ProviderDefinition {
         ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: id.to_string(),
             aliases: Vec::new(),
             protocol,
@@ -610,6 +564,7 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         }
     }
 
@@ -966,13 +921,13 @@ mod tests {
             "error must not echo secret-shaped env name: {rendered}"
         );
         assert!(
-            rendered.contains("providers.json[7]"),
+            rendered.contains("catalogue index 7"),
             "error must identify catalog index: {rendered}"
         );
     }
 
     #[test]
-    fn apply_stored_api_key_overrides_registry_provider() {
+    fn stored_api_key_resolves_registry_provider() {
         use secrecy::ExposeSecret as _;
 
         let registry = ProviderRegistry::new(vec![provider_no_key_required("alpha")]);
@@ -980,17 +935,12 @@ mod tests {
             provider_id: Some("alpha".to_string()),
             ..Default::default()
         };
-        let mut config = resolve_against_registry(&selection, &registry).expect("resolve");
-        assert!(
-            config
-                .provider
-                .as_ref()
-                .expect("provider")
-                .api_key
-                .is_none()
-        );
-
-        apply_stored_api_key(&mut config, secrecy::SecretString::from("sk-stored"));
+        let config = resolve_against_registry_with_credentials(
+            &selection,
+            &registry,
+            Some(secrecy::SecretString::from("sk-stored")),
+        )
+        .expect("credential-aware resolve");
 
         let stored = config
             .provider
@@ -1003,7 +953,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_stored_api_key_targets_nearai_dedicated_config() {
+    fn stored_api_key_resolves_nearai_dedicated_config() {
         use secrecy::ExposeSecret as _;
 
         let registry = ProviderRegistry::new(vec![provider_with_protocol(
@@ -1013,12 +963,16 @@ mod tests {
         let selection = LlmSlotSelection {
             provider_id: Some("nearai".to_string()),
             model: Some("nearai/test-model".to_string()),
+            base_url: Some("https://private.near.ai".into()),
             ..Default::default()
         };
-        let mut config = resolve_against_registry(&selection, &registry).expect("resolve");
+        let config = resolve_against_registry_with_credentials(
+            &selection,
+            &registry,
+            Some(secrecy::SecretString::from("sk-nearai")),
+        )
+        .expect("credential-aware resolve");
         assert!(config.provider.is_none());
-
-        apply_stored_api_key(&mut config, secrecy::SecretString::from("sk-nearai"));
 
         assert_eq!(
             config
@@ -1029,20 +983,5 @@ mod tests {
                 .expose_secret(),
             "sk-nearai"
         );
-    }
-
-    #[test]
-    fn explicit_malformed_provider_overlay_fails_closed() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let providers = temp.path().join("providers.json");
-        std::fs::write(&providers, "not json").expect("write providers");
-        let selection = LlmSlotSelection {
-            provider_id: Some("openai".to_string()),
-            ..Default::default()
-        };
-
-        let err = resolve_llm_selection_against_catalog(&selection, Some(&providers))
-            .expect_err("malformed explicit provider overlay must fail");
-        assert!(matches!(err, RebornLlmCatalogError::CatalogLoad { .. }));
     }
 }

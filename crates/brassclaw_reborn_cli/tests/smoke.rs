@@ -274,6 +274,7 @@ fn models_status_json_reports_routes_not_configured_without_v1_state() {
         .arg("--json")
         .env_clear()
         .env("HOME", temp.path())
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .output()
         .expect("brassclaw-reborn models status --json should run");
 
@@ -291,7 +292,7 @@ fn models_status_json_reports_routes_not_configured_without_v1_state() {
 
 #[cfg(feature = "root-llm-provider")]
 #[test]
-fn models_status_reads_reborn_default_llm_slot() {
+fn models_status_ignores_legacy_file_selection() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     std::fs::create_dir_all(&reborn_home).expect("mkdir");
@@ -312,6 +313,7 @@ api_key_env = "OPENAI_API_KEY"
         .arg("--json")
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .output()
         .expect("brassclaw-reborn models status --json should run");
 
@@ -322,11 +324,8 @@ api_key_env = "OPENAI_API_KEY"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid JSON");
-    assert_eq!(json["routes"], "configured");
-    assert_eq!(json["default"]["provider_id"], "openai");
-    assert_eq!(json["default"]["provider_known"], true);
-    assert_eq!(json["default"]["model"], "gpt-5-mini");
-    assert_eq!(json["default"]["api_key_env"], "OPENAI_API_KEY");
+    assert_eq!(json["routes"], "not-configured");
+    assert_eq!(json["default"], serde_json::Value::Null);
     assert_eq!(json["v1_state"], "not-used");
 }
 
@@ -2071,79 +2070,10 @@ default_approval_policy = "ask_always"
     );
 }
 
-#[test]
-fn run_rejects_malformed_explicit_provider_overlay() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(
-        reborn_home.join("config.toml"),
-        r#"
-[llm.default]
-provider_id = "openai"
-"#,
-    )
-    .expect("write config");
-    std::fs::write(reborn_home.join("providers.json"), "not json").expect("write providers");
-
-    let output = Command::new(reborn_bin())
-        .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("brassclaw-reborn run should not crash");
-    assert!(!output.status.success(), "malformed overlay must fail");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("provider catalog") || stderr.contains("providers.json"),
-        "stderr should explain provider catalog load failure; got: {stderr}"
-    );
-}
-
-#[test]
-fn run_rejects_empty_required_api_key_env() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(
-        reborn_home.join("config.toml"),
-        r#"
-[llm.default]
-provider_id = "empty-key-provider"
-"#,
-    )
-    .expect("write config");
-    std::fs::write(
-        reborn_home.join("providers.json"),
-        r#"[
-  {
-    "id": "empty-key-provider",
-    "protocol": "open_ai_completions",
-    "api_key_env": "REBORN_TEST_EMPTY_KEY",
-    "api_key_required": true,
-    "model_env": "REBORN_TEST_MODEL",
-    "default_model": "test-model",
-    "description": "test provider"
-  }
-]
-"#,
-    )
-    .expect("write providers");
-
-    let output = Command::new(reborn_bin())
-        .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env("REBORN_TEST_EMPTY_KEY", "")
-        .output()
-        .expect("brassclaw-reborn run should not crash");
-    assert!(!output.status.success(), "empty API key must fail");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("REBORN_TEST_EMPTY_KEY") && stderr.contains("requires API key env var"),
-        "stderr should treat empty key as unset; got: {stderr}"
-    );
-}
+// Provider-file/env boot behavior is retired. The actual PostgreSQL/CLI
+// regression lives in postgres_lifecycle::cli_provider_catalogue_ignores_legacy_files_and_environment.
+// Required credentials are covered through the real composition broker path,
+// not a providers.json fixture or a process environment fallback.
 
 #[test]
 fn run_rejects_zero_runner_heartbeat_interval() {

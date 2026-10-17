@@ -197,7 +197,11 @@ impl ZencoderStores {
             self.record_seed_review(existing.id, 22, name).await?;
             return Ok(existing.id);
         }
-        let id = self.python_code.insert(row).await.map_err(map)?;
+        let id = self
+            .python_code
+            .insert_installation_projection(row)
+            .await
+            .map_err(map)?;
         self.record_seed_review(id, 22, name).await?;
         Ok(id)
     }
@@ -219,7 +223,11 @@ impl ZencoderStores {
             self.record_seed_review(existing.id, 21, name).await?;
             return Ok(existing.id);
         }
-        let id = self.recipe.insert(row).await.map_err(map)?;
+        let id = self
+            .recipe
+            .insert_installation_projection(row, false)
+            .await
+            .map_err(map)?;
         self.record_seed_review(id, 21, name).await?;
         Ok(id)
     }
@@ -259,7 +267,11 @@ impl ZencoderStores {
             self.record_seed_review(existing.id, 23, name).await?;
             return Ok(existing.id);
         }
-        let id = self.catalogue.insert(row).await.map_err(map)?;
+        let id = self
+            .catalogue
+            .insert_installation_projection(row)
+            .await
+            .map_err(map)?;
         self.record_seed_review(id, 23, name).await?;
         Ok(id)
     }

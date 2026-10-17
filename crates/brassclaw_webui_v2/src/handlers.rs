@@ -687,15 +687,22 @@ pub async fn upsert_llm_provider(
     Ok(Json(response))
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LlmProviderRevisionRequest {
+    pub expected_revision: u64,
+}
+
 /// `POST /api/webchat/v2/llm/providers/{provider_id}/delete`
 pub async fn delete_llm_provider(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(LlmProviderPath { provider_id }): Path<LlmProviderPath>,
+    Json(body): Json<LlmProviderRevisionRequest>,
 ) -> Result<Json<LlmConfigSnapshot>, WebUiV2HttpError> {
     let response = state
         .services()
-        .delete_llm_provider(caller, provider_id)
+        .delete_llm_provider(caller, provider_id, body.expected_revision)
         .await?;
     Ok(Json(response))
 }
@@ -1011,6 +1018,34 @@ async fn ws_send_with_timeout(
 /// List all registered capabilities with their current permission modes.
 /// Returns capability metadata including ID, description, provider, effects,
 /// and permission settings.
+/// UUID-keyed global policy settings. Authentication stays at the existing
+/// product boundary; no tenant/user/project role selects a permission record.
+pub async fn list_instance_tool_settings(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<
+    Json<Vec<brassclaw_product_workflow::instance_tools::InstanceToolSetting>>,
+    WebUiV2HttpError,
+> {
+    Ok(Json(
+        state.services().list_instance_tool_settings(caller).await?,
+    ))
+}
+pub async fn update_instance_tool_setting(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(tool_id): Path<uuid::Uuid>,
+    Json(request): Json<brassclaw_product_workflow::instance_tools::UpdateInstanceToolSetting>,
+) -> Result<Json<brassclaw_product_workflow::instance_tools::InstanceToolSetting>, WebUiV2HttpError>
+{
+    Ok(Json(
+        state
+            .services()
+            .update_instance_tool_setting(caller, tool_id, request)
+            .await?,
+    ))
+}
+
 pub async fn list_tools(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1231,6 +1266,20 @@ pub async fn inspect_post_turn_review(
             .await?,
     ))
 }
+pub async fn reconcile_post_turn_review(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(attempt): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::ReviewReconciliationRequest>,
+) -> Result<Json<brassclaw_product_workflow::ReviewReconciliationReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .reconcile_post_turn_review(caller, &attempt, request)
+            .await?,
+    ))
+}
+
 pub async fn record_review_disposition(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1259,6 +1308,19 @@ pub async fn submit_component_review(
     ))
 }
 
+pub async fn get_component_revision_head(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(component_id): Path<String>,
+) -> Result<Json<brassclaw_product_workflow::ComponentRevisionHeadView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_component_revision_head(caller, &component_id)
+            .await?,
+    ))
+}
+
 pub async fn get_component_review_submission(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1269,6 +1331,48 @@ pub async fn get_component_review_submission(
             .services()
             .get_component_review_submission(caller, &submission_id)
             .await?,
+    ))
+}
+
+pub async fn prepare_component_deployment(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::PrepareComponentDeploymentRequest>,
+) -> Result<Json<brassclaw_product_workflow::ComponentDeploymentPlan>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .prepare_component_deployment(caller, request)
+            .await?,
+    ))
+}
+
+pub async fn catalogue_sources(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(generation): Path<String>,
+) -> Result<Json<brassclaw_product_workflow::CatalogueSourceExport>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .export_catalogue_sources(caller, &generation)
+            .await?,
+    ))
+}
+
+pub async fn catalogue_status(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<brassclaw_product_workflow::CatalogueActivationStatus>, WebUiV2HttpError> {
+    Ok(Json(state.services().catalogue_status(caller).await?))
+}
+pub async fn activate_catalogue(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::ActivateCatalogueRequest>,
+) -> Result<Json<brassclaw_product_workflow::CatalogueActivationReceipt>, WebUiV2HttpError> {
+    Ok(Json(
+        state.services().activate_catalogue(caller, request).await?,
     ))
 }
 
@@ -1531,6 +1635,139 @@ pub async fn update_interceptor_config(
 /// `GET /api/webchat/v2/prefixes`
 ///
 /// List named prefix-cache entries for the caller's scope.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrefixSourcesQuery {
+    pub generation: Option<String>,
+}
+pub async fn list_prefix_sources(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(name): Path<String>,
+    Query(query): Query<PrefixSourcesQuery>,
+) -> Result<Json<brassclaw_product_workflow::PrefixSourceInventory>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .list_prefix_sources(caller, &name, query.generation.as_deref())
+            .await?,
+    ))
+}
+pub async fn register_prefix_source(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(name): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::RegisterPrefixSourceRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixSourceRegistration>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .register_prefix_source(caller, &name, request)
+            .await?,
+    ))
+}
+
+pub async fn prefix_model_designs(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<brassclaw_product_workflow::PrefixModelDesignCatalogue>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .prefix_model_design_catalogue(caller)
+            .await?,
+    ))
+}
+pub async fn capture_prefix_model(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::CapturePrefixModelRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixModelSpecification>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .capture_prefix_model(caller, request)
+            .await?,
+    ))
+}
+pub async fn get_prefix_model_artifacts(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((specification, artifact_set)): Path<(String, String)>,
+) -> Result<Json<brassclaw_product_workflow::PrefixModelArtifactDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_prefix_model_artifacts(caller, &specification, &artifact_set)
+            .await?,
+    ))
+}
+
+pub async fn retain_prefix_model_artifacts(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(request): Json<brassclaw_product_workflow::RetainPrefixModelArtifactsRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixModelArtifactSet>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .retain_prefix_model_artifacts(caller, request)
+            .await?,
+    ))
+}
+
+pub async fn retain_prefix_design(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(name): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::RetainPrefixDesignProposalRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixDesignProposal>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .retain_prefix_design_proposal(caller, &name, request)
+            .await?,
+    ))
+}
+
+pub async fn list_prefix_generations(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(name): Path<String>,
+) -> Result<Json<Vec<brassclaw_product_workflow::PrefixGenerationSummary>>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .list_prefix_generations(caller, &name)
+            .await?,
+    ))
+}
+pub async fn get_prefix_generation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((name, generation)): Path<(String, String)>,
+) -> Result<Json<brassclaw_product_workflow::PrefixGenerationDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_prefix_generation(caller, &name, &generation)
+            .await?,
+    ))
+}
+pub async fn import_prefix_generation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(name): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::ImportPrefixGenerationRequest>,
+) -> Result<Json<brassclaw_product_workflow::PrefixGenerationDetail>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .import_prefix_generation(caller, &name, request)
+            .await?,
+    ))
+}
+
 pub async fn list_prefixes(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

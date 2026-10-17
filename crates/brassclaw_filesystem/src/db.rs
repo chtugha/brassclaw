@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[cfg(feature = "postgres")]
 const PG_MAX_IDENTIFIER_LEN: usize = 62;
 
-use brassclaw_host_api::{HostApiError, VirtualPath};
+use brassclaw_host_api::VirtualPath;
 
 use crate::{DirEntry, FileType, FilesystemError, FilesystemOperation};
 
@@ -26,21 +26,6 @@ pub(crate) fn directory_append_error(path: VirtualPath) -> FilesystemError {
         operation: FilesystemOperation::AppendFile,
         reason: "cannot append to a directory".to_string(),
     }
-}
-
-#[cfg(feature = "postgres")]
-pub(crate) fn virtual_path_prefixes(path: &VirtualPath) -> Result<Vec<VirtualPath>, HostApiError> {
-    let mut prefixes = Vec::new();
-    let mut current = String::new();
-    for segment in path.as_str().trim_matches('/').split('/') {
-        if segment.is_empty() {
-            continue;
-        }
-        current.push('/');
-        current.push_str(segment);
-        prefixes.push(VirtualPath::new(current.clone())?);
-    }
-    Ok(prefixes)
 }
 
 #[cfg(feature = "postgres")]

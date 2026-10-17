@@ -25,8 +25,8 @@ export function ProviderCard({
   onConfigure,
   onDeactivate,
   onDelete,
-  onReset,
   onNearaiLogin,
+  onNearaiWallet,
   onCodexLogin,
   loginBusy,
 }) {
@@ -84,6 +84,11 @@ export function ProviderCard({
     !isActive && provider.id === "nearai"
       ? html`
           ${apiKeyAction}
+          ${typeof onNearaiWallet === "function" && html`
+            <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy || isBusy} onClick=${onNearaiWallet}>
+              ${t("onboarding.nearWallet")}
+            <//>
+          `}
           <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy} onClick=${() => onNearaiLogin("github")}>
             GitHub
           <//>
@@ -131,9 +136,6 @@ export function ProviderCard({
   const primaryAction = isActive
     ? null
     : useAction || (isLoginProvider ? loginActions : setupAction);
-  const showConfigureAction =
-    (!isLoginProvider && ((provider.builtin && provider.id !== "bedrock") || !provider.builtin)) ||
-    (provider.id === "nearai" && acceptsApiKey);
 
   return html`
     <${Card}
@@ -251,8 +253,7 @@ export function ProviderCard({
                 ${t("llm.useEmbedding")}
               <//>
             `}
-            ${showConfigureAction &&
-            html`
+            ${html`
               <${Button}
                 type="button"
                 variant="secondary"
@@ -263,18 +264,7 @@ export function ProviderCard({
                 ${configureLabel}
               <//>
             `}
-            ${provider.builtin && configured && html`
-              <${Button}
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled=${isBusy}
-                onClick=${() => onReset(provider)}
-              >
-                ${t("llm.reset")}
-              <//>
-            `}
-            ${!provider.builtin && !isActive && html`
+            ${html`
               <${Button}
                 type="button"
                 variant="danger"

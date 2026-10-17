@@ -283,28 +283,43 @@ fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStor
 }
 
 impl PgRecipeStore {
-    /// Insert a new recipe.  Returns the assigned UUID.
+    /// Insert pending authored metadata, independently of its source label.
+    /// Returns the assigned UUID without granting tier or v3 approval.
     pub(crate) async fn insert(&self, row: NewPgRecipe) -> Result<Uuid, PgRecipeStoreError> {
-        self.insert_with_builtin_tier(row, false).await
+        let client = self.pool.get().await.map_err(map_pool)?;
+        Self::insert_on(&**client, row, false, false).await
     }
 
-    /// Seed-only insertion: initialize the declared builtin tier atomically.
-    /// Existing rows are recovered by the seeder, never updated here. A caller
-    /// cannot graduate a non-system component through this flag.
-    pub(crate) async fn insert_with_builtin_tier(
+    /// Explicit installation-owned legacy projection, not immutable v3 approval.
+    /// Initialize the declared legacy tier atomically; existing rows are recovered
+    /// by the owner and are never rewritten here. Source is a consistency check,
+    /// not bootstrap provenance. Actual qualification remains separate.
+    pub(crate) async fn insert_installation_projection(
         &self,
         row: NewPgRecipe,
         tier0_builtin: bool,
     ) -> Result<Uuid, PgRecipeStoreError> {
+        if row.source != "system" {
+            return Err(PgRecipeStoreError::Db {
+                reason: "installation projection requires system metadata".into(),
+            });
+        }
         let client = self.pool.get().await.map_err(map_pool)?;
-        Self::insert_on(&**client, row, tier0_builtin).await
+        Self::insert_on(&**client, row, true, tier0_builtin).await
     }
 
     async fn insert_on(
         client: &(impl tokio_postgres::GenericClient + Sync),
         row: NewPgRecipe,
+        installation_projection: bool,
         tier0_builtin: bool,
     ) -> Result<Uuid, PgRecipeStoreError> {
+        let validation_status = if installation_projection {
+            "validated"
+        } else {
+            "pending"
+        };
+        let mature = installation_projection && tier0_builtin;
         let db_row = client
             .query_one(
                 "INSERT INTO reborn_recipes
@@ -315,9 +330,9 @@ impl PgRecipeStore {
                      step_descriptions, variants, dependency_registry,
                      validates_class_code, validation_status, tier, wilson_lower)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-                         CASE WHEN $13 = 'system' THEN 'validated' ELSE 'pending' END,
-                         CASE WHEN $18 AND $13 = 'system' THEN 'mature' ELSE 'seedling' END,
-                         CASE WHEN $18 AND $13 = 'system' THEN 1.0 ELSE 0.0 END)
+                         $19,
+                         CASE WHEN $18 THEN 'mature' ELSE 'seedling' END,
+                         CASE WHEN $18 THEN 1.0 ELSE 0.0 END)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -337,7 +352,8 @@ impl PgRecipeStore {
                     &row.variants,
                     &row.dependency_registry,
                     &row.validates_class_code,
-                    &tier0_builtin,
+                    &mature,
+                    &validation_status,
                 ],
             )
             .await
@@ -366,7 +382,7 @@ impl PgRecipeStore {
         };
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let transaction = client.transaction().await.map_err(map_pg)?;
-        let id = Self::insert_on(&*transaction, row, false).await?;
+        let id = Self::insert_on(&*transaction, row, false, false).await?;
         queue_store
             .submit_in_transaction(&transaction, &scope, id, 21, None)
             .await
@@ -967,6 +983,8 @@ impl RecipeLookup for PgRecipeLibrary {
 /// `tenant_id` and `agent_id` are fixed at construction time.
 #[cfg(feature = "postgres")]
 pub(crate) struct PgRecipeStoreFacade {
+    #[cfg(feature = "skills-db")]
+    catalogue: Option<Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>>,
     inner: PgRecipeStore,
     tenant_id: String,
     agent_id: String,
@@ -985,11 +1003,22 @@ impl PgRecipeStoreFacade {
     ) -> Self {
         let queue_store = ValidationQueueStore::new(Arc::clone(&pool));
         Self {
+            #[cfg(feature = "skills-db")]
+            catalogue: None,
             inner: PgRecipeStore::new(pool),
             tenant_id: tenant_id.into(),
             agent_id: agent_id.into(),
             queue_store,
         }
+    }
+
+    #[cfg(feature = "skills-db")]
+    pub(crate) fn with_catalogue(
+        mut self,
+        catalogue: Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
+    ) -> Self {
+        self.catalogue = Some(catalogue);
+        self
     }
 
     /// Attach a [`PgBasicPromptStore`] so that `approve()` calls `mark_stale`
@@ -1188,6 +1217,18 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     > {
         crate::pg_review_inspection::inspect(&self.inner.pool, attempt).await
     }
+    #[cfg(all(feature = "skills-db", feature = "root-llm-provider"))]
+    async fn reconcile_post_turn_review(
+        &self,
+        attempt: &str,
+        request: brassclaw_product_workflow::ReviewReconciliationRequest,
+    ) -> Result<
+        brassclaw_product_workflow::ReviewReconciliationReceipt,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_review_inspection::reconcile(&self.inner.pool, attempt, request).await
+    }
+
     #[cfg(feature = "skills-db")]
     async fn record_review_disposition(
         &self,
@@ -1202,6 +1243,95 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     }
 
     #[cfg(feature = "skills-db")]
+    async fn prepare_component_deployment(
+        &self,
+        request: brassclaw_product_workflow::PrepareComponentDeploymentRequest,
+    ) -> Result<
+        brassclaw_product_workflow::ComponentDeploymentPlan,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        let owner = self.catalogue.as_ref().ok_or_else(|| {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                "catalogue owner unavailable".into(),
+            )
+        })?;
+        crate::component_deployment::prepare(owner, request).await
+    }
+
+    #[cfg(feature = "skills-db")]
+    async fn export_catalogue_sources(
+        &self,
+        generation: &str,
+    ) -> Result<
+        brassclaw_product_workflow::CatalogueSourceExport,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        self.catalogue
+            .as_ref()
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                    "catalogue owner unavailable".into(),
+                )
+            })?
+            .export_sources(generation)
+            .await
+    }
+
+    #[cfg(feature = "skills-db")]
+    async fn catalogue_status(
+        &self,
+    ) -> Result<
+        brassclaw_product_workflow::CatalogueActivationStatus,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        let owner = self.catalogue.as_ref().ok_or_else(|| {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                "catalogue owner unavailable".into(),
+            )
+        })?;
+        let view = owner.active.read().await;
+        Ok(brassclaw_product_workflow::CatalogueActivationStatus {
+            generation: view.generation.to_string(),
+            recipes: view.recipes.iter().map(|r| r.recipe_id.clone()).collect(),
+            selections: view.recipes.clone(),
+            disabled_recipe_ids: view
+                .disabled_recipes
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            packaged_recipe_ids: vec![
+                owner
+                    .reply
+                    .program()
+                    .inputs()
+                    .instruction()
+                    .recipe()
+                    .uuid
+                    .to_string(),
+            ],
+        })
+    }
+    #[cfg(feature = "skills-db")]
+    async fn activate_catalogue(
+        &self,
+        actor: &str,
+        request: brassclaw_product_workflow::ActivateCatalogueRequest,
+    ) -> Result<
+        brassclaw_product_workflow::CatalogueActivationReceipt,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        self.catalogue
+            .as_ref()
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                    "catalogue owner unavailable".into(),
+                )
+            })?
+            .activate_authored(actor, request)
+            .await
+    }
+
+    #[cfg(feature = "skills-db")]
     async fn submit_component_review(
         &self,
         actor: &str,
@@ -1211,6 +1341,17 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         brassclaw_product_workflow::RecipeStoreError,
     > {
         crate::pg_review_submission::submit(&self.inner.pool, actor, request).await
+    }
+
+    #[cfg(feature = "skills-db")]
+    async fn get_component_revision_head(
+        &self,
+        component_id: &str,
+    ) -> Result<
+        brassclaw_product_workflow::ComponentRevisionHeadView,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_review_submission::head(&self.inner.pool, component_id).await
     }
 
     #[cfg(feature = "skills-db")]

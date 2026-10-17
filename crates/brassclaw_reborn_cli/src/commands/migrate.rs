@@ -18,7 +18,7 @@ pub(crate) struct MigrateCommand {
     dry_run: bool,
 
     /// Tenant ID to migrate data under. Defaults to the value in config.toml
-    /// (`identity.tenant`), then `"default"`.
+    /// (`identity.tenant`), then the same namespace as serve/run.
     #[arg(long)]
     tenant: Option<String>,
 }
@@ -47,15 +47,7 @@ impl MigrateCommand {
 
             let home = context.boot_config().home().clone();
 
-            // Resolve tenant_id: CLI flag → config.toml → "default"
-            let tenant_id = self.tenant.clone().unwrap_or_else(|| {
-                brassclaw_reborn_config::RebornConfigFile::load(&home.path().join("config.toml"))
-                    .ok()
-                    .flatten()
-                    .and_then(|c| c.identity)
-                    .and_then(|id| id.tenant)
-                    .unwrap_or_else(|| "default".to_string())
-            });
+            let tenant_id = context.storage_namespace(self.tenant.as_deref())?;
 
             // Build a Postgres pool. Uses BRASSCLAW_PG_URL or starts embedded PG.
             let pool = build_pg_pool(&context).await?;
@@ -75,6 +67,12 @@ impl MigrateCommand {
                 status(report.secrets_master_migrated)
             );
             println!("  reborn-local-dev : {}", status(report.libsql_db_migrated));
+            if report.paused_legacy_triggers > 0 {
+                println!(
+                    "  legacy triggers  : {} paused; reconcile original schedules and effects before enabling them",
+                    report.paused_legacy_triggers
+                );
+            }
             if report.boot_initialized_set {
                 println!("  boot.initialized : set");
             }

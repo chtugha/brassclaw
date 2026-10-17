@@ -84,11 +84,13 @@ pub use first_party_tools::{
     COMPONENT_DB_CAPABILITY_ID, ComponentDbBackend, ComponentDbError, ComponentDbRow,
     ComponentDbScope, ComponentDbState, ComponentDbUpsert, ComponentDbUpsertResult,
     ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID,
-    HTTP_SAVE_CAPABILITY_ID, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID,
+    HTTP_SAVE_CAPABILITY_ID, HostPrimitiveSettings, HostPrimitiveSettingsSource,
+    JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID,
     MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
     PrefixBundleCapabilityError, PrefixBundleCapabilityState, READ_FILE_CAPABILITY_ID,
-    SHELL_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID, STORE_PREFIX_BUNDLE_CAPABILITY_ID,
-    SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, StorePrefixBundleBackend, StorePrefixBundleResult,
+    SHELL_CAPABILITY_ID, SOURCE_INSPECTION_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
+    STORE_PREFIX_BUNDLE_CAPABILITY_ID, SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID,
+    SourceInspectionBackend, StorePrefixBundleBackend, StorePrefixBundleResult,
     SweepValidatedComponentsBackend, SweepValidatedComponentsResult, TIME_CAPABILITY_ID,
     TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID,
     TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
@@ -99,6 +101,9 @@ pub use first_party_tools::{
     builtin_native_first_party_handlers, builtin_native_first_party_handlers_with_trigger,
     extract_md_section, sha256_hex,
 };
+pub use first_party_tools::{
+    PREFIX_GENERATION_CAPABILITY_ID, PrefixGenerationBackend, PrefixGenerationBackendError,
+};
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{
     TriggerManagementClock, builtin_first_party_handlers_with_trigger_clock,
@@ -108,7 +113,9 @@ pub use invocation_services::{
     InvocationServices, InvocationServicesError, InvocationServicesResolutionRequest,
     InvocationServicesResolver, LocalInvocationServicesResolver, ToolCallHttpEgress,
 };
-pub use native_image::{NativeExecutableImage, NativeImageError, PackagedExecutableImage};
+pub use native_image::{
+    NativeExecutableImage, NativeImageError, NativeVerificationLimits, PackagedExecutableImage,
+};
 pub use native_registration::{NativeImplementationRef, NativeRegistrationError};
 pub use obligations::{
     BuiltinObligationHandler, BuiltinObligationServices, LEAK_REDACT_FAILED_CODE,
@@ -889,6 +896,13 @@ pub trait RuntimeBackendHealth: Send + Sync {
 /// Contract for the Reborn host runtime facade.
 #[async_trait]
 pub trait HostRuntime: Send + Sync {
+    /// Immutable authority model of this host, selected by composition rather
+    /// than requests. Visibility never grants permission; invocation still
+    /// performs current kernel authorization and technical enforcement.
+    fn dispatch_authority_model(&self) -> brassclaw_host_api::DispatchAuthorityModel {
+        brassclaw_host_api::DispatchAuthorityModel::ScopedGrants
+    }
+
     async fn invoke_capability(
         &self,
         request: RuntimeCapabilityRequest,

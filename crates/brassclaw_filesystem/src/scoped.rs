@@ -6,8 +6,9 @@ use brassclaw_host_api::{
 
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
-    CasExpectation, DirEntry, Entry, FileStat, FilesystemError, FilesystemOperation, Filter,
-    IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo, VersionedEntry, path_prefix_matches,
+    CasExpectation, DirEntry, Entry, EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError,
+    FilesystemOperation, Filter, IndexKey, IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo,
+    VersionedEntry, path_prefix_matches,
 };
 
 /// Resolver from a per-invocation [`ResourceScope`] to the [`MountView`] that
@@ -118,6 +119,39 @@ where
         let virtual_path =
             self.resolve_with_permission(scope, path, FilesystemOperation::ReadFile)?;
         self.root.get(&virtual_path).await
+    }
+
+    /// Exact structural entry metadata, with the same read gate as get.
+    pub async fn get_metadata(
+        &self,
+        scope: &ResourceScope,
+        path: &ScopedPath,
+    ) -> Result<Option<EntryMetadata>, FilesystemError> {
+        let path = self.resolve_with_permission(scope, path, FilesystemOperation::ReadFile)?;
+        self.root.get_metadata(&path).await
+    }
+
+    /// Body-free namespace enumeration, with the same read+list gate as query.
+    pub async fn query_metadata(
+        &self,
+        scope: &ResourceScope,
+        prefix: &ScopedPath,
+        page: Page,
+    ) -> Result<Vec<EntryMetadata>, FilesystemError> {
+        let path = self.resolve_with_permission(scope, prefix, FilesystemOperation::Query)?;
+        self.root.query_metadata(&path, page).await
+    }
+
+    /// Body-free selected index projection, with the ordinary read+list gate.
+    pub async fn query_index_metadata(
+        &self,
+        scope: &ResourceScope,
+        prefix: &ScopedPath,
+        key: &IndexKey,
+        page: Page,
+    ) -> Result<Vec<EntryIndexMetadata>, FilesystemError> {
+        let path = self.resolve_with_permission(scope, prefix, FilesystemOperation::Query)?;
+        self.root.query_index_metadata(&path, key, page).await
     }
 
     /// Filtered query over `prefix`.
@@ -556,6 +590,82 @@ mod tests {
             IndexKey::new("scope").unwrap(),
             crate::IndexValue::Text(scope.into()),
         )
+    }
+
+    #[tokio::test]
+    async fn metadata_projection_preserves_exact_read_and_query_read_list_gates() {
+        for (read, list) in [(false, false), (true, false), (false, true), (true, true)] {
+            let scoped = scoped_in_memory(no_op(read, false, list, false));
+            let virtual_path = VirtualPath::new("/engine/scoped_test/metadata/item").unwrap();
+            scoped
+                .root
+                .put(
+                    &virtual_path,
+                    record_with_scope("tenant_test"),
+                    CasExpectation::Absent,
+                )
+                .await
+                .unwrap();
+            let result = scoped
+                .get_metadata(
+                    &test_scope(),
+                    &ScopedPath::new("/workspace/metadata/item").unwrap(),
+                )
+                .await;
+            if read {
+                assert_eq!(result.unwrap().unwrap().path, virtual_path);
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(FilesystemError::PermissionDenied {
+                        operation: FilesystemOperation::ReadFile,
+                        ..
+                    })
+                ));
+            }
+            let result = scoped
+                .query_metadata(
+                    &test_scope(),
+                    &ScopedPath::new("/workspace/metadata").unwrap(),
+                    Page::default(),
+                )
+                .await;
+            if read && list {
+                assert_eq!(result.unwrap()[0].path, virtual_path);
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(FilesystemError::PermissionDenied {
+                        operation: FilesystemOperation::Query,
+                        ..
+                    })
+                ));
+            }
+            let result = scoped
+                .query_index_metadata(
+                    &test_scope(),
+                    &ScopedPath::new("/workspace/metadata").unwrap(),
+                    &IndexKey::new("scope").unwrap(),
+                    Page::default(),
+                )
+                .await;
+            if read && list {
+                let entries = result.unwrap();
+                assert_eq!(entries[0].metadata.path, virtual_path);
+                assert_eq!(
+                    entries[0].value,
+                    Some(crate::IndexValue::Text("tenant_test".into()))
+                );
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(FilesystemError::PermissionDenied {
+                        operation: FilesystemOperation::Query,
+                        ..
+                    })
+                ));
+            }
+        }
     }
 
     #[tokio::test]

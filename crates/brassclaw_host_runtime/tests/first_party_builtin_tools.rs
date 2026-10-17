@@ -329,8 +329,41 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
         surface
             .capabilities
             .iter()
+            .filter(|capability| !matches!(
+                capability.descriptor.id.as_str(),
+                HTTP_CAPABILITY_ID
+                    | HTTP_SAVE_CAPABILITY_ID
+                    | brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
+                    | MEMORY_SEARCH_CAPABILITY_ID
+                    | MEMORY_WRITE_CAPABILITY_ID
+                    | MEMORY_READ_CAPABILITY_ID
+                    | MEMORY_TREE_CAPABILITY_ID
+            ))
             .all(|capability| capability.estimated_resources.output_bytes.is_some())
     );
+    for id in [
+        HTTP_CAPABILITY_ID,
+        HTTP_SAVE_CAPABILITY_ID,
+        brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+        MEMORY_SEARCH_CAPABILITY_ID,
+        MEMORY_WRITE_CAPABILITY_ID,
+        MEMORY_READ_CAPABILITY_ID,
+        MEMORY_TREE_CAPABILITY_ID,
+    ] {
+        let capability = surface
+            .capabilities
+            .iter()
+            .find(|capability| capability.descriptor.id.as_str() == id)
+            .unwrap();
+        assert_eq!(capability.estimated_resources.output_bytes, None);
+        assert!(
+            capability
+                .descriptor
+                .resource_profile
+                .as_ref()
+                .is_none_or(|profile| profile.hard_ceiling.is_none())
+        );
+    }
     let shell = surface
         .capabilities
         .iter()
@@ -1275,6 +1308,59 @@ async fn memory_capabilities_write_read_tree_and_search_native_reborn_memory() {
 }
 
 #[tokio::test]
+async fn memory_operations_preserve_complete_large_results_and_account_encoded_bytes() {
+    let runtime = runtime_with_filesystem(InMemoryBackend::new());
+    let context = execution_context_with_mounts(
+        [
+            MEMORY_WRITE_CAPABILITY_ID,
+            MEMORY_READ_CAPABILITY_ID,
+            MEMORY_SEARCH_CAPABILITY_ID,
+        ],
+        memory_mounts(MountPermissions::read_write_list_delete()),
+    );
+    // Few whitespace words form one actual indexed chunk. Escaping makes the
+    // serialized output larger again; compare full content rather than length.
+    let content = format!("largepayloadneedle ü\n{}", "\"\\".repeat(600_000));
+    assert!(content.len() > 1024 * 1024);
+    let write = invoke_with_context(
+        &runtime,
+        MEMORY_WRITE_CAPABILITY_ID,
+        json!({"target":"large/complete.md","content":content,"append":false}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(write["content_length"], content.len());
+    let read = invoke_with_context(
+        &runtime,
+        MEMORY_READ_CAPABILITY_ID,
+        json!({"path":"large/complete.md"}),
+        context.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(read["content"], content);
+    let RuntimeCapabilityOutcome::Completed(search) = runtime
+        .invoke_capability(RuntimeCapabilityRequest::new(
+            context,
+            capability_id(MEMORY_SEARCH_CAPABILITY_ID),
+            ResourceEstimate::default(),
+            json!({"query":"largepayloadneedle","limit":1}),
+            trust_decision(),
+        ))
+        .await
+        .unwrap()
+    else {
+        panic!("complete indexed search result required")
+    };
+    assert_eq!(search.output["result_count"], 1);
+    assert_eq!(search.output["results"][0]["content"], content);
+    let encoded_bytes = serde_json::to_vec(&search.output).unwrap().len();
+    assert!(encoded_bytes > 2 * 1024 * 1024);
+    assert_eq!(search.usage.output_bytes, encoded_bytes as u64);
+}
+
+#[tokio::test]
 async fn memory_search_accepts_common_query_aliases_from_model_tool_calls() {
     let runtime = runtime_with_filesystem(InMemoryBackend::new());
     let context = execution_context_with_mounts(
@@ -1312,6 +1398,65 @@ async fn memory_search_accepts_common_query_aliases_from_model_tool_calls() {
         assert_eq!(
             search["results"][0]["path"],
             json!("projects/alpha/search-alias.md")
+        );
+    }
+}
+
+#[tokio::test]
+async fn memory_search_honors_explicit_counts_and_rejects_invalid_optional_limits() {
+    let runtime = runtime_with_filesystem(InMemoryBackend::new());
+    let context = execution_context_with_mounts(
+        [MEMORY_WRITE_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID],
+        memory_mounts(MountPermissions::read_write_list_delete()),
+    );
+    for index in 0..32 {
+        invoke_with_context(
+            &runtime,
+            MEMORY_WRITE_CAPABILITY_ID,
+            json!({
+                "target": format!("count/{index}.md"),
+                "content": format!("explicitcountneedle {index}"), "append": false
+            }),
+            context.clone(),
+        )
+        .await
+        .unwrap();
+    }
+    for (input, expected) in [
+        (json!({"query": "explicitcountneedle"}), 5),
+        (json!({"query": "explicitcountneedle", "limit": 25}), 25),
+        (json!({"query": "explicitcountneedle", "limit": 32}), 32),
+    ] {
+        let result = invoke_with_context(
+            &runtime,
+            MEMORY_SEARCH_CAPABILITY_ID,
+            input,
+            context.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["result_count"], json!(expected));
+        assert_eq!(result["results"].as_array().unwrap().len(), expected);
+    }
+    for limit in [
+        json!(0),
+        json!(-1),
+        json!(1.5),
+        json!(null),
+        json!("null"),
+        json!("25"),
+        json!(u64::from(u32::MAX) + 1),
+    ] {
+        assert!(
+            invoke_with_context(
+                &runtime,
+                MEMORY_SEARCH_CAPABILITY_ID,
+                json!({"query": "explicitcountneedle", "limit": limit}),
+                context.clone()
+            )
+            .await
+            .is_err(),
+            "invalid limit accepted: {limit}"
         );
     }
 }
@@ -2098,6 +2243,32 @@ async fn builtin_json_stringify_rejects_invalid_json_strings() {
 }
 
 #[tokio::test]
+async fn builtin_source_inspection_fails_closed_without_its_actual_backend() {
+    assert!(
+        invoke(
+            brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+            json!({"source":"raise RuntimeError('must not execute')"})
+        )
+        .await
+        .is_err()
+    );
+    for input in [
+        json!({"source":null}),
+        json!({"source":"x = 1","worker":"/caller-selected"}),
+        json!({}),
+    ] {
+        assert!(
+            invoke(
+                brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+                input
+            )
+            .await
+            .is_err()
+        );
+    }
+}
+
+#[tokio::test]
 async fn builtin_json_rejects_v1_tool_output_stash_refs_without_leaking_input() {
     let outcome = runtime()
         .invoke_capability(RuntimeCapabilityRequest::new(
@@ -2173,23 +2344,19 @@ async fn builtin_http_invokes_through_host_runtime_egress() {
 }
 
 #[tokio::test]
-async fn builtin_http_requires_tool_call_http_egress_for_inline_output() {
+async fn builtin_http_inline_uses_strict_sanitized_port_without_partial_adapter() {
     let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(b"ok".to_vec()));
     let runtime = runtime_with_strict_http_egress_only(Arc::clone(&egress));
-
-    let failure = invoke_with_context(
+    let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items"
-        }),
+        json!({"url":"https://api.example.test/v1/items"}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
-    .unwrap_err();
-
-    assert_eq!(failure, RuntimeFailureKind::Network);
-    assert!(egress.requests().is_empty());
+    .unwrap();
+    assert_eq!(output["body_text"], json!("ok"));
+    assert_eq!(egress.requests().len(), 1);
 }
 
 #[tokio::test]
@@ -2217,103 +2384,63 @@ async fn builtin_http_preserves_exact_body_cap_for_text_responses() {
 }
 
 #[tokio::test]
-async fn builtin_http_truncates_one_byte_over_text_responses_with_a_hint() {
+async fn builtin_http_rejects_one_byte_over_explicit_bound_without_partial_success() {
     let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![b'a'; 4097]));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
     let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
-        }),
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":4096}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
-    .unwrap();
-
-    let body_text = output["body_text"].as_str().expect("text response");
-    assert_eq!(body_text.len(), 4096);
-    assert_eq!(output["body_truncated"], json!(true));
-    assert_eq!(output["truncation"]["body"], json!(true));
-    assert_eq!(output["truncation"]["headers"], json!(false));
-    assert_eq!(output["truncation"]["bytes_returned"], json!(4096));
-    assert_eq!(
-        output["truncation"]["reason"],
-        json!("model_visible_budget")
-    );
-    assert!(
-        output["body_truncation_hint"]
-            .as_str()
-            .expect("hint")
-            .contains("builtin.http.save")
-    );
-    assert!(output.get("body_base64").is_none());
-    assert!(serialized_json_len(&output) <= 6_000);
+    .unwrap_err();
+    assert_eq!(output, RuntimeFailureKind::OutputTooLarge);
+    assert_eq!(egress.requests().len(), 1);
 }
 
 #[tokio::test]
-async fn builtin_http_default_large_response_result_stays_under_documented_cap() {
+async fn builtin_http_omitted_response_bound_is_forwarded_and_complete_output_is_preserved() {
     let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![
         b'a';
         1024 * 1024
     ]));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
     let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/large-page"
-        }),
+        json!({"url":"https://api.example.test/v1/items"}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
     .unwrap();
-
-    let body_text = output["body_text"].as_str().expect("text response");
-    assert_eq!(body_text.len(), 48 * 1024);
-    assert_eq!(output["body_truncated"], json!(true));
-    assert!(
-        output["body_truncation_hint"]
-            .as_str()
-            .expect("hint")
-            .contains("builtin.http.save")
-    );
-    assert!(serialized_json_len(&output) <= 50 * 1024);
-
-    let requests = egress.requests();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].response_body_limit, Some(48 * 1024));
+    assert_eq!(output["body_text"].as_str().unwrap().len(), 1024 * 1024);
+    assert!(output.get("truncation").is_none());
+    assert_eq!(egress.requests()[0].response_body_limit, None);
 }
 
 #[tokio::test]
-async fn builtin_http_truncates_escaped_text_to_serialized_body_budget() {
+async fn builtin_http_preserves_complete_escaped_text_within_raw_byte_bound() {
     let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(
         "\n".repeat(4096).into_bytes(),
     ));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
     let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/escaped",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
-        }),
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":4096}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
     .unwrap();
-
-    let body_text = output["body_text"].as_str().expect("text response");
-    let serialized_body = serde_json::to_string(body_text).unwrap();
-    assert!(serialized_body.len().saturating_sub(2) <= 4096);
-    assert_eq!(body_text.len(), 2048);
-    assert_eq!(output["body_bytes_returned"], json!(2048));
-    assert_eq!(output["body_truncated"], json!(true));
-    assert_eq!(output["truncation"]["bytes_returned"], json!(2048));
+    assert_eq!(output["body_text"], json!("\n".repeat(4096)));
+    assert_eq!(
+        serde_json::to_string(output["body_text"].as_str().unwrap())
+            .unwrap()
+            .len(),
+        8194
+    );
+    assert!(output.get("body_truncated").is_none());
 }
 
 #[tokio::test]
@@ -2364,7 +2491,7 @@ async fn builtin_http_save_passes_save_to_and_returns_saved_body_metadata() {
 
     let requests = egress.requests();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].response_body_limit, Some(10 * 1024 * 1024));
+    assert_eq!(requests[0].response_body_limit, None);
     let save_target = requests[0]
         .save_body_to
         .as_ref()
@@ -2386,8 +2513,11 @@ async fn builtin_http_save_passes_save_to_and_returns_saved_body_metadata() {
 }
 
 #[tokio::test]
-async fn builtin_http_save_rejects_response_body_limit_above_save_ceiling_before_egress() {
-    let egress = Arc::new(RecordingRuntimeHttpEgress::default());
+async fn builtin_http_save_preserves_response_limit_above_retired_ceiling() {
+    let egress = Arc::new(
+        RecordingRuntimeHttpEgress::with_body(b"ok".to_vec())
+            .with_saved_body("/workspace/response.json", 2),
+    );
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
     let mounts = MountView::new(vec![MountGrant::new(
         MountAlias::new("/workspace").unwrap(),
@@ -2396,7 +2526,7 @@ async fn builtin_http_save_rejects_response_body_limit_above_save_ceiling_before
     )])
     .unwrap();
 
-    let error = invoke_with_context(
+    let _output = invoke_with_context(
         &runtime,
         HTTP_SAVE_CAPABILITY_ID,
         json!({
@@ -2411,10 +2541,12 @@ async fn builtin_http_save_rejects_response_body_limit_above_save_ceiling_before
         ),
     )
     .await
-    .unwrap_err();
+    .unwrap();
 
-    assert_eq!(error, RuntimeFailureKind::InvalidInput);
-    assert!(egress.requests().is_empty());
+    assert_eq!(
+        egress.requests()[0].response_body_limit,
+        Some(10 * 1024 * 1024 + 1)
+    );
 }
 
 #[tokio::test]
@@ -2437,7 +2569,7 @@ async fn builtin_http_save_returns_saved_body_for_large_responses_without_inline
         json!({
             "url": "https://api.example.test/v1/items",
             "save_to": "/workspace/large-response.json",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
+            "response_body_limit": 16384
         }),
         execution_context_with_mounts_and_network(
             [HTTP_SAVE_CAPABILITY_ID],
@@ -2461,7 +2593,7 @@ async fn builtin_http_save_returns_saved_body_for_large_responses_without_inline
 
     let requests = egress.requests();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].response_body_limit, Some(4096));
+    assert_eq!(requests[0].response_body_limit, Some(16384));
 }
 
 #[tokio::test]
@@ -2484,7 +2616,7 @@ async fn builtin_http_save_succeeds_with_strict_host_egress_only() {
         json!({
             "url": "https://api.example.test/v1/items",
             "save_to": "/workspace/strict-only-save.json",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
+            "response_body_limit": 16384
         }),
         execution_context_with_mounts_and_network(
             [HTTP_SAVE_CAPABILITY_ID],
@@ -2504,7 +2636,7 @@ async fn builtin_http_save_succeeds_with_strict_host_egress_only() {
     );
     let requests = egress.requests();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].response_body_limit, Some(4096));
+    assert_eq!(requests[0].response_body_limit, Some(16384));
 }
 
 #[tokio::test]
@@ -2541,7 +2673,7 @@ async fn builtin_http_save_uses_strict_host_egress_when_tool_call_port_exists() 
         json!({
             "url": "https://api.example.test/v1/items",
             "save_to": "/workspace/strict-save.json",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
+            "response_body_limit": 16384
         }),
         execution_context_with_mounts_and_network(
             [HTTP_SAVE_CAPABILITY_ID],
@@ -2561,241 +2693,161 @@ async fn builtin_http_save_uses_strict_host_egress_when_tool_call_port_exists() 
     );
     let requests = strict_egress.requests();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].response_body_limit, Some(4096));
+    assert_eq!(requests[0].response_body_limit, Some(16384));
 }
 
 #[tokio::test]
-async fn builtin_http_does_not_inline_huge_binary_payloads() {
-    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![0xFF; 8 * 1024]));
+async fn builtin_http_binary_overflow_is_a_failure_not_truncated_base64() {
+    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![0xFF; 8192]));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
     let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
-        }),
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":4096}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
-    .unwrap();
-
-    let body_base64 = output["body_base64"].as_str().expect("binary response");
-    assert_eq!(output["body_truncated"], json!(true));
-    assert!(body_base64.len() <= 4096);
-    assert_eq!(output["body_bytes_returned"], json!(3072));
-    assert_eq!(output["truncation"]["body"], json!(true));
-    assert_eq!(output["truncation"]["bytes_returned"], json!(3072));
-    assert!(
-        output["body_truncation_hint"]
-            .as_str()
-            .expect("hint")
-            .contains("builtin.http.save")
-    );
-    assert!(output.get("body_text").is_none());
-    assert!(serialized_json_len(&output) <= 6_000);
+    .unwrap_err();
+    assert_eq!(output, RuntimeFailureKind::OutputTooLarge);
 }
 
 #[tokio::test]
-async fn builtin_http_truncates_tiny_binary_responses_without_panicking() {
-    for response_body_limit in 1..=3 {
-        let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![0xFF; 8]));
-        let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
+async fn builtin_http_preserves_tiny_binary_values_without_encoded_byte_clipping() {
+    for size in 1..=3 {
+        let bytes = vec![0xFF; size];
+        let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(bytes.clone()));
+        let runtime = runtime_with_http_egress(egress);
         let output = invoke_with_context(
             &runtime,
             HTTP_CAPABILITY_ID,
-            json!({
-                "url": "https://api.example.test/v1/items",
-                "response_body_limit": response_body_limit
-            }),
+            json!({"url":"https://api.example.test/v1/items","response_body_limit":size}),
             execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
         )
         .await
         .unwrap();
-
-        assert_eq!(output["body_base64"], json!(""));
-        assert_eq!(output["body_truncated"], json!(true));
-        assert_eq!(output["body_bytes_returned"], json!(0));
-        assert_eq!(output["truncation"]["body"], json!(true));
-        assert_eq!(output["truncation"]["bytes_returned"], json!(0));
-        assert!(serialized_json_len(&output) <= 2 * 1024 + response_body_limit as usize);
+        assert_eq!(
+            BASE64_STANDARD
+                .decode(output["body_base64"].as_str().unwrap())
+                .unwrap(),
+            bytes
+        );
+        assert!(output.get("truncation").is_none());
     }
 }
 
 #[tokio::test]
-async fn builtin_http_final_budget_trim_preserves_base64_alignment() {
-    let headers = (0..4)
-        .map(|index| (format!("x-large-{index}"), "h".repeat(512)))
-        .collect::<Vec<_>>();
-    let egress =
-        Arc::new(RecordingRuntimeHttpEgress::with_body(vec![0xFF; 4 * 1024]).with_headers(headers));
+async fn builtin_http_full_binary_encoding_is_decodable_without_final_budget_trim() {
+    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![0xFF; 4096]));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
     let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
-        }),
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":4096}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
     .unwrap();
-
-    let body_base64 = output["body_base64"].as_str().expect("binary response");
-    assert_eq!(output["body_truncated"], json!(true));
-    assert!(!body_base64.is_empty());
-    assert!(body_base64.len() < 4096);
-    assert_eq!(body_base64.len() % 4, 0);
-    assert_eq!(output["truncation"]["body"], json!(true));
-    assert!(serialized_json_len(&output) <= 6_000);
+    assert_eq!(
+        BASE64_STANDARD
+            .decode(output["body_base64"].as_str().unwrap())
+            .unwrap(),
+        vec![0xFF; 4096]
+    );
+    assert!(output.get("truncation").is_none());
 }
 
 #[tokio::test]
-async fn builtin_http_final_budget_trims_headers_when_body_cannot_absorb_overage() {
-    let headers = (0..32)
-        .map(|index| (format!("x-large-{index}"), "h".repeat(1024)))
-        .collect::<Vec<_>>();
-    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(Vec::new()).with_headers(headers));
-    let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
-    let output = invoke_with_context(
-        &runtime,
-        HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "response_body_limit": 1
-        }),
-        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(output["headers_truncated"], json!(true));
-    assert_eq!(output["truncation"]["headers"], json!(true));
-    assert!(serialized_json_len(&output) <= 2 * 1024 + 1);
-}
-
-#[tokio::test]
-async fn builtin_http_save_final_budget_trims_headers_without_inlining_body() {
-    let headers = (0..32)
-        .map(|index| (format!("x-large-{index}"), "h".repeat(1024)))
-        .collect::<Vec<_>>();
+async fn builtin_http_headers_are_preserved_independently_of_tiny_response_bound() {
     let egress = Arc::new(
-        RecordingRuntimeHttpEgress::with_body(vec![b'a'; 12 * 1024])
-            .with_saved_body("/workspace/header-heavy-save.json", 12 * 1024)
-            .with_headers(headers),
+        RecordingRuntimeHttpEgress::with_body(vec![0xFF])
+            .with_headers(vec![("x-public".into(), "v".repeat(16384))]),
     );
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":1}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["headers"][0]["value"], json!("v".repeat(16384)));
+    assert_eq!(
+        BASE64_STANDARD
+            .decode(output["body_base64"].as_str().unwrap())
+            .unwrap(),
+        vec![0xFF]
+    );
+}
+
+#[tokio::test]
+async fn builtin_http_save_preserves_full_headers_and_saved_metadata() {
+    let egress = Arc::new(
+        RecordingRuntimeHttpEgress::with_body(b"ok".to_vec())
+            .with_saved_body("/workspace/full.json", 2)
+            .with_headers(vec![("x-public".into(), "v".repeat(16384))]),
+    );
+    let runtime = runtime_with_http_egress(egress);
     let mounts = MountView::new(vec![MountGrant::new(
         MountAlias::new("/workspace").unwrap(),
         VirtualPath::new("/projects/workspace").unwrap(),
         MountPermissions::read_write(),
     )])
     .unwrap();
-
-    let output = invoke_with_context(
-        &runtime,
-        HTTP_SAVE_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "save_to": "/workspace/header-heavy-save.json",
-            "response_body_limit": 1
-        }),
-        execution_context_with_mounts_and_network(
-            [HTTP_SAVE_CAPABILITY_ID],
-            mounts,
-            http_test_policy(),
-        ),
-    )
-    .await
-    .unwrap();
-
+    let output=invoke_with_context(&runtime,HTTP_SAVE_CAPABILITY_ID,json!({"url":"https://api.example.test/v1/items","save_to":"/workspace/full.json","response_body_limit":2}),execution_context_with_mounts_and_network([HTTP_SAVE_CAPABILITY_ID],mounts,http_test_policy())).await.unwrap();
+    assert_eq!(output["headers"][0]["value"], json!("v".repeat(16384)));
+    assert_eq!(output["saved_body"]["bytes_written"], json!(2));
     assert!(output.get("body_text").is_none());
-    assert!(output.get("body_base64").is_none());
-    assert_eq!(output["headers_truncated"], json!(true));
-    assert_eq!(output["truncation"]["headers"], json!(true));
-    assert!(serialized_json_len(&output) <= 2 * 1024 + 1);
+    assert!(output.get("headers_truncated").is_none());
 }
 
 #[tokio::test]
-async fn builtin_http_truncates_overlong_response_headers_to_model_visible_budget() {
-    let mut headers = vec![(format!("x-{}", "n".repeat(200)), "\n".repeat(2 * 1024))];
-    for index in 0..40 {
-        headers.push((format!("x-extra-{index}"), "ok".to_string()));
-    }
-    let egress =
-        Arc::new(RecordingRuntimeHttpEgress::with_body(b"ok".to_vec()).with_headers(headers));
-    let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
-    let output = invoke_with_context(
-        &runtime,
-        HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
-        }),
-        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
-    )
-    .await
-    .unwrap();
-
-    let headers = output["headers"].as_array().expect("headers array");
-    assert!(headers.len() <= 32);
-    assert_eq!(output["headers_truncated"], json!(true));
-    assert_eq!(output["truncation"]["headers"], json!(true));
-    assert_eq!(output["truncation"]["body"], json!(false));
-    assert_eq!(headers[0]["name"].as_str().unwrap().len(), 128);
-    let header_value = headers[0]["value"].as_str().unwrap();
-    assert_eq!(header_value.len(), 512);
-    assert!(
-        serde_json::to_string(header_value)
-            .unwrap()
-            .len()
-            .saturating_sub(2)
-            <= 1024
-    );
-    assert_eq!(headers[0]["truncated"], json!(true));
-    assert!(serialized_json_len(&output["headers"]) <= 8 * 1024);
-}
-
-#[tokio::test]
-async fn builtin_http_reports_body_and_header_truncation_together() {
-    let mut headers = vec![(format!("x-{}", "n".repeat(200)), "\n".repeat(2 * 1024))];
-    for index in 0..40 {
-        headers.push((format!("x-extra-{index}"), "ok".to_string()));
-    }
+async fn builtin_http_preserves_all_sanitized_headers_without_length_or_count_trim() {
     let egress = Arc::new(
-        RecordingRuntimeHttpEgress::with_body(vec![b'a'; 1024 * 1024]).with_headers(headers),
+        RecordingRuntimeHttpEgress::with_body(b"ok".to_vec()).with_headers(
+            vec![(format!("x-{}", "n".repeat(200)), "v".repeat(2048))]
+                .into_iter()
+                .chain((0..40).map(|i| (format!("x-extra-{i}"), "ok".into())))
+                .collect(),
+        ),
     );
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-
     let output = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
-        json!({
-            "url": "https://api.example.test/large-page"
-        }),
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":4096}),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
     .unwrap();
+    assert_eq!(output["headers"].as_array().unwrap().len(), 41);
+    assert_eq!(output["headers"][0]["name"].as_str().unwrap().len(), 202);
+    assert_eq!(output["headers"][0]["value"], json!("v".repeat(2048)));
+    assert!(output.get("headers_truncated").is_none());
+}
 
-    assert_eq!(output["headers_truncated"], json!(true));
-    assert_eq!(output["body_truncated"], json!(true));
-    assert_eq!(output["truncation"]["headers"], json!(true));
-    assert_eq!(output["truncation"]["body"], json!(true));
-    assert!(
-        output["truncation"]["bytes_returned"]
-            .as_u64()
-            .expect("bytes returned")
-            < 48 * 1024
+#[tokio::test]
+async fn builtin_http_preserves_full_body_and_headers_together() {
+    let egress = Arc::new(
+        RecordingRuntimeHttpEgress::with_body(vec![b'a'; 1024 * 1024]).with_headers(
+            vec![(format!("x-{}", "n".repeat(200)), "v".repeat(2048))]
+                .into_iter()
+                .chain((0..40).map(|i| (format!("x-extra-{i}"), "ok".into())))
+                .collect(),
+        ),
     );
-    assert!(output["headers"][0]["truncated"].as_bool().unwrap());
-    assert!(serialized_json_len(&output) <= 50 * 1024);
+    let runtime = runtime_with_http_egress(Arc::clone(&egress));
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":"https://api.example.test/v1/items"}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["body_text"].as_str().unwrap().len(), 1024 * 1024);
+    assert_eq!(output["headers"].as_array().unwrap().len(), 41);
+    assert!(output.get("truncation").is_none());
 }
 
 #[tokio::test]
@@ -3013,7 +3065,7 @@ async fn builtin_http_save_rejects_invalid_or_unresolved_save_to_before_egress()
 }
 
 #[tokio::test]
-async fn builtin_http_clamps_oversized_timeout_to_runtime_ceiling() {
+async fn builtin_http_preserves_explicit_timeout_above_former_ceiling() {
     let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(b"ok".to_vec()));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
 
@@ -3031,7 +3083,7 @@ async fn builtin_http_clamps_oversized_timeout_to_runtime_ceiling() {
 
     let requests = egress.requests();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].timeout_ms, Some(30_000));
+    assert_eq!(requests[0].timeout_ms, Some(HTTP_TIMEOUT_MS_LONG));
 }
 
 #[tokio::test]
@@ -3152,7 +3204,7 @@ async fn builtin_http_rejects_ambiguous_body_zero_timeout_and_zero_response_limi
         }),
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 256 * 1024 + 1
+            "response_body_limit": u64::MAX
         }),
     ] {
         let error = invoke_with_context(&runtime, HTTP_CAPABILITY_ID, input, context.clone())
@@ -3163,60 +3215,47 @@ async fn builtin_http_rejects_ambiguous_body_zero_timeout_and_zero_response_limi
 }
 
 #[tokio::test]
-async fn builtin_http_rejects_request_bodies_over_network_egress_cap() {
-    let egress = Arc::new(RecordingRuntimeHttpEgress::default());
+async fn builtin_http_request_body_has_no_hidden_tool_ceiling() {
+    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(b"ok".to_vec()));
     let runtime = runtime_with_http_egress(Arc::clone(&egress));
-    let context = execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy());
-    let oversized = vec![b'a'; 256 * 1024 + 1];
-
+    let bytes = vec![b'a'; 256 * 1024 + 1];
     for input in [
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "body": String::from_utf8(oversized.clone()).unwrap()
-        }),
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "body_base64": BASE64_STANDARD.encode(&oversized)
-        }),
+        json!({"url":"https://api.example.test/v1/items","body":String::from_utf8(bytes.clone()).unwrap()}),
+        json!({"url":"https://api.example.test/v1/items","body_base64":BASE64_STANDARD.encode(&bytes)}),
     ] {
-        let error = invoke_with_context(&runtime, HTTP_CAPABILITY_ID, input, context.clone())
-            .await
-            .unwrap_err();
-        assert_eq!(error, RuntimeFailureKind::InvalidInput);
+        invoke_with_context(
+            &runtime,
+            HTTP_CAPABILITY_ID,
+            input,
+            execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
+        )
+        .await
+        .unwrap();
     }
-
-    assert!(egress.requests().is_empty());
+    assert_eq!(egress.requests().len(), 2);
+    for request in egress.requests() {
+        assert_eq!(request.body, bytes);
+    }
 }
 
 #[tokio::test]
-async fn builtin_http_accounts_request_bytes_when_large_output_is_truncated() {
-    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(vec![
-        b'\\';
-        8 * 1024 * 1024
-    ]));
+async fn builtin_http_full_large_output_accounts_exact_bytes_without_secondary_copy() {
+    let bytes = vec![b'\\'; 8 * 1024 * 1024];
+    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(bytes));
     let governor = Arc::new(InMemoryResourceGovernor::new());
-    let runtime = runtime_with_http_egress_and_governor(Arc::clone(&egress), Arc::clone(&governor));
-
-    let output = invoke_with_context(
-        &runtime,
-        HTTP_CAPABILITY_ID,
-        json!({
-            "method": "post",
-            "url": "https://api.example.test/v1/items",
-            "body": "paid",
-            "response_body_limit": 256 * 1024
-        }),
-        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
-    )
-    .await
-    .unwrap();
-
-    let body_text = output["body_text"].as_str().expect("text response");
-    assert_eq!(body_text.len(), 128 * 1024);
-    assert_eq!(output["body_bytes_returned"], json!(128 * 1024));
-    assert_eq!(output["body_truncated"], json!(true));
-    let tenant_account = ResourceAccount::tenant(TenantId::new(LOCAL_DEFAULT_TENANT_ID).unwrap());
-    assert_eq!(governor.usage_for(&tenant_account).network_egress_bytes, 4);
+    let runtime = runtime_with_http_egress_and_governor(egress, Arc::clone(&governor));
+    let output=invoke_with_context(&runtime,HTTP_CAPABILITY_ID,json!({"method":"post","url":"https://api.example.test/v1/items","body":"paid","response_body_limit":8*1024*1024}),execution_context_with_network([HTTP_CAPABILITY_ID],http_test_policy())).await.unwrap();
+    assert_eq!(output["body_text"].as_str().unwrap().len(), 8 * 1024 * 1024);
+    assert!(output.get("body_truncated").is_none());
+    let usage = governor.usage_for(&ResourceAccount::tenant(
+        TenantId::new(LOCAL_DEFAULT_TENANT_ID).unwrap(),
+    ));
+    assert_eq!(usage.network_egress_bytes, 4);
+    assert_eq!(
+        usage.output_bytes,
+        serde_json::to_vec(&output).unwrap().len() as u64
+    );
+    assert!(usage.output_bytes > 15 * 1024 * 1024);
 }
 
 #[tokio::test]
@@ -3260,13 +3299,10 @@ async fn builtin_http_documents_mixed_utf8_response_as_binary() {
 }
 
 #[tokio::test]
-async fn builtin_http_rejects_invalid_header_names_and_oversized_header_sets() {
+async fn builtin_http_rejects_invalid_header_names_and_injection_characters() {
     let egress = Arc::new(RecordingRuntimeHttpEgress::default());
     let runtime = runtime_with_http_egress(egress);
     let context = execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy());
-    let too_many_headers = (0..65)
-        .map(|index| json!({"name": format!("x-{index}"), "value": "ok"}))
-        .collect::<Vec<_>>();
 
     for input in [
         json!({
@@ -3289,14 +3325,8 @@ async fn builtin_http_rejects_invalid_header_names_and_oversized_header_sets() {
             "url": "https://api.example.test/v1/items",
             "headers": [{"name": "x-é", "value": "ok"}]
         }),
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "headers": too_many_headers
-        }),
-        json!({
-            "url": "https://api.example.test/v1/items",
-            "headers": {"x-large": "a".repeat(8 * 1024 + 1)}
-        }),
+        json!({"url":"https://api.example.test/v1/items","headers":{"x-public":"bad\r\ninjected:value"}}),
+        json!({"url":"https://api.example.test/v1/items","headers":{"x-public":"bad\0value"}}),
     ] {
         let error = invoke_with_context(&runtime, HTTP_CAPABILITY_ID, input, context.clone())
             .await
@@ -3447,7 +3477,7 @@ async fn builtin_http_exercises_real_policy_private_ip_rejection() {
 }
 
 #[tokio::test]
-async fn builtin_http_uses_tool_call_port_for_model_visible_partial_response() {
+async fn builtin_http_strict_port_retains_response_limit_failure_without_partial_success() {
     let transport = RecordingTransport::err(NetworkHttpError::ResponseBodyLimit {
         limit: 4,
         request_bytes: 0,
@@ -3470,7 +3500,7 @@ async fn builtin_http_uses_tool_call_port_for_model_visible_partial_response() {
     );
     let runtime = runtime_with_host_http_egress(network);
 
-    let output = invoke_with_context(
+    let failure = invoke_with_context(
         &runtime,
         HTTP_CAPABILITY_ID,
         json!({
@@ -3480,13 +3510,9 @@ async fn builtin_http_uses_tool_call_port_for_model_visible_partial_response() {
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
     .await
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(output["status"], json!(200));
-    assert_eq!(output["body_text"], json!("abcd"));
-    assert_eq!(output["body_truncated"], json!(true));
-    assert_eq!(output["truncation"]["body"], json!(true));
-    assert_eq!(output["response_bytes"], json!(5));
+    assert_eq!(failure, RuntimeFailureKind::OutputTooLarge);
     assert_eq!(requests.lock().unwrap().len(), 1);
 }
 
@@ -5496,9 +5522,11 @@ fn provider_id() -> ExtensionId {
 fn all_builtin_capability_ids() -> Vec<&'static str> {
     vec![
         COMPONENT_DB_CAPABILITY_ID,
+        brassclaw_host_runtime::PREFIX_GENERATION_CAPABILITY_ID,
         ECHO_CAPABILITY_ID,
         TIME_CAPABILITY_ID,
         JSON_CAPABILITY_ID,
+        brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
         HTTP_CAPABILITY_ID,
         HTTP_SAVE_CAPABILITY_ID,
         SHELL_CAPABILITY_ID,
@@ -6101,4 +6129,422 @@ fn trust_decision() -> TrustDecision {
         provenance: TrustProvenance::Default,
         evaluated_at: chrono::Utc::now(),
     }
+}
+
+#[tokio::test]
+async fn builtin_http_timeout_omission_and_invalid_values_are_distinct() {
+    let egress = Arc::new(RecordingRuntimeHttpEgress::with_body(b"ok".to_vec()));
+    let runtime = runtime_with_http_egress(Arc::clone(&egress));
+    invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":"https://api.example.test/v1/items"}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(egress.requests()[0].timeout_ms, None);
+    for key in ["timeout_ms", "response_body_limit"] {
+        for value in [json!(0), json!(-1), json!(1.5), Value::Null, json!("null")] {
+            let mut input = json!({"url":"https://api.example.test/v1/items"});
+            input[key] = value;
+            assert_eq!(
+                invoke_with_context(
+                    &runtime,
+                    HTTP_CAPABILITY_ID,
+                    input,
+                    execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy())
+                )
+                .await
+                .unwrap_err(),
+                RuntimeFailureKind::InvalidInput
+            );
+        }
+    }
+    for value in [json!(u64::from(u32::MAX) + 1), json!(u64::MAX)] {
+        assert_eq!(
+            invoke_with_context(
+                &runtime,
+                HTTP_CAPABILITY_ID,
+                json!({"url":"https://api.example.test/v1/items","timeout_ms":value}),
+                execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy())
+            )
+            .await
+            .unwrap_err(),
+            RuntimeFailureKind::InvalidInput
+        );
+    }
+    assert_eq!(egress.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn native_http_tool_uses_live_timeout_and_retains_explicit_override() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let (release, waiting) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        for index in 0..3 {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let (mut stream, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "native Tool did not connect"
+                        );
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("native listener failed: {error}"),
+                }
+            };
+            // Accepted sockets may inherit the listener's nonblocking mode.
+            // The bounded test reader below deliberately uses blocking I/O.
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let mut bytes = [0u8; 1024];
+                let count = stream.read(&mut bytes).unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&bytes[..count]);
+                assert!(request.len() < 4096);
+            }
+            if index == 0 {
+                waiting.recv().unwrap();
+                continue;
+            }
+            // Exceed the original live default, not the explicit request or
+            // acknowledged successor. This server uses actual native sockets.
+            std::thread::sleep(Duration::from_millis(500));
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .unwrap();
+        }
+    });
+    let services = HostRuntimeServices::new(
+        Arc::new(registry()),
+        Arc::new(LocalFilesystem::new()),
+        Arc::new(InMemoryResourceGovernor::new()),
+        Arc::new(GrantAuthorizer::new()),
+        brassclaw_processes::ProcessServices::in_memory(),
+        CapabilitySurfaceVersion::new("native-http-timeout").unwrap(),
+    )
+    .with_secret_store(Arc::new(InMemorySecretStore::new()))
+    .with_first_party_capabilities(Arc::new(
+        builtin_first_party_handlers(Arc::new(InMemoryTriggerRepository::default())).unwrap(),
+    ))
+    .try_with_hardened_http_transport(brassclaw_network::ReqwestNetworkTransport::default())
+    .unwrap()
+    .with_trust_policy(Arc::new(trust_policy()));
+    let control = services.http_client_cache_control().unwrap();
+    control
+        .publish_policy(0, 1, 8, Duration::from_millis(300), 10485760)
+        .unwrap();
+    let runtime = services.host_runtime_for_local_testing();
+    let policy = NetworkPolicy {
+        allowed_targets: vec![NetworkTargetPattern {
+            scheme: Some(NetworkScheme::Http),
+            host_pattern: "127.0.0.1".into(),
+            port: Some(address.port()),
+        }],
+        deny_private_ip_ranges: false,
+        max_egress_bytes: None,
+    };
+    let request = json!({"url":format!("http://{address}/timeout")});
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        invoke_with_context(
+            &runtime,
+            HTTP_CAPABILITY_ID,
+            request.clone(),
+            execution_context_with_network([HTTP_CAPABILITY_ID], policy.clone()),
+        ),
+    )
+    .await;
+    release.send(()).unwrap();
+    assert_eq!(result.unwrap().unwrap_err(), RuntimeFailureKind::Network);
+    let mut explicit = request.clone();
+    explicit["timeout_ms"] = json!(120000);
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        explicit,
+        execution_context_with_network([HTTP_CAPABILITY_ID], policy.clone()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["body_text"], json!("ok"));
+    control
+        .publish_policy(1, 2, 8, Duration::from_secs(2), 10485760)
+        .unwrap();
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        request,
+        execution_context_with_network([HTTP_CAPABILITY_ID], policy),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["body_text"], json!("ok"));
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn builtin_http_response_redaction_expansion_is_not_a_raw_response_overflow() {
+    let egress = Arc::new(
+        RecordingRuntimeHttpEgress::with_body(b"[REDACTED]".to_vec())
+            .with_redaction_applied(true)
+            .with_response_bytes(4),
+    );
+    let runtime = runtime_with_http_egress(egress);
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":"https://api.example.test/v1/items","response_body_limit":4}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["body_text"], json!("[REDACTED]"));
+    assert_eq!(output["response_bytes"], json!(4));
+    assert_eq!(output["redaction_applied"], json!(true));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_http_tool_complete_responses_save_and_large_requests_use_real_boundaries() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        for index in 0..5 {
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let (mut stream, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "registered native Tool did not connect"
+                        );
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("native listener failed: {error}"),
+                }
+            };
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let mut buffer = [0u8; 4096];
+                let size = stream.read(&mut buffer).unwrap();
+                assert!(size > 0);
+                request.extend_from_slice(&buffer[..size]);
+                assert!(request.len() <= 65536);
+            }
+            let split = request
+                .windows(4)
+                .position(|bytes| bytes == b"\r\n\r\n")
+                .unwrap()
+                + 4;
+            let headers = std::str::from_utf8(&request[..split]).unwrap();
+            if index == 3 {
+                assert!(
+                    headers
+                        .lines()
+                        .filter(|line| line.starts_with("x-public-"))
+                        .count()
+                        >= 70
+                );
+                assert!(headers.contains(&format!("x-{}:", "n".repeat(600))));
+                assert!(headers.contains(&"v".repeat(9000)));
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.split_once(':')
+                            .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+                            .map(|(_, value)| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                assert_eq!(length, 2 * 1024 * 1024 + 1);
+                let mut body = request[split..].to_vec();
+                while body.len() < length {
+                    let mut buffer = [0u8; 4096];
+                    let size = stream.read(&mut buffer).unwrap();
+                    assert!(size > 0);
+                    body.extend_from_slice(&buffer[..size]);
+                }
+                assert_eq!(body, vec![b'p'; length]);
+            }
+            let length = match index {
+                0 => 5,
+                1 => 9 * 1024 * 1024,
+                2 => 2,
+                3 => 2,
+                4 => 11 * 1024 * 1024,
+                _ => unreachable!(),
+            };
+            let mut head =
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n");
+            if index == 1 {
+                for header in 0..40 {
+                    head.push_str(&format!("x-response-{header}: value-{header}\r\n"));
+                }
+                head.push_str(&format!("x-{}: {}\r\n", "n".repeat(200), "v".repeat(2048)));
+            }
+            head.push_str("\r\n");
+            stream.write_all(head.as_bytes()).unwrap();
+            let byte = if index == 1 {
+                b'\\'
+            } else if index == 2 || index == 4 {
+                0xFF
+            } else {
+                b'a'
+            };
+            let chunk = [byte; 65536];
+            let mut remaining = length;
+            while remaining > 0 {
+                let count = remaining.min(chunk.len());
+                stream.write_all(&chunk[..count]).unwrap();
+                remaining -= count;
+            }
+        }
+    });
+    let directory = tempfile::tempdir().unwrap();
+    let (filesystem, mounts) =
+        mounted_host_filesystem(directory.path(), MountPermissions::read_write());
+    let filesystem = Arc::new(filesystem);
+    let store = Arc::new(brassclaw_filesystem::ScopedFilesystem::with_fixed_view(
+        Arc::clone(&filesystem),
+        mounts.clone(),
+    ));
+    let governor = Arc::new(InMemoryResourceGovernor::new());
+    let services = HostRuntimeServices::new(
+        Arc::new(registry()),
+        filesystem,
+        Arc::clone(&governor),
+        Arc::new(GrantAuthorizer::new()),
+        brassclaw_processes::ProcessServices::in_memory(),
+        CapabilitySurfaceVersion::new("native-full-http").unwrap(),
+    )
+    .with_secret_store(Arc::new(InMemorySecretStore::new()))
+    .with_first_party_capabilities(Arc::new(
+        builtin_first_party_handlers(Arc::new(InMemoryTriggerRepository::default())).unwrap(),
+    ))
+    .try_with_hardened_http_transport_with_body_store(
+        brassclaw_network::ReqwestNetworkTransport::default(),
+        store,
+    )
+    .unwrap()
+    .with_trust_policy(Arc::new(trust_policy()));
+    let control = services.http_client_cache_control().unwrap();
+    control
+        .publish_policy(0, 1, 8, Duration::from_secs(5), 4)
+        .unwrap();
+    let runtime = services.host_runtime_for_local_testing();
+    let policy = NetworkPolicy {
+        allowed_targets: vec![NetworkTargetPattern {
+            scheme: Some(NetworkScheme::Http),
+            host_pattern: "127.0.0.1".into(),
+            port: Some(address.port()),
+        }],
+        deny_private_ip_ranges: false,
+        max_egress_bytes: None,
+    };
+    let url = format!("http://{address}/complete");
+    let error = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":url}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], policy.clone()),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error, RuntimeFailureKind::OutputTooLarge);
+    control
+        .publish_policy(1, 2, 8, Duration::from_secs(5), 12 * 1024 * 1024)
+        .unwrap();
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":url}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], policy.clone()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output["body_text"].as_str().unwrap().len(), 9 * 1024 * 1024);
+    assert!(output.get("truncation").is_none());
+    let headers = output["headers"].as_array().unwrap();
+    assert!(headers.len() > 32);
+    let long = headers
+        .iter()
+        .find(|header| header["name"].as_str().unwrap().len() == 202)
+        .unwrap();
+    assert_eq!(long["value"].as_str().unwrap().len(), 2048);
+    assert!(serialized_json_len(&output) > 15 * 1024 * 1024);
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_CAPABILITY_ID,
+        json!({"url":url,"response_body_limit":2}),
+        execution_context_with_network([HTTP_CAPABILITY_ID], policy.clone()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        BASE64_STANDARD
+            .decode(output["body_base64"].as_str().unwrap())
+            .unwrap(),
+        vec![0xFF; 2]
+    );
+    let mut headers = serde_json::Map::new();
+    for index in 0..70 {
+        headers.insert(format!("x-public-{index}"), json!("public"));
+    }
+    headers.insert(format!("x-{}", "n".repeat(600)), json!("v".repeat(9000)));
+    let outcome = runtime
+        .invoke_capability(RuntimeCapabilityRequest::new(
+            execution_context_with_network([HTTP_CAPABILITY_ID], policy.clone()),
+            capability_id(HTTP_CAPABILITY_ID),
+            ResourceEstimate::default(),
+            json!({"url":url,"method":"post","headers":headers,"body":"p".repeat(2*1024*1024+1)}),
+            trust_decision(),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, RuntimeCapabilityOutcome::Completed(_)),
+        "large upload failed: {outcome:?}"
+    );
+    let output = invoke_with_context(
+        &runtime,
+        HTTP_SAVE_CAPABILITY_ID,
+        json!({"url":url,"save_to":"/host/download.bin"}),
+        execution_context_with_mounts_and_network([HTTP_SAVE_CAPABILITY_ID], mounts, policy),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        output["saved_body"]["bytes_written"],
+        json!(11 * 1024 * 1024)
+    );
+    assert!(output.get("body_base64").is_none());
+    let saved = std::fs::read(directory.path().join("download.bin")).unwrap();
+    assert_eq!(saved.len(), 11 * 1024 * 1024);
+    assert!(saved.iter().all(|byte| *byte == 0xFF));
+    server.join().unwrap();
+    assert!(
+        governor
+            .usage_for(&ResourceAccount::tenant(
+                TenantId::new(LOCAL_DEFAULT_TENANT_ID).unwrap()
+            ))
+            .output_bytes
+            > 15 * 1024 * 1024
+    );
 }

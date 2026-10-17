@@ -78,6 +78,7 @@ const DEFAULT_MAX_TOKENS: u32 = 8192;
 /// Anthropic provider using OAuth Bearer authentication.
 pub(crate) struct AnthropicOAuthProvider {
     client: Client,
+    max_response_bytes: Option<u64>,
     /// OAuth token, wrapped in RwLock so it can be updated after a successful
     /// Keychain refresh (fixes #1136: stale token reuse after expiry).
     token: std::sync::RwLock<SecretString>,
@@ -89,7 +90,11 @@ pub(crate) struct AnthropicOAuthProvider {
 }
 
 impl AnthropicOAuthProvider {
-    pub(crate) fn new(config: &RegistryProviderConfig) -> Result<Self, LlmError> {
+    pub(crate) fn new(
+        config: &RegistryProviderConfig,
+        request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
+    ) -> Result<Self, LlmError> {
         let token = config
             .oauth_token
             .clone()
@@ -97,13 +102,7 @@ impl AnthropicOAuthProvider {
                 provider: "anthropic_oauth".to_string(),
             })?;
 
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .build()
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "anthropic_oauth".to_string(),
-                reason: format!("Failed to build HTTP client: {}", e),
-            })?;
+        let client = crate::registry_http_client(&config.provider_id, request_timeout_secs)?;
 
         let active_model = std::sync::RwLock::new(config.model.clone());
         let base_url = if config.base_url.is_empty() {
@@ -117,6 +116,7 @@ impl AnthropicOAuthProvider {
 
         Ok(Self {
             client,
+            max_response_bytes,
             token: std::sync::RwLock::new(token),
             model: config.model.clone(),
             base_url,
@@ -186,17 +186,8 @@ impl AnthropicOAuthProvider {
         let status = response.status();
 
         if !status.is_success() {
-            // Parse Retry-After header before consuming the body.
-            let retry_after = Some(crate::retry::parse_retry_after(
-                response.headers().get("retry-after"),
-            ));
-
-            let response_text = response
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("(failed to read error body: {e})"));
-
             if status.as_u16() == 401 {
+                drop(response);
                 // OAuth tokens from `claude login` expire in ~8-12h. Attempt
                 // to re-extract a fresh token from the OS credential store
                 // (macOS Keychain / Linux credentials file) before giving up.
@@ -228,44 +219,46 @@ impl AnthropicOAuthProvider {
                         self.update_token(fresh_token);
                         tracing::debug!("Anthropic OAuth token refreshed from credential store");
 
-                        let text = retry.text().await.map_err(|e| LlmError::RequestFailed {
-                            provider: "anthropic_oauth".to_string(),
-                            reason: format!("Failed to read response body: {}", e),
-                        })?;
+                        let text = crate::response_body::text(
+                            retry,
+                            self.max_response_bytes,
+                            "anthropic_oauth",
+                        )
+                        .await?;
                         return serde_json::from_str(&text).map_err(|e| {
-                            let truncated = brassclaw_common::truncate_for_preview(&text, 512);
+                            tracing::warn!(
+                                line = e.line(),
+                                column = e.column(),
+                                "Anthropic OAuth response JSON was invalid"
+                            );
                             LlmError::InvalidResponse {
                                 provider: "anthropic_oauth".to_string(),
-                                reason: format!("JSON parse error: {}. Raw: {}", e, truncated),
+                                reason: "provider response was not valid JSON".into(),
                             }
                         });
                     }
-                    tracing::debug!(
-                        "Anthropic OAuth 401 retry with refreshed token also failed ({})",
-                        retry.status()
-                    );
+                    return Err(crate::response_body::rejection(
+                        retry,
+                        self.max_response_bytes,
+                        "anthropic_oauth",
+                    )
+                    .await);
                 }
                 return Err(LlmError::AuthFailed {
                     provider: "anthropic_oauth".to_string(),
                 });
             }
-            if status.as_u16() == 429 {
-                return Err(LlmError::RateLimited {
-                    provider: "anthropic_oauth".to_string(),
-                    retry_after,
-                });
-            }
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
-            return Err(LlmError::RequestFailed {
-                provider: "anthropic_oauth".to_string(),
-                reason: format!("HTTP {}: {}", status, truncated),
-            });
+            return Err(crate::response_body::rejection(
+                response,
+                self.max_response_bytes,
+                "anthropic_oauth",
+            )
+            .await);
         }
 
-        let response_text = response.text().await.map_err(|e| LlmError::RequestFailed {
-            provider: "anthropic_oauth".to_string(),
-            reason: format!("Failed to read response body: {}", e),
-        })?;
+        let response_text =
+            crate::response_body::text(response, self.max_response_bytes, "anthropic_oauth")
+                .await?;
 
         tracing::debug!(
             "Anthropic OAuth response: status={}, bytes={}",
@@ -274,10 +267,14 @@ impl AnthropicOAuthProvider {
         );
 
         serde_json::from_str(&response_text).map_err(|e| {
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
+            tracing::warn!(
+                line = e.line(),
+                column = e.column(),
+                "Anthropic OAuth response JSON was invalid"
+            );
             LlmError::InvalidResponse {
-                provider: "anthropic_oauth".to_string(),
-                reason: format!("JSON parse error: {}. Raw: {}", e, truncated),
+                provider: "anthropic_oauth".into(),
+                reason: "provider response was not valid JSON".into(),
             }
         })
     }

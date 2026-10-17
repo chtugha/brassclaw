@@ -2,7 +2,7 @@ import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
 import { useT } from "../../../lib/i18n.js";
 import { clientActionId } from "../../../lib/api.js";
-import { fetchPostTurnReviews, inspectPostTurnReview, recordReviewDisposition } from "../lib/settings-api.js";
+import { fetchPostTurnReviews, inspectPostTurnReview, recordReviewDisposition, reconcilePostTurnReview } from "../lib/settings-api.js";
 
 export function PostTurnReviewPanel() {
   const t = useT();
@@ -15,6 +15,8 @@ export function PostTurnReviewPanel() {
   const [receipt, setReceipt] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const reconciliationRef = React.useRef(false);
+  const [reconciliation, setReconciliation] = React.useState(null);
   const locked = busy || Boolean(decision);
   const list = async (after = null) => {
     setBusy(true); setError("");
@@ -23,7 +25,7 @@ export function PostTurnReviewPanel() {
     finally { setBusy(false); }
   };
   const load = async (id) => {
-    setBusy(true); setError(""); setView(null); setAttempt(id); setNote(""); setReceipt(null);
+    setBusy(true); setError(""); setView(null); setAttempt(id); setReconciliation(null); setNote(""); setReceipt(null);
     try { setView(await inspectPostTurnReview(id)); }
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
@@ -38,6 +40,16 @@ export function PostTurnReviewPanel() {
     }
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
+  };
+  const reconcile = async () => {
+    if (reconciliationRef.current) return;
+    reconciliationRef.current = true; setBusy(true); setError(""); setReconciliation(null);
+    try {
+      const result = await reconcilePostTurnReview(attempt, view.evidence_checksum);
+      setView(await inspectPostTurnReview(attempt));
+      setReconciliation(result);
+    } catch (err) { setError(err.message); }
+    finally { reconciliationRef.current = false; setBusy(false); }
   };
   const reset = () => { requestRef.current = null; setDecision(null); setReceipt(null); setView(null); setNote(""); setError(""); };
   let evidence = null;
@@ -60,6 +72,7 @@ export function PostTurnReviewPanel() {
             disabled=${locked} onClick=${() => load(item.attempt_id)}>
             ${item.attempt_id} · ${item.phase} · ${t("postTurnReview.dispatches", { count: item.model_dispatch_count })}
             · ${t("postTurnReview.notes", { count: item.disposition_count })}
+            ${item.reconciliation_recorded && html` · ${t("postTurnReview.reconciled")}`}
           </button>
         `)}
         ${page && page.items.length === 0 && html`<p className="text-sm">${t("postTurnReview.empty")}</p>`}
@@ -68,6 +81,12 @@ export function PostTurnReviewPanel() {
         ${view && html`
           <p className="break-all font-mono text-xs">${view.evidence_checksum}</p>
           <p className="text-sm">${t("postTurnReview.integrity", { status: evidence?.journal_integrity === true ? t("postTurnReview.valid") : t("postTurnReview.invalid") })}</p>
+          ${(stopped || evidence?.work?.phase === "acknowledged") && html`
+            <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${locked} onClick=${reconcile}>
+              ${t("postTurnReview.reconcile")}
+            </button>
+          `}
+          ${reconciliation && html`<p role="status" className="text-sm">${t(reconciliation.reconciliation_recorded ? "postTurnReview.reconciled" : "postTurnReview.retained")}</p>`}
           <details className="rounded border p-2">
             <summary>${t("postTurnReview.evidence")}</summary>
             <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs">${view.evidence_bytes}</pre>

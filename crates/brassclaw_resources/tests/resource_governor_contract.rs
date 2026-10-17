@@ -2623,3 +2623,92 @@ fn atomic_budget_default_does_not_replace_an_operator_limit() {
             .unwrap()
     );
 }
+
+#[test]
+fn retained_reconcile_reads_back_exact_usage_without_double_charge() {
+    let governor = InMemoryResourceGovernor::new();
+    let scope = sample_scope("retained", "user", None);
+    let account = ResourceAccount::tenant(scope.tenant_id.clone());
+    let reservation = governor
+        .reserve(
+            scope,
+            ResourceEstimate {
+                usd: Some(dec!(1)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let usage = ResourceUsage {
+        usd: dec!(0.5),
+        input_tokens: 123,
+        output_tokens: 45,
+        ..Default::default()
+    };
+    let first = governor
+        .reconcile_retained(reservation.id, usage.clone())
+        .unwrap()
+        .unwrap();
+    let retry = governor
+        .reconcile_retained(reservation.id, usage.clone())
+        .unwrap()
+        .unwrap();
+    assert_eq!(first, retry);
+    assert_eq!(governor.usage_for(&account).usd, dec!(0.5));
+    let changed = ResourceUsage {
+        output_tokens: 46,
+        ..usage
+    };
+    assert!(matches!(
+        governor
+            .reconcile_retained(reservation.id, changed)
+            .unwrap(),
+        Err(ResourceError::ReservationClosed { .. })
+    ));
+    let released = governor
+        .reserve(
+            sample_scope("retained", "user", None),
+            ResourceEstimate::default(),
+        )
+        .unwrap();
+    governor.release(released.id).unwrap();
+    assert!(
+        governor
+            .reconcile_retained(released.id, ResourceUsage::default())
+            .unwrap()
+            .is_err()
+    );
+}
+
+#[test]
+fn retained_reconcile_survives_durable_governor_reconstruction() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("retained-ledger.json");
+    let usage = ResourceUsage {
+        usd: dec!(0.25),
+        output_tokens: 7,
+        ..Default::default()
+    };
+    let id = {
+        let governor = PersistentResourceGovernor::new(JsonFileResourceGovernorStore::new(&path));
+        let reservation = governor
+            .reserve(
+                sample_scope("retained", "user", None),
+                ResourceEstimate::default(),
+            )
+            .unwrap();
+        governor
+            .reconcile_retained(reservation.id, usage.clone())
+            .unwrap()
+            .unwrap();
+        reservation.id
+    };
+    let governor = PersistentResourceGovernor::new(JsonFileResourceGovernorStore::new(&path));
+    assert_eq!(
+        governor
+            .reconcile_retained(id, usage.clone())
+            .unwrap()
+            .unwrap()
+            .actual,
+        Some(usage)
+    );
+}

@@ -1,4 +1,5 @@
 import { Button } from "../../../design-system/button.js";
+import { Select } from "../../../design-system/input.js";
 import { Card } from "../../../design-system/card.js";
 import { Icon } from "../../../design-system/icons.js";
 import { html } from "../../../lib/html.js";
@@ -59,7 +60,7 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
           </h3>
           <p className="mt-1 text-sm text-[var(--v2-text-muted)]">${t("llm.providersDesc")}</p>
         </div>
-        <${Button} type="button" variant="secondary" size="sm" className="gap-2" onClick=${() => actions.openDialog(null)}>
+        <${Button} type="button" variant="secondary" size="sm" className="gap-2" disabled=${state.isLoading || Boolean(state.error)} onClick=${() => actions.openDialog(null)}>
           <${Icon} name="plus" className="h-3.5 w-3.5" />
           ${t("llm.addProvider")}
         <//>
@@ -78,6 +79,20 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
         >
           ${actions.message.text}
         </div>
+      `}
+
+      ${(state.inactiveProviders || []).length > 0 && html`
+        <label className="mb-4 block space-y-2 text-sm text-[var(--v2-text-strong)]">
+          ${t("llm.restoreProvider")}
+          <p className="text-xs text-[var(--v2-text-muted)]">${t("llm.restoreProviderHelp")}</p>
+          <${Select} value="" disabled=${state.isBusy} onChange=${(event) => {
+            const provider = state.inactiveProviders.find((item) => item.id === event.target.value);
+            if (provider) actions.openDialog(provider);
+          }}>
+            <option value="">${t("llm.chooseRemovedProvider")}</option>
+            ${state.inactiveProviders.map((provider) => html`<option key=${provider.id} value=${provider.id}>${provider.name || provider.id}</option>`)}
+          <//>
+        </label>
       `}
 
       <${ProviderLoginStatus} login=${login} />
@@ -120,7 +135,6 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
                             onConfigure=${actions.openDialog}
                             onDeactivate=${actions.handleDeactivate}
                             onDelete=${actions.handleDelete}
-                            onReset=${actions.handleReset}
                             onNearaiLogin=${login.startNearai}
                             onCodexLogin=${login.startCodex}
                             loginBusy=${loginBusy}
@@ -140,6 +154,9 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
         provider=${actions.dialogProvider}
         allProviderIds=${actions.allProviderIds}
         builtinOverrides=${state.builtinOverrides}
+        responseCacheDefaults=${state.responseCacheDefaults}
+        modelDiscoveryDefaults=${state.modelDiscoveryDefaults}
+        requestPolicyDefaults=${state.requestPolicyDefaults}
         onClose=${actions.closeDialog}
         onSave=${actions.handleSave}
         onTest=${state.testConnection}

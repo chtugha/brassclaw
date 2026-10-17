@@ -40,8 +40,46 @@ LMCache transfer failure and the v25 compiler/client protocol corrections. The v
 source and decoder checks are development evidence: no v25 prefix generation or
 model-accuracy qualification has been published by those checks. This plan update
 does not deploy code or change inference services.
-The workspace package version is `1.6.0`; release identity also needs a commit and
+The workspace package version inspected on 2026-10-12 is `1.7.0-rc.4`; release identity also needs a commit and
 content manifest because version numbers alone do not identify the working tree.
+
+### Implementation reconciliation — 2026-10-11
+
+Read this plan together with [Sempai v3.5](sempai_v3.5.md) and
+[Simplify connections v3.5](simplify_connections_v3.5.md). Their consolidation
+work supplies shared infrastructure; prefix work must not create a second review
+consumer, provider registry, connection builder, Monty transport, executor,
+claim authority or universal recovery ledger. Similar record names do not make
+generation jobs, invocation effects and provider accounting interchangeable.
+
+| Responsibility | Reuse owner / current evidence | Prefix-specific work still required |
+| --- | --- | --- |
+| Workflow selection / execution | Installed/authored Monty catalogue, retained preload/export qualification and the global service | Qualify the generation Recipe and exact compiler adapter; do not start another VM or Rust workflow loop. |
+| Component proposal retention / activation | Existing submission stores and [component deployment](../reborn/component-deployment.md); real operator/PG/global-Monty acceptance passed | Use these paths for executable proposals. Prefix generation/design publication is a distinct operation and is not implemented by component activation. |
+| Review/accounting custody | Existing completed-turn delivery and [native reconciliation](../reborn/post-turn-review-reconciliation.md) | Preserve native release predicates. Sempai evidence/proposal/iteration conversion remains owned by sempai_v3.5; do not duplicate it in prefix jobs. |
+| Model calls / messages / evidence | Existing gateway plus the reusable usages planned in sempai_v3.5 | Redesign uses shared message/evidence/model-call components with prefix-specific instructions supplied as pinned data. No separate design-provider transport or review sink. |
+| Database / network / IPC | Instance-injected PgPool, existing network/egress services and Monty transport actor; consolidation owned by simplify_connections_v3.5 | Extend owning stores only for demonstrated prefix records. No per-profile pools, caller-local reconnect loops or parallel pipe readers. |
+| Admission / events / retries | Existing turns/global-task admission, retained invocation records and durable event projection contracts | Store prefix stage/artifact metadata linked to actual runs/invocations. Observer reconnect reads status/cursors; it never resubmits effects. Generic crash resume remains unproven until its actual contract passes. |
+| Operator settings / APIs | Existing RebornServicesApi, authenticated v2 ingress and revisioned settings owners | Extend Prefix settings rather than building another management surface or authority path. |
+
+Completed infrastructure is reusable evidence for its exact scope, not a blanket
+Gate A1 certificate. Phase B's offline source-package/compiler and scoped catalogue
+export have focused acceptance below. The Phase C registry foundation lists all six
+shipped profiles through the existing prefix API, while regeneration remains the
+legacy `base-prompt` workflow. The compatibility scope store still has minimal
+fallbacks; those are not permitted substitutes for a missing required production
+prefix. Immutable generation retention and source/model metadata now have owning
+stores and operator surfaces; generation jobs, prefix activation/resolver, qualified
+model designs, runtime Prefix-Maker, source checking, Redesign and custom-profile
+creation remain open. Metadata/import surfaces do not close their execution gates.
+
+Continue Phase C from the existing registry and accepted Phase B adapter. Complete
+immutable generation storage, pinned inputs and runtime compiler qualification
+before enabling target-aware generation. Keep shared evidence/render/token-probe
+functions rather than adding copied pipelines. This work never bypasses Gate A1.
+Database exports come from the existing catalogue owner under one snapshot; local
+source-package manifests remain build inputs, not another authoritative installed
+catalogue or approval store.
 
 ## 1. Recipe-first workflow and intended result
 
@@ -206,18 +244,19 @@ Relevant inspected files:
 
 | Profile ID | UI label | Compiler entry point | Source content |
 | --- | --- | --- | --- |
-| `base-prompt` | BrassClaw Base Prompt | `base-promt-compiler.py` (planned) | Current release docs and complete approved component snapshot. |
+| `base-prompt` | BrassClaw Base Prompt | `base-promt-compiler.py` (offline development adapter) | Current release docs and complete approved component snapshot. |
 | `defensive` | Defensive / Servers and Networks | `Defensive-compiler.py` | Existing defensive source families and security/maintenance evidence. |
 | `homeassistant` | Home Assistant / MQTT / Modbus / YAML | `Homeassistant-compiler.py` | Existing official domain sources and coverage gates. |
 | `tomedo` | tomedo / API / macOS / PostgreSQL / Billing and Coding | `tomedo-compiler.py` | Existing official docs, qualified forum observations and curated local findings; no clinical knowledge. |
 | `sempai` | Sempai / Prompt Review and Component Authoring | `sempai-compiler.py` | Complete BrassClaw authoring/validation references and explicit prompt-diagnosis, Recipe and component-proposal procedures. |
-| `prefix-maker` | Prefix-Maker / Prefix Design | `prefix-maker-compiler.py` (planned) | Versioned prefix engineering, evidence/formatting, model/tokenizer/template and cache architecture references, measured design lessons and the supported profile-design contract. |
+| `prefix-maker` | Prefix-Maker / Prefix Design | `prefix-maker-compiler.py` (offline adapter; runtime qualification pending) | Versioned prefix engineering, evidence/formatting, model/tokenizer/template and cache architecture references, measured design lessons and the supported profile-design contract. |
 
 Keep `base-promt-compiler.py` as the requested filename; the canonical profile name
 is correctly spelled `base-prompt`. Paths are registry-owned, not browser-supplied.
 
-Implementation begins by copying `Homeassistant-compiler.py` to
-`scripts/prefix/base-promt-compiler.py`. Replace **all** HA-specific source lists,
+The offline base adapter now reuses extracted HA evidence/rendering functions in
+`scripts/prefix/prefix_evidence.py`, rather than retaining another monolithic copy.
+Any remaining profile migration must replace **all** HA-specific source lists,
 domain/platform tags, coverage gates, routing patterns, headers, runtime guidance,
 default cache paths and usage instructions. Add release-document and component-
 snapshot input adapters. Do not leave a Home Assistant topic gate or system prompt
@@ -231,7 +270,8 @@ Sharing a rendering engine must not mix domain source databases or approval rule
 Current parity is limited: the Sempai compiler has the v25 scoped artifact audit,
 reviewed strict-JSON display projection and evidence-view manifest; the independent
 Home Assistant, Defensive and tomedo compilers do not yet share those features.
-Neither the base nor Prefix-Maker compiler entry point exists yet. Port and qualify
+The base entry point now exists as an offline development adapter; Prefix-Maker
+still has no compiler entry point. Port and qualify
 these evidence/rendering facilities in the shared engine before claiming parity.
 Keep Sempai's reviewer/planner schemas in its consumer adapter, not in domain answer
 contracts. Inventory each profile's collection modes, source configuration, coverage
@@ -788,7 +828,7 @@ than choosing lossy slices. A fully seeded base library may require a larger mod
 
 Introduce `prefix-maker` as the sixth seeded knowledge profile, independently
 generated through the same model-free compiler and evidence gates. Register its
-source package, procedure and planned `prefix-maker-compiler.py` entry point;
+source package, procedure and `prefix-maker-compiler.py` entry point;
 reuse the shared engine rather than another rendering implementation. Bootstrap
 uses a reviewed shipped design and pinned local artifacts. Generating Prefix-Maker
 must not require Prefix-Maker, a provider call or a pre-existing fresh prefix.
@@ -1705,8 +1745,9 @@ pass all contracts applicable to their consumers.
 
 ### Phase B — Base compiler and release source package
 
-Copy the HA compiler to `base-promt-compiler.py`, replace its domain content, add
-document/component adapters, then extract shared compiler code with parity tests.
+Continue from the offline `base-promt-compiler.py` and shared `prefix_evidence.py`
+adapter below; do not create another copied compiler. Complete installed catalogue
+and release-document export, shared-engine parity and production worker qualification.
 Port §4.2's v25 evidence-view and scoped-audit facilities deliberately; qualify each
 profile adapter and keep Sempai consumer schemas separate. Implement the installed
 source-package path, environment-independent worker inputs, model adapter capability
@@ -1735,6 +1776,116 @@ raw/display byte equality or normalize ambiguous JSON. YAML, Python and prose re
 literal. Require reviewed conflicting/versioned sources; tutorial mutation checks
 and transitive validator fingerprints. Prove zero provider/network/process discovery
 through the actual worker entry point. No optional synthesis mode is invoked.
+
+### Phase B implementation slice — offline base compiler (2026-10-11)
+
+Implemented an explicit reviewed-inventory snapshot adapter and immutable-package
+base compilation in `scripts/prefix/base-promt-compiler.py`. It preserves original
+bytes, full documents/code, source inclusion/exclusion reasons and complete section
+ranges/hashes. Publication is staged, content-addressed and serialized per output;
+no active pointer is changed. Identical packages compile independently of worker
+paths. Strict duplicate-key parsing, checksum/root checks and mandatory-guide
+coverage reject incomplete/tampered inputs before publication.
+
+`prefix_evidence.py` now owns shared literal fences and real template token probes
+for all four existing domain compilers; HA/Sempai also share section segmentation,
+and HA/base share the existing Ornith/Qwen server injection adapter. tomedo PDF
+segmentation and Defensive's existing suffix behavior stay in their adapters.
+All affected generation identities include the shared module hash. Remaining
+profile-specific quality/projection features have not been unified or requalified.
+
+Capacity optimization renders each full source document once instead of wrapping
+and duplicating provenance around each section. The full section/evidence index
+and all original bytes remain in the artifact. With the actual cached Ornith
+snapshot `489cb97981b8654bcfcf30ce1f94ed1b62e07b53`, the regression's seven complete
+mandatory guides plus one actual component render to 119212 tokens, down from
+140519. An explicit 8192-token workspace reserve gives 127404 of 131072 tokens.
+This is the base adapter's documented minimum/default; larger workload reserves
+are selectable and capacity failure never drops source material. Domain compilers'
+existing reserve defaults are unchanged. Adding the full installed catalogue and
+remaining release docs may exceed this budget and must be measured separately.
+No claim of full-library fit, deployed model quality or KV/recurrent cache
+qualification follows from this local tokenizer result.
+
+The retained local development build at
+`/private/tmp/brassclaw-base-prefix-sfn9bqdd/receipt.json` uses the real sample
+component's repository path and shorter inventory reasons: 119195 rendered tokens,
+118933 stable shared tokens across 18 distinct rendered probes, plus the 8192 reserve
+(127387 total; 3685 remaining). Its generation is
+`579e1125967d0686f87b9ca8971b6a35526eba8b4d6cf45970396b94aaa14d33`.
+The receipt pins tokenizer/template and engine hashes; it remains a development
+artifact with `activation_eligible=false`, not an installed runtime acceptance.
+
+Acceptance: four offline base tests (including actual CLI/tokenizer, reproducible
+builds and failed-capacity preservation); seven HA, ten tomedo and two Sempai
+source tests; one cross-profile citation test. Defensive's two pure evidence tests
+pass; its seven complete-model build tests were not run because the cached snapshot
+lacks the required model config. This slice changes no Rust/runtime seed/DB/provider
+or remote deployment. See [copy-paste usage](../../scripts/prefix/BASE-PROMPT-USAGE.txt).
+
+Still open: complete current release inventory; full-library owner export beyond
+the scoped ordinary-workflow projection accepted below; installation-owned source/compiler qualification; bounded registered
+worker; runtime generation/composite Recipes; production named storage/jobs,
+consumer resolution and UI. Development packages never establish approval or
+activation (`activation_eligible=false`). The local manifest is an artifact contract,
+not a new installed source/approval catalogue, queue or provider registry.
+
+### Phase B follow-up — owner-selected catalogue source export (2026-10-11)
+
+The new operator read projection is
+`GET /api/webchat/v2/catalogue/{generation}/sources`, reached through the existing
+`RecipeStore` / `RebornServicesApi` facade and installed catalogue owner. It shares
+capture's immutable revision/usage approval checks; it holds the owner's activation
+serialization and one read-only repeatable-read transaction. A requested stale
+memory generation fails with 409; catalogue bytes/checksum, DB active pointer,
+exact source revisions and retained usage approvals must agree. Exporting performs
+no Tool dispatch, Q1/Q2 write, candidate activation or generation publication.
+
+`brassclaw-catalogue-source-export/1` preserves exact catalogue bytes, component
+revision envelopes/checksums and each complete retained selection, including
+variant/input/export/approval pins. Components are deduplicated by exact revision;
+conflicting selections fail rather than silently prefer one. The global root's
+pinned source is included separately as retained evidence, without claiming that
+retention qualifies an authored root or establishes usage approval. Scope is
+explicitly `active-ordinary-workflows-and-retained-root`; legacy validated rows
+outside that owner, separately managed review workflows and staged proposals are
+not exported as approved active components. Full-library migration/qualification
+and a complete release inventory remain prerequisites for the final base prefix.
+
+The offline snapshot adapter accepts `--catalogue-export` alongside the reviewed
+release inventory. It checks transfer/source hashes, identity, dependency and
+selection coverage and preserves all exact originals. It renders component and
+selection sources once; the full transfer envelope is retained as raw provenance,
+avoiding duplicate component text in the model prefix. Imported JSON is not an
+approval writer and all resulting development generations retain
+`activation_eligible=false`. Capacity is checked against actual token rendering;
+adding this graph never authorizes omitting any mandatory source to make it fit.
+The 64 MiB export capacity is a supported technical transport bound, not a token
+budget or row limit; exceeding it rejects the complete export.
+
+Focused acceptance (2026-10-11): the exact frozen
+`complete-cancellation-20261011-r2` binary passes the actual authenticated operator
+component-deployment/source-export regression against native PostgreSQL and the
+global worker (6.83 seconds). Its actual exported input then passes all five
+offline compiler tests, including path-independent identity, exact original-byte
+retention, transfer corruption rejection, immutable publication and the cached
+Ornith tokenizer (10.95 seconds; no skipped cases). The seven mandatory documents
+plus this owner-selected graph render to 119,212 tokens with an 8,192-token reserve.
+This is below the selected 131,072-token capacity; the same sources reject a
+32,000-token target without publishing or dropping sources. The live model's
+`/v1/models` also reports 131,072 on 2026-10-11. The preserved receipt/export/
+tokenizer hashes are `/private/tmp/brassclaw-prefix-export-accepted.json` and
+`target/validation/prefix-export-artifacts-20261011-r2/accepted.json`.
+
+This is focused native export and offline quarantined-compiler acceptance, not
+production prefix activation or complete library coverage. The containing
+snapshot's separate expanded cancellation test failed its fixture setup and is
+being repaired; it is not counted as passing source-export evidence. The preceding
+strict composition lint covers the same unchanged source/export implementation;
+subsequent whole-matrix and production prefix-job acceptance remain required.
+[Copy-paste instructions](../../scripts/prefix/BASE-PROMPT-USAGE.txt) describe the
+existing operator token, pinned-generation export and subsequent offline build.
+Runtime Recipe/worker/storage/UI implementation remains in the following phases.
 
 ### Phase C — Named generations, jobs and Recipe execution
 
@@ -1768,6 +1919,537 @@ Reconcile published children without replay; an outdated completed artifact rema
 historical. A source-generation-only operation without a provider completes honestly
 without an activation-ready badge. A target-aware operation cannot report success
 until its required composite validation completes.
+
+### Phase C foundation — named profile registry (2026-10-12)
+
+`V139__prefix_profile_registry.sql` introduces the instance-wide
+`reborn_prefix_profiles` metadata registry and six shipped profile registrations.
+Names, labels, descriptions, positive metadata revisions and compiler entry names
+are separate from immutable model designs, generation artifacts and consumer
+selections. Compiler entry names are descriptive registration data; no filename,
+row or revision authorizes executing a compiler. Prefix-Maker has no registered
+compiler filename until its actual adapter exists. Installation inserts preserve
+existing metadata rather than overwriting operator edits.
+
+The existing `InterceptorConfigService` / facade / operator prefix-list API and
+Prefix settings tab now read this registry. Every seeded profile appears before
+its first build, with a description and explicit readiness. Existing scope-bound
+base bundle fields are compatibility projections only. Base generation still uses
+the existing Recipe route and is labelled `legacy-unverified`; a prior bundle or
+successful prewarm timestamp cannot produce a verified readiness badge. Other
+profiles are `prerequisites-required` and Generate is disabled. A direct request
+for a registered unsupported profile fails with 503 before a conversation, Tool
+or provider call; an unknown name returns 404. Missing registry/store support fails
+closed rather than inventing a frontend list.
+
+This foundation does not implement named immutable generations, model-specific
+accepted designs, durable generation jobs, sources controls, Redesign, custom
+profile authoring, composite builds, production compiler qualification or new
+provider selections. Keep those in the owning Phase C/C2/C3/D steps; do not treat
+metadata registration as bootstrap approval or duplicate their stores in this
+registry. The existing legacy base store and running selections remain intact.
+
+Focused acceptance passed on 2026-10-12 using the frozen source and retained
+worker/test pair in `target/validation/prefix-registry-artifacts-vg1dq56v/accepted.json`:
+strict product/composition lint; the authenticated operator/native PostgreSQL
+registry/export/deployment regression (7.83 seconds); all five actual-export/offline
+compiler checks without skips (10.53 seconds); and three UI behavior checks.
+The native regression verifies six seeded registrations, descriptions/revisions,
+metadata edit preservation across migration reruns, 401 for missing authentication,
+503 for registered unsupported generation and 404 for an unknown profile. It also
+retains the existing coherent deployment/ordinary global-Monty acceptance.
+UI checks verify disabled unsupported actions, honest legacy readiness and
+fail-closed older API responses. Compilation against the actual cached tokenizer
+still measures 119,212 rendered tokens plus an 8,192-token reserve; this establishes
+local capacity for that tested package, not complete-library fit or cache readiness.
+
+Validation for this chat uses the operator-requested
+`/Users/ollama/brassclaw-target2` with its own lock and disk checks; it never cleans
+or locks the other chat's target. The frozen source/receipt identifies exact tested
+bytes; subsequent concurrent edits need their own applicable evidence. This slice
+changes no inference deployment and does not enable production named-prefix jobs.
+
+### Phase C storage — immutable compiler artifacts and source registry (2026-10-12)
+
+`V142__immutable_prefix_generations.sql` adds content-addressed immutable generation
+storage. It preserves legacy scope bundles as `legacy-unverified` records without
+changing serving pointers or inventing source/tokenizer/cache evidence. Compiler
+packages carry all original artifacts, source/evidence indexes, context, template
+when measured and the exact compiler manifest. The base adapter exports
+`brassclaw-prefix-generation-package/1` with canonical base64 artifacts; file export
+uses serialized atomic publication. Import validates strict JSON, complete artifact
+inventory, per-artifact hashes, the original compiler generation identity, mandatory
+source coverage, byte-identical original/evidence text and declared token capacity.
+Imported packages remain `quarantined`; integrity is not qualification or activation.
+The current import adapter accepts the supported base compiler contract only.
+
+The existing prefix facade now exposes operator-only generation list/detail/import:
+`GET/POST /api/webchat/v2/prefixes/{name}/generations` and
+`GET /api/webchat/v2/prefixes/{name}/generations/{generation}`. Exact lost-response
+retry reads the immutable prior receipt despite later profile metadata changes;
+a conflicting predecessor cannot overwrite or reinterpret the retained generation.
+The database rejects update/delete/truncate. Generation history/inspection and base
+package import use the existing Prefix tab. Client retries retain exact request
+bytes/revision and suppress duplicate dispatch; import never changes active state.
+
+Focused native acceptance is retained under
+`target/validation/prefix-registry-artifacts-jkw9aoyc/accepted.json`: actual Python
+compiler/exporter -> authenticated API -> PostgreSQL -> immutable reread; tampered
+packages and conflicting revisions rejected; lost-response retry retained; legacy
+store untouched; update/delete prevented. Route contracts and five offline compiler
+checks also pass. Two generation-history UI checks cover exact retry/deduplication
+and rejection of oversized files before reading/posting. This is storage acceptance,
+not a production generation Recipe, source qualification or activation claim.
+
+`V143__prefix_source_registrations.sql` adds immutable reference registrations and
+separate append-only observation storage. The existing facade exposes
+`GET/POST /api/webchat/v2/prefixes/{name}/sources`, with optional exact generation
+selection for its archived source inventory. HTTP(S) references preserve meaningful
+version/query/fragment identifiers; embedded credentials, recognized credential
+query fields and unsupported schemes are rejected. Exact component references bind
+UUID/version/checksum and verify immutable source bytes. Saving makes no fetch or
+model call, grants nothing and leaves collection/review pending. Duplicate identical
+registrations return the original; conflicting duplicate metadata fails.
+
+Sources opens a profile-specific panel beside Generate, with generation selection,
+separate used/registered inventories, archived originals, registration form and
+text-labelled availability. No availability is manufactured: until the check Recipe
+and trusted observation writer are qualified, checks remain explicitly unavailable.
+Registration/API/native behavior passed in the frozen receipt
+`target/validation/prefix-registry-artifacts-if58k53w/accepted.json`; that capture
+records its lint limitation explicitly. Current strict lint, native/model/storage
+and contained-Monty checks passed in
+`target/validation/prefix-registry-artifacts-87h02exi/accepted.json` and its subsequent
+storage-primitive slice `prefix-registry-artifacts-zr4r4mre/accepted.json`.
+Do not count the source-check,
+collection/review, invalidation or Redesign workflows complete from these records.
+Generation jobs, target-aware compiler qualification, per-model designs, consumer
+resolution and activation remain the subsequent required work.
+
+### Phase C model/design foundation and shared rendering (2026-10-13)
+
+`V145__prefix_model_design_records.sql` retains immutable model-configuration
+snapshots against the existing provider namespace/ID/revision history, declarative
+design proposals and separate future acceptance records. It does not seed a second
+provider catalogue or accept a design. The facade projects active Kohai/Sempai targets
+from its existing LLM configuration owner. An overridden model never inherits its
+provider's default-model context as evidence. Capture checks the exact selected
+provider revision and preserves architecture/weights/tokenizer/template/cache fields
+as Unknown until real artifact/effective-runtime evidence exists.
+
+Operator routes `GET /api/webchat/v2/prefix-model-designs`,
+`POST /api/webchat/v2/prefix-model-specifications` and
+`POST /api/webchat/v2/prefixes/{name}/design-proposals` use the existing authenticated
+facade. Proposals accept only the implemented declarative adapter/view/coverage/
+reserve options; no executable code, arbitrary compiler paths or success flags.
+They remain unaccepted. Model Designs in Prefix settings lists active targets,
+retained settings and proposal history; selection alone writes nothing. Retain
+model settings is separate from provider-assisted Generate model design, which
+remains disabled until its actual Recipe/Prefix-Maker/artifact prerequisites pass.
+
+`prefix-maker-compiler.py` now reuses the base compiler's exact evidence/token
+machinery and requires all seven BrassClaw guides plus
+`scripts/prefix/prefix-maker-reference.md`. Its source-backed authoring reference
+separates model/deployment identities, INT4 weights/attention/recurrent dtypes,
+preload/host/invocation/Recipe contexts, decoder property order, complete evidence,
+stable token construction, capacity, proposal/acceptance/activation and honest
+cache qualification. It contains no benchmark answer key or deployment operation.
+Current knowledge does not certify an unknown model architecture. Complete raw
+guides and reference stay retained; overflow fails without deleting coverage.
+`PREFIX-MAKER-USAGE.txt` provides exact Linux/macOS snapshot/compile/export commands.
+Import accepts this profile's complete integrity-checked development package as
+quarantined. `V147` fills the previously missing compiler metadata only for the
+unmodified initial registry revision; it grants no execution authority.
+
+`prefix_render.py` contains effect-free literal rendering shared by the offline
+compiler and the packaged `prefix_reference_components` PythonCode draft. The
+compiler manifest pins that renderer, shared evidence engine and profile adapter.
+Rendering uses typed, independently verified ordered source data, no imports or
+host effects, and invocation-local arrays. Its draft is not an activated component.
+Actual contained-Monty rendering checks and native model/storage acceptance passed
+in those frozen receipts. Eight focused WebUI checks cover model selection/capture,
+Sources open/selection/save and generation-import retry/limits. Do not infer a
+production generation workflow from utility evaluation or storage acceptance.
+The closed installation bootstrap owner still needs to qualify actual
+storage/tokenizer usages and the complete Recipe graph independently.
+
+Implementation direction remains Recipe-first: retain snapshot read, pure rendering,
+tokenization, immutable publication and optional model evaluation as distinct reusable
+usages. Rust may supply fixed immutable-artifact/store and tokenizer primitives.
+If retaining an external Python runtime, pin its actual interpreter/dependency closure;
+a mutable host Python pathname plus script checksums is not a retained implementation.
+Do not widen the reply-only bootstrap owner to accept generic seed labels: it verifies
+exact reply definitions, adapter and behavioral cases. Qualify the prefix usages through
+a closed subject verifier and real independent behavior, then integrate its verified
+approval into both catalogue selection and readback. Extract shared internal admission
+from existing turn admission/waiting, retain durable correlation/scope, and link prefix
+job metadata to those runs. No background wrapper around the blocking sender, new queue,
+new workflow loop or special unapproved bootstrap executor closes Gate A1.
+
+`literal-reference/v2-deduplicated` is an explicit supported development design
+option. It merges only byte-identical complete units, retains ordered original
+source/range reconstruction and renders unique neighboring qualifications intact.
+It never summarizes or drops required information. `render_map.json` is independently
+checked against actual original bytes/ranges at immutable package import, including
+CRLF and Unicode line separators. Shared-unit IDs are rendering identities, not
+document citation IDs. Default `literal-reference/v1` remains unchanged; adopting
+v2 requires explicit design selection/acceptance rather than a hidden Generate change.
+The frozen Prefix-Maker geometry comparison is retained at
+`target/validation/prefix-maker-geometry-cdi_07q2/comparison.json`: v1 measured
+120729 rendered tokens, v2 117628; both had 18 rendered probes and an 8192 reserve
+within the declared 131072 context. This comparison predates the added citation-ID
+clarification sentence; rerun for exact successor counts. It certifies local geometry
+and original reconstruction, not deployed model quality or external cache correctness.
+
+`builtin.prefix_generation` is now a concrete registered immutable-storage primitive
+with Read and Retain operations over the existing `PgPrefixGenerations` owner. It
+neither compiles nor chooses/activates a prefix. Read returns exact bytes/qualification;
+Retain returns the immutable quarantined receipt. It rejects extra/activation inputs
+before backend effects, bounds transport and fails without a wired backend instead
+of using legacy mutable storage. Canonical `prefix_generation_components` drafts
+define separate reusable usages and Recipes. Retain's revision parsing is a separate
+pure PythonCode step; binding immediately precedes its one Tool invocation. The drafts
+declare typed contracts, preload interfaces, stop-only failure semantics and ten
+command variants. Actual linked registration/schema/image verification, PostgreSQL
+backend/reread/conflict, view-v2 import, contracts and negative primitive cases passed
+in `prefix-registry-artifacts-zr4r4mre/accepted.json`. This is primitive/draft evidence,
+not association approval or actual qualified Recipe admission. Complete the closed
+bootstrap subject/behavioral producer and its catalogue selection/readback integration
+before admitting production generation jobs.
+
+The closed qualification input must be genuinely source-backed. The installation
+adapter embeds the seven actual packaged guides, archives their complete originals
+and evidence ranges, and executes the shared effect-free renderer through the
+captured Monty utility worker under supplied preparation limits. Its manifest says
+`installation-qualification-baseline`, `documentation-only`, token geometry
+unmeasured, quality unmeasured and cache unverified. It retains the actual assembly
+and renderer source identities and does **not** claim the offline compiler ran.
+This baseline qualifies storage behavior only; it cannot stand in for a complete
+approved component-library source export or a production base prefix. Never add a
+hidden fixture table, synthetic guide text or invented compiler hashes to satisfy
+an approval check.
+
+Candidate retention must compare the exact packaged Tool, Skill, PythonCode,
+ToolSkill and canonical Recipe documents after immutable storage, compile the typed
+`selected` variant and inspect its exports using the captured worker. Initialize
+only missing native Tool settings; preserve an existing operator block. Candidate
+retention itself neither approves nor changes active routing. Shared contained
+admission/transport/settlement mechanics may be reused from reply qualification,
+while each usage retains its separate behavior oracle and closed producer identity.
+
+Retain qualification executes the pure decimal preparation at `0:1` **and** its
+one actual storage dispatch at `0:3`; Read dispatches at `0:2`. Verify complete
+SQL-reread bytes, immutable duplicate receipt/timestamp, malformed package rejection,
+predecessor conflict, live-policy denial and zero dispatches on invalid decimal
+preparation. Read covers exact bytes, missing/malformed identity and live-policy
+denial. Check the actual invocation journal, one initial attempt, settlement and
+unchanged active catalogue/legacy serving selection. Development checks cannot
+substitute for committed producer evidence. Persist a subject-specific Q1 intent
+before behavioral effects, retain actual observations and exact association approval,
+and independently verify the durable rows on readback; incomplete intents require
+reconciliation, never automatic case replay.
+
+The retained Tool-parameter parser must preserve genuine omission separately from
+Recipe consumer defaults. A Tool can expose optional operation-specific parameters
+without supplying null or a synthetic default. Keep the ordinary task/step input
+constructor's required-default rule; use the distinct Tool-parameter constructor
+only when preparing the registered Tool contract. Supplied null/invalid/undeclared
+arguments still fail, declared defaults are validated and materialized only for
+missing values, and cross-parameter inequalities fail if a supplied operand's
+required comparison target is absent. Do not work around this gap by assigning
+multiple stable Tool identities or incompatible per-usage Tool revisions to the
+same native primitive.
+
+The current catalogue's combination-coverage check does not cover standalone pure
+Recipe components through a Skill association. Add narrowly scoped canonical-workflow
+coverage for Retain's exact formatter only after the complete selected packaged
+Recipe has matched its committed qualification subject. Reusing the storage Skill
+elsewhere does not qualify another Recipe's pure code. Do not add a generic pure-code
+exemption or accept arbitrary records labeled `system_seed`.
+
+Installation qualification groundwork is implemented and checked in
+`target/validation/prefix-registry-artifacts-anxaw5bg/accepted.json` (immutable source
+`prefix-registry-source-rqhphieu`, captured matching worker and native test binaries).
+The installation retains both exact Read/Retain candidates and the actual linked
+native Tool definition without activating them; existing Tool blocks remain intact.
+Shared admission/transport/settlement and immutable proof-storage mechanics are reused
+with the reply qualifier, whose ordinary matched/No-Match regression also passed.
+The closed installation-owned generation proof producer now commits both exact
+usage approvals before runtime readiness. It records subject-specific Q1 intent
+before effects, executes Retain's parser/storage and Read through real contained
+Monty and PostgreSQL, atomically retains behavior/association records and verifies
+the complete readback. Existing committed proof is reused without another dispatch;
+partial qualification requires reconciliation rather than automatic replay. Coverage
+of Retain's formatter is restricted to its exact canonical workflow. Candidate
+retention and usage qualification do not activate a generation/compiler job.
+
+The stronger producer passed in
+`target/validation/prefix-registry-artifacts-dtr9ngal/accepted.json` (source
+`prefix-registry-source-aibwq6cr`, matching captured worker/test binaries, target2).
+Expected rejections must be Python failures from the same Ready worker/root and the
+expected Start or ResumeHost command, not a timeout, crash or unrelated transport
+failure. Readback counts all run invocations and rejects another Recipe's dispatch.
+The malformed submitted package's SHA must be absent before and after the cases
+and on committed readback. The actual journal, exact arguments/answers, initial
+attempt, full baseline bytes and immutable duplicate receipt/timestamp are checked.
+Serving selection remains unchanged. Canonical preparation/coverage, startup-owned profile registration, complete legacy
+archive and domain procedure checks subsequently passed in
+`target/validation/prefix-registry-artifacts-iga3n4b4/accepted.json` (source
+`prefix-registry-source-0jef7hzv`). The exact Read/Retain Recipes prepare through the
+real catalogue owner; a different Recipe cannot borrow the formatter's coverage.
+The native Tool now uses its ordinary registered catalogue UUID throughout candidate
+retention, approvals and live-policy lookup. Registration metadata remains pending;
+its label does not supply approval and creates no installed human-Q2 requirement.
+Do not infer full compiler-job admission from this storage-usage acceptance.
+
+The general retained Tool parser now has a distinct
+`InputContract::tool_parameters_from_value` path. Omitted optional parameters stay
+absent; no null/default is fabricated. Ordinary Recipe consumer-input parsing still
+requires its declared default. Contract regressions, registered capability inventory,
+strict affected-package lint, real native workflows and offline compiler checks pass.
+The pure renderer searches literal spans/control markers instead of iterating every
+ordinary character. The preserved renderer independently establishes identical bytes
+on all seven guides and edge cases; `render-equivalence.json` records the source and
+output hashes. Full-guide contained Monty now completes in approximately 5.8 seconds,
+where the prior implementation exhausted its 30-second deadline. This is rendering
+performance evidence, not a model/cache-quality claim. Validation workers derive a
+finite frame from the complete encoded baseline, align their value bound to that frame
+and account for both frame buffers and adapter headroom within their existing physical
+ceiling; no instance memory or deployment setting is changed.
+
+Offline base and Prefix-Maker packages now retain the complete compiler entry,
+shared evidence helper, renderer and profile-adapter bytes alongside their hashes.
+They reject a procedure change during compilation before publication. Their explicit
+`unqualified-development-process` attestation records that byte retention is not
+trusted execution or production worker qualification. The same accepted snapshot
+checks actual source bytes, immutable imports, real catalogue export and local
+cached-tokenizer geometry; it does not establish the serving tokenizer's identity.
+
+Legacy import must preserve all current compatibility-row fields, not merely bundle
+text/scope. Forward migration V152 archives `to_jsonb(original_row)` with a v2 legacy
+contract while retaining V142's immutable historical partial records. It neither
+invents previously omitted historical fields nor changes any serving pointer,
+operator profile label/revision or qualification. Its existing-configuration
+migration fixture and repeated-import behavior passed in the same accepted snapshot,
+including every original field, operator metadata and unchanged serving generation.
+Startup explicitly retains the six first-party profile definitions before qualification,
+independently of WebUI construction, and preserves existing labels, compiler entries
+and revisions. Repeated retention does not create generation/readiness evidence.
+
+The new `prefix_build_worker.py` development interface consumes a bounded
+`brassclaw-prefix-build-request/1` byte frame: exact source manifest/artifacts,
+fixed base/Prefix-Maker profile, supported declarative view/reserve and an optional
+local tokenizer target. It accepts no compiler pathname, provider, collection,
+deployment or activation instructions. Sources are checked and materialized only in
+an isolated temporary directory; complete output is returned as an immutable package,
+never a partially published generation. The actual protocol worker bytes/checksum are
+retained in its compiler provenance. Target tokenization currently permits only the
+registered `hf-qwen2-fast/1` adapter, local artifact names and no remote mappings or
+external file references. Other adapters require implementation/qualification.
+
+Independent CLI reproduction and network-denied source-only checks pass locally for
+both supported profiles. The actual downloaded model config/tokenizer originals are
+retained at `target/validation/prefix-model-source-cacik5n7/provenance.json`; they came
+from a read-only copy of the registered model host snapshot, not invented metadata.
+Nine domain compiler regressions pass using those files, including a roughly 99k-token
+stable prefix and preservation after a failed rebuild. The shared `prefix_procedure.py`
+helper now preserves entry/helper bytes and source-change rejection for Defensive,
+Home Assistant, tomedo and Sempai. Their legacy artifact formats and worker adapters
+still need full shared-engine migration; byte preservation does not establish parity.
+
+The byte worker is a development interface, not a registered qualified runtime Tool:
+complete procedure/dependency/interpreter retention, resource/cancellation enforcement,
+actual native dispatch, durable job inputs/correlation and closed behavioral approval
+remain required before the Generate action may call it. The generic storage importer
+checks an optional worker checksum against retained bytes and rejects an undeclared
+worker artifact. Production model input/specification ownership must preserve tokenizer
+and configuration originals independently of every prefix package; do not duplicate
+large tokenizer files per generation or substitute a stored hash for retained bytes.
+
+Generation jobs must reuse the existing host-selected `TaskEntry::InternalRecipe`
+transport and global Monty service. The worker wire protocol is now 15; capture and
+use the worker from the same build. Public user text cannot select this private
+entry. Implement the exact internal prefix-job resolver/owner and durable job
+correlation; do not add a second queue, VM or public-command fallback. Check the
+actual durable invocation JSON limits as well as the primitive's 64 MiB transport
+ceiling before approving large package Read/Retain execution; technical failures
+must preserve evidence rather than silently clip artifacts.
+
+Runtime admission is factored into the existing `admit_user_message_internal` boundary;
+the blocking caller retains its send lock and completion/history hooks. Matched and
+No-Match global-Monty regression passes with retained VM identity. Durable internal
+scope/correlation retention, asynchronous admission API and prefix job references still
+need implementation; the existing ephemeral one-shot scope map is not recovery authority.
+
+### Phase C continuation — large values, model originals and Recipe compiler (2026-10-15)
+
+The accepted `target/validation/prefix-registry-artifacts-zjnchvho/accepted.json`
+freeze exercises a real approximately 10 MiB source package through typed Monty,
+registered generation dispatch, PostgreSQL invocation persistence and immutable
+reread. V154 widens the invocation data columns to their finite 64 MiB transport
+capacity. V155, supplied by the shared resource owner, retains each invocation's
+admitted data limits; preserve that contract rather than replacing it with a new
+hardcoded limit. Immutable schema/revision document limits remain separate. These
+checks establish large-data custody, not complete-catalogue quality or activation.
+
+V157 adds content-addressed model artifact sets and exact specification bindings.
+The operator API imports original model configuration/tokenizer/template files;
+the server derives checksums and authenticated provenance, deduplicates identical
+sets, and exposes immutable originals separately from the small metadata catalogue.
+The model-design panel accepts fixed artifact filenames for the selected exact
+specification and coalesces duplicate submissions. Stored originals do not identify
+the running server or qualify a model design. Native database/route acceptance passes in
+`target/validation/prefix-registry-artifacts-icy572v0/accepted.json`, together with
+four focused browser-module tests. This freeze preserves a previously compiling
+merged dependency snapshot plus the upload-ceiling changes; it does not certify
+newer concurrently edited resource code. The accepted prefix implementation bytes
+still match the workspace at that receipt. The real
+40 MiB import exposed an outer-ingress mismatch: the route declared 64 MiB while
+the default outer cap was 14 MiB. The default now matches 64 MiB; smaller route
+limits and explicit operator-configured smaller ceilings remain enforced, with
+focused ingress checks. Do not solve this by disabling body limits. Preserve
+V151/V153 embedding changes and V155/V156 resource/Tool-identity changes owned by
+parallel work; migration numbers must remain unique.
+
+Source-only compilation is now being expressed as reusable class-22 components,
+not as a specialized Rust compiler workflow. `prefix_compiler_components.rs`
+packages an effect-free section library, the existing literal renderer, a compiler
+library and five small typed stages. `source_compile_recipe_draft` sequences:
+
+1. Validate the exact positive profile revision using the existing formatter.
+2. Prepare the complete pinned source snapshot in PythonCode.
+3. Invoke the reusable JSON-Tool UTF-8 SHA-256 usage, then prepare references.
+4. Hash evidence identities, then render the literal or deduplicated reference.
+5. Hash the complete artifacts, then construct their identity.
+6. Hash that identity, then finalize the immutable package.
+7. Invoke the existing immutable Retain usage once.
+8. Format that actual quarantined result into an internal-task receipt; the job
+   owner must verify its correlated durable row and dispatch/effect settlement.
+
+Every independent Tool dispatch has its own immediate ToolSkill/PythonCode pair.
+The `sha256_utf8` JSON primitive hashes one ordered finite batch without filesystem,
+network or workflow decisions. It preserves UTF-8, newlines, ordering and duplicate
+values. The canonical digest Skill/Recipe is reusable outside prefix compilation.
+The five compiler stages perform JSON/Base64/formatting in Monty and never call a
+Tool. `prefix_units.py` is shared with the offline compiler; all affected compiler
+procedures retain its original bytes and checksum. CPython oracle checks cover
+both profiles and both reference views; actual Monty and retained-graph checks
+remain required before qualifying these drafts.
+
+This first Recipe produces **source-only, unmeasured, quarantined** base/Prefix-Maker
+packages. It does not implement source collection, target tokenization, accepted
+model designs, provider selection, jobs, composites or activation. More than 8192
+strings in one digest batch currently fails the technical operation bound; implement
+qualified Recipe batching before claiming arbitrarily large complete-library builds.
+Do not omit source rows/units to fit that operation. Complete procedures in the input
+snapshot must come from the selected retained code graph, not caller-supplied claims
+about which code ran. The generation importer checks retained procedure links but
+cannot turn arbitrary caller bytes into trusted execution provenance.
+
+See [Recipe-owned source compiler](../reborn/prefix-source-compiler.md) for the
+component/input/receipt contract. Development acceptance now covers the complete
+preloaded compiler graph, exact CPython/SHA oracle agreement, actual registered
+hash/storage calls, duplicate publication, missing mandatory source rejection and
+live policy blocking. These checks do not manufacture bootstrap approval or enable
+admission. The preload interface forbids Python default arguments: the shared unit
+helper takes both arguments explicitly, while its typed public contract supplies the
+`.md` default. Recursive result fields must declare requiredness, and producer
+constraints must guarantee their consumer's bounds before the first effect.
+
+Model artifact originals also expose a separate capacity hazard: the imported
+`tokenizer.json` configures 1024-token backend truncation. A direct low-level encoder
+inherits that setting; it is not the model's context limit. The existing HF probe
+path validates the complete decoded leading reference, so a truncated probe cannot
+qualify it. Any new tokenizer adapter must explicitly disable truncation/padding,
+retain those effective settings and check the entire rendered request, including
+its tail and task/output reserve. Keep model architecture capacity, configured
+provider context, tokenizer defaults and runtime cache layout as distinct evidence.
+Untruncated raw guide-only views measured about 115k–120k tokens in a development
+probe; that is not full catalogue coverage or a serving/cache qualification.
+
+The same accepted freeze passes the complete source compiler through preloaded
+Monty, registered native dispatch and real PostgreSQL; its output equals the
+independent CPython/SHA oracle exactly. It also passes large-value persistence,
+existing catalogue activation/export, model artifact import/readback/deduplication,
+legacy/profile/Tool identity preservation, tokenizer-aware offline workers and all
+four domain regression suites. Q1/approval and durable Generate admission remain
+open. A neutral `SourceCompilerIds`/`source_compiler_drafts` factory is now being
+introduced so installation and behavioral checks use one component-definition
+source, retaining the existing canonical Retain usage rather than copying it.
+
+Installation candidate retention, canonical JSON-list command parsing, exact
+retained subgraph selection and preservation of an existing JSON Tool identity/
+operator block pass in `target/validation/prefix-registry-artifacts-_knynqqf/accepted.json`.
+The factory now supplies both source and digest candidates without claiming approval
+or activation. Source tasks pin their own complete dependency closure; unrelated
+canonical Recipes are not carried into the task manifest. Captured command strings
+are parsed by explicit pure PythonCode into typed lists, never implicit coercion or
+source substitution. JSON usages share a typed JSON-text transport while the native
+primitive preserves structured-call compatibility.
+
+The archive correction passes before qualification in
+`target/validation/prefix-registry-artifacts-e6fzt2b9/accepted.json`: older output
+`sources.json` retained input-package object names although generation originals
+live under `raw/<hash>`. New `brassclaw-prefix-generation-sources/1` inventories
+name actual archive files and pin `input_artifact`: the exact canonical Monty source
+snapshot or exact offline input-manifest bytes. All builds retain their actual
+profile frame/design, including literal-v1 base builds. Validate original/output
+metadata, evidence identities/ranges/counts and reject re-signed contradictory
+links; preserve legacy input-namespace manifests without rewriting old generations.
+An input manifest changed during compilation must leave the last good generation
+and publication state intact. This is evidence integrity, not model/cache quality.
+
+The internal-task adapter now has an explicit host-owned selection contract and
+receipt verification hook. The bounded development observer runs the actual
+packaged global Python root and its normal Recipe flow; Rust no longer needs to
+repeat the compiler's step order or input wiring in that acceptance test. The
+observer supplies no approval and is not a second production execution service.
+Its negative checks must identify the original contained Python rejection,
+expected invocation/ResumeHost origin (including cooperative ResumeControl for
+long pure execution), unchanged Ready root and actual Tool answer;
+a crash, timeout or framing failure is not the expected rejection. Successful
+completion additionally checks immutable PostgreSQL package bytes and the native
+Retain answer against the returned receipt. Shutdown/reaping precedes closing the
+private validation claim, including error paths. Ordinary chat completion still
+requires its verified reply, while internal completion requires its verified
+receipt. The exact installed source graph and this internal Python execution path pass in
+`target/validation/prefix-registry-artifacts-bq4q3hc0/accepted.json`. That receipt
+is explicitly scoped to the native integration test, not the whole validation
+suite or later source edits. It covers exact package/oracle agreement, duplicate
+retention, missing-guide rejection, live policy blocking and run-wide SQL records
+matching the observed argument/answer fingerprints, selection and attempt count.
+An intended pure rejection may follow a cooperative compute-slice yield; requiring
+only the initial Start command would incorrectly reject that valid observation.
+These checks do not enable Generate.
+
+Validation builds for this work use only `/Users/ollama/brassclaw-target2`.
+Immutable source captures preserve concurrent changes without changing the other
+chat's target or reserving shared build windows. A preserved dependency freeze
+cannot establish compatibility with newer shared interfaces: capture the current
+merged code when those interfaces change and report its actual check results.
+The compiler oracle's transport capacity must use the largest individual exchange,
+not the concatenation of all independently saved oracle stages.
+
+The same complete validation freeze passes the independent closed-fixture oracle
+for both profiles and render formats, including exact shared-unit origin maps,
+complete originals/procedures, historical-source exclusion and rejection of a
+coherently re-signed different frame. Its small synthetic originals qualify no
+domain knowledge or model behavior. The native fixture-matrix producer/readback
+checks are now being added as a separate development slice: four profile/view
+successes, duplicate retention, missing guide, blocked Tool and invalid revision.
+They must compare all invocation rows for each run with the actual observations,
+recompute UTF-8 digests independently, reread immutable original packages and
+receipts, and reject altered proof records in a coherent database transaction.
+These tests create neither installation approval nor catalogue activation. Add
+the closed Q1-intent/behavior/approval writer only after those checks pass; incomplete
+qualification intents require reconciliation without automatic effect replay.
+
+Next, qualify the exact compiler graph through the existing installation owner,
+with real positive/negative behavior and durable dispatch receipts. Reuse the global
+`InternalRecipe` entry and retained execution/settlement owners for asynchronous
+Generate admission; do not copy the review executor or create a second VM/job loop.
+Only after those checks may the corresponding Generate action be enabled. Keep
+first-party integrity/bootstrap evidence distinct from authored human-Q2 review.
 
 ### Phase C1 — Sempai reference, review packet and component proposals
 

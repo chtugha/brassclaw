@@ -2,6 +2,7 @@
 pub(crate) mod backend;
 mod delivery;
 mod ports;
+mod reconciliation;
 use crate::RebornBuildError;
 use brassclaw_engine::{
     executor::{retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram},
@@ -17,7 +18,7 @@ use brassclaw_skills::{
     component_revision::ComponentRevisionDraft,
     revision_store::PgComponentRevisionStore,
 };
-pub(crate) use delivery::{ReviewOwner, ReviewSource};
+pub(crate) use delivery::{ReviewOwner, ReviewSource, reconcile_attempt};
 use serde_json::json;
 use std::{path::Path, sync::Arc};
 fn invalid(reason: impl Into<String>) -> RebornBuildError {
@@ -36,10 +37,18 @@ impl Package {
     pub(crate) async fn boot(
         pool: Arc<PgPool>,
         worker: &Path,
+        preparation: brassclaw_monty_host::utility::UtilityLimits,
     ) -> Result<Arc<Self>, RebornBuildError> {
-        let image = NativeExecutableImage::capture(1024 * 1024 * 1024)
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
+        let image = NativeExecutableImage::capture_with_verification(
+            preparation.max_native_artifact_bytes,
+            brassclaw_host_runtime::NativeVerificationLimits::new(
+                preparation.bounds.max_stdout_bytes,
+                preparation.process.response_timeout,
+            )
+            .map_err(|error| invalid(error.to_string()))?,
+        )
+        .await
+        .map_err(|e| invalid(e.to_string()))?;
         let ids = ReviewComponents {
             recipe: crate::installed_monty_catalogue::id("review:recipe"),
             prepare_request: crate::installed_monty_catalogue::id("review:formatter"),
@@ -103,9 +112,13 @@ impl Package {
             .map_err(|e| invalid(e.to_string()))?,
         );
         let inspected = Arc::new(
-            InspectedRetainedProgram::inspect(RetainedProgram::Tools(program), worker)
-                .await
-                .map_err(|e| invalid(e.to_string()))?,
+            InspectedRetainedProgram::inspect_with_limits(
+                RetainedProgram::Tools(program),
+                worker,
+                preparation,
+            )
+            .await
+            .map_err(|e| invalid(e.to_string()))?,
         );
         let selection = inspected
             .program()

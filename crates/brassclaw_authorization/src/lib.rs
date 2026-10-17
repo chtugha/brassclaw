@@ -37,10 +37,10 @@ use chrono::Utc;
 const CAS_RETRY_ATTEMPTS: usize = 3;
 use brassclaw_host_api::{
     AgentId, CapabilityDescriptor, CapabilityGrant, CapabilityGrantId, Decision, DenyReason,
-    EffectKind, ExecutionContext, HostApiError, InvocationFingerprint, InvocationId, NetworkPolicy,
-    Obligation, Obligations, Principal, ProjectId, ResourceCeiling, ResourceEstimate,
-    ResourceScope, RuntimeCredentialRequirementSource, RuntimeKind, SandboxQuota, ScopedPath,
-    TenantId, ThreadId, UserId,
+    DispatchAuthorityModel, EffectKind, ExecutionContext, HostApiError, InvocationFingerprint,
+    InvocationId, NetworkPolicy, Obligation, Obligations, Principal, ProjectId, ResourceCeiling,
+    ResourceEstimate, ResourceScope, RuntimeCredentialRequirementSource, RuntimeKind, SandboxQuota,
+    ScopedPath, TenantId, ThreadId, UserId,
 };
 use brassclaw_trust::{AuthorityCeiling, TrustDecision};
 use serde::{Deserialize, Serialize};
@@ -54,6 +54,12 @@ use thiserror::Error;
 /// here rather than embedded directly in wire-shaped execution contexts.
 #[async_trait]
 pub trait TrustAwareCapabilityDispatchAuthorizer: Send + Sync {
+    /// Immutable host wiring contract used by adapters to construct a context.
+    /// Disabling operation approval alone does not remove grant requirements.
+    fn dispatch_authority_model(&self) -> DispatchAuthorityModel {
+        DispatchAuthorityModel::ScopedGrants
+    }
+
     /// Authorize a dispatch using both explicit grants/leases and the
     /// policy-derived authority ceiling.
     async fn authorize_dispatch_with_trust(

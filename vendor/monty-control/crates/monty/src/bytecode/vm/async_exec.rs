@@ -209,6 +209,65 @@ impl<'h> VM<'h> {
         }
     }
 
+    /// BrassClaw scheduler primitive: extend the current child's owning group,
+    /// or reuse a completed slot. Never replace a running sibling, detach a
+    /// task, alter its waiter, or operate on another group's awaitable.
+    pub(crate) fn replace_gather_sibling(&mut self, slot: usize, coroutine_id: HeapId) -> RunResult<()> {
+        let Some(current) = self.scheduler.current_task_id() else {
+            return Err(SimpleException::new_msg(ExcType::RuntimeError, "no executing gather child").into());
+        };
+        let Some(Awaiter::GatherSlot { gather: gather_id, .. }) = self.scheduler.get_task_mut(current).awaiter.as_ref()
+        else {
+            return Err(SimpleException::new_msg(ExcType::RuntimeError, "no executing gather child").into());
+        };
+        let gather_id = *gather_id;
+        let HeapReadOutput::Coroutine(coroutine) = self.heap.read(coroutine_id) else {
+            return Err(ExcType::type_error("a new coroutine is required"));
+        };
+        if coroutine.get(self.heap).state != CoroutineState::New {
+            return Err(ExcType::cannot_reuse_already_awaited_coroutine());
+        }
+        drop(coroutine);
+        let HeapReadOutput::GatherFuture(mut gather) = self.heap.read(gather_id) else {
+            return Err(SimpleException::new_msg(ExcType::RuntimeError, "owning gather is unavailable").into());
+        };
+        let group = gather.get(self.heap);
+        let Some(awaited) = group.as_awaited() else {
+            return Err(SimpleException::new_msg(ExcType::RuntimeError, "owning gather is not pending").into());
+        };
+        if slot > group.items.len() {
+            return Err(ExcType::value_error("gather slot is outside the group"));
+        }
+        if slot < group.items.len() && awaited.results[slot].is_none() {
+            return Err(SimpleException::new_msg(ExcType::RuntimeError, "gather slot is still running").into());
+        }
+        // spawn validates uniqueness and identity exhaustion before acquiring
+        // references. No catchable rejection after this point mutates the group.
+        if self
+            .scheduler
+            .spawn(self.heap, coroutine_id, Some(gather_id))?
+            .is_none()
+        {
+            return Err(ExcType::cannot_reuse_already_awaited_coroutine());
+        }
+        self.heap.inc_ref(coroutine_id);
+        let group = gather.get_mut(self.heap);
+        if slot == group.items.len() {
+            group.items.push(coroutine_id);
+            let awaited = group.as_awaited_mut().expect("validated awaited gather");
+            awaited.results.push(None);
+            awaited.pending_children.insert(coroutine_id, smallvec![slot]);
+        } else {
+            let old = mem::replace(&mut group.items[slot], coroutine_id);
+            let awaited = group.as_awaited_mut().expect("validated awaited gather");
+            let old_result = awaited.results[slot].take().expect("validated completed slot");
+            awaited.pending_children.insert(coroutine_id, smallvec![slot]);
+            old_result.drop_with(self);
+            Value::Ref(old).drop_with(self);
+        }
+        Ok(())
+    }
+
     /// Commits `frame`'s items left-to-right into result slots or pending
     /// children, spawning coroutine children and installing awaiters on
     /// external futures as it goes.
@@ -449,6 +508,8 @@ impl<'h> VM<'h> {
         // Drop cleanup: that continuation still owns the loaded coroutine.
         self.heap.tracker.set_execution_context(None);
 
+        self.heap.tracker.retire_execution_context(task_id.raw())?;
+
         if self.resume_after_task_exit(delivery)? {
             Ok(AwaitResult::FramePushed)
         } else {
@@ -480,6 +541,7 @@ impl<'h> VM<'h> {
         self.cleanup_current_task();
         self.heap.tracker.set_execution_context(None);
         self.scheduler.cancel_task(task_id, self.heap);
+        self.heap.tracker.retire_execution_context(task_id.raw())?;
         self.resume_after_task_exit(delivery)?;
         Ok(())
     }

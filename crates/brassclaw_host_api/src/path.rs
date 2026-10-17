@@ -34,7 +34,7 @@ impl HostPath {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VirtualPath(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -189,11 +189,36 @@ impl VirtualPath {
         &self.0
     }
 
+    /// Canonical addressable prefixes, root first and this leaf last.
+    /// Borrows the validated path without materializing every ancestor string.
+    /// Multi-segment roots never expose an unaddressable parent such as /system.
+    pub fn prefixes(&self) -> impl Iterator<Item = &str> + '_ {
+        self.0
+            .match_indices('/')
+            .skip(1)
+            .map(|(offset, _)| &self.0[..offset])
+            .chain(std::iter::once(self.as_str()))
+            .filter(|prefix| {
+                VIRTUAL_ROOTS.iter().any(|root| {
+                    *prefix == *root
+                        || prefix
+                            .strip_prefix(*root)
+                            .is_some_and(|tail| tail.starts_with('/'))
+                })
+            })
+    }
+
     pub(crate) fn join_tail(&self, tail: &str) -> Result<Self, HostApiError> {
         if tail.is_empty() {
             return Ok(self.clone());
         }
         Self::new(format!("{}/{}", self.0.trim_end_matches('/'), tail))
+    }
+}
+
+impl std::borrow::Borrow<str> for VirtualPath {
+    fn borrow(&self) -> &str {
+        self.as_str()
     }
 }
 
@@ -346,4 +371,35 @@ fn looks_like_windows_path(value: &str) -> bool {
 
 pub(crate) fn path_matches_alias(alias: &str, path: &str) -> bool {
     path == alias || path.starts_with(&format!("{alias}/"))
+}
+
+#[cfg(test)]
+mod prefix_tests {
+    use super::VirtualPath;
+    #[test]
+    fn prefixes_are_borrowed_canonical_and_stop_at_known_roots() {
+        for (text, expected) in [
+            (
+                "/projects/a/b",
+                vec!["/projects", "/projects/a", "/projects/a/b"],
+            ),
+            (
+                "/system/settings/ü",
+                vec!["/system/settings", "/system/settings/ü"],
+            ),
+            (
+                "/system/extensions/item",
+                vec!["/system/extensions", "/system/extensions/item"],
+            ),
+            ("/system/skills", vec!["/system/skills"]),
+        ] {
+            let path = VirtualPath::new(text).unwrap();
+            assert_eq!(path.prefixes().collect::<Vec<_>>(), expected);
+            let map = std::collections::HashMap::from([(path.clone(), 7)]);
+            assert_eq!(map.get(path.as_str()), Some(&7));
+        }
+        // Count a long valid path lazily, rather than copying all its ancestors.
+        let path = VirtualPath::new(format!("/projects/{}leaf", "a/".repeat(4_096))).unwrap();
+        assert_eq!(path.prefixes().count(), 4_098);
+    }
 }

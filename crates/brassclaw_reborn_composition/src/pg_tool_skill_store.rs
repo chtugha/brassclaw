@@ -98,6 +98,9 @@ impl PgToolSkillStore {
         Self { pool }
     }
 
+    /// Store the caller's requested review state exactly. A system source label
+    /// never promotes pending metadata. This legacy projection is not v3 approval;
+    /// installation bootstrap and authored qualification retain separate evidence.
     /// Insert a new tool_skill row idempotently.
     ///
     /// On a `(tenant_id, user_id, agent_id, project_id, name)` conflict the row
@@ -123,7 +126,7 @@ impl PgToolSkillStore {
                      consumer_tags, intent_examples, source, validation_status,
                      includes, content_checksum)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-                         CASE WHEN $15 = 'system' THEN 'validated' ELSE $16 END,$17,$18)
+                         $16,$17,$18)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",

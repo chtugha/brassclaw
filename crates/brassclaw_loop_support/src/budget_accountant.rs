@@ -106,6 +106,9 @@ pub struct GovernorBackedAccountant {
 struct InFlightReservation {
     id: ResourceReservationId,
     estimate: ResourceEstimate,
+    retained_usage: Option<ResourceUsage>,
+    retained_response: Option<LoopModelResponse>,
+    retained_request: Option<ModelWorkRequest>,
 }
 
 impl std::fmt::Debug for GovernorBackedAccountant {
@@ -337,6 +340,9 @@ impl GovernorBackedAccountant {
             InFlightReservation {
                 id: reservation_id,
                 estimate: estimate.clone(),
+                retained_usage: None,
+                retained_response: None,
+                retained_request: None,
             },
         );
         match self
@@ -349,6 +355,9 @@ impl GovernorBackedAccountant {
                     InFlightReservation {
                         id: outcome.reservation.id,
                         estimate,
+                        retained_usage: None,
+                        retained_response: None,
+                        retained_request: None,
                     },
                 );
                 if !outcome.warnings.is_empty() {
@@ -451,7 +460,11 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
         context: &LoopRunContext,
         request: &ModelWorkRequest,
     ) -> Result<(), LoopModelGatewayError> {
-        self.reserve_estimate(context, self.estimate_for(request))
+        self.reserve_estimate(context, self.estimate_for(request))?;
+        if let Some(mut entry) = self.in_flight.get_mut(&context.run_id) {
+            entry.retained_request = Some(request.clone());
+        }
+        Ok(())
     }
 
     async fn post_model_work(
@@ -547,6 +560,16 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
                     &response.effective_model_profile_id,
                     &self.default_cost,
                 );
+                let usage = {
+                    let mut retained = self
+                        .in_flight
+                        .get_mut(&context.run_id)
+                        .expect("reservation retained during model accounting");
+                    retained
+                        .retained_response
+                        .get_or_insert_with(|| response.clone());
+                    retained.retained_usage.get_or_insert(usage).clone()
+                };
                 self.governor.reconcile(reservation_id, usage).map(|_| ())
             }
             ModelCallOutcome::Failure(_) => self.governor.release(reservation_id).map(|_| ()),
@@ -571,6 +594,54 @@ impl LoopModelBudgetAccountant for GovernorBackedAccountant {
                 .unwrap_or_else(|reason| panic!("internal summary invariant violated: {reason}")))
             }
         }
+    }
+
+    async fn reconcile_retained_model_work(
+        &self,
+        context: &LoopRunContext,
+        request: &ModelWorkRequest,
+        response: &LoopModelResponse,
+    ) -> Option<Result<(), LoopModelGatewayError>> {
+        // Only the isolated owner may call this after actual host quiescence.
+        let entry = self.in_flight.get(&context.run_id)?.clone();
+        if entry.retained_request.as_ref() != Some(request)
+            || entry
+                .retained_response
+                .as_ref()
+                .is_some_and(|original| original != response)
+        {
+            return Some(Err(LoopModelGatewayError::new(
+                AgentLoopHostErrorKind::BudgetAccountingFailed,
+                "retained accounting evidence differs",
+            )
+            .expect("classified summary")));
+        }
+        let usage = entry.retained_usage.unwrap_or_else(|| {
+            usage_for_response(
+                response,
+                &entry.estimate,
+                self.cost_table.as_ref(),
+                &response.effective_model_profile_id,
+                &self.default_cost,
+            )
+        });
+        {
+            let mut retained = self.in_flight.get_mut(&context.run_id)?;
+            retained.retained_usage = Some(usage.clone());
+            retained.retained_response = Some(response.clone());
+        }
+        let result = self.governor.reconcile_retained(entry.id, usage)?;
+        Some(match result {
+            Ok(_) => {
+                self.in_flight.remove(&context.run_id);
+                Ok(())
+            }
+            Err(_) => Err(LoopModelGatewayError::new(
+                AgentLoopHostErrorKind::BudgetAccountingFailed,
+                "retained accounting unresolved",
+            )
+            .expect("classified summary")),
+        })
     }
 
     /// Synchronous best-effort release for cancellation paths.
@@ -758,6 +829,74 @@ mod tests {
     use chrono::Utc;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
+
+    #[tokio::test]
+    async fn retained_model_accounting_recovers_unknown_commit_without_double_charge() {
+        let governor = Arc::new(InMemoryResourceGovernor::new());
+        let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(ZeroCostTable));
+        let context = run_context();
+        let work = ModelWorkRequest::for_assistant(&context, &sample_request());
+        accountant.pre_model_work(&context, &work).await.unwrap();
+        let response = LoopModelResponse {
+            chunks: vec![],
+            safe_reasoning_deltas: vec![],
+            output: brassclaw_turns::run_profile::ParentLoopOutput::AssistantReply(
+                brassclaw_turns::run_profile::AssistantReply {
+                    content: "observed".into(),
+                },
+            ),
+            effective_model_profile_id: context.resolved_run_profile.model_profile_id.clone(),
+            usage: None,
+        };
+        let entry = accountant.in_flight.get(&context.run_id).unwrap().clone();
+        let actual = usage_for_response(
+            &response,
+            &entry.estimate,
+            accountant.cost_table.as_ref(),
+            &response.effective_model_profile_id,
+            &accountant.default_cost,
+        );
+        // Simulate a committed settlement whose acknowledgement was lost.
+        governor.reconcile(entry.id, actual.clone()).unwrap();
+        assert!(
+            accountant
+                .post_model_work_result(&context, &work, ModelCallOutcome::Success(&response))
+                .await
+                .is_err()
+        );
+        assert!(accountant.in_flight.contains_key(&context.run_id));
+        let mut changed = response.clone();
+        changed
+            .safe_reasoning_deltas
+            .push("different response".into());
+        assert!(
+            accountant
+                .reconcile_retained_model_work(&context, &work, &changed)
+                .await
+                .unwrap()
+                .is_err()
+        );
+        let mut changed_work = work.clone();
+        changed_work.estimated_input_tokens += 1;
+        assert!(
+            accountant
+                .reconcile_retained_model_work(&context, &changed_work, &response)
+                .await
+                .unwrap()
+                .is_err()
+        );
+        accountant
+            .reconcile_retained_model_work(&context, &work, &response)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!accountant.in_flight.contains_key(&context.run_id));
+        let account = ResourceAccount::tenant(context.scope.tenant_id.clone());
+        assert_eq!(
+            governor.usage_for(&account).input_tokens,
+            actual.input_tokens
+        );
+    }
 
     fn run_context() -> LoopRunContext {
         let scope = TurnScope::new(

@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -20,6 +20,10 @@ use monty_types::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+#[path = "global_dependents.rs"]
+mod dependents;
+pub use dependents::DependentWorkerObservation;
 
 use crate::{
     ContinuationKey, HOST_TYPE, HostAnswer, HostRequest, VmBounds, VmError, VmFailure, call_values,
@@ -42,6 +46,125 @@ pub struct GlobalBounds {
     pub values: VmBounds,
     pub workers: u32,
     pub max_pending_calls: usize,
+}
+
+/// Actual root occupancy, independent of queued tasks and child contexts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PendingCallCapacity {
+    pub limit: u32,
+    pub pending: u32,
+    pub withheld: u32,
+    pub minimum: u32,
+}
+
+/// Observed scheduler capacity. `effective` includes draining workers until
+/// their actual coroutine exits; neither count is inferred from a semaphore.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerPoolCapacity {
+    pub desired: u32,
+    pub effective: u32,
+    pub active_ids: Vec<u32>,
+    pub borrowed_ids: Vec<u32>,
+    pub coordinator_waiting: bool,
+}
+/// Merge sorted actual/reserved IDs without target-sized allocation.
+pub(crate) fn extra_pool_ids<'a>(
+    active: &'a [u32],
+    borrowed: &'a [u32],
+    target: u32,
+) -> impl Iterator<Item = u32> + 'a {
+    let mut active = active
+        .iter()
+        .copied()
+        .filter(move |id| *id >= target)
+        .peekable();
+    let mut borrowed = borrowed
+        .iter()
+        .copied()
+        .filter(move |id| *id >= target)
+        .peekable();
+    std::iter::from_fn(
+        move || match (active.peek().copied(), borrowed.peek().copied()) {
+            (Some(a), Some(b)) if a == b => {
+                active.next();
+                borrowed.next();
+                Some(a)
+            }
+            (Some(a), Some(b)) if a < b => {
+                active.next();
+                Some(a)
+            }
+            (Some(_), Some(b)) => {
+                borrowed.next();
+                Some(b)
+            }
+            (Some(a), None) => {
+                active.next();
+                Some(a)
+            }
+            (None, Some(b)) => {
+                borrowed.next();
+                Some(b)
+            }
+            (None, None) => None,
+        },
+    )
+}
+impl WorkerPoolCapacity {
+    pub fn target_present(&self) -> bool {
+        self.desired > 0
+            && usize::try_from(self.desired)
+                .ok()
+                .and_then(|count| self.active_ids.get(..count))
+                .is_some_and(|ids| {
+                    ids.iter()
+                        .copied()
+                        .enumerate()
+                        .all(|(index, id)| u32::try_from(index) == Ok(id))
+                })
+            && self
+                .borrowed_ids
+                .iter()
+                .all(|id| self.active_ids.binary_search(id).is_ok())
+    }
+    pub fn required_pending_calls(&self) -> Option<u32> {
+        if self.desired == 0 {
+            return None;
+        }
+        let extra = u32::try_from(
+            extra_pool_ids(&self.active_ids, &self.borrowed_ids, self.desired).count(),
+        )
+        .ok()?;
+        self.desired.checked_add(extra)?.checked_add(1)
+    }
+    pub fn has_draining_workers(&self) -> bool {
+        self.active_ids
+            .iter()
+            .any(|id| *id >= self.desired && self.borrowed_ids.binary_search(id).is_err())
+    }
+    pub fn active_dependent_workers(&self) -> usize {
+        self.borrowed_ids
+            .iter()
+            .filter(|id| self.active_ids.binary_search(id).is_ok())
+            .count()
+    }
+    pub fn settled(&self) -> bool {
+        self.coordinator_waiting
+            && self.target_present()
+            && !self.has_draining_workers()
+            && usize::try_from(self.effective) == Ok(self.active_ids.len())
+    }
+}
+
+impl PendingCallCapacity {
+    pub fn valid(self) -> bool {
+        self.minimum > 0
+            && self.limit >= self.minimum
+            && self.pending <= self.limit
+            && self.withheld <= self.limit
+    }
 }
 
 pub enum GlobalBoundary {
@@ -81,13 +204,18 @@ impl std::fmt::Debug for GlobalBoundary {
 struct RootControl {
     account: Mutex<RootAccount>,
     slice_nanos: AtomicU64,
-    max_contexts: usize,
+    max_contexts: AtomicUsize,
 }
 #[derive(Debug, Default)]
 struct RootAccount {
     last_yield: Duration,
     execution: Duration,
     preparation: Duration,
+    retired_execution: Duration,
+    retired_preparation: Duration,
+    retired_adaptation: Duration,
+    exited_contexts: BTreeSet<u32>,
+    workers: BTreeMap<u32, u32>,
     contexts: BTreeMap<Option<u32>, Duration>,
     preparation_contexts: BTreeMap<Option<u32>, Duration>,
     // Some(None) explicitly identifies service preparation. None leaves
@@ -97,9 +225,47 @@ struct RootAccount {
     adaptation_contexts: BTreeMap<Option<u32>, Duration>,
     tasks: BTreeMap<u32, RootTaskAccount>,
 }
+impl RootAccount {
+    fn retire_context(&mut self, context: u32) -> Result<(), ExecutionControlError> {
+        let key = Some(context);
+        let retired_execution = self
+            .retired_execution
+            .checked_add(self.contexts.get(&key).copied().unwrap_or_default())
+            .ok_or(ExecutionControlError::AccountingUnavailable)?;
+        let retired_preparation = self
+            .retired_preparation
+            .checked_add(
+                self.preparation_contexts
+                    .get(&key)
+                    .copied()
+                    .unwrap_or_default(),
+            )
+            .ok_or(ExecutionControlError::AccountingUnavailable)?;
+        let retired_adaptation = self
+            .retired_adaptation
+            .checked_add(
+                self.adaptation_contexts
+                    .get(&key)
+                    .copied()
+                    .unwrap_or_default(),
+            )
+            .ok_or(ExecutionControlError::AccountingUnavailable)?;
+        self.retired_execution = retired_execution;
+        self.retired_preparation = retired_preparation;
+        self.retired_adaptation = retired_adaptation;
+        self.contexts.remove(&key);
+        self.preparation_contexts.remove(&key);
+        self.adaptation_contexts.remove(&key);
+        self.workers
+            .retain(|_, worker_context| *worker_context != context);
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct RootTaskAccount {
     token: String,
+    run_id: String,
     budget: SharedMontyTaskBudget,
     failure: Option<MontyTaskBudgetError>,
     phase: TaskPhase,
@@ -111,6 +277,7 @@ enum TaskPhase {
     Running,
     Failing,
     Finishing,
+    Finished,
 }
 impl RootControl {
     fn record_adaptation(&self, context: Option<u32>, duration: Duration) -> Result<(), VmError> {
@@ -119,7 +286,7 @@ impl RootControl {
             .lock()
             .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
         if !account.adaptation_contexts.contains_key(&context)
-            && account.adaptation_contexts.len() >= self.max_contexts
+            && account.adaptation_contexts.len() >= self.max_contexts.load(Ordering::Acquire)
         {
             return Err(VmError::kind(VmFailure::ResourceLimit));
         }
@@ -232,7 +399,27 @@ impl RootControl {
             .account
             .lock()
             .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
+        if account
+            .tasks
+            .get(&context)
+            .is_some_and(|task| task.phase != TaskPhase::Finished)
+        {
+            return Err(VmError::kind(VmFailure::WrongBoundary));
+        }
         account.tasks.remove(&context);
+        Ok(())
+    }
+
+    fn acknowledge_finish(&self, context: Option<u32>) -> Result<(), VmError> {
+        let mut account = self
+            .account
+            .lock()
+            .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
+        let task = context
+            .and_then(|context| account.tasks.get_mut(&context))
+            .filter(|task| task.phase == TaskPhase::Finishing)
+            .ok_or_else(|| VmError::kind(VmFailure::WrongBoundary))?;
+        task.phase = TaskPhase::Finished;
         Ok(())
     }
 
@@ -274,6 +461,14 @@ impl PreparationScope {
         if account.preparation_owner != Some(self.context) {
             return Err(VmError::kind(VmFailure::WrongBoundary));
         }
+        if let Some(context) = self.context
+            && account.exited_contexts.contains(&context)
+        {
+            account
+                .retire_context(context)
+                .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
+            account.exited_contexts.remove(&context);
+        }
         account.preparation_owner = None;
         self.active = false;
         Ok(())
@@ -296,6 +491,12 @@ impl Drop for PreparationScope {
 pub struct RootExecutionAccounting {
     pub execution: Duration,
     pub preparation: Duration,
+    /// Cumulative attribution for exited coroutine contexts. Live maps below
+    /// contain only retained contexts; these totals prevent losing history
+    /// while releasing per-context entries.
+    pub retired_execution: Duration,
+    pub retired_preparation: Duration,
+    pub retired_adaptation: Duration,
     pub contexts: BTreeMap<Option<u32>, Duration>,
     pub preparation_contexts: BTreeMap<Option<u32>, Duration>,
     /// Host value conversion outside the interpreter's guarded windows.
@@ -303,6 +504,31 @@ pub struct RootExecutionAccounting {
     pub adaptation_contexts: BTreeMap<Option<u32>, Duration>,
 }
 impl ExecutionControl for RootControl {
+    fn context_exited(&self, context: u32) -> Result<(), ExecutionControlError> {
+        let mut account = self
+            .account
+            .lock()
+            .map_err(|_| ExecutionControlError::AccountingUnavailable)?;
+        // A VM exit cannot acknowledge an admitted task or unresolved effect.
+        // Normal draining retires a worker from its idle work wait, after the
+        // existing task-release handshake. An unexpected exit fails closed
+        // with its task account and all evidence still retained.
+        if account.tasks.contains_key(&context) {
+            return Err(ExecutionControlError::AccountingUnavailable);
+        }
+        // Import preparation may still belong to the exiting context until
+        // the serialized host resume returns. Keep its entries through that
+        // scope's final sample, then retire them when its owner clears it.
+        if account.preparation_owner == Some(Some(context)) {
+            if !account.exited_contexts.is_empty() {
+                return Err(ExecutionControlError::AccountingUnavailable);
+            }
+            account.exited_contexts.insert(context);
+            return Ok(());
+        }
+        account.retire_context(context)
+    }
+
     fn checkpoint(
         &self,
         elapsed: Duration,
@@ -338,9 +564,9 @@ impl ExecutionControl for RootControl {
         if (!account
             .preparation_contexts
             .contains_key(&preparation_context)
-            && account.preparation_contexts.len() >= self.max_contexts)
+            && account.preparation_contexts.len() >= self.max_contexts.load(Ordering::Acquire))
             || (!account.contexts.contains_key(&observation.context)
-                && account.contexts.len() >= self.max_contexts)
+                && account.contexts.len() >= self.max_contexts.load(Ordering::Acquire))
         {
             return Err(ExecutionControlError::AccountingUnavailable);
         }
@@ -388,6 +614,8 @@ impl ExecutionControl for RootControl {
 enum CallKind {
     WorkWait(u32),
     Port,
+    FinishTask,
+    PoolWait,
 }
 struct Pending {
     call_id: u32,
@@ -453,11 +681,54 @@ pub struct GlobalVm {
     ordinal: u64,
     lifecycle: Lifecycle,
     bounds: GlobalBounds,
+    pool_enabled: bool,
+    desired_workers: u32,
+    dependents: BTreeMap<u32, dependents::DependentWorker>,
+    coordinator_context: Option<u32>,
     stdout: String,
     control: Arc<RootControl>,
     withheld: BTreeMap<ContinuationKey, HostAnswer>,
 }
 impl GlobalVm {
+    pub(crate) fn pool_enabled(&self) -> bool {
+        self.pool_enabled
+    }
+    pub(crate) fn pool_wait(&self) -> Option<ContinuationKey> {
+        self.pending
+            .iter()
+            .find_map(|(key, pending)| matches!(pending.kind, CallKind::PoolWait).then_some(*key))
+    }
+    pub fn pending_call_capacity(&self) -> PendingCallCapacity {
+        PendingCallCapacity {
+            limit: self.bounds.max_pending_calls as u32,
+            pending: self.pending.len() as u32,
+            withheld: self.withheld.len() as u32,
+            minimum: if self.pool_enabled {
+                self.required_pool_calls(self.desired_workers).unwrap_or(0)
+            } else {
+                self.bounds.workers
+            },
+        }
+    }
+
+    /// Called at the serialized, quiescent publication boundary. A reduction
+    /// cannot discard live continuations or unreconciled late host answers.
+    pub(crate) fn validate_pending_call_limit(&self, limit: Option<u32>) -> Result<(), VmError> {
+        let mut capacity = self.pending_call_capacity();
+        if let Some(limit) = limit {
+            capacity.limit = limit;
+        }
+        if !capacity.valid() {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        Ok(())
+    }
+
+    /// Publication follows complete candidate validation under the sole VM
+    /// owner; this setter advances no Python and introduces no new failure.
+    pub(crate) fn update_pending_call_limit(&mut self, limit: u32) {
+        self.bounds.max_pending_calls = limit as usize;
+    }
     pub(crate) fn update_bounds(&mut self, values: VmBounds) {
         self.control
             .slice_nanos
@@ -493,7 +764,10 @@ impl GlobalVm {
                 return Err(error);
             }
             boundary = match boundary {
-                GlobalBoundary::HostCall(call) if call.name == "await_next_task" => {
+                GlobalBoundary::HostCall(call)
+                    if call.name == "await_next_task"
+                        || (vm.pool_enabled && call.name == "await_pool_update") =>
+                {
                     vm.defer(call.continuation)?
                 }
                 GlobalBoundary::ControlYield(key) => vm.resume_control(key)?,
@@ -516,14 +790,20 @@ impl GlobalVm {
         aliases: BTreeSet<String>,
         bounds: GlobalBounds,
     ) -> Result<(Self, GlobalBoundary), VmError> {
+        let pool_enabled = aliases.contains("await_pool_update");
+        let minimum_calls = bounds
+            .workers
+            .checked_add(u32::from(pool_enabled))
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
         if !bounds.values.valid()
             || bounds.workers == 0
-            || bounds.max_pending_calls < bounds.workers as usize
+            || bounds.max_pending_calls < minimum_calls as usize
+            || u32::try_from(bounds.max_pending_calls).is_err()
         {
             return Err(VmError::kind(VmFailure::InvalidBounds));
         }
         let max_contexts = (bounds.workers as usize)
-            .checked_add(2)
+            .checked_add(if pool_enabled { 3 } else { 2 })
             .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
         if source.len() > bounds.values.max_source_bytes {
             return Err(VmError::kind(VmFailure::SourceLimit));
@@ -553,7 +833,7 @@ impl GlobalVm {
             // The verified root has a main coroutine, bounded workers, and
             // discarded-context service work. Unexpected coroutine growth
             // must fail closed instead of growing this lifetime map forever.
-            max_contexts,
+            max_contexts: AtomicUsize::new(max_contexts),
         });
         tracker.set_execution_control(control.clone());
         let vm_id = Uuid::new_v4();
@@ -581,6 +861,10 @@ impl GlobalVm {
             ordinal: 0,
             lifecycle: Lifecycle::Starting,
             bounds,
+            pool_enabled,
+            desired_workers: bounds.workers,
+            dependents: BTreeMap::new(),
+            coordinator_context: None,
             stdout: String::new(),
             control,
             withheld: BTreeMap::new(),
@@ -595,6 +879,153 @@ impl GlobalVm {
     }
     pub fn execution_identity(&self) -> RootExecutionIdentity {
         self.identity
+    }
+
+    pub fn worker_pool_capacity(&self) -> Result<WorkerPoolCapacity, VmError> {
+        if !self.pool_enabled {
+            return Err(VmError::kind(VmFailure::InvalidBinding));
+        }
+        let account = self
+            .control
+            .account
+            .lock()
+            .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
+        Ok(WorkerPoolCapacity {
+            desired: self.desired_workers,
+            effective: u32::try_from(account.workers.len())
+                .map_err(|_| VmError::kind(VmFailure::ResourceLimit))?,
+            active_ids: account.workers.keys().copied().collect(),
+            borrowed_ids: self.dependents.keys().copied().collect(),
+            coordinator_waiting: self.current.is_none()
+                && matches!(
+                    self.progress.as_deref(),
+                    Some(RunProgress::ResolveFutures(_))
+                )
+                && self
+                    .pending
+                    .values()
+                    .any(|pending| matches!(pending.kind, CallKind::PoolWait)),
+        })
+    }
+
+    /// Nonmutating target validation shared with settings preflight. This is
+    /// not publication, reserved memory, or proof that future frames fit.
+    pub(crate) fn validate_worker_pool_target(
+        &self,
+        workers: u32,
+        pending_limit: Option<u32>,
+        values: VmBounds,
+    ) -> Result<WorkerPoolCapacity, VmError> {
+        if self.lifecycle != Lifecycle::Ready || workers == 0 || !values.valid() {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        let mut pool = self.worker_pool_capacity()?;
+        pool.desired = workers;
+        let minimum = self
+            .required_pool_calls(workers)
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        let limit = pending_limit.unwrap_or(self.bounds.max_pending_calls as u32);
+        if minimum > limit
+            || self.pending.len() > limit as usize
+            || self.withheld.len() > limit as usize
+        {
+            return Err(VmError::kind(VmFailure::InvalidBounds));
+        }
+        if !pool.coordinator_waiting {
+            return Err(VmError::kind(VmFailure::WrongBoundary));
+        }
+        let value = serde_json::json!({"workers": workers, "active_ids": pool.active_ids,
+            "borrowed_ids": self.dependents.keys().copied().collect::<Vec<_>>()});
+        json_input(&value, values)?;
+        usize::try_from(minimum)
+            .ok()
+            .and_then(|count| count.checked_add(2))
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        Ok(pool)
+    }
+
+    /// Hosting transport delivers a desired capacity to the existing Python
+    /// coordinator. Python creates/reuses its own gather children. Admission
+    /// immediately respects reductions; old workers remain observed until drained.
+    pub fn request_worker_pool(&mut self, workers: u32) -> Result<GlobalBoundary, VmError> {
+        let pool = self.validate_worker_pool_target(workers, None, self.bounds.values)?;
+        let key = self
+            .pool_wait()
+            .ok_or_else(|| VmError::kind(VmFailure::WrongBoundary))?;
+        let value = serde_json::json!({"workers": workers, "active_ids": pool.active_ids,
+            "borrowed_ids": self.dependents.keys().copied().collect::<Vec<_>>()});
+        let contexts = self
+            .required_pool_calls(workers)
+            .and_then(|minimum| usize::try_from(minimum).ok())
+            .and_then(|count| count.checked_add(2))
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        self.desired_workers = workers;
+        self.bounds.workers = self.bounds.workers.max(workers);
+        self.control.max_contexts.store(contexts, Ordering::Release);
+        self.resolve_inner(key, HostAnswer::Return(value), None)
+    }
+
+    /// Serialized worker-only publication pump. It supplies only hosting waits
+    /// and resumes control checkpoints; Python owns every coroutine operation.
+    /// The parent transport deadline contains a broken/infinite coordinator.
+    pub(crate) fn publish_worker_pool_target(&mut self, workers: u32) -> Result<(), VmError> {
+        let mut boundary = self.request_worker_pool(workers)?;
+        loop {
+            boundary = match boundary {
+                GlobalBoundary::HostCall(call)
+                    if matches!(call.name.as_str(), "await_next_task" | "await_pool_update") =>
+                {
+                    self.defer(call.continuation)?
+                }
+                GlobalBoundary::ControlYield(key) => self.resume_control(key)?,
+                GlobalBoundary::Waiting(_) => {
+                    let pool = self.worker_pool_capacity()?;
+                    if pool.coordinator_waiting && pool.target_present() {
+                        return Ok(());
+                    }
+                    return Err(self.fail(VmError::kind(VmFailure::WrongBoundary)));
+                }
+                _ => return Err(self.fail(VmError::kind(VmFailure::WrongBoundary))),
+            };
+        }
+    }
+
+    /// Only an idle worker outside the desired set may drain during ordinary
+    /// operation. Its task completion has already crossed the fenced work wait.
+    pub fn drain_worker(&mut self, key: ContinuationKey) -> Result<GlobalBoundary, VmError> {
+        if !self.pool_enabled
+            || self.lifecycle != Lifecycle::Ready
+            || !self.pending.get(&key).is_some_and(|pending| {
+                matches!(pending.kind, CallKind::WorkWait(id)
+                    if id >= self.desired_workers && !self.dependents.contains_key(&id))
+            })
+        {
+            return Err(VmError::kind(VmFailure::WrongBoundary));
+        }
+        let boundary = self.resolve_inner(key, HostAnswer::Return(Value::Null), None)?;
+        let capacity = self.worker_pool_capacity()?;
+        let contexts = self
+            .required_pool_calls(capacity.desired)
+            .and_then(|minimum| usize::try_from(minimum).ok())
+            .and_then(|count| count.checked_add(2))
+            .ok_or_else(|| self.fail(VmError::kind(VmFailure::InvalidBounds)))?;
+        self.control.max_contexts.store(contexts, Ordering::Release);
+        Ok(boundary)
+    }
+
+    pub fn close_pool_coordinator(&mut self) -> Result<GlobalBoundary, VmError> {
+        if !self.pool_enabled
+            || self.lifecycle != Lifecycle::Stopping
+            || !self.dependents.is_empty()
+        {
+            return Err(VmError::kind(VmFailure::WrongBoundary));
+        }
+        let key = self
+            .pending
+            .iter()
+            .find_map(|(key, pending)| matches!(pending.kind, CallKind::PoolWait).then_some(*key))
+            .ok_or_else(|| VmError::kind(VmFailure::WrongBoundary))?;
+        self.resolve_inner(key, HostAnswer::Return(Value::Null), None)
     }
 
     pub fn lifecycle(&self) -> Lifecycle {
@@ -613,7 +1044,7 @@ impl GlobalVm {
             .iter()
             .filter_map(|(key, pending)| match pending.kind {
                 CallKind::WorkWait(worker) => Some((worker, *key)),
-                CallKind::Port => None,
+                CallKind::Port | CallKind::FinishTask | CallKind::PoolWait => None,
             })
             .collect();
         waits.sort_unstable_by_key(|(worker, _)| *worker);
@@ -647,6 +1078,9 @@ impl GlobalVm {
         Ok(RootExecutionAccounting {
             execution: account.execution,
             preparation: account.preparation,
+            retired_execution: account.retired_execution,
+            retired_preparation: account.retired_preparation,
+            retired_adaptation: account.retired_adaptation,
             contexts: account.contexts.clone(),
             preparation_contexts: account.preparation_contexts.clone(),
             adaptation: account.adaptation,
@@ -774,7 +1208,13 @@ impl GlobalVm {
         task: Value,
         budget: SharedMontyTaskBudget,
     ) -> Result<GlobalBoundary, VmError> {
-        if self.lifecycle != Lifecycle::Ready || !self.is_work_wait(key) {
+        if self.lifecycle != Lifecycle::Ready
+            || !self.is_work_wait(key)
+            || self.pending.get(&key).is_some_and(|pending| {
+                matches!(pending.kind, CallKind::WorkWait(id)
+                    if !self.admission_slot_allowed(id, &task))
+            })
+        {
             let mut error = VmError::kind(VmFailure::WrongBoundary);
             error.rejected_answer = Some(Box::new(HostAnswer::Return(task)));
             return Err(error);
@@ -782,7 +1222,11 @@ impl GlobalVm {
         let valid = task.as_object().is_some_and(|task| {
             // Exact current root envelope. Rust-only claims/credentials and new
             // protocol fields cannot silently enter ordinary Python task state.
-            task.len() == 7
+            ((task.len() == 7 && !task.contains_key("entry"))
+                || (task.len() == 8
+                    && task
+                        .get("entry")
+                        .is_some_and(crate::task_entry::valid_value)))
                 && [
                     "task_token",
                     "conversation_id",
@@ -814,12 +1258,44 @@ impl GlobalVm {
                 .as_str()
                 .expect("validated above")
                 .to_owned(),
+            run_id: task["run_id"].as_str().expect("validated above").to_owned(),
             budget,
             failure: None,
             phase: TaskPhase::Admitted,
             cancel_requested: false,
         };
-        self.resolve_inner(key, HostAnswer::Return(task), Some(binding))
+        let dependent = self
+            .pending
+            .get(&key)
+            .and_then(|pending| match pending.kind {
+                CallKind::WorkWait(id) if self.dependents.contains_key(&id) => Some(id),
+                _ => None,
+            });
+        if let Some(id) = dependent {
+            self.dependents
+                .get_mut(&id)
+                .expect("selected reservation")
+                .child_token = Some(binding.token.clone());
+        }
+        let result = self.resolve_inner(key, HostAnswer::Return(task), Some(binding));
+        // Conversion/validation can reject before consuming the work wait.
+        // Preserve an entered/unknown attempt; only an untouched key rolls back.
+        if result.is_err()
+            && self.lifecycle == Lifecycle::Ready
+            && self.is_work_wait(key)
+            && let Some(id) = dependent
+            && self
+                .dependents
+                .get(&id)
+                .and_then(|loan| loan.child_token.as_deref())
+                .is_some_and(|token| matches!(self.task_active(token), Ok(false)))
+        {
+            self.dependents
+                .get_mut(&id)
+                .expect("retained reservation")
+                .child_token = None;
+        }
+        result
     }
     /// Work-wait completion has separate admission/shutdown APIs. A generic
     /// callback returning null must never terminate a global worker. Task-local
@@ -830,7 +1306,12 @@ impl GlobalVm {
         key: ContinuationKey,
         answer: HostAnswer,
     ) -> Result<GlobalBoundary, VmError> {
-        if self.is_work_wait(key) {
+        if self.is_work_wait(key)
+            || self
+                .pending
+                .get(&key)
+                .is_some_and(|pending| matches!(pending.kind, CallKind::PoolWait))
+        {
             let mut error = VmError::kind(VmFailure::WrongBoundary);
             error.rejected_answer = Some(Box::new(answer));
             return Err(error);
@@ -838,7 +1319,7 @@ impl GlobalVm {
         self.resolve_inner(key, answer, None)
     }
     pub fn begin_shutdown(&mut self) -> Result<(), VmError> {
-        if self.lifecycle != Lifecycle::Ready {
+        if self.lifecycle != Lifecycle::Ready || !self.dependents.is_empty() {
             return Err(VmError::kind(VmFailure::WrongBoundary));
         }
         self.lifecycle = Lifecycle::Stopping;
@@ -876,8 +1357,20 @@ impl GlobalVm {
             error.rejected_answer = Some(Box::new(answer));
             return Err(error);
         };
+        // A dependent borrows the parked parent's execution slot. Retain a
+        // ready parent result until its exact child has settled and released
+        // that reservation; otherwise both could resume under one slot.
+        // Fatal Abort remains available for instance-wide containment.
+        if !matches!(answer, HostAnswer::Abort(_))
+            && self.dependents.values().any(|loan| loan.parent == key)
+        {
+            let mut error = VmError::kind(VmFailure::WrongBoundary);
+            error.rejected_answer = Some(Box::new(answer));
+            return Err(error);
+        }
         let call_id = pending.call_id;
         let context = pending.context;
+        let finish_task = matches!(pending.kind, CallKind::FinishTask);
         if !matches!(self.progress.as_deref(), Some(RunProgress::ResolveFutures(waiting))
             if waiting.pending_call_ids().contains(&call_id))
         {
@@ -972,7 +1465,7 @@ impl GlobalVm {
                     .tasks
                     .values()
                     .any(|task| task.token == binding.token)
-                || account.tasks.len() >= self.bounds.workers as usize
+                || !self.admission_binding_valid(key, &binding, &account)
             {
                 let mut error = VmError::kind(VmFailure::WrongBoundary);
                 error.rejected_answer = Some(Box::new(answer));
@@ -982,6 +1475,20 @@ impl GlobalVm {
             // From here the exact work wait will be consumed; even fatal Python
             // failure retains this binding for reconciliation, never for replay.
             account.tasks.insert(context, binding);
+        }
+        if finish_task && interruption.is_none() && matches!(&answer, HostAnswer::Return(_)) {
+            // The trusted service emits null only after the actual completion
+            // owner confirmed its exact outcome. A different payload, failed
+            // result or withheld answer cannot release this task's account.
+            if !matches!(&answer, HostAnswer::Return(Value::Null)) {
+                let mut error = VmError::kind(VmFailure::InvalidHostArguments);
+                error.rejected_answer = Some(Box::new(answer));
+                return Err(self.fail(error));
+            }
+            if let Err(mut error) = self.control.acknowledge_finish(context) {
+                error.rejected_answer = Some(Box::new(answer));
+                return Err(self.fail(error));
+            }
         }
         // Admission conversion is observed only after validation and binding.
         // Generic answers already belong to their exact active task context.
@@ -1076,6 +1583,7 @@ impl GlobalVm {
             if call.object_id != Some(self.receiver)
                 || !self.aliases.contains(&call.function_name)
                 || call.function_name == "await_next_task"
+                || call.function_name == "await_pool_update"
             {
                 break progress;
             }
@@ -1172,7 +1680,40 @@ impl GlobalVm {
                         values.map_err(|error| self.fail(error))?
                     }
                 };
-                let kind = if call.function_name == "await_next_task" {
+                let kind = if call.function_name == "await_pool_update" {
+                    let context = call.tracker().execution_context();
+                    if !self.pool_enabled
+                        || !args.is_empty()
+                        || !kwargs.is_empty()
+                        || context.is_none()
+                        || context == Some(0)
+                        || self
+                            .coordinator_context
+                            .is_some_and(|coordinator| Some(coordinator) != context)
+                        || self
+                            .pending
+                            .values()
+                            .any(|pending| matches!(pending.kind, CallKind::PoolWait))
+                    {
+                        return Err(self.fail(VmError::kind(VmFailure::InvalidHostArguments)));
+                    }
+                    let control = self.control.clone();
+                    let valid = {
+                        let account = control
+                            .account
+                            .lock()
+                            .map_err(|_| self.fail(VmError::kind(VmFailure::ResourceLimit)))?;
+                        !context.is_some_and(|context| {
+                            account.tasks.contains_key(&context)
+                                || account.workers.values().any(|worker| *worker == context)
+                        })
+                    };
+                    if !valid {
+                        return Err(self.fail(VmError::kind(VmFailure::WrongBoundary)));
+                    }
+                    self.coordinator_context = context;
+                    CallKind::PoolWait
+                } else if call.function_name == "await_next_task" {
                     let worker = if args.len() == 1 && kwargs.is_empty() {
                         args[0]
                             .as_u64()
@@ -1200,15 +1741,50 @@ impl GlobalVm {
                         return Err(self.fail(VmError::kind(VmFailure::UnsupportedBoundary)));
                     }
                     if let Some(context) = context {
-                        let released = self.control.release_task(context);
+                        let control = self.control.clone();
+                        if self.pool_enabled {
+                            let valid = {
+                                let account = control.account.lock().map_err(|_| {
+                                    self.fail(VmError::kind(VmFailure::ResourceLimit))
+                                })?;
+                                self.coordinator_context != Some(context)
+                                    && account
+                                        .workers
+                                        .get(&worker)
+                                        .is_none_or(|old| *old == context)
+                                    && !account
+                                        .workers
+                                        .iter()
+                                        .any(|(old, value)| *old != worker && *value == context)
+                                    && (worker < self.desired_workers
+                                        || account.workers.contains_key(&worker)
+                                        || self.dependents.contains_key(&worker))
+                            };
+                            if !valid {
+                                return Err(self.fail(VmError::kind(VmFailure::WrongBoundary)));
+                            }
+                        }
+                        let released = control.release_task(context);
                         released.map_err(|error| self.fail(error))?;
+                        if self.pool_enabled {
+                            control
+                                .account
+                                .lock()
+                                .map_err(|_| self.fail(VmError::kind(VmFailure::ResourceLimit)))?
+                                .workers
+                                .insert(worker, context);
+                        }
                     }
                     CallKind::WorkWait(worker)
                 } else {
                     if self.lifecycle == Lifecycle::Starting {
                         return Err(self.fail(VmError::kind(VmFailure::WrongBoundary)));
                     }
-                    CallKind::Port
+                    if call.function_name == "finish_task" {
+                        CallKind::FinishTask
+                    } else {
+                        CallKind::Port
+                    }
                 };
                 let key = self.key()?;
                 self.pending.insert(
@@ -1238,11 +1814,13 @@ impl GlobalVm {
                     return Err(self.fail(VmError::kind(VmFailure::UnsupportedBoundary)));
                 }
                 if self.lifecycle == Lifecycle::Starting {
-                    if self.pending.len() != self.bounds.workers as usize
-                        || !self
-                            .pending
-                            .values()
-                            .all(|pending| matches!(pending.kind, CallKind::WorkWait(_)))
+                    let expected = self.bounds.workers as usize + usize::from(self.pool_enabled);
+                    if self.pending.len() != expected
+                        || !self.pending.values().all(|pending| {
+                            matches!(pending.kind, CallKind::WorkWait(_))
+                                || (self.pool_enabled && matches!(pending.kind, CallKind::PoolWait))
+                        })
+                        || (self.pool_enabled && self.coordinator_context.is_none())
                     {
                         return Err(self.fail(VmError::kind(VmFailure::WrongBoundary)));
                     }

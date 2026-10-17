@@ -246,6 +246,8 @@ async fn bootstrap(
         config.process,
         config.actor,
         brassclaw_monty_host::service::ServiceHostingLimits {
+            max_workers: None,
+            max_pending_host_calls: None,
             max_frame_bytes: None,
             adapter_reserve_bytes: None,
             admission: brassclaw_monty_host::service::AdmissionLimits {

@@ -6,6 +6,27 @@ use brassclaw_host_api::VirtualPath;
 
 use crate::path::{MemoryDocumentScope, memory_error, valid_memory_path};
 
+/// Exact host-selected embedding space, independent of vector dimensionality.
+/// This identifies data compatibility; it grants no filesystem authority.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EmbeddingSpaceId(String);
+
+impl EmbeddingSpaceId {
+    pub fn from_digest(digest: [u8; 32]) -> Self {
+        let id = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        Self(id)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn index_key(&self) -> brassclaw_filesystem::IndexKey {
+        brassclaw_filesystem::IndexKey::new(format!("embedding_{}", self.0))
+            .unwrap_or_else(|_| unreachable!("a fixed hexadecimal digest is a valid index key"))
+    }
+}
+
 /// Error returned by memory embedding providers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmbeddingError {
@@ -42,6 +63,7 @@ impl std::error::Error for EmbeddingError {}
 /// boundary.
 #[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
+    fn space_id(&self) -> &EmbeddingSpaceId;
     fn dimension(&self) -> usize;
 
     fn model_name(&self) -> &str;
@@ -54,6 +76,64 @@ pub trait EmbeddingProvider: Send + Sync {
             embeddings.push(self.embed(text).await?);
         }
         Ok(embeddings)
+    }
+}
+
+/// Host-selected provider snapshot for one memory operation. Only absence of
+/// configuration returns None; resolution failures must remain errors.
+#[async_trait]
+pub trait EmbeddingProviderSource: Send + Sync {
+    async fn snapshot(
+        &self,
+    ) -> Result<Option<std::sync::Arc<dyn EmbeddingProvider>>, EmbeddingError>;
+}
+
+/// Installation attaches the source once before ingress. The source owns live
+/// configuration; the slot never holds its lock during database/network awaits.
+#[derive(Default)]
+pub struct EmbeddingProviderSourceSlot {
+    source: std::sync::RwLock<Option<std::sync::Arc<dyn EmbeddingProviderSource>>>,
+}
+
+impl EmbeddingProviderSourceSlot {
+    pub fn attach(
+        &self,
+        source: std::sync::Arc<dyn EmbeddingProviderSource>,
+    ) -> Result<(), EmbeddingError> {
+        let mut installed =
+            self.source
+                .write()
+                .map_err(|_| EmbeddingError::ProviderUnavailable {
+                    reason: "embedding source state unavailable".into(),
+                })?;
+        if installed.is_some() {
+            return Err(EmbeddingError::ProviderUnavailable {
+                reason: "embedding source already attached".into(),
+            });
+        }
+        *installed = Some(source);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EmbeddingProviderSource for EmbeddingProviderSourceSlot {
+    async fn snapshot(
+        &self,
+    ) -> Result<Option<std::sync::Arc<dyn EmbeddingProvider>>, EmbeddingError> {
+        let source = self
+            .source
+            .read()
+            .map_err(|_| EmbeddingError::ProviderUnavailable {
+                reason: "embedding source state unavailable".into(),
+            })?
+            .clone();
+        match source {
+            Some(source) => source.snapshot().await,
+            None => Err(EmbeddingError::ProviderUnavailable {
+                reason: "embedding source not attached before dispatch".into(),
+            }),
+        }
     }
 }
 

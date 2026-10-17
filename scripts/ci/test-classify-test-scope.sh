@@ -115,6 +115,14 @@ has_legacy_tests=false
 has_reborn_tests=true"
 
 assert_scope \
+  "native settings browser regression" \
+  "tests/browser/monty-vm-resource-limits.mjs" \
+  "docs_only=false
+has_core_code=true
+has_legacy_tests=false
+has_reborn_tests=true"
+
+assert_scope \
   "legacy e2e scenario" \
   "tests/e2e/scenarios/test_live_flow.py" \
   "docs_only=false

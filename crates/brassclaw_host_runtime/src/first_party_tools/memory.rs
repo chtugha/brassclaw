@@ -6,7 +6,8 @@ use brassclaw_extensions::{CapabilityManifest, ExtensionError};
 use brassclaw_filesystem::RootFilesystem;
 use brassclaw_host_api::{
     ActionResultSummary, ActionSummary, AuditEnvelope, AuditEventId, AuditStage, DecisionSummary,
-    EffectKind, ExtensionId, PermissionMode, ResourceUsage, RuntimeDispatchErrorKind,
+    EffectKind, ExtensionId, PermissionMode, ResourceEstimate, ResourceProfile, ResourceUsage,
+    RuntimeDispatchErrorKind,
 };
 use brassclaw_memory::{
     ChatMemoryWriterPort, ChunkingMemoryDocumentIndexer, DocumentMetadata,
@@ -23,7 +24,7 @@ use serde_json::{Value, json};
 
 use crate::{FirstPartyCapabilityError, FirstPartyCapabilityRequest, FirstPartyCapabilityResult};
 
-use super::{first_party_capability_manifest, input_error, operation_error, resource_profile};
+use super::{first_party_capability_manifest, input_error, operation_error};
 
 pub const MEMORY_SEARCH_CAPABILITY_ID: &str = "builtin.memory_search";
 pub const MEMORY_WRITE_CAPABILITY_ID: &str = "builtin.memory_write";
@@ -48,7 +49,7 @@ struct MemoryServices {
     context: MemoryContext,
     backend: Arc<dyn MemoryBackend>,
     /// Whether vector (embedding) search is active for this request.
-    /// `true` when an embedding provider was resolved at startup.
+    /// `true` when this operation captured a configured embedding provider.
     embedding_active: bool,
     /// Optional Path A chat-memory record writer. Present only in the
     /// Postgres production path.
@@ -65,6 +66,7 @@ pub(super) struct MemoryCapabilityState {
     /// When `Some`, `build_backend()` wires it into the indexer and
     /// `dispatch_search()` enables `.with_vector(true)`.
     embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
+    embedding_source: Option<Arc<dyn brassclaw_memory::EmbeddingProviderSource>>,
     /// Optional Path A chat-memory record writer (§4.29, S10).
     /// When `Some`, called on every successful `memory_write` dispatch.
     chat_memory_writer: Option<Arc<dyn ChatMemoryWriterPort>>,
@@ -75,6 +77,7 @@ impl Default for MemoryCapabilityState {
         Self {
             cached_backend: Mutex::new(None),
             embedding_provider: None,
+            embedding_source: None,
             chat_memory_writer: None,
         }
     }
@@ -85,12 +88,17 @@ impl std::fmt::Debug for MemoryCapabilityState {
         formatter
             .debug_struct("MemoryCapabilityState")
             .field("cached_backend", &"<cached-memory-backend>")
-            .field("embedding_active", &self.embedding_provider.is_some())
+            .field(
+                "static_embedding_provider",
+                &self.embedding_provider.is_some(),
+            )
+            .field("live_embedding_source", &self.embedding_source.is_some())
             .finish()
     }
 }
 
 struct CachedMemoryBackend {
+    embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
     filesystem: Arc<dyn RootFilesystem>,
     audit_sink: Option<Arc<dyn AuditSink>>,
     backend: Arc<dyn MemoryBackend>,
@@ -195,39 +203,56 @@ pub(super) fn manifests() -> Result<Vec<CapabilityManifest>, ExtensionError> {
             "Search Reborn persistent memory documents in the current tenant/user/agent/project scope",
             vec![EffectKind::ReadFilesystem],
             PermissionMode::Allow,
-            resource_profile(),
+            Some(memory_resource_profile()),
         )?,
         first_party_capability_manifest(
             MEMORY_WRITE_CAPABILITY_ID,
             "Write, append, or patch Reborn persistent memory documents in the current tenant/user/agent/project scope",
             vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
             PermissionMode::Allow,
-            resource_profile(),
+            Some(memory_resource_profile()),
         )?,
         first_party_capability_manifest(
             MEMORY_READ_CAPABILITY_ID,
             "Read a Reborn persistent memory document in the current tenant/user/agent/project scope",
             vec![EffectKind::ReadFilesystem],
             PermissionMode::Allow,
-            resource_profile(),
+            Some(memory_resource_profile()),
         )?,
         first_party_capability_manifest(
             MEMORY_TREE_CAPABILITY_ID,
             "List Reborn persistent memory documents as a compact tree",
             vec![EffectKind::ReadFilesystem],
             PermissionMode::Allow,
-            resource_profile(),
+            Some(memory_resource_profile()),
         )?,
     ])
+}
+
+// Scope/mount checks, live kernel policy and accepted task/transport bounds
+// govern these primitives. Metadata must not advertise an unrelated fixed
+// five-second/one-MiB ceiling or invent an input-independent size estimate.
+fn memory_resource_profile() -> ResourceProfile {
+    ResourceProfile {
+        default_estimate: ResourceEstimate::default(),
+        hard_ceiling: None,
+    }
 }
 
 pub(super) async fn dispatch(
     state: &MemoryCapabilityState,
     request: &FirstPartyCapabilityRequest,
+    settings: Option<&dyn super::HostPrimitiveSettingsSource>,
 ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
     let start = std::time::Instant::now();
-    let services = memory_services(state, request)?;
-    let output = match request.capability_id.as_str() {
+    // Capture before backend I/O. Later edits cannot resize this tree result.
+    let tree = if request.capability_id.as_str() == MEMORY_TREE_CAPABILITY_ID {
+        Some(super::memory_tree::TreeRequest::capture(&request.input, settings).await?)
+    } else {
+        None
+    };
+    let services = memory_services(state, request).await?;
+    let mut output = match request.capability_id.as_str() {
         MEMORY_SEARCH_CAPABILITY_ID => dispatch_search(&services, &request.input).await?,
         MEMORY_WRITE_CAPABILITY_ID => {
             dispatch_write(
@@ -243,9 +268,20 @@ pub(super) async fn dispatch(
             .await?
         }
         MEMORY_READ_CAPABILITY_ID => dispatch_read(&services, &request.input).await?,
-        MEMORY_TREE_CAPABILITY_ID => dispatch_tree(&services, &request.input).await?,
+        MEMORY_TREE_CAPABILITY_ID => {
+            dispatch_tree(&services, tree.as_ref().ok_or_else(operation_error)?).await?
+        }
         _ => return Err(operation_error()),
     };
+    if request.capability_id.as_str() == MEMORY_WRITE_CAPABILITY_ID
+        && services.context.indexing_failed()
+        && let Some(output) = output.as_object_mut()
+    {
+        output.insert("indexing_status".into(), json!("incomplete"));
+        output.insert("warnings".into(), json!([
+            "The document was written, but indexing failed. Do not repeat the write; repair indexing separately."
+        ]));
+    }
     let wall_clock_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
     Ok(FirstPartyCapabilityResult::new(
         output,
@@ -256,7 +292,7 @@ pub(super) async fn dispatch(
     ))
 }
 
-fn memory_services(
+async fn memory_services(
     state: &MemoryCapabilityState,
     request: &FirstPartyCapabilityRequest,
 ) -> Result<MemoryServices, FirstPartyCapabilityError> {
@@ -275,8 +311,20 @@ fn memory_services(
         request.scope.clone(),
         brassclaw_host_api::CorrelationId::new(),
     );
-    let embedding_active = state.embedding_provider.is_some();
-    let (backend, indexer) = state.backend_and_indexer_for(request)?;
+    let needs_embedding = matches!(
+        request.capability_id.as_str(),
+        MEMORY_SEARCH_CAPABILITY_ID | MEMORY_WRITE_CAPABILITY_ID
+    );
+    let embedding = if needs_embedding {
+        match &state.embedding_source {
+            Some(source) => source.snapshot().await.map_err(|_| operation_error())?,
+            None => state.embedding_provider.clone(),
+        }
+    } else {
+        None
+    };
+    let embedding_active = embedding.is_some();
+    let (backend, indexer) = state.backend_and_indexer_for(request, embedding)?;
     Ok(MemoryServices {
         scope,
         context,
@@ -299,7 +347,17 @@ impl MemoryCapabilityState {
         Self {
             cached_backend: Mutex::new(None),
             embedding_provider: Some(embedding_provider),
+            embedding_source: None,
             chat_memory_writer: None,
+        }
+    }
+
+    pub(super) fn with_embedding_source(
+        source: Arc<dyn brassclaw_memory::EmbeddingProviderSource>,
+    ) -> Self {
+        Self {
+            embedding_source: Some(source),
+            ..Self::default()
         }
     }
 
@@ -326,9 +384,14 @@ impl MemoryCapabilityState {
     fn backend_and_indexer_for(
         &self,
         request: &FirstPartyCapabilityRequest,
+        embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
     ) -> Result<BackendAndIndexer, FirstPartyCapabilityError> {
         let mut cached_backend = self.cached_backend.lock().map_err(|_| operation_error())?;
         if let Some(cached) = cached_backend.as_ref()
+            && providers_match(
+                cached.embedding_provider.as_ref(),
+                embedding_provider.as_ref(),
+            )
             && Arc::ptr_eq(&cached.filesystem, &request.services.filesystem)
             && audit_sinks_match(
                 cached.audit_sink.as_ref(),
@@ -343,9 +406,10 @@ impl MemoryCapabilityState {
         let (backend, indexer) = build_backend(
             Arc::clone(&filesystem),
             audit_sink.clone(),
-            self.embedding_provider.clone(),
+            embedding_provider.clone(),
         );
         *cached_backend = Some(CachedMemoryBackend {
+            embedding_provider,
             filesystem,
             audit_sink,
             backend: Arc::clone(&backend),
@@ -366,12 +430,26 @@ fn audit_sinks_match(
     }
 }
 
+fn providers_match(
+    left: Option<&Arc<dyn brassclaw_memory::EmbeddingProvider>>,
+    right: Option<&Arc<dyn brassclaw_memory::EmbeddingProvider>>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 /// Thin wrapper that makes `Arc<dyn EmbeddingProvider>` satisfy the `P: EmbeddingProvider`
 /// bound on `ChunkingMemoryDocumentIndexer::with_embedding_provider`.
 struct DynEmbeddingProviderWrapper(Arc<dyn brassclaw_memory::EmbeddingProvider>);
 
 #[async_trait]
 impl brassclaw_memory::EmbeddingProvider for DynEmbeddingProviderWrapper {
+    fn space_id(&self) -> &brassclaw_memory::EmbeddingSpaceId {
+        self.0.space_id()
+    }
     fn dimension(&self) -> usize {
         self.0.dimension()
     }
@@ -488,7 +566,14 @@ async fn dispatch_search(
     input: &Value,
 ) -> Result<Value, FirstPartyCapabilityError> {
     let query = search_query(input)?;
-    let limit = optional_u64(input, "limit").unwrap_or(5).clamp(1, 20) as usize;
+    let limit = match input.get("limit") {
+        None => 5,
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|value| *value > 0)
+            .ok_or_else(input_error)?,
+    } as usize;
     let request = MemorySearchRequest::new(query)
         .map_err(|_| input_error())?
         .with_limit(limit)
@@ -655,8 +740,8 @@ async fn dispatch_write(
 /// Execute Path B: file-less chunk creation and `source_ref` update.
 ///
 /// Called after every Path A write when embedding is active.  Best-effort:
-/// on embedding API error a `debug!` log is emitted and the function returns
-/// without failing the overall write (Path A is already committed and durable).
+/// on embedding API error an explicit result warning and a warning log report
+/// incomplete indexing. The completed write remains successful and durable.
 /// The `chat_memory_writer` is used to update `source_ref` on the Path A row
 /// after the chunk subtree is written (§4.30.1 step 5).
 ///
@@ -683,11 +768,11 @@ async fn run_path_b(
                 writer.update_source_ref(id, &source_ref).await;
             }
         }
-        Err(e) => {
-            tracing::debug!(
+        Err(_) => {
+            services.context.record_indexing_failure();
+            tracing::warn!(
                 chat_record_id = %id,
-                error = %e,
-                "Path B chunk/embed failed (best-effort); Path A record is intact"
+                "Chat-memory indexing failed; the committed record is intact and was not replayed"
             );
         }
     }
@@ -878,14 +963,9 @@ async fn dispatch_read(
 
 async fn dispatch_tree(
     services: &MemoryServices,
-    input: &Value,
+    tree: &super::memory_tree::TreeRequest,
 ) -> Result<Value, FirstPartyCapabilityError> {
-    let root = input.get("path").and_then(Value::as_str).unwrap_or("");
-    if !root.is_empty() {
-        reject_local_or_traversal_path(root)?;
-    }
-    let depth = optional_u64(input, "depth").unwrap_or(1).clamp(1, 10) as usize;
-    let mut paths = services
+    let paths = services
         .backend
         .list_documents(&services.context, &services.scope)
         .await
@@ -893,60 +973,7 @@ async fn dispatch_tree(
         .into_iter()
         .map(|path| path.relative_path().to_string())
         .collect::<Vec<_>>();
-    paths.sort();
-    Ok(Value::Array(tree_for_paths(
-        &paths,
-        root.trim_matches('/'),
-        depth,
-    )))
-}
-
-fn tree_for_paths(paths: &[String], root: &str, max_depth: usize) -> Vec<Value> {
-    let prefix = if root.is_empty() {
-        String::new()
-    } else {
-        format!("{}/", root.trim_matches('/'))
-    };
-    let mut children = std::collections::BTreeMap::<String, Vec<String>>::new();
-    let mut files = Vec::new();
-    for path in paths {
-        let Some(remainder) = path.strip_prefix(&prefix) else {
-            continue;
-        };
-        if remainder.is_empty() {
-            continue;
-        }
-        if let Some((dir, _)) = remainder.split_once('/') {
-            children
-                .entry(dir.to_string())
-                .or_default()
-                .push(path.clone());
-        } else {
-            files.push(remainder.to_string());
-        }
-    }
-
-    let mut output = Vec::new();
-    for (dir, child_paths) in children {
-        let display = format!("{dir}/");
-        if max_depth <= 1 {
-            output.push(Value::String(display));
-        } else {
-            let child_root = if root.is_empty() {
-                dir
-            } else {
-                format!("{root}/{dir}")
-            };
-            let child_tree = tree_for_paths(&child_paths, &child_root, max_depth - 1);
-            if child_tree.is_empty() {
-                output.push(Value::String(display));
-            } else {
-                output.push(json!({ (display): child_tree }));
-            }
-        }
-    }
-    output.extend(files.into_iter().map(Value::String));
-    output
+    tree.build(&paths)
 }
 
 fn resolve_target_path(target: &str, input: &Value) -> Result<String, FirstPartyCapabilityError> {
@@ -991,11 +1018,7 @@ fn required_str<'a>(
         .ok_or_else(input_error)
 }
 
-fn optional_u64(input: &Value, key: &'static str) -> Option<u64> {
-    input.get(key).and_then(Value::as_u64)
-}
-
-fn reject_local_or_traversal_path(path: &str) -> Result<(), FirstPartyCapabilityError> {
+pub(super) fn reject_local_or_traversal_path(path: &str) -> Result<(), FirstPartyCapabilityError> {
     if path.contains('\\') || looks_like_filesystem_path(path) || contains_traversal(path) {
         return Err(input_error());
     }

@@ -1,59 +1,15 @@
-//! Declarative LLM provider registry.
-//!
-//! Providers are defined in JSON (compiled-in defaults + optional user file)
-//! so adding a new OpenAI-compatible provider requires zero Rust code changes.
-//!
-//! ```text
-//!   ┌─────────────────────┐    ┌──────────────────────────┐
-//!   │  providers.json     │    │ ~/.brassclaw/providers.json│
-//!   │  (built-in, embed)  │    │ (user overrides/extras)  │
-//!   └────────┬────────────┘    └────────────┬─────────────┘
-//!            │                              │
-//!            └──────────┬───────────────────┘
-//!                       ▼
-//!              ┌──────────────────┐
-//!              │ ProviderRegistry │
-//!              │  .find("groq")   │──▶ ProviderDefinition
-//!              │  .all()          │        ├ protocol
-//!              │  .selectable()   │        ├ default_base_url
-//!              └──────────────────┘        ├ api_key_env
-//!                                          └ ...
-//! ```
+//! Provider definitions and an in-memory view of a supplied catalogue snapshot.
+//! Runtime composition builds this view from PostgreSQL rows. This module
+//! performs no file loading, environment selection or bootstrap synchronization.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 /// Default context window (tokens) used when a provider definition omits
 /// `context_window_tokens`. Conservative minimum that works on Claude Haiku
 /// and GPT-3.5-class models.
 pub const FALLBACK_CONTEXT_WINDOW: u32 = 16_000;
-
-/// Error returned by fallible provider-registry loading.
-#[derive(Debug, Error)]
-pub enum ProviderRegistryLoadError {
-    #[error("failed to read provider registry overlay `{path}`: {source}")]
-    Read {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("failed to parse provider registry overlay `{path}`: {source}")]
-    Parse {
-        path: String,
-        #[source]
-        source: serde_json::Error,
-    },
-}
-
-impl ProviderRegistryLoadError {
-    fn overlay_path(&self) -> &str {
-        match self {
-            Self::Read { path, .. } | Self::Parse { path, .. } => path,
-        }
-    }
-}
 
 /// API protocol a provider speaks.
 ///
@@ -117,6 +73,22 @@ pub enum ProviderProtocol {
 }
 
 impl ProviderProtocol {
+    /// Actual bounded HTTP transport support, not a setup hint.
+    pub fn supports_response_body_limit(self) -> bool {
+        matches!(
+            self,
+            Self::OpenAiCompletions
+                | Self::Anthropic
+                | Self::Ollama
+                | Self::DeepSeek
+                | Self::Gemini
+                | Self::OpenRouter
+                | Self::GithubCopilot
+                | Self::NearAi
+                | Self::GeminiOauth
+                | Self::OpenAiCodex
+        )
+    }
     /// Returns true for protocols whose runtime configuration lives in a
     /// dedicated `LlmConfig` field rather than `LlmConfig::provider`
     /// (`RegistryProviderConfig`).
@@ -360,10 +332,14 @@ pub struct ProviderTokenBudget {
 
 /// Declarative definition of an LLM provider.
 ///
-/// One JSON object in `providers.json` maps to one `ProviderDefinition`.
+/// One database definition JSON object maps to one `ProviderDefinition`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderDefinition {
+    /// Exact model names and response/cache contracts, retained in this DB revision.
+    /// Missing entries do not infer a vector shape from the model name.
+    #[serde(default)]
+    pub embedding_models: crate::EmbeddingModelContracts,
     /// Unique identifier used in `LLM_BACKEND` (e.g., "groq", "tinfoil").
     pub id: String,
     /// Alternative names accepted in `LLM_BACKEND` (e.g., ["nvidia_nim", "nim"]).
@@ -407,7 +383,7 @@ pub struct ProviderDefinition {
     /// Optional per-provider token budget.  When present, the runtime
     /// resolves this against the active preset and uses it instead of the
     /// global `[tokens]` section or compiled defaults.
-    /// `skip_serializing_if` keeps the field absent from providers.json
+    /// `skip_serializing_if` keeps the field absent from definition JSON
     /// entries that don't set it, so builtins stay compact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_budget: Option<ProviderTokenBudget>,
@@ -430,21 +406,23 @@ pub struct ProviderDefinition {
     /// `None` here → caller falls back to "none".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_retention: Option<String>,
+    /// Completed-response retention, independent of provider prompt/KV caching.
+    #[serde(default)]
+    pub response_cache: crate::ResponseCachePolicy,
+    /// Technical model-listing limits; never an alternate provider catalogue.
+    #[serde(default)]
+    pub model_discovery: crate::model_discovery::ModelDiscoveryPolicy,
+    #[serde(default)]
+    pub request_policy: crate::ProviderRequestPolicy,
 }
 
 /// Registry of known LLM providers.
 ///
-/// Built from compiled-in `providers.json` plus optional user overrides
-/// from `~/.brassclaw/providers.json`.
+/// Built only from the definitions supplied by the database composition owner.
 pub struct ProviderRegistry {
     providers: Vec<ProviderDefinition>,
     /// Lowercase id/alias → index into `providers`.
     lookup: HashMap<String, usize>,
-}
-
-fn builtin_provider_definitions() -> Vec<ProviderDefinition> {
-    serde_json::from_str(include_str!("../../../providers.json"))
-        .expect("built-in providers.json must be valid JSON") // safety: compile-time embedded file
 }
 
 impl ProviderRegistry {
@@ -460,83 +438,6 @@ impl ProviderRegistry {
             }
         }
         Self { providers, lookup }
-    }
-
-    /// Load the default registry: built-in providers + user overrides
-    /// from `~/.brassclaw/providers.json` (v1's canonical location).
-    ///
-    /// Equivalent to `load_from_path(user_providers_path())`. Kept as
-    /// the v1-default entry point so existing callers don't have to
-    /// thread a path through.
-    pub fn load() -> Self {
-        Self::load_from_path(user_providers_path().as_deref())
-    }
-
-    /// Load the registry with a caller-supplied user-overlay path.
-    ///
-    /// Built-in providers are always loaded from the compiled-in
-    /// `providers.json`. If `user_path` is `Some` and the file exists
-    /// it is parsed and appended; later entries override earlier ones
-    /// by id/alias. If parsing fails the file is skipped with a
-    /// `tracing::warn`, preserving the v1 fail-open-with-log behavior
-    /// so a malformed user file never breaks boot.
-    ///
-    /// Reborn's standalone composition root supplies
-    /// `$BRASSCLAW_REBORN_HOME/providers.json` here so the two binaries
-    /// (v1 and Reborn-standalone) can have independent user catalogs
-    /// without colliding on `~/.brassclaw/providers.json`.
-    pub fn load_from_path(user_path: Option<&std::path::Path>) -> Self {
-        match Self::try_load_from_path(user_path) {
-            Ok(registry) => registry,
-            Err(error) => {
-                tracing::debug!(
-                    path = %error.overlay_path(),
-                    error = %error,
-                    "Failed to load user providers.json, skipping"
-                );
-                Self::new(builtin_provider_definitions())
-            }
-        }
-    }
-
-    /// Load the registry with a caller-supplied user-overlay path,
-    /// failing if the explicit overlay exists but cannot be read/parsed.
-    ///
-    /// Reborn uses this because operator boot config is fail-closed: if an
-    /// explicit `$BRASSCLAW_REBORN_HOME/providers.json` is present, a syntax
-    /// error must not silently fall back to compiled-in defaults.
-    pub fn try_load_from_path(
-        user_path: Option<&std::path::Path>,
-    ) -> Result<Self, ProviderRegistryLoadError> {
-        let mut all = builtin_provider_definitions();
-
-        if let Some(user_path) = user_path {
-            let contents = match std::fs::read_to_string(user_path) {
-                Ok(contents) => Some(contents),
-                Err(source) if source.kind() == std::io::ErrorKind::NotFound => None,
-                Err(source) => {
-                    return Err(ProviderRegistryLoadError::Read {
-                        path: user_path.display().to_string(),
-                        source,
-                    });
-                }
-            };
-            if let Some(contents) = contents {
-                let user_defs = serde_json::from_str::<Vec<ProviderDefinition>>(&contents)
-                    .map_err(|source| ProviderRegistryLoadError::Parse {
-                        path: user_path.display().to_string(),
-                        source,
-                    })?;
-                tracing::debug!(
-                    count = user_defs.len(),
-                    path = %user_path.display(),
-                    "Loaded user provider definitions"
-                );
-                all.extend(user_defs);
-            }
-        }
-
-        Ok(Self::new(all))
     }
 
     /// Look up a provider by ID or alias (case-insensitive).
@@ -556,7 +457,7 @@ impl ProviderRegistry {
             .unwrap_or(FALLBACK_CONTEXT_WINDOW)
     }
 
-    /// All registered providers (built-in + user).
+    /// All definitions in this supplied snapshot.
     pub fn all(&self) -> &[ProviderDefinition] {
         &self.providers
     }
@@ -564,7 +465,6 @@ impl ProviderRegistry {
     /// Providers that should appear in the setup wizard's selection menu.
     ///
     /// Returns all providers that have a `setup` hint, in registry order.
-    /// NearAI is not in the registry (handled specially) so it won't appear here.
     pub fn selectable(&self) -> Vec<&ProviderDefinition> {
         // Deduplicate: only keep the last definition for each ID
         let mut seen = HashMap::new();
@@ -595,20 +495,6 @@ impl ProviderRegistry {
     pub fn is_known(&self, backend: &str) -> bool {
         self.find(backend).is_some()
     }
-
-    /// Get the model env var for a backend string.
-    ///
-    /// Returns the registry provider's `model_env`, or `"LLM_MODEL"` for
-    /// unknown backends (the generic openai-compatible fallback path).
-    pub fn model_env_var(&self, backend: &str) -> &str {
-        self.find(backend)
-            .map(|def| def.model_env.as_str())
-            .unwrap_or("LLM_MODEL")
-    }
-}
-
-fn user_providers_path() -> Option<std::path::PathBuf> {
-    Some(brassclaw_common::paths::brassclaw_base_dir().join("providers.json"))
 }
 
 #[cfg(test)]
@@ -621,18 +507,16 @@ mod tests {
     const TEST_TOTAL_INPUT_BUDGET: usize = 1_000_000;
 
     #[test]
-    fn provider_registry_load_error_exposes_overlay_path() {
-        let error = ProviderRegistryLoadError::Read {
-            path: "/tmp/providers.json".to_string(),
-            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
-        };
-        assert_eq!(error.overlay_path(), "/tmp/providers.json");
+    fn registry_contains_only_supplied_definitions() {
+        let registry = ProviderRegistry::new(Vec::new());
+        assert!(registry.all().is_empty());
+        assert!(registry.find("openai").is_none());
     }
 
     #[test]
     fn test_builtin_registry_loads() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         assert!(
             registry.all().len() >= 5,
@@ -643,7 +527,7 @@ mod tests {
     #[test]
     fn test_find_by_id() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         let openai = registry.find("openai").expect("openai should exist");
         assert_eq!(openai.id, "openai");
@@ -653,7 +537,7 @@ mod tests {
     #[test]
     fn test_find_by_alias() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         let openai = registry
             .find("open_ai")
@@ -664,7 +548,7 @@ mod tests {
     #[test]
     fn test_find_case_insensitive() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         assert!(registry.find("OpenAI").is_some());
         assert!(registry.find("GROQ").is_some());
@@ -674,7 +558,7 @@ mod tests {
     #[test]
     fn test_find_unknown_returns_none() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         assert!(registry.find("nonexistent_provider").is_none());
     }
@@ -682,7 +566,7 @@ mod tests {
     #[test]
     fn test_selectable_has_setup_hints() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         let selectable = registry.selectable();
         assert!(!selectable.is_empty());
@@ -727,10 +611,13 @@ mod tests {
     #[test]
     fn test_user_override_wins() {
         let builtins: Vec<ProviderDefinition> =
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap();
+            crate::testing::provider_seed::installation_provider_definitions();
         let mut all = builtins;
         // Simulate user overriding tinfoil with a different default model
         all.push(ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: "tinfoil".to_string(),
             aliases: vec![],
             protocol: ProviderProtocol::OpenAiCompletions,
@@ -748,6 +635,7 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         });
         let registry = ProviderRegistry::new(all);
         let tf = registry.find("tinfoil").expect("tinfoil should exist");
@@ -757,7 +645,7 @@ mod tests {
     /// Regression for chtugha/brassclaw#3734: NEAR AI is a dual-auth
     /// (session token + API key) provider whose `/v1/models` endpoint
     /// accepts either credential. Its `SetupHint::SessionToken` entry
-    /// in `providers.json` must carry `can_list_models: true` so the
+    /// in the installation definition must carry `can_list_models: true` so the
     /// configure UI exposes the "Fetch available models" button. Layer
     /// C (PR #3416) silently lost this when NEAR AI moved into the
     /// generic registry path because `SessionToken` did not yet expose
@@ -765,7 +653,7 @@ mod tests {
     #[test]
     fn test_nearai_setup_hint_can_list_models() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         let def = registry.find("nearai").expect("nearai should exist");
         let setup = def
@@ -829,36 +717,28 @@ mod tests {
     }
 
     #[test]
-    fn test_model_env_var_nearai() {
+    fn nearai_definition_retains_legacy_model_metadata() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
-        assert_eq!(registry.model_env_var("nearai"), "NEARAI_MODEL");
-        assert_eq!(registry.model_env_var("near_ai"), "NEARAI_MODEL");
+        assert_eq!(registry.find("nearai").unwrap().model_env, "NEARAI_MODEL");
+        assert_eq!(registry.find("near_ai").unwrap().model_env, "NEARAI_MODEL");
     }
 
     #[test]
-    fn test_model_env_var_registry_provider() {
+    fn registry_definitions_retain_legacy_model_metadata() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
-        assert_eq!(registry.model_env_var("groq"), "GROQ_MODEL");
-        assert_eq!(registry.model_env_var("tinfoil"), "TINFOIL_MODEL");
-        assert_eq!(registry.model_env_var("openai"), "OPENAI_MODEL");
-    }
-
-    #[test]
-    fn test_model_env_var_unknown_fallback() {
-        let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
-        );
-        assert_eq!(registry.model_env_var("nonexistent"), "LLM_MODEL");
+        assert_eq!(registry.find("groq").unwrap().model_env, "GROQ_MODEL");
+        assert_eq!(registry.find("tinfoil").unwrap().model_env, "TINFOIL_MODEL");
+        assert_eq!(registry.find("openai").unwrap().model_env, "OPENAI_MODEL");
     }
 
     #[test]
     fn test_is_known() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         assert!(registry.is_known("nearai"));
         assert!(registry.is_known("openai"));
@@ -869,7 +749,7 @@ mod tests {
     #[test]
     fn test_all_providers_have_required_fields() {
         let providers: Vec<ProviderDefinition> =
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap();
+            crate::testing::provider_seed::installation_provider_definitions();
         for def in &providers {
             assert!(!def.id.is_empty(), "provider must have an id");
             assert!(!def.model_env.is_empty(), "{}: model_env required", def.id);
@@ -898,7 +778,7 @@ mod tests {
     #[test]
     fn reasoning_aware_providers_use_dedicated_protocol_not_openai_compat() {
         let providers: Vec<ProviderDefinition> =
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap();
+            crate::testing::provider_seed::installation_provider_definitions();
         let by_id = |id: &str| providers.iter().find(|p| p.id == id).cloned();
 
         let deepseek = by_id("deepseek").expect("deepseek entry must exist");
@@ -931,7 +811,7 @@ mod tests {
     #[test]
     fn test_openai_compatible_providers_have_base_url() {
         let providers: Vec<ProviderDefinition> =
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap();
+            crate::testing::provider_seed::installation_provider_definitions();
         for def in &providers {
             if def.protocol == ProviderProtocol::OpenAiCompletions
                 && def.id != "openai"
@@ -951,7 +831,7 @@ mod tests {
     #[test]
     fn test_models_filter_accessor() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
         // Groq has models_filter: "chat"
         let groq = registry.find("groq").expect("groq should exist");
@@ -990,6 +870,9 @@ mod tests {
         // A built-in provider without setup hint should NOT appear in selectable().
         // But if a user override adds a setup hint, it SHOULD appear.
         let mut providers: Vec<ProviderDefinition> = vec![ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: "custom".to_string(),
             aliases: vec![],
             protocol: ProviderProtocol::OpenAiCompletions,
@@ -1007,6 +890,7 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         }];
 
         let registry = ProviderRegistry::new(providers.clone());
@@ -1017,6 +901,9 @@ mod tests {
 
         // User override adds a setup hint
         providers.push(ProviderDefinition {
+            embedding_models: Default::default(),
+            model_discovery: Default::default(),
+            request_policy: Default::default(),
             id: "custom".to_string(),
             aliases: vec![],
             protocol: ProviderProtocol::OpenAiCompletions,
@@ -1040,6 +927,7 @@ mod tests {
             token_budget: None,
             context_window_tokens: None,
             cache_retention: None,
+            response_cache: Default::default(),
         });
 
         let registry = ProviderRegistry::new(providers);
@@ -1062,6 +950,9 @@ mod tests {
         // NOT appear in selectable().
         let providers = vec![
             ProviderDefinition {
+                embedding_models: Default::default(),
+                model_discovery: Default::default(),
+                request_policy: Default::default(),
                 id: "provider_a".to_string(),
                 aliases: vec![],
                 protocol: ProviderProtocol::OpenAiCompletions,
@@ -1085,9 +976,13 @@ mod tests {
                 token_budget: None,
                 context_window_tokens: None,
                 cache_retention: None,
+                response_cache: Default::default(),
             },
             // User override removes setup
             ProviderDefinition {
+                embedding_models: Default::default(),
+                model_discovery: Default::default(),
+                request_policy: Default::default(),
                 id: "provider_a".to_string(),
                 aliases: vec![],
                 protocol: ProviderProtocol::OpenAiCompletions,
@@ -1105,6 +1000,7 @@ mod tests {
                 token_budget: None,
                 context_window_tokens: None,
                 cache_retention: None,
+                response_cache: Default::default(),
             },
         ];
 
@@ -1126,6 +1022,9 @@ mod tests {
         // later, selectable() should return A, B, C (not A, C, B).
         let providers = vec![
             ProviderDefinition {
+                embedding_models: Default::default(),
+                model_discovery: Default::default(),
+                request_policy: Default::default(),
                 id: "aaa".to_string(),
                 aliases: vec![],
                 protocol: ProviderProtocol::OpenAiCompletions,
@@ -1146,8 +1045,12 @@ mod tests {
                 token_budget: None,
                 context_window_tokens: None,
                 cache_retention: None,
+                response_cache: Default::default(),
             },
             ProviderDefinition {
+                embedding_models: Default::default(),
+                model_discovery: Default::default(),
+                request_policy: Default::default(),
                 id: "bbb".to_string(),
                 aliases: vec![],
                 protocol: ProviderProtocol::OpenAiCompletions,
@@ -1168,8 +1071,12 @@ mod tests {
                 token_budget: None,
                 context_window_tokens: None,
                 cache_retention: None,
+                response_cache: Default::default(),
             },
             ProviderDefinition {
+                embedding_models: Default::default(),
+                model_discovery: Default::default(),
+                request_policy: Default::default(),
                 id: "ccc".to_string(),
                 aliases: vec![],
                 protocol: ProviderProtocol::OpenAiCompletions,
@@ -1190,9 +1097,13 @@ mod tests {
                 token_budget: None,
                 context_window_tokens: None,
                 cache_retention: None,
+                response_cache: Default::default(),
             },
             // User override for B
             ProviderDefinition {
+                embedding_models: Default::default(),
+                model_discovery: Default::default(),
+                request_policy: Default::default(),
                 id: "bbb".to_string(),
                 aliases: vec![],
                 protocol: ProviderProtocol::OpenAiCompletions,
@@ -1213,6 +1124,7 @@ mod tests {
                 token_budget: None,
                 context_window_tokens: None,
                 cache_retention: None,
+                response_cache: Default::default(),
             },
         ];
 
@@ -1229,7 +1141,7 @@ mod tests {
     #[test]
     fn test_unsupported_params_deserialized() {
         let providers: Vec<ProviderDefinition> =
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap();
+            crate::testing::provider_seed::installation_provider_definitions();
 
         // Tinfoil should have temperature in unsupported_params
         let tinfoil = providers.iter().find(|p| p.id == "tinfoil").unwrap();
@@ -1278,7 +1190,7 @@ mod tests {
         }
     }
 
-    /// `cache_retention` is optional. Existing `providers.json` entries that
+    /// `cache_retention` is optional. Stored definition JSON objects that
     /// omit the field must continue to deserialize cleanly (the new field
     /// is gated by `#[serde(default)]`).
     #[test]
@@ -1341,7 +1253,7 @@ mod tests {
     /// must be in the registry so:
     ///   - `is_known()` returns true (no string-list duplication elsewhere),
     ///   - `find()` resolves their aliases,
-    ///   - `model_env_var()` returns the right env var,
+    ///   - legacy model-reference metadata is preserved,
     ///   - their protocol's `has_dedicated_config()` returns true (so the
     ///     OpenAI-shape resolver skips them),
     ///   - they appear in `selectable()` with the `SetupHint` variant the
@@ -1349,7 +1261,7 @@ mod tests {
     #[test]
     fn dedicated_config_backends_are_in_registry_and_selectable() {
         let registry = ProviderRegistry::new(
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap(),
+            crate::testing::provider_seed::installation_provider_definitions(),
         );
 
         for (id, expected_protocol, alias_to_check, model_env, expected_hint) in [
@@ -1395,7 +1307,7 @@ mod tests {
                 def.protocol.has_dedicated_config(),
                 "{id} protocol must report has_dedicated_config()"
             );
-            assert_eq!(registry.model_env_var(id), model_env);
+            assert_eq!(registry.find(id).unwrap().model_env, model_env);
             let setup = def
                 .setup
                 .as_ref()
@@ -1458,7 +1370,7 @@ mod tests {
         // Every built-in provider with SetupHint::ApiKey must have api_key_env
         // set, otherwise inject_llm_keys_from_secrets can't map the secret.
         let providers: Vec<ProviderDefinition> =
-            serde_json::from_str(include_str!("../../../providers.json")).unwrap();
+            crate::testing::provider_seed::installation_provider_definitions();
         for def in &providers {
             if let Some(SetupHint::ApiKey { .. }) = &def.setup {
                 assert!(

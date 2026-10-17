@@ -386,18 +386,34 @@ async def _execute_task(task):
     task_token = task["task_token"]
     user_input = task["user_input"]
     inputs = {"user_input": user_input, "history": task["history"]}
+    # Named internal work is host-owned admission data. It never enters public
+    # intent matching or needs a synthetic user command. Legacy low-level chat
+    # transport payloads without an entry keep their ordinary chat meaning.
+    entry = task.get("entry", {"kind": "chat"})
+    if not isinstance(entry, dict):
+        raise RuntimeError("task_entry_invalid")
+    if entry.get("kind") == "internal_recipe":
+        _exact_fields(entry, ["kind", "name"])
+        name = entry["name"]
+        if not isinstance(name, str) or name == "":
+            raise RuntimeError("task_entry_invalid")
+        selected = await host.resolve_internal_recipe(task_token, name, user_input)
+        if not isinstance(selected, dict) or selected.get("status") != "internal_recipe":
+            raise RuntimeError("recipe_composition_failed")
+        receipt = await _execute_recipe(task_token, selected.get("component_id"),
+                                        selected.get("step_link"), selected.get("inputs"))
+        # The task owner verifies the actual durable receipt. A string shape is
+        # not completion evidence or permission to finish an ordinary chat.
+        if not isinstance(receipt, str) or receipt == "":
+            raise RuntimeError("recipe_execution_failed")
+        return {"receipt_ref": receipt}
+    if entry.get("kind") != "chat":
+        raise RuntimeError("task_entry_invalid")
+    _exact_fields(entry, ["kind"])
     intent = await host.resolve_intent(task_token, user_input)
     if not isinstance(intent, dict):
         raise RuntimeError("intent_resolution_failed")
     status = intent.get("status")
-    if status == "internal_review":
-        # Only trusted task ports can issue this selection. Ordinary chat ports
-        # reject internal completion, even if a Recipe fabricates its shape.
-        receipt = await _execute_recipe(task_token, intent.get("component_id"),
-                                        intent.get("step_link"), intent.get("inputs"))
-        if not isinstance(receipt, str) or not receipt.startswith("review:"):
-            raise RuntimeError("recipe_execution_failed")
-        return {"receipt_ref": receipt}
     if status == "match":
         recipe_id = intent.get("component_id")
         step_link = intent.get("step_link")
@@ -488,7 +504,7 @@ async def _worker(worker_id):
             safe_reason = str(error)
             if safe_reason in ["recipe_composition_failed", "recipe_execution_failed",
                               "recipe_reply_invalid", "history_persistence_failed",
-                              "intent_resolution_failed", "intent_disambiguation_required",
+                              "intent_resolution_failed", "intent_disambiguation_required", "task_entry_invalid",
                               "non_match_instruction_unavailable", "task_compute_exceeded",
                               "task_accounting_failed", "task_cancelled", "capability_surface_invalid",
                               "prompt_bundle_invalid", "model_output_invalid", "capability_result_invalid",
@@ -508,13 +524,32 @@ async def _worker(worker_id):
         reason_kind = None
 
 
+async def _pool_coordinator():
+    # Private VM hosting control, never a Recipe/Tool call. Rust supplies the
+    # validated target and actual membership while the root is quiescent.
+    while True:
+        update = await host.await_pool_update()
+        if update is None:
+            return
+        active = set(update["active_ids"])
+        for worker_id in range(update["workers"]):
+            if worker_id not in active:
+                asyncio._replace_sibling(worker_id + 1, _worker(worker_id))
+                active.add(worker_id)
+        for worker_id in update["borrowed_ids"]:
+            if worker_id not in active:
+                asyncio._replace_sibling(worker_id + 1, _worker(worker_id))
+                active.add(worker_id)
+        update = None
+        active = None
+
+
 async def _global_main():
-    # The hosting service supplies its validated admission capacity at boot.
-    # A fixed number of coroutines provides bounded active task slots without
-    # requiring Monty's unsupported asyncio.create_task or Queue APIs.
+    # One coordinator and task coroutines share the permanent global VM.
+    # Busy surplus workers retire only after trusted completion/heap cleanup.
     if not isinstance(worker_count, int) or isinstance(worker_count, bool) or worker_count < 1:
         raise RuntimeError("orchestrator_capacity_invalid")
-    workers = []
+    workers = [_pool_coordinator()]
     for worker_id in range(worker_count):
         workers.append(_worker(worker_id))
     await asyncio.gather(*workers)

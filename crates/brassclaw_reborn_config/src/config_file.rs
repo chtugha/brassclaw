@@ -1,36 +1,10 @@
 //! Boot-time TOML config for the standalone Reborn binary.
 //!
-//! Operator-facing file at `$BRASSCLAW_REBORN_HOME/config.toml`. Read once
-//! at process start by `brassclaw-reborn run`. Provides the *selection*
-//! layer of the three-layer config model:
-//!
-//! - **Catalog**: `providers.json` (this crate exposes the path; the
-//!   composition root loads the file via `brassclaw_llm::ProviderRegistry`).
-//! - **Selection**: this file. "Use provider X for the `default` LLM
-//!   slot, with model Y."
-//! - **Runtime config**: derived in the composition root by resolving
-//!   the selection against the catalog.
-//!
-//! Precedence on each individual field:
-//!
-//! ```text
-//! compiled defaults  <  this file  <  env vars  <  CLI flags
-//! ```
-//!
-//! Secrets are env-only by policy. Pasting raw secret-shaped values
-//! into this file is rejected at parse time via [`secrets_guard`].
-//!
-//! Layering note: this crate must stay free of BrassClaw workspace
-//! dependencies (the boundary test
-//! `crates/brassclaw_architecture/tests/reborn_dependency_boundaries.rs`
-//! pins this). So we parse into **plain strings** for fields whose
-//! typed counterparts live in `brassclaw_host_api` (TenantId, AgentId,
-//! UserId, ProjectId, DeploymentMode, RuntimeProfile, ApprovalPolicy) or
-//! `brassclaw_reborn_composition` (RebornDriverChoice, RebornHarnessId).
-//! The composition root validates/promotes the strings into the typed
-//! shapes — that's where validation belongs anyway. This crate only
-//! enforces shape (sections exist, fields are the right TOML type,
-//! no inline secrets).
+//! Explicit legacy configuration import and bootstrap parser. Active provider
+//! definitions and role selections belong to PostgreSQL; this parser is not a
+//! runtime provider catalogue or an environment-override source. The upgrade
+//! command validates and imports supported operator files without overwriting
+//! newer database settings or deleting the source.
 
 use std::borrow::Cow;
 use std::fs;
@@ -340,11 +314,10 @@ pub struct WebuiSection {
     /// base-uri 'self'`). Operators serving a real SPA may need to
     /// override.
     pub csp_header_override: Option<String>,
-    /// Maximum per-request body bytes for paths that do NOT match a
-    /// declared v2 descriptor (i.e. the 404 fallback path). v2 routes
-    /// are individually capped from their `BodyLimitPolicy`
-    /// descriptor and are strictly tighter than this outer fallback.
-    /// Default `14 * 1024 * 1024` (14 MiB). `0` is rejected.
+    /// Global per-request body ceiling, including unmatched paths (404 fallback).
+    /// Matching v2 routes also enforce their independent `BodyLimitPolicy`.
+    /// Default `64 * 1024 * 1024` (64 MiB); ordinary routes retain smaller caps.
+    /// An explicit smaller value is preserved. `0` is rejected.
     pub max_body_bytes_fallback: Option<u64>,
     /// Canonical host this listener is reachable on (e.g.
     /// `"app.example.com"` or `"127.0.0.1:3000"`). When set, the WS
@@ -448,7 +421,7 @@ pub struct EmbeddingSection {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LlmSlotSelection {
-    /// Provider id from `providers.json` (built-in or user catalog).
+    /// Stable provider identifier from the database catalogue after explicit import.
     pub provider_id: Option<String>,
     /// Override the provider's `default_model`. Optional.
     pub model: Option<String>,

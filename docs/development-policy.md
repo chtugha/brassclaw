@@ -178,6 +178,16 @@ concurrent edits made after the check. Queue Cargo work sharing a target directo
 rather than starting competing builds. Before a rerun, read the complete previous
 diagnostics, trace their causes and fix the coherent set of related issues.
 
+When applying a frozen source snapshot to a reused compilation checkout, give
+changed compiler inputs a fresh modification time after the preceding build
+finishes. Copying their original timestamps can make Cargo reuse an older
+fingerprint if that build finished while the original checkout was being edited.
+Verify content hashes and the complete input inventory before and after checks;
+those checks alone do not prove artifact regeneration. Evidence reuse must also
+account for removed inputs. If a stale fingerprint is found, preserve the old
+results with their limitation and invalidate the affected compilation or lint
+inputs before accepting the successor.
+
 Stop when the change is reviewed and its required relevant checks pass. Broaden
 or repeat checks only for new changes, failures, acceptance requirements or a
 remaining uncertainty. Report skipped, blocked and unverified checks honestly.

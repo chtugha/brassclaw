@@ -114,6 +114,8 @@ pub enum RecipeCommand {
         settings: TaskSettings,
         values: VmBounds,
         max_recipe_contexts: Option<u32>,
+        max_pending_host_calls: Option<u32>,
+        max_workers: Option<u32>,
         adapter_reserve_bytes: Option<usize>,
         heap_update: Option<crate::heap::HeapUpdate>,
         frame_update: Option<crate::heap::FrameUpdate>,
@@ -229,6 +231,14 @@ pub(crate) struct WorkerRecipes {
     artifacts: crate::artifact_cache::ArtifactCache,
 }
 impl WorkerRecipes {
+    pub(crate) fn retains_task(&self, task: TaskHandle) -> bool {
+        self.tasks.contains_key(&task)
+    }
+    pub(crate) fn update_task_capacity(&mut self, capacity: u32) {
+        // Existing task records remain owned even when they exceed a reduced
+        // admission target. No budget, context, result or attempt is reset.
+        self.max_tasks = capacity as usize;
+    }
     pub(crate) fn validate_runtime_settings(
         &self,
         expected_revision: u64,
@@ -314,13 +324,22 @@ impl WorkerRecipes {
         if root.lifecycle() != Lifecycle::Ready {
             return Err(VmError::kind(VmFailure::WrongBoundary));
         }
-        if self.tasks.len() >= self.max_tasks {
+        let capacity = self
+            .max_tasks
+            .checked_add(root.active_extra_dependents()?)
+            .ok_or_else(|| VmError::kind(VmFailure::ResourceLimit))?;
+        if self.tasks.len() >= capacity && !root.dependent_admission(key, &input) {
             return Err(VmError::kind(VmFailure::ResourceLimit));
         }
-        // Protocol 3 accepts six data fields. The worker adds its own fresh
-        // routing token; the parent never substitutes conversation/run IDs.
+        // Six legacy chat data fields, or seven with a validated host-selected
+        // entry. The worker adds its own fresh routing token; the parent never
+        // substitutes conversation/run IDs. Wire-version mismatch fails earlier.
         let valid = input.as_object().is_some_and(|input| {
-            input.len() == 6
+            ((input.len() == 6 && !input.contains_key("entry"))
+                || (input.len() == 7
+                    && input
+                        .get("entry")
+                        .is_some_and(crate::task_entry::valid_value)))
                 && ["conversation_id", "message_id", "turn_id", "run_id"]
                     .iter()
                     .all(|name| {
@@ -601,6 +620,8 @@ impl WorkerRecipes {
                 })
             }
             RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls,
+                max_workers,
                 expected_revision,
                 settings,
                 values,
@@ -620,6 +641,10 @@ impl WorkerRecipes {
                     values,
                     max_recipe_contexts,
                 )?;
+                root.validate_pending_call_limit(max_pending_host_calls)?;
+                if let Some(workers) = max_workers {
+                    root.validate_worker_pool_target(workers, max_pending_host_calls, values)?;
+                }
                 // Publish first: failed validation/CAS leaves every VM unchanged.
                 self.apply(
                     RecipeCommand::UpdateSettings {
@@ -628,6 +653,9 @@ impl WorkerRecipes {
                     },
                     root,
                 )?;
+                if let Some(limit) = max_pending_host_calls {
+                    root.update_pending_call_limit(limit);
+                }
                 root.update_bounds(values);
                 for context in self.contexts.values_mut() {
                     context.vm.update_bounds(values);
@@ -635,6 +663,10 @@ impl WorkerRecipes {
                 self.bounds = values;
                 if let Some(limit) = max_recipe_contexts {
                     self.max_contexts = limit as usize;
+                }
+                if let Some(workers) = max_workers {
+                    root.publish_worker_pool_target(workers)?;
+                    self.update_task_capacity(workers);
                 }
                 Ok(RecipeEvent::SettingsUpdated)
             }

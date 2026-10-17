@@ -271,7 +271,7 @@ using `seed_builtin_host.rs`'s existing action seeding pattern.
    d. `call_skill`: `hash-compare` → changed?
    e. conditional: if changed → `call_action`: `doc-convert` variant=`by-extract`
    f. conditional: if changed → `call_skill`: `db-mark-prefix-stale`
-3. `return`: {scanned: N, changed: M, stale: yes/no}
+3. `return`: `{scanned: N, changed: M, stale: yes/no}`
 
 **Files touched:**
 - `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` or `seed_builtin_host.rs`

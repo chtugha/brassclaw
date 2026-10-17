@@ -1,15 +1,13 @@
 diff --git a/.rustfmt.toml b/.rustfmt.toml
-index 8e47c65..237a52a 100644
 --- a/.rustfmt.toml
 +++ b/.rustfmt.toml
-@@ -2,2 +1,0 @@ max_width = 120
+@@ -2,2 +1,0 @@
 -imports_granularity = "Crate"
 -group_imports = "StdExternalCrate"
 diff --git a/Cargo.toml b/Cargo.toml
-index a8b516c..5eb0aae 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -3,21 +3,2 @@ resolver = "2"
+@@ -3,21 +3,2 @@
 -members = [
 -    "crates/monty",
 -    "crates/monty-types",
@@ -33,10 +31,10 @@ index a8b516c..5eb0aae 100644
 -default-members = ["crates/monty-runtime"]
 +members = ["crates/monty", "crates/monty-types", "crates/monty-macros", "crates/monty-alloc"]
 +default-members = ["crates/monty"]
-@@ -27 +8 @@ edition = "2024"
+@@ -27 +8 @@
 -version = "1.0.0"
 +version = "1.0.0-brassclaw.control.7"
-@@ -63,9 +44,4 @@ strip = false
+@@ -63,9 +44,4 @@
 -monty = { path = "crates/monty", version = "1.0.0" }
 -monty-types = { path = "crates/monty-types", version = "1.0.0" }
 -monty-alloc = { path = "crates/monty-alloc", version = "1.0.0" }
@@ -51,17 +49,15 @@ index a8b516c..5eb0aae 100644
 +monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.7" }
 +monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.7" }
 diff --git a/crates/monty-alloc/Cargo.toml b/crates/monty-alloc/Cargo.toml
-index c8d3c87..97e5aa7 100644
 --- a/crates/monty-alloc/Cargo.toml
 +++ b/crates/monty-alloc/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-alloc/README.md b/crates/monty-alloc/README.md
-index 75202ae..c6195e2 100644
 --- a/crates/monty-alloc/README.md
 +++ b/crates/monty-alloc/README.md
-@@ -54,3 +54,39 @@ cdylib it would hijack the allocator of the embedding host process.
+@@ -54,3 +54,39 @@
 -Published so the `monty` binary can be, not for direct use. On a 32-bit target
 -a limit near 4 GiB saturates the arithmetic and leaves the worker
 -uncapped.
@@ -105,7 +101,6 @@ index 75202ae..c6195e2 100644
 +feasibility, durable commit and publication; a later unfenced write cannot rely
 +on an earlier successful probe.
 diff --git a/crates/monty-alloc/src/lib.rs b/crates/monty-alloc/src/lib.rs
-index 400c535..9a0db8d 100644
 --- a/crates/monty-alloc/src/lib.rs
 +++ b/crates/monty-alloc/src/lib.rs
 @@ -2 +2,4 @@
@@ -114,16 +109,17 @@ index 400c535..9a0db8d 100644
 +    unsafe_code,
 +    reason = "GlobalAlloc requires aligned private headers and matching System layouts"
 +)]
-@@ -5,0 +9 @@ use std::{
+@@ -5,0 +9 @@
 +    cell::Cell,
-@@ -7,0 +12 @@ use std::{
+@@ -7,0 +12 @@
 +    marker::PhantomData,
-@@ -8,0 +14 @@ use std::{
+@@ -8,0 +14 @@
 +    rc::Rc,
-@@ -14 +20 @@ use monty_types::OOM_EXIT_CODE;
+@@ -14 +20 @@
 -use monty_types::{BASELINE_MEMORY, LIVE_MEMORY};
 +use monty_types::{BASELINE_MEMORY, LIVE_MEMORY, VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT};
-@@ -20,0 +27,160 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
+@@ -19,0 +26,160 @@
++
 +thread_local! {
 +    // Const initialization and a destructor-free Cell are essential: allocator
 +    // entry must neither allocate recursively nor acquire a mutex.
@@ -283,18 +279,17 @@ index 400c535..9a0db8d 100644
 +fn allocation_is_vm_owned() -> bool {
 +    VM_MEMORY_ACCOUNTING.load(Ordering::Acquire) && VM_SCOPE.try_with(Cell::get).unwrap_or(false)
 +}
-+
-@@ -27,2 +193,2 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
+@@ -27,2 +193,2 @@
 -/// On a 32-bit target (wasm) a budget near 4 GiB saturates the arithmetic and
 -/// leaves the worker uncapped — there is no cap to express.
 +/// An unrepresentable finite ceiling is rejected; it must never become an
 +/// unlimited worker. Invalid settings leave the previously armed ceiling intact.
-@@ -33,0 +200,4 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str>
+@@ -33,0 +200,4 @@
 +    let candidate = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
 +    if memory_budget.is_some_and(|bytes| candidate.checked_add(bytes).is_none()) {
 +        return Err("allocator memory budget is out of range");
 +    }
-@@ -37 +207,6 @@ pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str>
+@@ -37 +207,6 @@
 -    let hard_limit = memory_budget.map_or(usize::MAX, |bytes| baseline.saturating_add(bytes));
 +    let hard_limit = match memory_budget {
 +        Some(bytes) => baseline
@@ -302,7 +297,7 @@ index 400c535..9a0db8d 100644
 +            .ok_or("allocator memory budget is out of range")?,
 +        None => usize::MAX,
 +    };
-@@ -46,3 +221,6 @@ pub struct LimitedAllocator;
+@@ -46,3 +221,6 @@
 -// SAFETY: every method forwards its arguments unchanged to `System` and returns
 -// what `System` returned (or diverges). No pointer is fabricated, aliased or
 -// freed here, so this upholds exactly the invariants `System` upholds.
@@ -312,7 +307,7 @@ index 400c535..9a0db8d 100644
 +// The offset depends only on payload alignment, so realloc retains both the
 +// header and payload at their original offsets. Dealloc reconstructs exactly
 +// the original layout; headers are private and initialized before publication.
-@@ -51,3 +229,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -51,3 +229,5 @@
 -        charge(layout.size());
 -        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
 -        let ptr = unsafe { System.alloc(layout) };
@@ -321,7 +316,7 @@ index 400c535..9a0db8d 100644
 +        charge(storage.size(), vm_owned);
 +        // SAFETY: storage is a validated Layout containing header and payload.
 +        let ptr = unsafe { System.alloc(storage) };
-@@ -60 +240,6 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -60 +240,6 @@
 -        ptr
 +        // SAFETY: storage reserves an aligned initialized header and a payload
 +        // at offset, with the caller's requested size and alignment.
@@ -329,7 +324,7 @@ index 400c535..9a0db8d 100644
 +            ptr.cast::<Header>().write(Header { vm_owned });
 +            ptr.add(offset)
 +        }
-@@ -64,3 +249,9 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -64,3 +249,9 @@
 -        refund(layout.size());
 -        // SAFETY: `ptr` came from our `alloc`/`realloc` with this same `layout`.
 -        unsafe { System.dealloc(ptr, layout) };
@@ -342,7 +337,7 @@ index 400c535..9a0db8d 100644
 +        // SAFETY: base and storage reconstruct the exact System allocation.
 +        unsafe { System.dealloc(base, storage) };
 +        refund(storage.size(), header.vm_owned);
-@@ -72,3 +263,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -72,3 +263,5 @@
 -        charge(layout.size());
 -        // SAFETY: `layout` comes from the caller and is forwarded unchanged.
 -        let ptr = unsafe { System.alloc_zeroed(layout) };
@@ -351,18 +346,22 @@ index 400c535..9a0db8d 100644
 +        charge(storage.size(), vm_owned);
 +        // SAFETY: validated combined layout; the payload remains all zeroes.
 +        let ptr = unsafe { System.alloc_zeroed(storage) };
-@@ -81 +274,5 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -81 +274,5 @@
 -        ptr
 +        // SAFETY: initializing the private header touches no payload bytes.
 +        unsafe {
 +            ptr.cast::<Header>().write(Header { vm_owned });
 +            ptr.add(offset)
 +        }
-@@ -87,4 +284,10 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -87,8 +284,15 @@
 -        if let Some(size_change) = new_size.checked_sub(layout.size()) {
 -            charge(size_change);
 -        } else {
 -            refund(layout.size() - new_size);
+-        }
+-        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
+-        // `new_size` is the caller's — all forwarded unchanged.
+-        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
 +        let (storage, offset) = storage_layout(layout);
 +        let new_payload = Layout::from_size_align(new_size, layout.align())
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocation layout overflow")));
@@ -373,15 +372,12 @@ index 400c535..9a0db8d 100644
 +        let header = unsafe { base.cast::<Header>().read() };
 +        if new_storage.size() > storage.size() {
 +            charge(new_storage.size() - storage.size(), header.vm_owned);
-@@ -92,3 +295,4 @@ unsafe impl GlobalAlloc for LimitedAllocator {
--        // SAFETY: `ptr`/`layout` describe a live block from this allocator, and
--        // `new_size` is the caller's — all forwarded unchanged.
--        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
++        }
 +        // SAFETY: storage describes base's live System block. Both layouts have
 +        // identical alignment and header/payload offsets; nonzero new_size is
 +        // part of the GlobalAlloc caller contract.
 +        let new_ptr = unsafe { System.realloc(base, storage, new_storage.size()) };
-@@ -98 +302,6 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -98 +302,6 @@
 -        new_ptr
 +        if new_storage.size() < storage.size() {
 +            refund(storage.size() - new_storage.size(), header.vm_owned);
@@ -389,7 +385,7 @@ index 400c535..9a0db8d 100644
 +        // SAFETY: realloc preserves the initialized header and overlapping
 +        // payload. The original payload offset remains valid after resize.
 +        unsafe { new_ptr.add(offset) }
-@@ -104,2 +313,7 @@ unsafe impl GlobalAlloc for LimitedAllocator {
+@@ -104,2 +313,7 @@
 -fn charge(size: usize) {
 -    let live = LIVE_MEMORY.fetch_add(size, Ordering::Relaxed).saturating_add(size);
 +fn charge(size: usize, vm_owned: bool) {
@@ -399,13 +395,13 @@ index 400c535..9a0db8d 100644
 +    let Some(live) = previous.checked_add(size) else {
 +        out_of_memory(format_args!("monty worker: allocator accounting overflow"));
 +    };
-@@ -110,0 +325,5 @@ fn charge(size: usize) {
+@@ -110,0 +325,5 @@
 +    if vm_owned {
 +        VM_LIVE_MEMORY
 +            .try_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
 +            .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: VM allocator accounting overflow")));
 +    }
-@@ -116,2 +335,14 @@ fn charge(size: usize) {
+@@ -116,2 +335,14 @@
 -fn refund(size: usize) {
 -    LIVE_MEMORY.fetch_sub(size, Ordering::Relaxed);
 +fn refund(size: usize, vm_owned: bool) {
@@ -423,24 +419,21 @@ index 400c535..9a0db8d 100644
 +        out_of_memory(format_args!("monty worker: VM allocator accounting underflow"));
 +    }
 diff --git a/crates/monty-macros/Cargo.toml b/crates/monty-macros/Cargo.toml
-index 8099a65..dee0990 100644
 --- a/crates/monty-macros/Cargo.toml
 +++ b/crates/monty-macros/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-types/Cargo.toml b/crates/monty-types/Cargo.toml
-index c6423a9..3ae8b35 100644
 --- a/crates/monty-types/Cargo.toml
 +++ b/crates/monty-types/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty-types/src/lib.rs b/crates/monty-types/src/lib.rs
-index 0f449f8..3dd6176 100644
 --- a/crates/monty-types/src/lib.rs
 +++ b/crates/monty-types/src/lib.rs
-@@ -50,3 +50,4 @@ pub use crate::{
+@@ -50,3 +50,4 @@
 -        BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, LARGE_RESULT_THRESHOLD, LIVE_MEMORY,
 -        OOM_EXIT_CODE, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
 -        memory_limit_with_headroom,
@@ -449,16 +442,15 @@ index 0f449f8..3dd6176 100644
 +        OOM_EXIT_CODE, PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope,
 +        VM_LIVE_MEMORY, VM_MEMORY_ACCOUNTING, VM_MEMORY_LIMIT, allocate_into_baseline, memory_limit_with_headroom,
 diff --git a/crates/monty-types/src/resource.rs b/crates/monty-types/src/resource.rs
-index 076f825..edbf684 100644
 --- a/crates/monty-types/src/resource.rs
 +++ b/crates/monty-types/src/resource.rs
-@@ -14 +14,4 @@ use std::{
+@@ -14 +14,4 @@
 -    sync::atomic::{AtomicUsize, Ordering},
 +    sync::{
 +        Arc, Mutex,
 +        atomic::{AtomicBool, AtomicUsize, Ordering},
 +    },
-@@ -33,0 +37,11 @@ pub static LIVE_MEMORY: AtomicUsize = AtomicUsize::new(0);
+@@ -33,0 +37,11 @@
 +/// Allocations made in a trusted VM allocation scope, including allocation
 +/// headers/padding. Ownership survives scope exit, reallocations and waits.
 +/// Unlike LIVE_MEMORY minus a baseline, unrelated transport allocations never
@@ -470,15 +462,15 @@ index 076f825..edbf684 100644
 +/// Shared soft ceiling for the worker's VM allocation domain. Only the trusted
 +/// serialized worker owner changes it; no task/reset changes this account.
 +pub static VM_MEMORY_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
-@@ -49 +63 @@ pub fn allocate_into_baseline<T>(build: impl FnOnce() -> T) -> T {
+@@ -49 +63 @@
 -    let _ = BASELINE_MEMORY.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |baseline| {
 +    let _ = BASELINE_MEMORY.try_update(Ordering::Relaxed, Ordering::Relaxed, |baseline| {
-@@ -92,0 +107,2 @@ pub enum ResourceError {
+@@ -92,0 +107,2 @@
 +    /// Trusted host control failed; sandboxed code cannot catch this.
 +    Control(ExecutionControlError),
-@@ -137,0 +154 @@ impl fmt::Display for ResourceError {
+@@ -137,0 +154 @@
 +            Self::Control(reason) => write!(f, "execution control: {reason:?}"),
-@@ -277,0 +295,10 @@ pub struct ResourceTracker {
+@@ -277,0 +295,10 @@
 +    // Authority is never serialized. A controlled dump requires explicit trusted
 +    // reattachment before execution; it must not silently become uncontrolled.
 +    #[serde(skip)]
@@ -489,11 +481,11 @@ index 076f825..edbf684 100644
 +    /// Scheduler identity, not a product task or authority grant. Main is 0;
 +    /// None denotes a discarded coroutine context. Retained over snapshots.
 +    execution_context: Cell<Option<u32>>,
-@@ -283,0 +311,3 @@ pub struct ResourceTracker {
+@@ -283,0 +311,3 @@
 +    /// Synchronous interpreter preparation, accounted independently of VM
 +    /// feed/turn limits but included in the trusted task-control clock.
 +    preparation: Arc<Mutex<PreparationAccount>>,
-@@ -316,0 +347,119 @@ impl Default for ResourceTracker {
+@@ -316,0 +347,129 @@
 +#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 +struct PreparationAccount {
 +    total: Duration,
@@ -573,6 +565,16 @@ index 076f825..edbf684 100644
 +pub trait ExecutionControl: fmt::Debug + Send + Sync {
 +    fn checkpoint(&self, elapsed: Duration) -> Result<ExecutionControlAction, ExecutionControlError>;
 +
++    /// A spawned coroutine has actually exited and its final clock interval
++    /// has closed. This is not a task finish, effect acknowledgement or host
++    /// cancellation. Owners may retire context-only telemetry; any separately
++    /// owned task/effect state must remain fenced. Never called for suspension
++    /// or mechanical snapshot destruction. Implementations must not block or
++    /// reenter the interpreter.
++    fn context_exited(&self, _context: u32) -> Result<(), ExecutionControlError> {
++        Ok(())
++    }
++
 +    /// Observe separate cumulative clocks and the actual loaded coroutine.
 +    /// Called on both sides of every context transition. Preparation does not
 +    /// belong to this coroutine: importing a host result can wake another one.
@@ -613,7 +615,7 @@ index 076f825..edbf684 100644
 +    IdentityExhausted,
 +}
 +
-@@ -317,0 +467,146 @@ impl ResourceTracker {
+@@ -317,0 +477,168 @@
 +    /// Attach trusted control without resetting consumption or terminal failure.
 +    /// Reattachment after loading a controlled dump is mandatory. It does not
 +    /// clear a failure already observed while control was unavailable.
@@ -683,6 +685,28 @@ index 076f825..edbf684 100644
 +                debug_assert!(after.is_ok() || self.control_error.get().is_some());
 +            }
 +        }
++    }
++
++    /// Notify the host after a real spawned-coroutine exit. The scheduler must
++    /// first close its clock interval and release the loaded context. Rejection
++    /// latches the same terminal control error used by ordinary checkpoints;
++    /// it never clears an earlier failure or resets cumulative clocks.
++    pub fn retire_execution_context(&self, context: u32) -> Result<(), ResourceError> {
++        self.poll_execution_control()?;
++        let result = if self.execution_context.get() == Some(context) {
++            Err(ExecutionControlError::AccountingUnavailable)
++        } else if self.control_required {
++            self.execution_control
++                .as_ref()
++                .ok_or(ExecutionControlError::AccountingUnavailable)
++                .and_then(|control| control.context_exited(context))
++        } else {
++            Ok(())
++        };
++        result.map_err(|error| {
++            self.control_error.set(Some(error));
++            ResourceError::Control(error)
++        })
 +    }
 +
 +    /// Begin synchronous interpreter preparation, never execution or a host wait.
@@ -760,34 +784,34 @@ index 076f825..edbf684 100644
 +        }
 +    }
 +
-@@ -329,0 +625,5 @@ impl ResourceTracker {
+@@ -329,0 +657,5 @@
 +            execution_control: None,
 +            control_required: false,
 +            control_error: Cell::new(None),
 +            control_yield: Cell::new(false),
 +            execution_context: Cell::new(Some(0)),
-@@ -330,0 +631 @@ impl ResourceTracker {
+@@ -330,0 +663 @@
 +            preparation: Arc::new(Mutex::new(PreparationAccount::default())),
-@@ -396 +697,2 @@ impl ResourceTracker {
+@@ -396 +729,2 @@
 -    /// Returns the configured memory budget, if any. Hosts that bound a worker
 +    /// Returns the current effective memory budget, including an installed
 +    /// shared VM-domain ceiling. Hosts that bound a worker
-@@ -400 +702 @@ impl ResourceTracker {
+@@ -400 +734 @@
 -        self.limits.max_memory
 +        self.effective_memory_limit()
-@@ -419 +721 @@ impl ResourceTracker {
+@@ -419 +753 @@
 -        self.limits.max_memory.is_some() || self.has_time_limit()
 +        self.effective_memory_limit().is_some() || self.has_time_limit()
-@@ -429 +731 @@ impl ResourceTracker {
+@@ -429 +763 @@
 -        self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
 +        self.control_required || self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
-@@ -457 +759 @@ impl ResourceTracker {
+@@ -457 +791 @@
 -        if let Some(limit) = self.limits.max_memory {
 +        if let Some(limit) = self.effective_memory_limit() {
-@@ -476 +778 @@ impl ResourceTracker {
+@@ -476 +810 @@
 -        if let Some(limit) = self.limits.max_memory {
 +        if let Some(limit) = self.effective_memory_limit() {
-@@ -485,0 +788,11 @@ impl ResourceTracker {
+@@ -485,0 +820,11 @@
 +    fn effective_memory_limit(&self) -> Option<usize> {
 +        let shared = VM_MEMORY_ACCOUNTING
 +            .load(Ordering::Acquire)
@@ -799,21 +823,21 @@ index 076f825..edbf684 100644
 +        }
 +    }
 +
-@@ -492,0 +806 @@ impl ResourceTracker {
+@@ -492,0 +838 @@
 +        self.poll_execution_control()?;
-@@ -660,0 +975 @@ impl ResourceTracker {
+@@ -660,0 +1007 @@
 +        self.pause_preparation();
-@@ -675,0 +991,4 @@ impl ResourceTracker {
+@@ -675,0 +1023,4 @@
 +            self.resume_preparation();
 +            if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
 +                self.control_error.set(Some(error));
 +            }
-@@ -703,0 +1023 @@ impl ResourceTracker {
+@@ -703,0 +1055 @@
 +        self.pause_preparation();
-@@ -706,0 +1027,2 @@ impl ResourceTracker {
+@@ -706,0 +1059,2 @@
 +        } else {
 +            self.resume_preparation();
-@@ -741,3 +1063,7 @@ fn probe_memory() -> usize {
+@@ -741,3 +1095,7 @@
 -    LIVE_MEMORY
 -        .load(Ordering::Relaxed)
 -        .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))
@@ -825,42 +849,103 @@ index 076f825..edbf684 100644
 +            .saturating_sub(BASELINE_MEMORY.load(Ordering::Relaxed))
 +    }
 diff --git a/crates/monty/Cargo.toml b/crates/monty/Cargo.toml
-index c66034a..29279bf 100644
 --- a/crates/monty/Cargo.toml
 +++ b/crates/monty/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
 diff --git a/crates/monty/src/asyncio.rs b/crates/monty/src/asyncio.rs
-index c2870aa..7d7b5b6 100644
 --- a/crates/monty/src/asyncio.rs
 +++ b/crates/monty/src/asyncio.rs
-@@ -53,0 +54,5 @@ impl TaskId {
+@@ -51,0 +52,5 @@
++    }
++
 +    /// VM-local identity for trusted execution accounting, never task authority.
 +    pub fn raw(self) -> u32 {
 +        self.0
-+    }
-+
 diff --git a/crates/monty/src/bytecode/vm/async_exec.rs b/crates/monty/src/bytecode/vm/async_exec.rs
-index 92db121..306b682 100644
 --- a/crates/monty/src/bytecode/vm/async_exec.rs
 +++ b/crates/monty/src/bytecode/vm/async_exec.rs
-@@ -244 +244 @@ impl<'h> VM<'h> {
+@@ -211,0 +212,59 @@
++    /// BrassClaw scheduler primitive: extend the current child's owning group,
++    /// or reuse a completed slot. Never replace a running sibling, detach a
++    /// task, alter its waiter, or operate on another group's awaitable.
++    pub(crate) fn replace_gather_sibling(&mut self, slot: usize, coroutine_id: HeapId) -> RunResult<()> {
++        let Some(current) = self.scheduler.current_task_id() else {
++            return Err(SimpleException::new_msg(ExcType::RuntimeError, "no executing gather child").into());
++        };
++        let Some(Awaiter::GatherSlot { gather: gather_id, .. }) = self.scheduler.get_task_mut(current).awaiter.as_ref()
++        else {
++            return Err(SimpleException::new_msg(ExcType::RuntimeError, "no executing gather child").into());
++        };
++        let gather_id = *gather_id;
++        let HeapReadOutput::Coroutine(coroutine) = self.heap.read(coroutine_id) else {
++            return Err(ExcType::type_error("a new coroutine is required"));
++        };
++        if coroutine.get(self.heap).state != CoroutineState::New {
++            return Err(ExcType::cannot_reuse_already_awaited_coroutine());
++        }
++        drop(coroutine);
++        let HeapReadOutput::GatherFuture(mut gather) = self.heap.read(gather_id) else {
++            return Err(SimpleException::new_msg(ExcType::RuntimeError, "owning gather is unavailable").into());
++        };
++        let group = gather.get(self.heap);
++        let Some(awaited) = group.as_awaited() else {
++            return Err(SimpleException::new_msg(ExcType::RuntimeError, "owning gather is not pending").into());
++        };
++        if slot > group.items.len() {
++            return Err(ExcType::value_error("gather slot is outside the group"));
++        }
++        if slot < group.items.len() && awaited.results[slot].is_none() {
++            return Err(SimpleException::new_msg(ExcType::RuntimeError, "gather slot is still running").into());
++        }
++        // spawn validates uniqueness and identity exhaustion before acquiring
++        // references. No catchable rejection after this point mutates the group.
++        if self
++            .scheduler
++            .spawn(self.heap, coroutine_id, Some(gather_id))?
++            .is_none()
++        {
++            return Err(ExcType::cannot_reuse_already_awaited_coroutine());
++        }
++        self.heap.inc_ref(coroutine_id);
++        let group = gather.get_mut(self.heap);
++        if slot == group.items.len() {
++            group.items.push(coroutine_id);
++            let awaited = group.as_awaited_mut().expect("validated awaited gather");
++            awaited.results.push(None);
++            awaited.pending_children.insert(coroutine_id, smallvec![slot]);
++        } else {
++            let old = mem::replace(&mut group.items[slot], coroutine_id);
++            let awaited = group.as_awaited_mut().expect("validated awaited gather");
++            let old_result = awaited.results[slot].take().expect("validated completed slot");
++            awaited.pending_children.insert(coroutine_id, smallvec![slot]);
++            old_result.drop_with(self);
++            Value::Ref(old).drop_with(self);
++        }
++        Ok(())
++    }
++
+@@ -244 +303 @@
 -                        || self.scheduler.spawn(self.heap, item_id, Some(gather_id)).is_none()
 +                        || self.scheduler.spawn(self.heap, item_id, Some(gather_id))?.is_none()
-@@ -447,0 +448,3 @@ impl<'h> VM<'h> {
+@@ -447,0 +507,5 @@
 +        // Clear only an actual exiting task, never VM::snapshot's mechanical
 +        // Drop cleanup: that continuation still owns the loaded coroutine.
 +        self.heap.tracker.set_execution_context(None);
-@@ -477,0 +481 @@ impl<'h> VM<'h> {
++
++        self.heap.tracker.retire_execution_context(task_id.raw())?;
+@@ -477,0 +542 @@
 +        self.heap.tracker.set_execution_context(None);
-@@ -552,0 +557,5 @@ impl<'h> VM<'h> {
+@@ -478,0 +544 @@
++        self.heap.tracker.retire_execution_context(task_id.raw())?;
+@@ -552,0 +619,5 @@
 +            self.heap.tracker.set_execution_context(Some(task_id.raw()));
 +            // A transition callback can latch fatal control failure. Check it
 +            // before loading/running the selected task, including short feeds
 +            // that cannot reach the periodic bytecode checkpoint.
 +            self.heap.tracker.check_memory_time()?;
-@@ -864,2 +873,8 @@ impl<'h> VM<'h> {
+@@ -864,2 +935,8 @@
 -    pub(crate) fn settled_awaitable(&mut self, value: Value) -> Value {
 -        let call_id = self.allocate_call_id();
 +    pub(crate) fn settled_awaitable(&mut self, value: Value) -> RunResult<Value> {
@@ -871,32 +956,30 @@ index 92db121..306b682 100644
 +                return Err(error);
 +            }
 +        };
-@@ -871 +886,3 @@ impl<'h> VM<'h> {
+@@ -871 +948,3 @@
 -        Value::Ref(self.heap.allocate(HeapData::ExternalFuture(Box::new(future))))
 +        Ok(Value::Ref(
 +            self.heap.allocate(HeapData::ExternalFuture(Box::new(future))),
 +        ))
-@@ -885,0 +903,2 @@ impl<'h> VM<'h> {
+@@ -885,0 +965,2 @@
 +            self.heap.tracker.set_execution_context(Some(main.raw()));
 +            self.heap.tracker.check_memory_time()?;
 diff --git a/crates/monty/src/bytecode/vm/call.rs b/crates/monty/src/bytecode/vm/call.rs
-index 35acd90..419a206 100644
 --- a/crates/monty/src/bytecode/vm/call.rs
 +++ b/crates/monty/src/bytecode/vm/call.rs
-@@ -504 +504,3 @@ impl<'h> VM<'h> {
+@@ -504 +504,3 @@
 -            CallResult::Value(_) | CallResult::FramePushed => unreachable!("completed calls are handled above"),
 +            CallResult::Value(_) | CallResult::FramePushed => {
 +                unreachable!("completed calls are handled above")
 +            }
-@@ -514,0 +517,3 @@ impl<'h> VM<'h> {
+@@ -514,0 +517,3 @@
 +            FrameExit::ControlYield => {
 +                ExcType::not_implemented("control suspension cannot cross native synchronous reentry")
 +            }
 diff --git a/crates/monty/src/bytecode/vm/mod.rs b/crates/monty/src/bytecode/vm/mod.rs
-index d420ba0..c1293d0 100644
 --- a/crates/monty/src/bytecode/vm/mod.rs
 +++ b/crates/monty/src/bytecode/vm/mod.rs
-@@ -160 +160,7 @@ macro_rules! handle_call_result {
+@@ -160 +160,7 @@
 -                let call_id = $self.allocate_call_id();
 +                let call_id = match $self.allocate_call_id() {
 +                    Ok(id) => id,
@@ -905,7 +988,7 @@ index d420ba0..c1293d0 100644
 +                        return Err(error);
 +                    }
 +                };
-@@ -180 +186,7 @@ macro_rules! handle_call_result {
+@@ -180 +186,7 @@
 -                let call_id = $self.allocate_call_id();
 +                let call_id = match $self.allocate_call_id() {
 +                    Ok(id) => id,
@@ -914,16 +997,16 @@ index d420ba0..c1293d0 100644
 +                        return Err(error);
 +                    }
 +                };
-@@ -221,0 +234,2 @@ pub enum FrameExit {
+@@ -221,0 +234,2 @@
 +    /// Safe bytecode suspension without an external return value.
 +    ControlYield,
-@@ -345 +359 @@ impl<C: ContainsHeap> DropWithContext<C> for FrameExit {
+@@ -345 +359 @@
 -            Self::ResolveFutures(_) | Self::NameLookup { .. } => {}
 +            Self::ControlYield | Self::ResolveFutures(_) | Self::NameLookup { .. } => {}
-@@ -929,0 +944,2 @@ impl<'h> VM<'h> {
+@@ -929,0 +944,2 @@
 +        // New feeds create a new scheduler; restore keeps the serialized one.
 +        heap.tracker.set_execution_context(Some(0));
-@@ -1127,0 +1144,8 @@ impl<'h> VM<'h> {
+@@ -1127,0 +1144,8 @@
 +            let call_id = match self.allocate_call_id() {
 +                Ok(id) => id,
 +                Err(error) => {
@@ -932,38 +1015,38 @@ index d420ba0..c1293d0 100644
 +                    return Err(error);
 +                }
 +            };
-@@ -1130 +1154 @@ impl<'h> VM<'h> {
+@@ -1130 +1154 @@
 -                call_id: self.allocate_call_id(),
 +                call_id,
-@@ -1137 +1161 @@ impl<'h> VM<'h> {
+@@ -1137 +1161 @@
 -    fn allocate_call_id(&mut self) -> CallId {
 +    fn allocate_call_id(&mut self) -> RunResult<CallId> {
-@@ -1161 +1185,4 @@ impl<'h> VM<'h> {
+@@ -1161 +1185,4 @@
 -        let result = self.run();
 +        // A restored controlled snapshot must fail closed before an opcode or
 +        // host effect runs, including feeds shorter than the periodic cadence.
 +        let entry = self.heap.tracker.check_memory_time().map_err(RunError::from);
 +        let result = entry.and_then(|()| self.run());
-@@ -1272,0 +1300,6 @@ impl<'h> VM<'h> {
+@@ -1272,0 +1300,6 @@
 +                // Native Rust call frames cannot be serialized. Preserve the
 +                // request until their callbacks return to top-level execution.
 +                if self.run_reentry_depth == recursion::MAX_RUN_REENTRY_DEPTH && self.heap.tracker.take_control_yield()
 +                {
 +                    return Ok(FrameExit::ControlYield);
 +                }
-@@ -2097 +2130,4 @@ impl<'h> VM<'h> {
+@@ -2097 +2130,4 @@
 -                let settled = self.settled_awaitable(result);
 +                let settled = match self.settled_awaitable(result) {
 +                    Ok(value) => value,
 +                    Err(error) => return self.resume_with_exception(error),
 +                };
 diff --git a/crates/monty/src/bytecode/vm/scheduler.rs b/crates/monty/src/bytecode/vm/scheduler.rs
-index 829ff21..27f5c3a 100644
 --- a/crates/monty/src/bytecode/vm/scheduler.rs
 +++ b/crates/monty/src/bytecode/vm/scheduler.rs
-@@ -10,0 +11 @@ use ahash::AHashMap;
+@@ -10,0 +11 @@
 +use monty_types::{ExecutionControlError, ResourceError};
-@@ -21,0 +23,11 @@ use crate::{
+@@ -20,0 +22,11 @@
++
 +/// Instance-lifetime identities must never wrap, in release builds either.
 +/// Refuse the exhausted counter before mutating it or taking heap ownership.
 +fn next_identity(counter: &mut u32) -> RunResult<u32> {
@@ -974,37 +1057,39 @@ index 829ff21..27f5c3a 100644
 +    *counter = next;
 +    Ok(identity)
 +}
-+
-@@ -200,4 +212,2 @@ impl Scheduler {
+@@ -200,4 +212,2 @@
 -    pub fn allocate_call_id(&mut self) -> CallId {
 -        let id = CallId::new(self.next_call_id);
 -        self.next_call_id += 1;
 -        id
 +    pub fn allocate_call_id(&mut self) -> RunResult<CallId> {
 +        next_identity(&mut self.next_call_id).map(CallId::new)
-@@ -251 +261 @@ impl Scheduler {
+@@ -251 +261 @@
 -    /// Returns `None` if `coroutine_id` is already driving a task —
 +    /// Returns `Ok(None)` if `coroutine_id` is already driving a task —
-@@ -254 +264 @@ impl Scheduler {
+@@ -254 +264 @@
 -    /// `await_coroutine` doesn't catch it. Callers translate `None`
 +    /// `await_coroutine` doesn't catch it. Callers translate `Ok(None)`
-@@ -259,2 +269,3 @@ impl Scheduler {
+@@ -259,2 +269,3 @@
 -    /// a ready-made `Awaiter` so the `None` return above has nothing to unwind.
 -    pub fn spawn(&mut self, heap: &Heap, coroutine_id: HeapId, gather_id: Option<HeapId>) -> Option<TaskId> {
 +    /// a ready-made `Awaiter` so rejection has nothing to unwind. Exhaustion
 +    /// returns an uncatchable resource error before taking any references.
 +    pub fn spawn(&mut self, heap: &Heap, coroutine_id: HeapId, gather_id: Option<HeapId>) -> RunResult<Option<TaskId>> {
-@@ -262 +273 @@ impl Scheduler {
+@@ -262,5 +273,4 @@
 -            return None;
-+            return Ok(None);
-@@ -265,2 +276 @@ impl Scheduler {
+-        }
+-
 -        let task_id = TaskId::new(self.next_task_id);
 -        self.next_task_id += 1;
++            return Ok(None);
++        }
++
 +        let task_id = TaskId::new(next_identity(&mut self.next_task_id)?);
-@@ -286 +296 @@ impl Scheduler {
+@@ -286 +296 @@
 -        Some(task_id)
 +        Ok(Some(task_id))
-@@ -431,0 +442,26 @@ impl Default for Scheduler {
+@@ -431,0 +442,26 @@
 +
 +#[cfg(test)]
 +mod identity_tests {
@@ -1032,37 +1117,34 @@ index 829ff21..27f5c3a 100644
 +    }
 +}
 diff --git a/crates/monty/src/dump_format.rs b/crates/monty/src/dump_format.rs
-index 5dbecc9..aa1e1a1 100644
 --- a/crates/monty/src/dump_format.rs
 +++ b/crates/monty/src/dump_format.rs
-@@ -52 +52,3 @@ const MAGIC: &[u8; 6] = b"MONTY\0";
+@@ -52 +52,3 @@
 -pub const DUMP_VERSION: u16 = 13;
 +// BrassClaw control ABI: never accept upstream dumps or send these dumps to
 +// upstream binaries. Deployment must reconcile old continuations first.
 +pub const DUMP_VERSION: u16 = 0xBC05;
 diff --git a/crates/monty/src/function.rs b/crates/monty/src/function.rs
-index 13dcec5..c3d3ccd 100644
 --- a/crates/monty/src/function.rs
 +++ b/crates/monty/src/function.rs
-@@ -3,0 +4 @@ use std::{
+@@ -3,0 +4 @@
 +    sync::Arc,
-@@ -94 +95 @@ pub(crate) struct Function {
+@@ -94 +95 @@
 -    pub code: Code,
 +    pub code: Arc<Code>,
-@@ -137 +138 @@ impl Function {
+@@ -137 +138 @@
 -            code,
 +            code: Arc::new(code),
 diff --git a/crates/monty/src/heap/stable_heap.rs b/crates/monty/src/heap/stable_heap.rs
-index 8416d72..ec57ebe 100644
 --- a/crates/monty/src/heap/stable_heap.rs
 +++ b/crates/monty/src/heap/stable_heap.rs
-@@ -77 +77 @@ impl<T> StableHeap<T> {
+@@ -77 +77 @@
 -            pages.push(create_page());
 +            append_page(&mut pages);
-@@ -168 +168 @@ impl<T> StableHeap<T> {
+@@ -168 +168 @@
 -                pages.push(create_page());
 +                append_page(pages);
-@@ -220,5 +220,7 @@ impl<T> StableHeap<T> {
+@@ -220,5 +220,7 @@
 -fn create_page<T>() -> Box<[Slot<T>; PAGE_SIZE]> {
 -    let raw = Box::into_raw(Box::<[Slot<T>]>::new_uninit_slice(PAGE_SIZE)).cast();
 -    // SAFETY: [DH] - allocation is known to be exactly PAGE_SIZE slots, so
@@ -1075,34 +1157,82 @@ index 8416d72..ec57ebe 100644
 +        unreachable!("page allocation has the requested fixed length");
 +    };
 +    pages.push(page);
+diff --git a/crates/monty/src/intern.rs b/crates/monty/src/intern.rs
+--- a/crates/monty/src/intern.rs
++++ b/crates/monty/src/intern.rs
+@@ -1608,0 +1609,3 @@
++    /// BrassClaw-only reusable coroutine slot in the caller's gather group.
++    #[strum(serialize = "_replace_sibling")]
++    ReplaceSibling,
 diff --git a/crates/monty/src/lib.rs b/crates/monty/src/lib.rs
-index f491b95..08fdc88 100644
 --- a/crates/monty/src/lib.rs
 +++ b/crates/monty/src/lib.rs
-@@ -52,2 +52,2 @@ pub use crate::{
+@@ -52,2 +52,2 @@
 -        CheckedSource, MontyRepl, ReplContinuationMode, ReplFunctionCall, ReplNameLookup, ReplOsCall, ReplProgress,
 -        ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
 +        CheckedSource, MontyRepl, PreparedReplSeed, ReplContinuationMode, ReplControlYield, ReplFunctionCall,
 +        ReplNameLookup, ReplOsCall, ReplProgress, ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
-@@ -56 +56 @@ pub use crate::{
+@@ -56 +56 @@
 -    run_progress::{FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
 +    run_progress::{ControlYield, FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
 diff --git a/crates/monty/src/modules/asyncio.rs b/crates/monty/src/modules/asyncio.rs
-index a4d33c1..a8aeee2 100644
 --- a/crates/monty/src/modules/asyncio.rs
 +++ b/crates/monty/src/modules/asyncio.rs
-@@ -96 +96 @@ fn sleep(vm: &mut VM<'_>, args: ArgValues) -> RunResult<CallResult> {
+@@ -6,0 +7 @@
++//! - `_replace_sibling(slot, coro)`: BrassClaw-only reusable owning-group slot
+@@ -38,0 +40 @@
++    ReplaceSibling,
+@@ -43,2 +45,2 @@
+-/// The module contains only the `run`, `gather` and `sleep` functions. Other asyncio
+-/// functions are not implemented as they would require additional VM/scheduler features.
++/// Standard support is `run`, `gather` and `sleep`. The private BrassClaw
++/// `_replace_sibling` extension is not CPython's `create_task` or a detached task.
+@@ -60,0 +63,5 @@
++        vm,
++    );
++    module.set_attr(
++        StaticStrings::ReplaceSibling,
++        Value::ModuleFunction(ModuleFunctions::Asyncio(AsyncioFunctions::ReplaceSibling)),
+@@ -70,0 +78 @@
++        AsyncioFunctions::ReplaceSibling => replace_sibling(vm, args).map(CallResult::Value),
+@@ -71,0 +80,26 @@
++}
++
++/// Private BrassClaw extension, not CPython's create_task. Only an executing
++/// child can extend its own still-awaited gather or replace a completed slot.
++/// The group keeps its original waiter and ordinary failure/cancellation path.
++fn replace_sibling(vm: &mut VM<'_>, args: ArgValues) -> RunResult<Value> {
++    let (slot, coroutine) = args.get_two_args("asyncio._replace_sibling", vm.heap)?;
++    let mut coroutine_guard = DropGuard::new(coroutine, vm);
++    let slot = {
++        let (_, vm) = coroutine_guard.as_parts_mut();
++        defer_drop!(slot, vm);
++        match slot {
++            Value::Int(index) if *index >= 0 => {
++                usize::try_from(*index).map_err(|_| ExcType::value_error("gather slot is outside the group"))?
++            }
++            _ => return Err(ExcType::type_error("gather slot must be a nonnegative integer")),
++        }
++    };
++    let (coroutine, vm) = coroutine_guard.as_parts_mut();
++    let Value::Ref(coroutine_id) = coroutine else {
++        return Err(ExcType::type_error("a new coroutine is required"));
++    };
++    vm.replace_gather_sibling(slot, *coroutine_id)?;
++    // The group has taken its own reference. The argument guard releases the
++    // call's reference on success as well as on every rejected request.
++    Ok(Value::None)
+@@ -96 +130 @@
 -        _ => return Ok(CallResult::Value(vm.settled_awaitable(result))),
 +        _ => return Ok(CallResult::Value(vm.settled_awaitable(result)?)),
 diff --git a/crates/monty/src/object_bridge.rs b/crates/monty/src/object_bridge.rs
-index 2b46c52..86b62e9 100644
 --- a/crates/monty/src/object_bridge.rs
 +++ b/crates/monty/src/object_bridge.rs
-@@ -50,0 +51,3 @@ pub(crate) trait MontyObjectExt: Sized {
+@@ -50,0 +51,3 @@
 +    /// Export at a host boundary with terminal resource enforcement.
 +    fn export_checked(value: Value, vm: &mut VM<'_>) -> Result<Self, RunError>;
 +
-@@ -64,0 +68,16 @@ impl MontyObjectExt for MontyObject {
+@@ -64,0 +68,16 @@
 +    fn export_checked(value: Value, vm: &mut VM<'_>) -> Result<Self, RunError> {
 +        let window = match vm.heap.heap.tracker.boundary_window() {
 +            Ok(window) => window,
@@ -1119,7 +1249,7 @@ index 2b46c52..86b62e9 100644
 +        Ok(object)
 +    }
 +
-@@ -66,6 +85,19 @@ impl MontyObjectExt for MontyObject {
+@@ -66,6 +85,19 @@
 -        let (graph, root) = unstable::into_graph_parts(self);
 -        let mut values = graph.to_values(vm)?;
 -        // `None` is an immediate, so swapping it in leaves nothing to release.
@@ -1145,7 +1275,7 @@ index 2b46c52..86b62e9 100644
 +            return Err(error.into());
 +        }
 +        result
-@@ -86,18 +118,11 @@ impl MontyGraphExt for MontyGraph {
+@@ -86,21 +118,37 @@
 -        let nodes = self.into_nodes();
 -        // A host-defined class node imports as a type object; a `ClassInstance`
 -        // of it needs the node's data to build a `HostClass`, so keep it by id.
@@ -1164,6 +1294,9 @@ index 2b46c52..86b62e9 100644
 -        for node in nodes {
 -            let value = import_node(node, values, &host_classes, vm)?;
 -            values.push(value);
+-        }
+-        Ok(guard.into_inner())
+-    }
 +        let window = vm.heap.heap.tracker.boundary_window()?;
 +        let result = import_graph_values(self, vm);
 +        let check = match window {
@@ -1175,8 +1308,7 @@ index 2b46c52..86b62e9 100644
 +                values.drop_with(vm);
 +            }
 +            return Err(error.into());
-@@ -105 +130,23 @@ impl MontyGraphExt for MontyGraph {
--        Ok(guard.into_inner())
++        }
 +        result
 +    }
 +}
@@ -1200,10 +1332,9 @@ index 2b46c52..86b62e9 100644
 +    for node in nodes {
 +        let value = import_node(node, values, &host_classes, vm)?;
 +        values.push(value);
-@@ -106,0 +154 @@ impl MontyGraphExt for MontyGraph {
++    }
 +    Ok(guard.into_inner())
 diff --git a/crates/monty/src/repl.rs b/crates/monty/src/repl.rs
-index 695ad5a..f49d1b9 100644
 --- a/crates/monty/src/repl.rs
 +++ b/crates/monty/src/repl.rs
 @@ -12 +12,4 @@
@@ -1212,10 +1343,11 @@ index 695ad5a..f49d1b9 100644
 +    mem,
 +    sync::{Arc, Mutex},
 +};
-@@ -17 +20 @@ use monty_types::{
+@@ -17 +20 @@
 -    ResourceTracker, SOURCE_SCAN_THRESHOLD, SourceRange,
 +    ResourceError, ResourceTracker, SOURCE_SCAN_THRESHOLD, SourceRange,
-@@ -43,0 +47,12 @@ use crate::{
+@@ -42,0 +46,12 @@
++
 +// Preparation happens outside Python execution: no sandbox handler can intercept
 +// cancellation/resource failure, and no source data is needed in this exception.
 +fn preparation_exception(error: &ResourceError) -> MontyException {
@@ -1227,8 +1359,7 @@ index 695ad5a..f49d1b9 100644
 +    };
 +    MontyException::new(exc_type, Some(error.to_string()))
 +}
-+
-@@ -101,0 +117,44 @@ pub struct MontyRepl {
+@@ -101,0 +117,44 @@
 +/// Compiled first-feed code with pristine compiler tables and no heap, values,
 +/// host receiver, execution control or task state. Tables are copied for each
 +/// session; immutable module/function bytecode stays shared. This is neither a
@@ -1273,7 +1404,7 @@ index 695ad5a..f49d1b9 100644
 +    }
 +}
 +
-@@ -144 +203,10 @@ impl MontyRepl {
+@@ -144 +203,10 @@
 -        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
 +        let window = self
 +            .heap
@@ -1285,11 +1416,11 @@ index 695ad5a..f49d1b9 100644
 +            .finish(&self.heap.tracker)
 +            .map_err(|error| preparation_exception(&error))?;
 +        result?;
-@@ -245,3 +312,0 @@ impl MontyRepl {
+@@ -245,3 +312,0 @@
 -        let (input_values, names) = unstable::into_named_values_parts(inputs.into());
 -        let (input_names, input_ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
 -
-@@ -249,7 +314,32 @@ impl MontyRepl {
+@@ -249,7 +314,32 @@
 -        // Preserve this snippet's source (see `feed_run` for rationale).
 -        let code: Arc<str> = Arc::from(code);
 -        this.sources.insert(input_script_name.clone(), Arc::clone(&code));
@@ -1329,7 +1460,7 @@ index 695ad5a..f49d1b9 100644
 +                    error: preparation_exception(&error),
 +                }));
 +            }
-@@ -257,9 +347,13 @@ impl MontyRepl {
+@@ -257,9 +347,13 @@
 -        let mut executor = match Executor::new_repl_snippet(
 -            code,
 -            &input_script_name,
@@ -1352,7 +1483,7 @@ index 695ad5a..f49d1b9 100644
 +            }));
 +        }
 +        let executor = match compiled {
-@@ -269,0 +364,85 @@ impl MontyRepl {
+@@ -269,0 +364,85 @@
 +        this.start_prepared(executor, input_values, &input_ids, print)
 +    }
 +
@@ -1438,31 +1569,32 @@ index 695ad5a..f49d1b9 100644
 +        print: PrintWriter<'_>,
 +    ) -> Result<ReplProgress, Box<ReplStartError>> {
 +        let this = &mut self;
-@@ -288 +467 @@ impl MontyRepl {
+@@ -288 +467 @@
 -                if let Err(error) = inject_inputs_into_vm(&executor.program, input_values, &input_ids, &mut vm) {
 +                if let Err(error) = inject_inputs_into_vm(&executor.program, input_values, input_ids, &mut vm) {
-@@ -306 +485 @@ impl MontyRepl {
+@@ -306 +485 @@
 -            Ok((converted, vm_state)) => build_repl_progress(converted, vm_state, executor, this),
 +            Ok((converted, vm_state)) => build_repl_progress(converted, vm_state, executor, self),
-@@ -309 +488 @@ impl MontyRepl {
+@@ -309 +488 @@
 -                Err(Box::new(ReplStartError { repl: this, error }))
 +                Err(Box::new(ReplStartError { repl: self, error }))
-@@ -335 +514 @@ impl MontyRepl {
+@@ -335,2 +514,8 @@
 -        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
+-
 +        self.check_source(code)?;
-@@ -336,0 +516,6 @@ impl MontyRepl {
++
 +        let input_script_name = self.next_input_script_name();
 +        let window = self
 +            .heap
 +            .tracker
 +            .preparation_window()
 +            .map_err(|error| preparation_exception(&error))?;
-@@ -340 +524,0 @@ impl MontyRepl {
+@@ -340 +524,0 @@
 -        let input_script_name = self.next_input_script_name();
-@@ -352 +536 @@ impl MontyRepl {
+@@ -352 +536 @@
 -        let mut executor = Executor::new_repl_snippet(
 +        let compiled = Executor::new_repl_snippet(
-@@ -360 +544,9 @@ impl MontyRepl {
+@@ -360 +544,9 @@
 -        )?;
 +        );
 +        if let Err(error) = window.finish(&self.heap.tracker) {
@@ -1473,7 +1605,7 @@ index 695ad5a..f49d1b9 100644
 +            return Err(preparation_exception(&error));
 +        }
 +        let mut executor = compiled?;
-@@ -487 +679,7 @@ impl MontyRepl {
+@@ -487 +679,7 @@
 -                                Ok(FrameExit::Return(value)) => break Ok(MontyObject::export(value, vm)),
 +                                Ok(FrameExit::Return(value)) => {
 +                                    break MontyObject::export_checked(value, vm).map_err(|error| {
@@ -1482,20 +1614,83 @@ index 695ad5a..f49d1b9 100644
 +                                        })
 +                                    });
 +                                }
-@@ -623,0 +822,2 @@ pub enum ReplProgress {
+@@ -623,0 +822,2 @@
 +    /// Trusted control checkpoint without an external return value.
 +    ControlYield(ReplControlYield),
-@@ -705,0 +906 @@ impl ReplProgress {
+@@ -705,0 +906 @@
 +            Self::ControlYield(state) => state.snapshot.into_repl(),
-@@ -720,0 +922 @@ impl ReplProgress {
-+            Self::ControlYield(state) => state.snapshot.repl.tracker(),
-@@ -787 +989 @@ impl ReplFunctionCall {
+@@ -717,4 +918,5 @@
+-            Self::FunctionCall(call) => call.snapshot.repl.tracker(),
+-            Self::OsCall(call) => call.snapshot.repl.tracker(),
+-            Self::ResolveFutures(state) => state.repl.tracker(),
+-            Self::NameLookup(lookup) => lookup.snapshot.repl.tracker(),
++            Self::FunctionCall(call) => call.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
++            Self::OsCall(call) => call.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
++            Self::ResolveFutures(state) => state.repl.as_ref().expect("owned suspended REPL").tracker(),
++            Self::NameLookup(lookup) => lookup.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
++            Self::ControlYield(state) => state.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
+@@ -787 +989 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -862 +1064 @@ impl ReplOsCall {
+@@ -862 +1064 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -1231,0 +1434,21 @@ fn abort_restored(
+@@ -931,5 +1133 @@
+-        let ReplSnapshot {
+-            mut repl,
+-            mut executor,
+-            vm_state,
+-        } = snapshot;
++        let (mut repl, mut executor, vm_state) = snapshot.into_parts();
+@@ -981 +1179,2 @@
+-    repl: MontyRepl,
++    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
++    repl: Option<MontyRepl>,
+@@ -983 +1182,2 @@
+-    executor: Executor,
++    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
++    executor: Option<Executor>,
+@@ -985 +1185,2 @@
+-    vm_state: VMSnapshot,
++    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
++    vm_state: Option<VMSnapshot>,
+@@ -992,0 +1194,10 @@
++    fn into_parts(mut self) -> (MontyRepl, Executor, VMSnapshot, Vec<u32>, SourceRange) {
++        (
++            self.repl.take().expect("owned suspended REPL"),
++            self.executor.take().expect("owned suspended executor"),
++            self.vm_state.take().expect("owned suspended state"),
++            mem::take(&mut self.pending_call_ids),
++            self.position.clone(),
++        )
++    }
++
+@@ -1004,6 +1215 @@
+-        let Self {
+-            mut repl,
+-            executor,
+-            vm_state,
+-            ..
+-        } = self;
++        let (mut repl, executor, vm_state, _, _) = self.into_parts();
+@@ -1032,6 +1238 @@
+-        let Self {
+-            repl,
+-            executor,
+-            vm_state,
+-            ..
+-        } = self;
++        let (repl, executor, vm_state, _, _) = self.into_parts();
+@@ -1054,7 +1255 @@
+-        let Self {
+-            mut repl,
+-            mut executor,
+-            vm_state,
+-            pending_call_ids,
+-            ..
+-        } = self;
++        let (mut repl, mut executor, vm_state, pending_call_ids, _) = self.into_parts();
+@@ -1231,0 +1427,21 @@
 +/// A snapshot-safe REPL control checkpoint. Trusted control remains attached
 +/// in memory; after dump/load the host must reattach it before resumption.
 +#[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -1504,10 +1699,10 @@ index 695ad5a..f49d1b9 100644
 +}
 +impl ReplControlYield {
 +    pub fn tracker(&self) -> &ResourceTracker {
-+        self.snapshot.repl.tracker()
++        self.snapshot.repl.as_ref().expect("owned suspended REPL").tracker()
 +    }
 +    pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
-+        &mut self.snapshot.repl.heap.tracker
++        &mut self.snapshot.repl.as_mut().expect("owned suspended REPL").heap.tracker
 +    }
 +    pub fn resume(self, print: PrintWriter<'_>) -> Result<ReplProgress, Box<ReplStartError>> {
 +        self.snapshot.run_inner(None, None, print)
@@ -1517,23 +1712,99 @@ index 695ad5a..f49d1b9 100644
 +    }
 +}
 +
-@@ -1283 +1506 @@ impl ReplSnapshot {
+@@ -1238 +1454,2 @@
+-    repl: MontyRepl,
++    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
++    repl: Option<MontyRepl>,
+@@ -1240 +1457,2 @@
+-    executor: Executor,
++    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
++    executor: Option<Executor>,
+@@ -1242 +1460,22 @@
+-    vm_state: VMSnapshot,
++    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
++    vm_state: Option<VMSnapshot>,
++}
++
++fn release_repl_snapshot(vm_state: Option<VMSnapshot>, repl: &mut Option<MontyRepl>) {
++    if let Some(vm_state) = vm_state {
++        let repl = repl.as_mut().expect("owned suspended REPL");
++        let (globals, _, _) = vm_state.abandon(&mut repl.heap);
++        globals.drop_with(&mut repl.heap);
++    }
++}
++
++impl Drop for ReplSnapshot {
++    fn drop(&mut self) {
++        release_repl_snapshot(self.vm_state.take(), &mut self.repl);
++    }
++}
++
++impl Drop for ReplResolveFutures {
++    fn drop(&mut self) {
++        release_repl_snapshot(self.vm_state.take(), &mut self.repl);
++    }
+@@ -1245,0 +1485,8 @@
++    fn into_parts(mut self) -> (MontyRepl, Executor, VMSnapshot) {
++        (
++            self.repl.take().expect("owned suspended REPL"),
++            self.executor.take().expect("owned suspended executor"),
++            self.vm_state.take().expect("owned suspended state"),
++        )
++    }
++
+@@ -1248,5 +1495 @@
+-        let Self {
+-            repl,
+-            executor,
+-            vm_state,
+-        } = self;
++        let (repl, executor, vm_state) = self.into_parts();
+@@ -1264,5 +1507 @@
+-        let Self {
+-            mut repl,
+-            executor,
+-            vm_state,
+-        } = self;
++        let (mut repl, executor, vm_state) = self.into_parts();
+@@ -1283 +1522 @@
 -        self.run_inner(result.into(), None, print)
 +        self.run_inner(Some(result.into()), None, print)
-@@ -1290 +1513 @@ impl ReplSnapshot {
+@@ -1290 +1529 @@
 -        ext_result: ExtFunctionResult,
 +        ext_result: Option<ExtFunctionResult>,
-@@ -1313 +1536,4 @@ impl ReplSnapshot {
+@@ -1294,5 +1533 @@
+-        let Self {
+-            mut repl,
+-            mut executor,
+-            vm_state,
+-        } = self;
++        let (mut repl, mut executor, vm_state) = self.into_parts();
+@@ -1313 +1548,4 @@
 -                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
 +                let vm_result = match ext_result {
 +                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
 +                    None => vm.run_external(),
 +                };
-@@ -1392,0 +1619,3 @@ fn build_repl_progress(
+@@ -1385,3 +1623,3 @@
+-                repl,
+-                executor,
+-                vm_state: vm_state.expect("snapshot should exist"),
++                repl: Some(repl),
++                executor: Some(executor),
++                vm_state: Some(vm_state.expect("snapshot should exist")),
+@@ -1392,0 +1631,3 @@
 +        ConvertedExit::ControlYield => Ok(ReplProgress::ControlYield(ReplControlYield {
 +            snapshot: new_repl_snapshot!(),
 +        })),
-@@ -1503,0 +1733,164 @@ fn is_callable(value: &Value, heap: &Heap) -> bool {
+@@ -1429,3 +1670,3 @@
+-            repl,
+-            executor,
+-            vm_state: vm_state.expect("snapshot should exist for ResolveFutures"),
++            repl: Some(repl),
++            executor: Some(executor),
++            vm_state: Some(vm_state.expect("snapshot should exist for ResolveFutures")),
+@@ -1503,0 +1745,164 @@
 +
 +#[cfg(test)]
 +mod prepared_seed_tests {
@@ -1699,16 +1970,14 @@ index 695ad5a..f49d1b9 100644
 +    }
 +}
 diff --git a/crates/monty/src/resource_checks.rs b/crates/monty/src/resource_checks.rs
-index 472ef92..0f3be98 100644
 --- a/crates/monty/src/resource_checks.rs
 +++ b/crates/monty/src/resource_checks.rs
-@@ -189,0 +190 @@ impl From<ResourceError> for RunError {
+@@ -189,0 +190 @@
 +            ResourceError::Control(_) => (ExcType::RuntimeError, false),
 diff --git a/crates/monty/src/run.rs b/crates/monty/src/run.rs
-index 4f048e5..b57e0f0 100644
 --- a/crates/monty/src/run.rs
 +++ b/crates/monty/src/run.rs
-@@ -358,0 +359,8 @@ impl Executor {
+@@ -358,0 +359,8 @@
 +    pub(crate) fn from_repl_seed(tables: SessionTables, program: Program) -> Self {
 +        Self {
 +            tables,
@@ -1717,7 +1986,7 @@ index 4f048e5..b57e0f0 100644
 +        }
 +    }
 +
-@@ -789,0 +798,18 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -789,0 +798,18 @@
 +    let window = match vm.heap.heap.tracker.boundary_window() {
 +        Ok(window) => window,
 +        Err(error) => {
@@ -1736,39 +2005,119 @@ index 4f048e5..b57e0f0 100644
 +}
 +
 +fn frame_exit_to_object_inner(frame_exit_result: RunResult<FrameExit>, vm: &mut VM<'_>) -> RunResult<MontyObject> {
-@@ -794 +820 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -794 +820 @@
 -        FrameExit::Return(return_value) => return Ok(MontyObject::export(return_value, vm)),
 +        FrameExit::Return(return_value) => return MontyObject::export_checked(return_value, vm),
-@@ -798,0 +825 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -798,0 +825 @@
 +        FrameExit::ControlYield => ExcType::not_implemented("control suspension requires iterative execution").into(),
-@@ -818 +845,3 @@ pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm:
+@@ -818 +845,3 @@
 -        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => unreachable!("lookups are answered above"),
 +        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => {
 +            unreachable!("lookups are answered above")
 +        }
 diff --git a/crates/monty/src/run_progress.rs b/crates/monty/src/run_progress.rs
-index ba3414a..23d1e6e 100644
 --- a/crates/monty/src/run_progress.rs
 +++ b/crates/monty/src/run_progress.rs
-@@ -37,0 +38,2 @@ pub enum RunProgress {
+@@ -37,0 +38,2 @@
 +    /// Trusted control checkpoint; resume without supplying a call result.
 +    ControlYield(ControlYield),
-@@ -208 +210 @@ impl FunctionCall {
+@@ -161 +163 @@
+-        &mut self.snapshot.heap.tracker
++        &mut self.snapshot.heap.as_mut().expect("owned suspended heap").tracker
+@@ -167 +169 @@
+-        &self.snapshot.heap.tracker
++        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
+@@ -208 +210 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -209,0 +212 @@ impl FunctionCall {
+@@ -209,0 +212 @@
 +            None,
-@@ -306 +309 @@ impl OsCall {
+@@ -306 +309 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -307,0 +311 @@ impl OsCall {
+@@ -307,0 +311 @@
 +            None,
-@@ -556 +560,3 @@ pub(crate) fn resume_lookup(
+@@ -323 +327 @@
+-        &self.snapshot.heap.tracker
++        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
+@@ -415 +419 @@
+-        &self.snapshot.heap.tracker
++        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
+@@ -442,5 +446 @@
+-        let Snapshot {
+-            mut heap,
+-            mut executor,
+-            vm_state: snapshot_vm_state,
+-        } = self.snapshot;
++        let (mut executor, snapshot_vm_state, mut heap) = self.snapshot.into_parts();
+@@ -556 +556,3 @@
 -        (LookupAnswer::Undefined, None) => return vm.resume_with_exception(undefined_lookup_error(scope, name)),
 +        (LookupAnswer::Undefined, None) => {
 +            return vm.resume_with_exception(undefined_lookup_error(scope, name));
 +        }
-@@ -804,0 +811,31 @@ impl ResolveFutures {
+@@ -634 +636,2 @@
+-    executor: Executor,
++    #[serde(deserialize_with = "deserialize_owned")]
++    executor: Option<Executor>,
+@@ -636 +639,2 @@
+-    vm_state: VMSnapshot,
++    #[serde(deserialize_with = "deserialize_owned")]
++    vm_state: Option<VMSnapshot>,
+@@ -638 +642,2 @@
+-    heap: Heap,
++    #[serde(deserialize_with = "deserialize_owned")]
++    heap: Option<Heap>,
+@@ -645,0 +651,10 @@
++    fn into_parts(mut self) -> (Executor, VMSnapshot, Heap, Vec<u32>, SourceRange) {
++        (
++            self.executor.take().expect("owned suspended executor"),
++            self.vm_state.take().expect("owned suspended state"),
++            self.heap.take().expect("owned suspended heap"),
++            mem::take(&mut self.pending_call_ids),
++            self.position.clone(),
++        )
++    }
++
+@@ -655,3 +670,3 @@
+-            executor,
+-            vm_state,
+-            heap,
++            executor: Some(executor),
++            vm_state: Some(vm_state),
++            heap: Some(heap),
+@@ -678 +693 @@
+-        &self.heap.tracker
++        &self.heap.as_ref().expect("owned suspended heap").tracker
+@@ -683,6 +698 @@
+-        let Self {
+-            executor,
+-            vm_state,
+-            heap,
+-            ..
+-        } = self;
++        let (executor, vm_state, heap, _, _) = self.into_parts();
+@@ -702,7 +712 @@
+-        let Self {
+-            mut executor,
+-            vm_state,
+-            mut heap,
+-            pending_call_ids,
+-            position,
+-        } = self;
++        let (mut executor, vm_state, mut heap, pending_call_ids, position) = self.into_parts();
+@@ -734 +738 @@
+-        self.vm_state.live_task_count()
++        self.vm_state.as_ref().expect("owned suspended state").live_task_count()
+@@ -757,7 +761 @@
+-        let Self {
+-            mut executor,
+-            vm_state,
+-            mut heap,
+-            pending_call_ids,
+-            ..
+-        } = self;
++        let (mut executor, vm_state, mut heap, pending_call_ids, _) = self.into_parts();
+@@ -804,0 +803,31 @@
 +/// Execution paused before the next opcode, retaining all task state.
 +/// No call result is expected or injected into the operand stack.
 +#[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -1778,10 +2127,10 @@ index ba3414a..23d1e6e 100644
 +
 +impl ControlYield {
 +    pub fn tracker(&self) -> &ResourceTracker {
-+        &self.snapshot.heap.tracker
++        &self.snapshot.heap.as_ref().expect("owned suspended heap").tracker
 +    }
 +    pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
-+        &mut self.snapshot.heap.tracker
++        &mut self.snapshot.heap.as_mut().expect("owned suspended heap").tracker
 +    }
 +    pub fn resume(self, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
 +        self.snapshot.run_inner(None, None, None, print)
@@ -1800,15 +2149,73 @@ index ba3414a..23d1e6e 100644
 +    }
 +}
 +
-@@ -827 +864 @@ impl Snapshot {
+@@ -813 +842,2 @@
+-    pub(crate) executor: Executor,
++    #[serde(deserialize_with = "deserialize_owned")]
++    pub(crate) executor: Option<Executor>,
+@@ -815 +845,2 @@
+-    pub(crate) vm_state: VMSnapshot,
++    #[serde(deserialize_with = "deserialize_owned")]
++    pub(crate) vm_state: Option<VMSnapshot>,
+@@ -817 +848,32 @@
+-    pub(crate) heap: Heap,
++    #[serde(deserialize_with = "deserialize_owned")]
++    pub(crate) heap: Option<Heap>,
++}
++
++// Options are an ownership-transfer detail, not a nullable dump contract.
++// Their Some serialization is the original value shape; reject a null on load.
++pub(crate) fn deserialize_owned<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
++where
++    D: serde::Deserializer<'de>,
++    T: serde::Deserialize<'de>,
++{
++    T::deserialize(deserializer).map(Some)
++}
++
++fn release_snapshot(vm_state: Option<VMSnapshot>, heap: &mut Option<Heap>) {
++    if let Some(vm_state) = vm_state {
++        let heap = heap.as_mut().expect("owned suspended heap");
++        let (globals, _, _) = vm_state.abandon(heap);
++        globals.drop_with(heap);
++    }
++}
++
++impl Drop for Snapshot {
++    fn drop(&mut self) {
++        release_snapshot(self.vm_state.take(), &mut self.heap);
++    }
++}
++
++impl Drop for ResolveFutures {
++    fn drop(&mut self) {
++        release_snapshot(self.vm_state.take(), &mut self.heap);
++    }
+@@ -820,0 +883,8 @@
++    fn into_parts(mut self) -> (Executor, VMSnapshot, Heap) {
++        (
++            self.executor.take().expect("owned suspended executor"),
++            self.vm_state.take().expect("owned suspended state"),
++            self.heap.take().expect("owned suspended heap"),
++        )
++    }
++
+@@ -827 +897 @@
 -        self.run_inner(result.into(), None, print)
 +        self.run_inner(Some(result.into()), None, None, print)
-@@ -834 +871 @@ impl Snapshot {
+@@ -834 +904 @@
 -        ext_result: ExtFunctionResult,
 +        ext_result: Option<ExtFunctionResult>,
-@@ -835,0 +873 @@ impl Snapshot {
+@@ -835,0 +906 @@
 +        control_exception: Option<MontyException>,
-@@ -855 +893,6 @@ impl Snapshot {
+@@ -838,5 +909 @@
+-        let Self {
+-            mut executor,
+-            vm_state,
+-            mut heap,
+-        } = self;
++        let (mut executor, vm_state, mut heap) = self.into_parts();
+@@ -855 +922,6 @@
 -                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
 +                let vm_result = match (control_exception, ext_result) {
 +                    (Some(exc), None) => vm.resume_with_exception(exc.into()),
@@ -1816,14 +2223,21 @@ index ba3414a..23d1e6e 100644
 +                    (None, None) => vm.run_external(),
 +                    (Some(_), Some(_)) => unreachable!("control interruption is not a host result"),
 +                };
-@@ -937 +980,3 @@ pub(crate) fn resume_with_result(
+@@ -867,5 +939 @@
+-        let Self {
+-            executor,
+-            vm_state,
+-            heap,
+-        } = self;
++        let (executor, vm_state, heap) = self.into_parts();
+@@ -937 +1005,3 @@
 -        (ExtFunctionResult::Future(_), None) => unreachable!("a future answer always carries its call id"),
 +        (ExtFunctionResult::Future(_), None) => {
 +            unreachable!("a future answer always carries its call id")
 +        }
-@@ -991,0 +1037 @@ pub(crate) enum ConvertedExit {
+@@ -991,0 +1062 @@
 +    ControlYield,
-@@ -1040,0 +1087,21 @@ pub(crate) fn convert_frame_exit(result: RunResult<FrameExit>, vm: &mut VM<'_>)
+@@ -1040,0 +1112,21 @@
 +    let window = match vm.heap.heap.tracker.boundary_window() {
 +        Ok(window) => window,
 +        Err(error) => {
@@ -1845,14 +2259,21 @@ index ba3414a..23d1e6e 100644
 +}
 +
 +fn convert_frame_exit_inner(result: RunResult<FrameExit>, vm: &mut VM<'_>) -> ConvertedExit {
-@@ -1052 +1119,5 @@ pub(crate) fn convert_frame_exit(result: RunResult<FrameExit>, vm: &mut VM<'_>)
+@@ -1052 +1144,5 @@
 -        Ok(FrameExit::Return(value)) => ConvertedExit::Complete(MontyObject::export(value, vm)),
 +        Ok(FrameExit::ControlYield) => ConvertedExit::ControlYield,
 +        Ok(FrameExit::Return(value)) => match MontyObject::export_checked(value, vm) {
 +            Ok(object) => ConvertedExit::Complete(object),
 +            Err(error) => ConvertedExit::Error(error),
 +        },
-@@ -1185,0 +1257,3 @@ pub(crate) fn build_run_progress(
+@@ -1177,3 +1273,3 @@
+-                executor,
+-                vm_state: vm_state.expect("snapshot should exist"),
+-                heap,
++                executor: Some(executor),
++                vm_state: Some(vm_state.expect("snapshot should exist")),
++                heap: Some(heap),
+@@ -1185,0 +1282,3 @@
 +        ConvertedExit::ControlYield => Ok(RunProgress::ControlYield(ControlYield {
 +            snapshot: new_snapshot!(),
 +        })),

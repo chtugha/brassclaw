@@ -11,10 +11,13 @@ mod http;
 mod http_output;
 mod json;
 mod memory;
-mod model_visible_output;
+mod memory_tree;
 mod prefix_bundle;
+mod prefix_generation;
+mod primitive_settings;
 mod schemas;
 mod shell;
+mod source_inspection;
 mod spawn_subagent;
 mod time;
 mod trigger_management;
@@ -61,7 +64,12 @@ pub use prefix_bundle::{
     SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, StorePrefixBundleBackend, StorePrefixBundleResult,
     SweepValidatedComponentsBackend, SweepValidatedComponentsResult,
 };
+pub use prefix_generation::{
+    PREFIX_GENERATION_CAPABILITY_ID, PrefixGenerationBackend, PrefixGenerationBackendError,
+};
+pub use primitive_settings::{HostPrimitiveSettings, HostPrimitiveSettingsSource};
 pub use shell::SHELL_CAPABILITY_ID;
+pub use source_inspection::{SOURCE_INSPECTION_CAPABILITY_ID, SourceInspectionBackend};
 pub use spawn_subagent::SPAWN_SUBAGENT_CAPABILITY_ID;
 pub use time::TIME_CAPABILITY_ID;
 #[cfg(any(test, feature = "test-support"))]
@@ -166,9 +174,11 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
             capabilities: {
                 let mut capabilities = vec![
                     component_db::manifest()?,
+                    prefix_generation::manifest()?,
                     echo::manifest()?,
                     time::manifest()?,
                     json::manifest()?,
+                    source_inspection::manifest()?,
                     http::manifest()?,
                     http::save_manifest()?,
                     shell::manifest()?,
@@ -221,8 +231,11 @@ pub fn builtin_first_party_handlers(
 pub async fn builtin_native_first_party_handlers(
     tools: BuiltinFirstPartyTools,
     max_artifact_bytes: u64,
+    verification: crate::NativeVerificationLimits,
 ) -> Result<FirstPartyCapabilityRegistry, crate::NativeRegistrationError> {
-    let image = crate::NativeExecutableImage::capture(max_artifact_bytes).await?;
+    let image =
+        crate::NativeExecutableImage::capture_with_verification(max_artifact_bytes, verification)
+            .await?;
     let mut registry = builtin_first_party_registry_from_tools(tools)
         .map_err(|_| crate::NativeRegistrationError::Declaration)?;
     let package =
@@ -291,8 +304,10 @@ pub async fn builtin_native_first_party_handlers_with_trigger(
     trigger_repository: Arc<dyn brassclaw_triggers::TriggerRepository>,
     trigger_create_hook: Arc<dyn TriggerCreateHook>,
     max_artifact_bytes: u64,
+    verification: crate::NativeVerificationLimits,
 ) -> Result<FirstPartyCapabilityRegistry, crate::NativeRegistrationError> {
-    let mut registry = builtin_native_first_party_handlers(tools, max_artifact_bytes).await?;
+    let mut registry =
+        builtin_native_first_party_handlers(tools, max_artifact_bytes, verification).await?;
     trigger_management::insert_handlers_with_create_hook(
         &mut registry,
         trigger_repository,
@@ -329,6 +344,10 @@ fn builtin_first_party_registry_from_tools(
         .with_handler(CapabilityId::new(ECHO_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(TIME_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(JSON_CAPABILITY_ID)?, handler.clone())
+        .with_handler(
+            CapabilityId::new(SOURCE_INSPECTION_CAPABILITY_ID)?,
+            handler.clone(),
+        )
         .with_handler(CapabilityId::new(HTTP_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(HTTP_SAVE_CAPABILITY_ID)?, handler.clone())
         .with_handler(
@@ -357,6 +376,10 @@ fn builtin_first_party_registry_from_tools(
     );
     registry.insert_handler(
         CapabilityId::new(COMPONENT_DB_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
+        CapabilityId::new(PREFIX_GENERATION_CAPABILITY_ID)?,
         handler.clone(),
     );
     registry.insert_handler(
@@ -400,13 +423,49 @@ fn first_party_capability_manifest(
 
 #[derive(Debug, Default)]
 pub struct BuiltinFirstPartyTools {
+    primitive_settings: Option<Arc<dyn HostPrimitiveSettingsSource>>,
+    source_inspection_state: source_inspection::SourceInspectionState,
     coding_state: CodingCapabilityState,
     memory_state: memory::MemoryCapabilityState,
     component_db_state: component_db::ComponentDbState,
     prefix_bundle_state: prefix_bundle::PrefixBundleCapabilityState,
+    prefix_generation_state: prefix_generation::PrefixGenerationState,
 }
 
 impl BuiltinFirstPartyTools {
+    /// Each supported primitive captures one acknowledged resource revision.
+    /// Installing a source never grants permission or changes retained code.
+    pub fn with_primitive_settings_source(
+        mut self,
+        source: Arc<dyn HostPrimitiveSettingsSource>,
+    ) -> Self {
+        self.primitive_settings = Some(source);
+        self
+    }
+    /// Host-owned live source. Each memory operation retains its own snapshot.
+    pub fn with_memory_embedding_source(
+        mut self,
+        source: Arc<dyn brassclaw_memory::EmbeddingProviderSource>,
+    ) -> Self {
+        self.memory_state = memory::MemoryCapabilityState::with_embedding_source(source)
+            .with_chat_memory_writer_opt(self.memory_state.take_chat_memory_writer());
+        self
+    }
+    pub fn with_source_inspection_backend(
+        mut self,
+        backend: Arc<dyn SourceInspectionBackend>,
+    ) -> Self {
+        self.source_inspection_state = source_inspection::SourceInspectionState::new(backend);
+        self
+    }
+    pub fn with_prefix_generation_backend(
+        mut self,
+        backend: Arc<dyn PrefixGenerationBackend>,
+    ) -> Self {
+        self.prefix_generation_state =
+            prefix_generation::PrefixGenerationState::with_backend(backend);
+        self
+    }
     /// Wire an embedding provider into the memory capability (§4.30, S10).
     ///
     /// When set, `build_backend()` wires the provider into the
@@ -463,6 +522,12 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
         bounded_input_size(request.capability_id.as_str(), &request.input)?;
         normalize_optional_null_sentinels(&mut request);
+        if request.capability_id.as_str() == SOURCE_INSPECTION_CAPABILITY_ID {
+            // The actual backend captures acknowledged limits and accounts for
+            // its contained worker. No shared 1 MiB fallback truncates facts.
+            return source_inspection::dispatch(&self.source_inspection_state, &request.input)
+                .await;
+        }
         let start = Instant::now();
         let mut network_egress_bytes = 0;
         let (output, display_preview) = match request.capability_id.as_str() {
@@ -478,9 +543,17 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
             | MEMORY_WRITE_CAPABILITY_ID
             | MEMORY_READ_CAPABILITY_ID
             | MEMORY_TREE_CAPABILITY_ID => {
-                let mut result = memory::dispatch(&self.memory_state, &request).await?;
+                let mut result = memory::dispatch(
+                    &self.memory_state,
+                    &request,
+                    self.primitive_settings.as_deref(),
+                )
+                .await?;
+                // Count the complete result. Current kernel obligations still
+                // enforce explicit output limits; this handler adds no second
+                // fixed quota after a successful read or committed write.
                 result.usage.output_bytes =
-                    bounded_output_bytes(&result.output, FIRST_PARTY_MAX_OUTPUT_BYTES)?;
+                    bounded_output_bytes(&result.output, isize::MAX as u64)?;
                 return Ok(result);
             }
             SHELL_CAPABILITY_ID => {
@@ -512,6 +585,15 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
                     component_db::dispatch(&self.component_db_state, &request.input).await?;
                 (output, None)
             }
+            PREFIX_GENERATION_CAPABILITY_ID => (
+                prefix_generation::dispatch(
+                    &self.prefix_generation_state,
+                    &request.input,
+                    &request.scope,
+                )
+                .await?,
+                None,
+            ),
             SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID | STORE_PREFIX_BUNDLE_CAPABILITY_ID => (
                 prefix_bundle::dispatch(
                     &self.prefix_bundle_state,
@@ -545,7 +627,8 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
         };
         let wall_clock_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
         let output_limit_bytes = match request.capability_id.as_str() {
-            HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID => http::MAX_HTTP_OUTPUT_BYTES,
+            PREFIX_GENERATION_CAPABILITY_ID => prefix_generation::TRANSPORT_BYTES,
+            HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID => isize::MAX as u64,
             _ => FIRST_PARTY_MAX_OUTPUT_BYTES,
         };
         let output_bytes = bounded_output_bytes(&output, output_limit_bytes).map_err(|error| {
@@ -573,31 +656,80 @@ pub(super) fn bounded_input_size(
     capability_id: &str,
     input: &serde_json::Value,
 ) -> Result<(), FirstPartyCapabilityError> {
-    let bytes = serde_json::to_vec(input).map_err(|_| input_error())?;
-    let max_bytes = coding_capability_metadata(capability_id)
-        .map(|metadata| metadata.max_input_bytes)
-        .unwrap_or(MAX_FIRST_PARTY_INPUT_BYTES);
-    if bytes.len() > max_bytes {
-        return Err(FirstPartyCapabilityError::new(
-            RuntimeDispatchErrorKind::Resource,
-        ));
-    }
-    Ok(())
+    let max_bytes = match capability_id {
+        JSON_CAPABILITY_ID if input["operation"] == "sha256_utf8" => {
+            prefix_generation::TRANSPORT_BYTES
+        }
+        PREFIX_GENERATION_CAPABILITY_ID => prefix_generation::TRANSPORT_BYTES,
+        MEMORY_SEARCH_CAPABILITY_ID
+        | MEMORY_WRITE_CAPABILITY_ID
+        | MEMORY_READ_CAPABILITY_ID
+        | MEMORY_TREE_CAPABILITY_ID => {
+            // Accepted task/IPC bounds and backend representation constraints
+            // remain. No extra fixed JSON-byte quota overrides the requested
+            // memory operation, including complete history and search data.
+            isize::MAX as u64
+        }
+        HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID | SOURCE_INSPECTION_CAPABILITY_ID => {
+            isize::MAX as u64
+        }
+        _ => coding_capability_metadata(capability_id)
+            .map(|metadata| metadata.max_input_bytes)
+            .unwrap_or(MAX_FIRST_PARTY_INPUT_BYTES) as u64,
+    };
+    count_json_bytes(input, max_bytes, RuntimeDispatchErrorKind::Resource).map(|_| ())
 }
 
 pub(super) fn bounded_output_bytes(
     output: &serde_json::Value,
     max_bytes: u64,
 ) -> Result<u64, FirstPartyCapabilityError> {
-    let bytes = serde_json::to_vec(output).map_err(|_| input_error())?;
-    let bytes = u64::try_from(bytes.len())
-        .map_err(|_| FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::OutputTooLarge))?;
-    if bytes > max_bytes {
-        return Err(FirstPartyCapabilityError::new(
-            RuntimeDispatchErrorKind::OutputTooLarge,
-        ));
+    count_json_bytes(output, max_bytes, RuntimeDispatchErrorKind::OutputTooLarge)
+}
+
+fn count_json_bytes(
+    value: &serde_json::Value,
+    max_bytes: u64,
+    overflow: RuntimeDispatchErrorKind,
+) -> Result<u64, FirstPartyCapabilityError> {
+    let mut writer = JsonByteCounter {
+        bytes: 0,
+        max_bytes,
+        exceeded: false,
+    };
+    if serde_json::to_writer(&mut writer, value).is_err() {
+        return Err(if writer.exceeded {
+            FirstPartyCapabilityError::new(overflow)
+        } else {
+            input_error()
+        });
     }
-    Ok(bytes)
+    Ok(writer.bytes)
+}
+
+/// Count serialized JSON without allocating a second complete copy. Stop
+/// at the accepted bound; a serialization failure cannot become success.
+struct JsonByteCounter {
+    bytes: u64,
+    max_bytes: u64,
+    exceeded: bool,
+}
+impl std::io::Write for JsonByteCounter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let next = u64::try_from(buffer.len())
+            .ok()
+            .and_then(|bytes| self.bytes.checked_add(bytes))
+            .filter(|bytes| *bytes <= self.max_bytes);
+        let Some(next) = next else {
+            self.exceeded = true;
+            return Err(std::io::Error::other("output byte limit exceeded"));
+        };
+        self.bytes = next;
+        Ok(buffer.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Treat null sentinels as absent for declared optional fields.
@@ -665,7 +797,11 @@ fn preserve_optional_null_sentinel(
     key: &str,
     value: &serde_json::Value,
 ) -> bool {
-    capability_id == MEMORY_WRITE_CAPABILITY_ID && key == "target" && value.is_null()
+    (capability_id == MEMORY_WRITE_CAPABILITY_ID && key == "target" && value.is_null())
+        || (capability_id == MEMORY_SEARCH_CAPABILITY_ID && key == "limit")
+        || (capability_id == MEMORY_TREE_CAPABILITY_ID && matches!(key, "path" | "depth"))
+        || (matches!(capability_id, HTTP_CAPABILITY_ID | HTTP_SAVE_CAPABILITY_ID)
+            && matches!(key, "timeout_ms" | "response_body_limit"))
 }
 
 fn resource_profile() -> Option<ResourceProfile> {

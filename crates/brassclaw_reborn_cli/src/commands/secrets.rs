@@ -203,7 +203,7 @@ impl RewrapCommand {
                         if key != master_key_bytes {
                             anyhow::bail!("wrapped ceremony committed; raw key file {} differs and was retained for operator reconciliation", path.display());
                         }
-                        zero_and_remove(path).with_context(|| {
+                        zero_and_remove(path, &master_key_bytes).with_context(|| {
                             format!("failed to zero raw key file {}", path.display())
                         })?;
                         println!("Zeroed and removed: {}", path.display());
@@ -510,88 +510,147 @@ async fn upsert_secrets_master(
 /// empty temporary file before writing any secret and publish only after fsync.
 #[cfg(feature = "postgres")]
 fn write_raw_master_key(path: &std::path::Path, key: &[u8]) -> anyhow::Result<()> {
-    use std::io::Write as _;
-    if let Some(existing) = brassclaw_reborn_composition::secrets_master::read_raw_master_key(path)?
-    {
-        if existing != key {
-            anyhow::bail!("existing canonical master key differs; it was not overwritten");
-        }
-        restrict_key_file(path)?;
-        return Ok(());
-    }
-    let parent = path.parent().context("master key path requires a parent")?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)
-        .context("failed to create private master-key temporary file")?;
-    restrict_key_file(temporary.path())?;
-    writeln!(temporary, "{}", hex::encode(key))?;
-    temporary.as_file().sync_all()?;
-    temporary.persist_noclobber(path).map_err(|error| {
-        anyhow::anyhow!(
-            "failed to publish master key without replacing an existing file: {}",
-            error.error
+    brassclaw_reborn_composition::secrets_master::write_raw_master_key_if_absent(path, key)?;
+    Ok(())
+}
+
+/// Capture the current pathname into a private directory before checking it.
+/// A replaced public pathname is never zeroed or unlinked. Cleanup is called
+/// only after committing/rechecking the wrapped ceremony under its owner lock.
+/// This does not promise physical erasure on SSDs, snapshots or copy-on-write FS.
+fn zero_and_remove(path: &std::path::Path, expected: &[u8]) -> anyhow::Result<()> {
+    let parent = path
+        .parent()
+        .context("key cleanup requires a parent directory")?;
+    let directory = tempfile::Builder::new()
+        .prefix(".brassclaw-key-cleanup-")
+        .tempdir_in(parent)?;
+    let captured = directory.path().join("captured-key");
+    std::fs::rename(path, &captured).context("key cleanup could not capture the source")?;
+    // From this point no automatic TempDir destructor may delete captured
+    // data on any validation, restore or write failure.
+    let retained = directory.keep();
+    finish_captured_key_cleanup(path, &retained, expected).with_context(|| {
+        format!(
+            "key cleanup failed after capture at {}; inspect this recovery directory if it remains",
+            retained.display()
         )
-    })?;
+    })
+}
+
+/// Finish cleanup of an already captured file. Keeping capture separate lets
+/// acceptance cover a public pathname recreated before validation or erasure.
+fn finish_captured_key_cleanup(
+    path: &std::path::Path,
+    retained: &std::path::Path,
+    expected: &[u8],
+) -> anyhow::Result<()> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .context("key cleanup requires a parent directory")?;
+    let captured = retained.join("captured-key");
+    let matches = brassclaw_reborn_composition::secrets_master::read_raw_master_key(&captured)
+        .is_ok_and(|key| key.as_deref() == Some(expected));
+    if !matches {
+        // hard_link never replaces a concurrently created pathname. Preserve
+        // the captured unrelated file if restoration cannot complete, including
+        // filesystems without hard-link support, instead of TempDir deletion.
+        if std::fs::hard_link(&captured, path).is_ok() {
+            std::fs::remove_file(&captured)?;
+            std::fs::remove_dir(retained)?;
+            anyhow::bail!(
+                "key cleanup captured different material; the original pathname was restored without replacement"
+            );
+        }
+        anyhow::bail!(
+            "key cleanup captured different material; it was retained for recovery at {}",
+            retained.display()
+        );
+    }
+    // The verified file now belongs to this private capture, not the shared
+    // canonical path. A new canonical file remains untouched throughout.
+    let mut file = std::fs::OpenOptions::new().write(true).open(&captured)?;
+    let size = file.metadata()?.len();
+    let zeros = [0u8; 128];
+    // The owner reader accepted this exact key-file format before cleanup.
+    if size > zeros.len() as u64 {
+        anyhow::bail!(
+            "key cleanup source changed; it was retained for recovery at {}",
+            retained.display()
+        );
+    }
+    file.write_all(&zeros[..size as usize])?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::remove_file(&captured)?;
+    std::fs::remove_dir(retained)?;
     #[cfg(unix)]
     std::fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 
-#[cfg(feature = "postgres")]
-fn restrict_key_file(path: &std::path::Path) -> anyhow::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(windows)]
-    {
-        // Restrict the empty file before writing. No shell interpolation and no
-        // guessed domain/account: whoami supplies the current Windows identity.
-        let identity = std::process::Command::new("whoami").output()?;
-        anyhow::ensure!(
-            identity.status.success(),
-            "cannot resolve Windows key owner"
+#[cfg(all(test, feature = "postgres"))]
+mod key_cleanup_tests {
+    use super::*;
+    #[test]
+    fn cleanup_never_zeros_a_replacement_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("key");
+        let original: Vec<u8> = (0..32).collect();
+        let replacement: Vec<u8> = (32..64).collect();
+        write_raw_master_key(&path, &replacement).unwrap();
+        assert!(zero_and_remove(&path, &original).is_err());
+        assert_eq!(
+            brassclaw_reborn_composition::secrets_master::read_raw_master_key(&path)
+                .unwrap()
+                .unwrap(),
+            replacement
         );
-        let account = std::str::from_utf8(&identity.stdout)?.trim();
-        anyhow::ensure!(!account.is_empty(), "Windows key owner is empty");
-        let permissions = std::process::Command::new("icacls")
-            .arg(path)
-            .arg("/inheritance:r")
-            .arg("/grant:r")
-            .arg(format!("{account}:F"))
-            .output()?;
-        anyhow::ensure!(
-            permissions.status.success(),
-            "cannot restrict Windows key permissions"
-        );
+        zero_and_remove(&path, &replacement).unwrap();
+        assert!(!path.exists());
     }
-    Ok(())
-}
 
-/// Overwrite `path` with zero bytes then remove it.
-///
-/// This does not guarantee physical erasure on snapshots, SSDs or copy-on-write
-/// filesystems. The wrapped DB ceremony has already committed before cleanup.
-fn zero_and_remove(path: &std::path::Path) -> anyhow::Result<()> {
-    use std::io::Write as _;
-    let len = std::fs::metadata(path)
-        .with_context(|| format!("metadata for {}", path.display()))?
-        .len();
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .open(path)
-        .with_context(|| format!("open {} for zeroing", path.display()))?;
-    let zeros = [0u8; 4096];
-    let mut remaining = len;
-    while remaining != 0 {
-        let count = remaining.min(zeros.len() as u64) as usize;
-        f.write_all(&zeros[..count])
-            .with_context(|| format!("zero-write to {}", path.display()))?;
-        remaining -= count as u64;
+    #[test]
+    fn cleanup_preserves_new_public_path_and_failed_restore_material() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("key");
+        let original: Vec<u8> = (0..32).collect();
+        let replacement: Vec<u8> = (32..64).collect();
+        let captured_directory = tempfile::tempdir_in(directory.path()).unwrap().keep();
+        let captured = captured_directory.join("captured-key");
+        write_raw_master_key(&captured, &original).unwrap();
+        write_raw_master_key(&path, &replacement).unwrap();
+
+        // A recreated public pathname blocks restoration. Retain both files,
+        // report the recovery location and never overwrite the new pathname.
+        let error =
+            finish_captured_key_cleanup(&path, &captured_directory, &replacement).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains(&captured_directory.display().to_string()));
+        assert_eq!(
+            brassclaw_reborn_composition::secrets_master::read_raw_master_key(&captured)
+                .unwrap()
+                .unwrap(),
+            original
+        );
+        assert_eq!(
+            brassclaw_reborn_composition::secrets_master::read_raw_master_key(&path)
+                .unwrap()
+                .unwrap(),
+            replacement
+        );
+
+        // Removing the verified private capture never removes the recreated
+        // public key, including when it contains different material.
+        finish_captured_key_cleanup(&path, &captured_directory, &original).unwrap();
+        assert!(!captured_directory.exists());
+        assert_eq!(
+            brassclaw_reborn_composition::secrets_master::read_raw_master_key(&path)
+                .unwrap()
+                .unwrap(),
+            replacement
+        );
     }
-    f.sync_all()
-        .with_context(|| format!("flush zero-write to {}", path.display()))?;
-    drop(f);
-    std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))?;
-    Ok(())
 }

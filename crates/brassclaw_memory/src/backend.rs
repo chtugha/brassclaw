@@ -60,6 +60,9 @@ pub struct MemoryContext {
     audit_context: Option<MemoryAuditContext>,
     prompt_write_safety_allowance: Option<PromptSafetyAllowanceId>,
     prompt_write_safety_enforced: bool,
+    /// Advisory observation for this operation, never an authority or retry
+    /// grant. Clones within the operation share it; new contexts start empty.
+    indexing_failure: Arc<std::sync::OnceLock<()>>,
 }
 
 impl MemoryContext {
@@ -70,6 +73,7 @@ impl MemoryContext {
             audit_context: None,
             prompt_write_safety_allowance: None,
             prompt_write_safety_enforced: false,
+            indexing_failure: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -123,6 +127,18 @@ impl MemoryContext {
 
     pub fn prompt_write_safety_enforced(&self) -> bool {
         self.prompt_write_safety_enforced
+    }
+
+    /// A document effect completed, but its subsequent indexing did not.
+    /// Callers must preserve the completed write rather than replay it.
+    pub fn indexing_failed(&self) -> bool {
+        self.indexing_failure.get().is_some()
+    }
+
+    /// Record an observed indexing failure without retaining provider payloads,
+    /// credentials, filesystem errors or document content in the result.
+    pub fn record_indexing_failure(&self) {
+        self.indexing_failure.get_or_init(|| ());
     }
 }
 
@@ -317,6 +333,21 @@ where
     pub fn with_indexer(mut self, indexer: Arc<dyn MemoryDocumentIndexer>) -> Self {
         self.indexer = Some(indexer);
         self
+    }
+
+    async fn reindex_after_commit(&self, context: &MemoryContext, path: &MemoryDocumentPath) {
+        if let Some(indexer) = &self.indexer
+            && indexer
+                .reindex_document_with_audit_context(path, context.audit_context())
+                .await
+                .is_err()
+        {
+            context.record_indexing_failure();
+            tracing::warn!(
+                invocation_id = context.invocation_id(),
+                "Memory document committed, but indexing failed; the write was not replayed"
+            );
+        }
     }
 
     pub fn with_embedding_provider<P>(mut self, provider: Arc<P>) -> Self
@@ -548,11 +579,7 @@ where
             .with_audit_context(context.audit_context()),
         )
         .await;
-        if let Some(indexer) = &self.indexer {
-            let _ = indexer
-                .reindex_document_with_audit_context(path, context.audit_context())
-                .await;
-        }
+        self.reindex_after_commit(context, path).await;
         Ok(())
     }
 
@@ -664,11 +691,7 @@ where
                 .with_audit_context(context.audit_context()),
             )
             .await;
-            if let Some(indexer) = &self.indexer {
-                let _ = indexer
-                    .reindex_document_with_audit_context(path, context.audit_context())
-                    .await;
-            }
+            self.reindex_after_commit(context, path).await;
         }
         Ok(outcome)
     }
@@ -767,11 +790,7 @@ where
                     .with_audit_context(context.audit_context()),
                 )
                 .await;
-                if let Some(indexer) = &self.indexer {
-                    let _ = indexer
-                        .reindex_document_with_audit_context(path, context.audit_context())
-                        .await;
-                }
+                self.reindex_after_commit(context, path).await;
                 return Ok(());
             }
             std::thread::yield_now();
@@ -872,11 +891,7 @@ where
                 .with_audit_context(context.audit_context()),
             )
             .await;
-            if let Some(indexer) = &self.indexer {
-                let _ = indexer
-                    .reindex_document_with_audit_context(path, context.audit_context())
-                    .await;
-            }
+            self.reindex_after_commit(context, path).await;
         }
         Ok(outcome)
     }
@@ -935,6 +950,13 @@ where
             ));
         }
 
+        request.validate_result_limits().map_err(|_| {
+            memory_backend_unsupported(
+                context.scope(),
+                FilesystemOperation::Query,
+                "invalid memory search result limits",
+            )
+        })?;
         let mut request = request;
         if request.vector()
             && self.capabilities.vector_search
@@ -955,7 +977,9 @@ where
                 ));
             };
             let embedding = embed_text(provider.as_ref(), context.scope(), request.query()).await?;
-            request = request.with_query_embedding(embedding);
+            request = request
+                .with_query_embedding(embedding)
+                .with_embedding_space(provider.space_id().clone());
         }
 
         // Fail-fast on caller-supplied embeddings whose dimension disagrees with the
@@ -977,6 +1001,17 @@ where
                     ),
                 ));
             }
+        }
+
+        if request.vector()
+            && let Some(provider) = &self.embedding_provider
+            && request.embedding_space() != Some(provider.space_id())
+        {
+            return Err(memory_backend_unsupported(
+                context.scope(),
+                FilesystemOperation::ReadFile,
+                "query embedding space does not match configured provider",
+            ));
         }
 
         let results = self
@@ -1008,6 +1043,11 @@ mod tests {
 
     #[async_trait]
     impl EmbeddingProvider for FailingEmbeddingProvider {
+        fn space_id(&self) -> &crate::EmbeddingSpaceId {
+            static SPACE: std::sync::OnceLock<crate::EmbeddingSpaceId> = std::sync::OnceLock::new();
+            SPACE.get_or_init(|| crate::EmbeddingSpaceId::from_digest([1; 32]))
+        }
+
         fn dimension(&self) -> usize {
             3
         }
@@ -1029,6 +1069,11 @@ mod tests {
 
     #[async_trait]
     impl EmbeddingProvider for UnitEmbeddingProvider {
+        fn space_id(&self) -> &crate::EmbeddingSpaceId {
+            static SPACE: std::sync::OnceLock<crate::EmbeddingSpaceId> = std::sync::OnceLock::new();
+            SPACE.get_or_init(|| crate::EmbeddingSpaceId::from_digest([1; 32]))
+        }
+
         fn dimension(&self) -> usize {
             3
         }

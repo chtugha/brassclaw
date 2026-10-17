@@ -4,15 +4,6 @@ use brassclaw_host_api::HostApiError;
 
 use crate::path::MemoryDocumentPath;
 
-/// Upper bound on the requested final result count. Keeps a faulty caller
-/// from translating `usize::MAX` into an unbounded SQL `LIMIT`.
-const MAX_LIMIT: usize = 1_000;
-
-/// Upper bound on the per-branch candidate budget before fusion. 5x the
-/// final-limit ceiling leaves enough headroom for hybrid fusion to do
-/// useful re-ranking without letting an attacker request millions of rows.
-const MAX_PRE_FUSION_LIMIT: usize = 5_000;
-
 /// Strategy used to fuse full-text and vector search result ranks.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum FusionStrategy {
@@ -32,6 +23,7 @@ pub struct MemorySearchRequest {
     full_text: bool,
     vector: bool,
     query_embedding: Option<Vec<f32>>,
+    embedding_space: Option<crate::embedding::EmbeddingSpaceId>,
     fusion_strategy: FusionStrategy,
     rrf_k: u32,
     min_score: f32,
@@ -56,6 +48,7 @@ impl MemorySearchRequest {
             full_text: true,
             vector: true,
             query_embedding: None,
+            embedding_space: None,
             fusion_strategy: FusionStrategy::default(),
             rrf_k: 60,
             min_score: 0.0,
@@ -65,26 +58,33 @@ impl MemorySearchRequest {
     }
 
     pub fn with_limit(mut self, limit: usize) -> Self {
-        self.limit = limit.clamp(1, MAX_LIMIT);
-        // Re-clamp pre_fusion_limit so the invariant `pre_fusion_limit >= limit`
-        // holds regardless of builder call order: if the caller sets
-        // `with_pre_fusion_limit(2).with_limit(5)`, the pre-fusion candidate
-        // budget must also widen to at least 5, otherwise the per-branch SQL
-        // `LIMIT` would silently be smaller than the requested final limit.
-        // Also keep the upper DB-safety bound on pre_fusion_limit.
-        self.pre_fusion_limit = self
-            .pre_fusion_limit
-            .max(self.limit)
-            .min(MAX_PRE_FUSION_LIMIT);
+        self.limit = limit;
+        // Keep enough branch candidates for the explicit final count in either
+        // builder order. Invalid/unrepresentable counts fail before backend I/O.
+        self.pre_fusion_limit = self.pre_fusion_limit.max(limit);
         self
     }
 
     pub fn with_pre_fusion_limit(mut self, limit: usize) -> Self {
-        // `pre_fusion_limit >= limit` (lower bound) and an upper DB-safety
-        // ceiling so a `usize::MAX` from a faulty caller can't translate
-        // into an unbounded SQL `LIMIT`.
-        self.pre_fusion_limit = limit.max(self.limit).clamp(1, MAX_PRE_FUSION_LIMIT);
+        self.pre_fusion_limit = limit.max(self.limit);
         self
+    }
+
+    /// Backend vector counts/ranks use u32. Reject invalid requests rather than
+    /// wrapping a cast or silently substituting a smaller operational quota.
+    pub fn validate_result_limits(&self) -> Result<(), HostApiError> {
+        if self.limit == 0
+            || self.pre_fusion_limit < self.limit
+            || u32::try_from(self.limit).is_err()
+            || u32::try_from(self.pre_fusion_limit).is_err()
+        {
+            return Err(HostApiError::InvalidId {
+                kind: "memory search result limits",
+                value: format!("{}/{}", self.limit, self.pre_fusion_limit),
+                reason: "counts must be positive and representable by the backend".into(),
+            });
+        }
+        Ok(())
     }
 
     pub fn with_full_text(mut self, enabled: bool) -> Self {
@@ -99,7 +99,17 @@ impl MemorySearchRequest {
 
     pub fn with_query_embedding(mut self, embedding: Vec<f32>) -> Self {
         self.query_embedding = Some(embedding);
+        self.embedding_space = None;
         self
+    }
+
+    pub fn with_embedding_space(mut self, space: crate::embedding::EmbeddingSpaceId) -> Self {
+        self.embedding_space = Some(space);
+        self
+    }
+
+    pub fn embedding_space(&self) -> Option<&crate::embedding::EmbeddingSpaceId> {
+        self.embedding_space.as_ref()
     }
 
     pub fn with_fusion_strategy(mut self, strategy: FusionStrategy) -> Self {

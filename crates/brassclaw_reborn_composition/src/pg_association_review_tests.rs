@@ -18,7 +18,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 #[path = "../../../tests/monty_control/tests/support/q1_review_fixture.rs"]
-mod native_evidence;
+pub(crate) mod native_evidence;
 
 struct ReviewOperator;
 #[async_trait]

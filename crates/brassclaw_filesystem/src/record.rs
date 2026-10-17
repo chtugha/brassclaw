@@ -9,8 +9,8 @@
 //! projection values. There is no parallel API for the two cases; the same
 //! put/get/query/CAS machinery serves both.
 //!
-//! Encryption-at-rest is applied by an
-//! [`EncryptedBackend`](crate::EncryptedBackend) decorator over the
+//! Encryption-at-rest is applied by a
+//! planned `EncryptedBackend` decorator over the
 //! [`Entry::body`] and any `IndexValue::Bytes` projection so the indexed
 //! scalar values (`scope`, `status`, …) remain queryable on the underlying
 //! mount.
@@ -347,6 +347,23 @@ pub struct VersionedEntry {
     pub path: brassclaw_host_api::VirtualPath,
     pub entry: Entry,
     pub version: RecordVersion,
+}
+
+/// Structural projection of an entry. This is not a stored value or proof that
+/// its unrequested body/indexed payload is valid. No payload is materialized.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryMetadata {
+    pub path: brassclaw_host_api::VirtualPath,
+    pub kind: Option<RecordKind>,
+}
+
+/// Read projection of structural metadata and one explicitly requested index
+/// field. `None` means the field is absent; malformed selected values are errors.
+/// The body and other index fields are neither returned nor validated.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryIndexMetadata {
+    pub metadata: EntryMetadata,
+    pub value: Option<IndexValue>,
 }
 
 #[cfg(test)]

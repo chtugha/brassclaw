@@ -2052,6 +2052,25 @@ fn capability_denied_reason_kind_is_typed_and_wire_compatible() {
     assert_eq!(constructed_unknown.as_str(), "host_policy_denied");
     assert!(CapabilityDeniedReasonKind::unknown("api_key").is_err());
     assert!(CapabilityDeniedReasonKind::unknown("secret_policy").is_err());
+    let category = CapabilityDeniedReasonKind::Authorization;
+    let encoded = serde_json::to_string(&category).unwrap();
+    assert_eq!(encoded, "\"authorization\"");
+    assert_eq!(
+        serde_json::from_str::<CapabilityDeniedReasonKind>(&encoded).unwrap(),
+        category
+    );
+    // Only the fixed category is admitted. Arbitrary identifiers keep their
+    // existing sensitive-marker checks, including credential-shaped suffixes.
+    assert!(CapabilityDeniedReasonKind::unknown("authorization").is_err());
+    for value in [
+        "authorization:Bearer.payload",
+        "authorization_header",
+        "bearer_token",
+    ] {
+        assert!(
+            serde_json::from_value::<CapabilityDeniedReasonKind>(serde_json::json!(value)).is_err()
+        );
+    }
 }
 
 #[test]

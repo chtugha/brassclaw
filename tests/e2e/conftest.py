@@ -117,7 +117,6 @@ def _binary_needs_rebuild(binary: Path) -> bool:
         ROOT / "Cargo.toml",
         ROOT / "Cargo.lock",
         ROOT / "build.rs",
-        ROOT / "providers.json",
         ROOT / "src",
         ROOT / "channels-src",
         ROOT / "crates",

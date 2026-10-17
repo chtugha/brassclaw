@@ -102,9 +102,13 @@ pub(crate) async fn retain_public_reply_candidate(
     )
     .map_err(invalid)?;
     let inspected = Arc::new(
-        InspectedRetainedProgram::inspect(RetainedProgram::Tools(Arc::new(prepared)), worker)
-            .await
-            .map_err(invalid)?,
+        InspectedRetainedProgram::inspect_with_limits(
+            RetainedProgram::Tools(Arc::new(prepared)),
+            worker,
+            private.preparation_limits(),
+        )
+        .await
+        .map_err(invalid)?,
     );
     let selection = inspected
         .program()

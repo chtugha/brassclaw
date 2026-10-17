@@ -45,9 +45,19 @@ pub(super) async fn build_program(
     );
     // Definition pins the real linked implementation before this immutable
     // draft is retained. It does not assert approval or catalogue activation.
+    let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
+        brassclaw_host_api::MontyExecutionLimits::default(),
+    )
+    .unwrap();
+    let verification = brassclaw_host_runtime::NativeVerificationLimits::new(
+        preparation.bounds.max_stdout_bytes,
+        preparation.process.response_timeout,
+    )
+    .unwrap();
     let registrations = brassclaw_host_runtime::builtin_native_first_party_handlers(
         brassclaw_host_runtime::BuiltinFirstPartyTools::default(),
-        1_073_741_824,
+        preparation.max_native_artifact_bytes,
+        verification,
     )
     .await
     .unwrap();

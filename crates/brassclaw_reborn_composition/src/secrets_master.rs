@@ -276,6 +276,92 @@ pub fn generate_master_key_bytes() -> Result<Vec<u8>, MasterKeyResolveError> {
     Ok(key)
 }
 
+/// Publish installation-owned raw key material without replacing an existing
+/// key. The same owner serves explicit rewrap and legacy import; this performs
+/// no database ceremony change and never removes source material.
+pub fn write_raw_master_key_if_absent(
+    path: &Path,
+    key: &[u8],
+) -> Result<(), MasterKeyResolveError> {
+    use std::io::Write;
+    validate_master_key(key)?;
+    let failure = || MasterKeyResolveError::InvalidKey {
+        reason: "raw master key could not be published without replacing existing material".into(),
+    };
+    if let Some(existing) = read_raw_master_key(path)? {
+        if existing != key {
+            return Err(failure());
+        }
+        restrict_raw_key_file(path)?;
+        return Ok(());
+    }
+    let parent = path.parent().ok_or_else(failure)?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|_| failure())?;
+    restrict_raw_key_file(staged.path())?;
+    writeln!(staged, "{}", hex::encode(key)).map_err(|_| failure())?;
+    staged.as_file().sync_all().map_err(|_| failure())?;
+    match staged.persist_noclobber(path) {
+        Ok(_) => {}
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+            if read_raw_master_key(path)?.as_deref() != Some(key) {
+                return Err(failure());
+            }
+            restrict_raw_key_file(path)?;
+        }
+        Err(_) => return Err(failure()),
+    }
+    #[cfg(unix)]
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| failure())?;
+    if read_raw_master_key(path)?.as_deref() != Some(key) {
+        return Err(failure());
+    }
+    Ok(())
+}
+
+fn restrict_raw_key_file(path: &Path) -> Result<(), MasterKeyResolveError> {
+    let failure = || MasterKeyResolveError::InvalidKey {
+        reason: "raw master key permissions could not be restricted".into(),
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|_| failure())?;
+    }
+    #[cfg(windows)]
+    {
+        // Preserve the existing Windows owner resolution, with typed process
+        // arguments rather than a shell or a guessed machine/domain identity.
+        let identity = std::process::Command::new("whoami")
+            .output()
+            .map_err(|_| failure())?;
+        if !identity.status.success() {
+            return Err(failure());
+        }
+        let account = std::str::from_utf8(&identity.stdout)
+            .map_err(|_| failure())?
+            .trim();
+        if account.is_empty() {
+            return Err(failure());
+        }
+        let permissions = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .arg("/grant:r")
+            .arg(format!("{account}:F"))
+            .output()
+            .map_err(|_| failure())?;
+        if !permissions.status.success() {
+            return Err(failure());
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    return Err(failure());
+    Ok(())
+}
+
 fn fill_random(bytes: &mut [u8]) -> Result<(), MasterKeyResolveError> {
     use rand::RngCore as _;
     rand::rngs::OsRng
@@ -536,5 +622,44 @@ mod tests {
                 None => brassclaw_common::env_helpers::remove_runtime_env(self.key),
             }
         }
+    }
+    #[test]
+    fn shared_raw_master_publisher_rejects_conflicts_and_concurrent_replacement() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("master");
+        let first: Vec<u8> = (0..32).collect();
+        let second: Vec<u8> = (32..64).collect();
+        write_raw_master_key_if_absent(&path, &first).unwrap();
+        write_raw_master_key_if_absent(&path, &first).unwrap();
+        assert!(write_raw_master_key_if_absent(&path, &second).is_err());
+        assert_eq!(read_raw_master_key(&path).unwrap().unwrap(), first);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        let path = directory.path().join("concurrent");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let mut writers = Vec::new();
+        for key in [first, second] {
+            let path = path.clone();
+            let barrier = barrier.clone();
+            writers.push(std::thread::spawn(move || {
+                barrier.wait();
+                (write_raw_master_key_if_absent(&path, &key).is_ok(), key)
+            }));
+        }
+        let outcomes: Vec<_> = writers
+            .into_iter()
+            .map(|writer| writer.join().unwrap())
+            .collect();
+        assert_eq!(outcomes.iter().filter(|(success, _)| *success).count(), 1);
+        assert_eq!(
+            read_raw_master_key(&path).unwrap().unwrap(),
+            outcomes.iter().find(|(success, _)| *success).unwrap().1
+        );
     }
 }

@@ -254,6 +254,33 @@ impl PgExtensionCatalogueStore {
         row: NewPgExtensionCatalogue,
     ) -> Result<Uuid, PgExtensionCatalogueStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
+        Self::insert_on(&**client, row, false).await
+    }
+
+    /// Installation-owned legacy projection, separate from actual v3 approval.
+    pub(crate) async fn insert_installation_projection(
+        &self,
+        row: NewPgExtensionCatalogue,
+    ) -> Result<Uuid, PgExtensionCatalogueStoreError> {
+        if row.source != "system" {
+            return Err(PgExtensionCatalogueStoreError::Db {
+                reason: "installation projection requires system metadata".into(),
+            });
+        }
+        let client = self.pool.get().await.map_err(map_pool)?;
+        Self::insert_on(&**client, row, true).await
+    }
+
+    async fn insert_on(
+        client: &(impl tokio_postgres::GenericClient + Sync),
+        row: NewPgExtensionCatalogue,
+        installation_projection: bool,
+    ) -> Result<Uuid, PgExtensionCatalogueStoreError> {
+        let validation_status = if installation_projection {
+            "validated"
+        } else {
+            "pending"
+        };
         let db_row = client
             .query_one(
                 "INSERT INTO reborn_extension_catalogues
@@ -264,7 +291,7 @@ impl PgExtensionCatalogueStore {
                      consumer_tags, intent_examples, source, dependency_registry,
                      validation_status)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-                         CASE WHEN $16 = 'system' THEN 'validated' ELSE 'pending' END)
+                         $18)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -284,6 +311,7 @@ impl PgExtensionCatalogueStore {
                     &row.intent_examples,
                     &row.source,
                     &row.dependency_registry,
+                    &validation_status,
                 ],
             )
             .await
@@ -523,13 +551,16 @@ impl PgExtensionCatalogueStore {
             agent_id: row.agent_id.clone(),
             project_id: row.project_id.clone(),
         };
-        let id = self.insert(row).await?;
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let transaction = client.transaction().await.map_err(map_pg)?;
+        let id = Self::insert_on(&*transaction, row, false).await?;
         queue_store
-            .submit(&scope, id, 23, None)
+            .submit_in_transaction(&transaction, &scope, id, 23, None)
             .await
             .map_err(|e| PgExtensionCatalogueStoreError::Queue {
                 reason: e.to_string(),
             })?;
+        transaction.commit().await.map_err(map_pg)?;
         Ok(id)
     }
 }

@@ -1,12 +1,21 @@
 use serde_json::{Value, json};
 
-/// Maximum HTTP request timeout in milliseconds (30 seconds).
-const HTTP_TIMEOUT_MAX_MS: u32 = 30000;
-/// Default HTTP request timeout in milliseconds (10 seconds).
-const HTTP_TIMEOUT_DEFAULT_MS: u32 = 10000;
-
 pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value> {
     Some(match reference {
+        "schemas/builtin/source_inspection.input.v1.json" => json!({
+            "type":"object","properties":{"source":{"type":"string"}},
+            "required":["source"],"additionalProperties":false
+        }),
+        "schemas/builtin/prefix_generation.input.v1.json" => json!({
+            "type":"object","properties":{"operation":{"type":"string","enum":["read","retain"]},
+                "profile":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,63}$"},
+                "generation":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+                "expected_profile_revision":{"type":"integer","minimum":1,"maximum":9007199254740991_u64},
+                "generation_bytes":{"type":"string","minLength":1}},
+            "required":["operation","profile"],"additionalProperties":false,
+            "oneOf":[{"properties":{"operation":{"const":"read"}},"required":["generation"]},
+                {"properties":{"operation":{"const":"retain"}},"required":["expected_profile_revision","generation_bytes"]}]
+        }),
         "schemas/builtin/echo.input.v1.json" => json!({
             "type": "object",
             "properties": {
@@ -39,7 +48,7 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["parse", "stringify", "query", "validate"]
+                    "enum": ["parse", "stringify", "query", "validate", "sha256_utf8"]
                 },
                 "data": { "description": "JSON string or JSON value to process" },
                 "path": { "type": "string", "description": "Dot/bracket path for query operation" }
@@ -87,9 +96,9 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 20,
+                    "maximum": u32::MAX,
                     "default": 5,
-                    "description": "Maximum number of memory results to return"
+                    "description": "Requested maximum number of memory results. Positive backend-representable counts are preserved; resource failures are reported instead of silently reducing the count."
                 }
             },
             "required": ["query"],
@@ -158,9 +167,8 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
                 "depth": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 10,
-                    "default": 1,
-                    "description": "Maximum directory depth to include"
+                    "maximum": 4294967295_u64,
+                    "description": "Directory depth to include. Omission uses the live Memory tree default; values above the live maximum are rejected, never clamped. Result value limits still apply."
                 }
             },
             "additionalProperties": false
@@ -499,9 +507,8 @@ fn http_schema(require_save_to: bool) -> Value {
         "timeout_ms": {
             "type": "integer",
             "minimum": 1,
-            "maximum": HTTP_TIMEOUT_MAX_MS,
-            "default": HTTP_TIMEOUT_DEFAULT_MS,
-            "description": "Request timeout in milliseconds. Defaults to 10s and is capped at 30s."
+            "maximum": u32::MAX,
+            "description": "Exact positive request timeout in milliseconds, representable by the HTTP request type. Omission uses the acknowledged instance host HTTP default."
         }
     });
     let mut required = vec!["url"];
@@ -522,18 +529,6 @@ fn http_schema(require_save_to: bool) -> Value {
 }
 
 fn response_body_limit_schema(require_save_to: bool) -> Value {
-    let default = if require_save_to { 10_485_760 } else { 49_152 };
-    let maximum = if require_save_to { 10_485_760 } else { 262_144 };
-    let description = if require_save_to {
-        "Maximum sanitized response body bytes to fetch and save. Defaults to 10 MiB; smaller values are honored."
-    } else {
-        "Maximum inline response body bytes exposed to the model. Defaults to a small model-visible budget and is capped at 256 KiB; smaller values are honored, and oversized bodies are truncated or summarized with guidance to use builtin.http.save."
-    };
-    json!({
-        "type": "integer",
-        "minimum": 1,
-        "maximum": maximum,
-        "default": default,
-        "description": description
-    })
+    json!({"type":"integer","minimum":1,"maximum":isize::MAX as u64,
+        "description":if require_save_to {"Exact maximum fetched response body bytes before sanitization and saving. Omission uses the acknowledged instance default; overflow fails."} else {"Exact maximum response bytes to fetch. Omission uses the acknowledged instance default; overflow fails. Complete sanitized text or binary output is returned without formatting truncation."}})
 }

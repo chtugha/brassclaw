@@ -278,6 +278,7 @@ where
             chat_record_id: None,
             content: content.to_string(),
             embedding: None,
+            embedding_space: None,
         }]
     };
     assert_eq!(

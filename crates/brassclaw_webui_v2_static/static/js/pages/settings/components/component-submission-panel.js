@@ -2,7 +2,7 @@ import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
 import { useT } from "../../../lib/i18n.js";
 import { clientActionId } from "../../../lib/api.js";
-import { submitComponentReview, fetchComponentReviewSubmission } from "../lib/settings-api.js";
+import { submitComponentReview, fetchComponentReviewSubmission, fetchComponentRevisionHead } from "../lib/settings-api.js";
 
 // Source is submitted/rendered as text. A pending request retains its exact ID
 // and bytes until acknowledged; loading by ID recovers a committed subject.
@@ -10,6 +10,7 @@ export function ComponentSubmissionPanel() {
   const t = useT();
   const [id, setId] = React.useState("");
   const [candidate, setCandidate] = React.useState("");
+  const [allocation, setAllocation] = React.useState("");
   const [base, setBase] = React.useState("null");
   const [dependencies, setDependencies] = React.useState("[]");
   const [pending, setPending] = React.useState(null);
@@ -25,8 +26,13 @@ export function ComponentSubmissionPanel() {
     setBusy(true); setError("");
     let sent = false;
     try {
+      const head = Number(allocation);
+      if (!pending && (allocation.trim() === "" || !Number.isSafeInteger(head) || head < 0)) {
+        throw new Error(t("componentSubmission.headInvalid"));
+      }
       const request = pending ?? {
         submission_id: id.trim(), candidate_bytes: candidate,
+        expected_previous_version: head,
         base: JSON.parse(base), dependencies: JSON.parse(dependencies),
       };
       // Serialize before locking: syntax/transport errors make no request.
@@ -60,10 +66,23 @@ export function ComponentSubmissionPanel() {
     } catch (err) { setError(err.message); }
     finally { inFlight.current = false; setBusy(false); }
   };
+  const readHead = async () => {
+    if (inFlight.current || pending || receipt) return;
+    inFlight.current = true; setBusy(true); setError("");
+    try {
+      const value = JSON.parse(candidate);
+      const observed = await fetchComponentRevisionHead(value.uuid);
+      if (!Number.isSafeInteger(observed.last_allocated_version) || observed.last_allocated_version < 0) {
+        throw new Error(t("componentSubmission.headInvalid"));
+      }
+      setAllocation(String(observed.last_allocated_version));
+    } catch (err) { setError(err.message); }
+    finally { inFlight.current = false; setBusy(false); }
+  };
   const another = () => {
     try { setId(clientActionId()); }
     catch (err) { setError(err.message); return; }
-    setPending(null); setReceipt(null); setView(null); setError("");
+    setPending(null); setReceipt(null); setView(null); setError(""); setAllocation("");
     uncertain.current = false;
   };
   const locked = busy || Boolean(pending) || Boolean(receipt);
@@ -83,8 +102,16 @@ export function ComponentSubmissionPanel() {
           </button>
           <label className="block text-sm">${t("componentSubmission.candidate")}
             <textarea className="mt-1 w-full rounded border p-2 bg-transparent font-mono text-xs" rows="10"
-              value=${candidate} disabled=${locked} onChange=${e => setCandidate(e.target.value)} />
+              value=${candidate} disabled=${locked} onChange=${e => { setCandidate(e.target.value); setAllocation(""); }} />
           </label>
+          <label className="block text-sm">${t("componentSubmission.head")}
+            <input type="number" min="0" step="1" className="mt-1 w-full rounded border p-2 bg-transparent"
+              value=${allocation} disabled=${locked} onChange=${e => setAllocation(e.target.value)} />
+            <span className="mt-1 block text-xs">${t("componentSubmission.headHelp")}</span>
+          </label>
+          <button type="button" className="rounded border px-3 py-2 text-sm" disabled=${locked || !candidate.trim()} onClick=${readHead}>
+            ${t("componentSubmission.readHead")}
+          </button>
           <label className="block text-sm">${t("componentSubmission.base")}
             <textarea className="mt-1 w-full rounded border p-2 bg-transparent font-mono text-xs" value=${base}
               disabled=${locked} onChange=${e => setBase(e.target.value)} />

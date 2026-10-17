@@ -372,6 +372,101 @@ mod tests {
     use super::PgMontyVmSettingsStore;
 
     #[tokio::test]
+    async fn native_http_defaults_upgrade_retains_explicit_values_and_rejects_invalid() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA http_defaults_upgrade;
+            CREATE TABLE http_defaults_upgrade.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO http_defaults_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT host_http_request_defaults;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+            VALUES('legacy','owner','agent','project',8),('explicit','owner','agent','project',12),('partial','owner','agent','project',20);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'default_http_request_timeout_millis'-'default_http_response_body_bytes' WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"default_http_request_timeout_millis\":60000,\"default_http_response_body_bytes\":20971520}'::jsonb WHERE tenant_id='explicit';
+            UPDATE reborn_monty_vm_settings SET execution_limits=(execution_limits-'default_http_response_body_bytes')||'{\"default_http_request_timeout_millis\":60000}'::jsonb WHERE tenant_id='partial';").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V146__host_http_request_defaults.sql"
+            ))
+            .await
+            .unwrap();
+        for (tenant, timeout, bytes, revision) in [
+            ("legacy", 30000u64, 10485760u64, 9i64),
+            ("explicit", 60000, 20971520, 12),
+            ("partial", 60000, 10485760, 21),
+        ] {
+            let row=client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1",&[&tenant]).await.unwrap();
+            let limits: brassclaw_host_api::MontyExecutionLimits =
+                serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(limits.default_http_request_timeout_millis, timeout);
+            assert_eq!(limits.default_http_response_body_bytes, bytes);
+            assert_eq!(row.get::<_, i64>(1), revision);
+        }
+        for key in [
+            "default_http_request_timeout_millis",
+            "default_http_response_body_bytes",
+        ] {
+            for value in [
+                serde_json::json!(0),
+                serde_json::json!(-1),
+                serde_json::json!(1.5),
+                serde_json::Value::Null,
+                serde_json::json!(u64::MAX.to_string()),
+            ] {
+                assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||jsonb_build_object($1::text,$2::jsonb) WHERE tenant_id='explicit'",&[&key,&value]).await.is_err());
+            }
+        }
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_http_cache_upgrade_preserves_disabled_and_explicit_settings() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA http_cache_upgrade;
+            CREATE TABLE http_cache_upgrade.reborn_monty_vm_settings
+            (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO http_cache_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT host_http_client_cache_policy;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+            VALUES('legacy','owner','agent','project',8),('disabled','owner','agent','project',12),('larger','owner','agent','project',20);
+            UPDATE reborn_monty_vm_settings SET execution_limits=(execution_limits-'max_http_client_cache_entries')||'{\"max_feeds\":777}'::jsonb WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"max_http_client_cache_entries\":0}'::jsonb WHERE tenant_id='disabled';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"max_http_client_cache_entries\":2048}'::jsonb WHERE tenant_id='larger';").await.unwrap();
+        client
+            .batch_execute(include_str!(
+                "../../brassclaw_pg/migrations/V144__host_http_client_cache_policy.sql"
+            ))
+            .await
+            .unwrap();
+        for (tenant, capacity, revision) in [
+            ("legacy", 128, 9),
+            ("disabled", 0, 12),
+            ("larger", 2048, 20),
+        ] {
+            let row = client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1", &[&tenant]).await.unwrap();
+            let limits: brassclaw_host_api::MontyExecutionLimits =
+                serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(limits.max_http_client_cache_entries, capacity);
+            assert_eq!(row.get::<_, i64>(1), revision);
+            if tenant == "legacy" {
+                assert_eq!(limits.max_feeds, 777);
+            }
+        }
+        for invalid in [
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::Value::Null,
+            serde_json::json!(4294967296u64),
+        ] {
+            assert!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||jsonb_build_object('max_http_client_cache_entries',$1::jsonb) WHERE tenant_id='disabled'", &[&invalid]).await.is_err());
+        }
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
     async fn native_removed_allocation_limit_preserves_evidence_and_rejects_writes() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let client = rig.pool.get().await.unwrap();
@@ -454,6 +549,8 @@ mod tests {
             CREATE TABLE memory_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO memory_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -523,6 +620,8 @@ mod tests {
             CREATE TABLE duration_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO duration_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -580,6 +679,8 @@ mod tests {
             CREATE TABLE recipe_capacity_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO recipe_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -620,6 +721,8 @@ mod tests {
             CREATE TABLE child_capacity_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO child_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -694,6 +797,8 @@ mod tests {
             CREATE TABLE backlog_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO backlog_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -752,7 +857,7 @@ mod tests {
                     Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
                 );
             }
-            let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1 WHERE tenant_id='explicit'", &[&field]).await.unwrap_err();
+            let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text WHERE tenant_id='explicit'", &[&field]).await.unwrap_err();
             assert_eq!(
                 error.code(),
                 Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
@@ -794,6 +899,8 @@ mod tests {
             CREATE TABLE settings_capacity_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO settings_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -870,6 +977,8 @@ mod tests {
             CREATE TABLE settings_deadline_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO settings_deadline_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -994,6 +1103,8 @@ mod tests {
             CREATE TABLE ownership_control_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO ownership_control_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -1128,6 +1239,8 @@ mod tests {
             CREATE TABLE ipc_frame_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO ipc_frame_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_ipc_frame_policy;
             INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
             VALUES('legacy','owner','agent','project',8),('explicit','owner','agent','project',12);
@@ -1184,7 +1297,8 @@ mod tests {
         let fresh: brassclaw_host_api::MontyExecutionLimits =
             serde_json::from_value(row.get(0)).unwrap();
         assert_eq!(fresh, brassclaw_host_api::MontyExecutionLimits::default());
-        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_ipc_frame_policy;
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_ipc_frame_policy;
             UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_ipc_frame_bytes',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
         let error = client.batch_execute(migration).await.unwrap_err();
         assert_eq!(
@@ -1209,6 +1323,8 @@ mod tests {
             CREATE TABLE adapter_reserve_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO adapter_reserve_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_worker_adapter_reserve;
             INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
@@ -1275,7 +1391,8 @@ mod tests {
         let fresh: brassclaw_host_api::MontyExecutionLimits =
             serde_json::from_value(row.get(0)).unwrap();
         assert_eq!(fresh, brassclaw_host_api::MontyExecutionLimits::default());
-        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_worker_adapter_reserve;
             UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'worker_adapter_reserve_bytes',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
         let error = client.batch_execute(migration).await.unwrap_err();
@@ -1301,6 +1418,8 @@ mod tests {
             CREATE TABLE browser_status_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO browser_status_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_browser_status_interval;
@@ -1394,6 +1513,8 @@ mod tests {
             CREATE TABLE reconcile_interval_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO reconcile_interval_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -1491,6 +1612,8 @@ mod tests {
             CREATE TABLE cancellation_deadline_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO cancellation_deadline_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -1588,6 +1711,8 @@ mod tests {
             CREATE TABLE hosting_deadline_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO hosting_deadline_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -1718,6 +1843,8 @@ mod tests {
             CREATE TABLE actor_capacity_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO actor_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -1834,6 +1961,8 @@ mod tests {
             CREATE TABLE retention_capacity_upgrade.reborn_monty_vm_settings
             (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
             SET search_path TO retention_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_preparation_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_ipc_frame_policy;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_worker_adapter_reserve;
             ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_browser_status_interval;
@@ -2060,5 +2189,665 @@ mod tests {
         drop(client);
         drop(store);
         drop(rig);
+    }
+    #[tokio::test]
+    async fn native_preparation_upgrade_preserves_explicit_values_and_larger_frames() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA preparation_upgrade;
+            CREATE TABLE preparation_upgrade.reborn_monty_vm_settings
+            (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO preparation_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_catalogue_preparation_policy;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_preparation_policy;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+            VALUES('legacy','owner','agent','project',8),('explicit','owner','agent','project',12),('wide','owner','agent','project',4);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'utility_worker_memory_bytes'-'max_native_artifact_bytes'
+                WHERE tenant_id IN ('legacy','wide');
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"max_ipc_frame_bytes\":268435456}'::jsonb WHERE tenant_id='wide';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"utility_worker_memory_bytes\":201326592,\"max_native_artifact_bytes\":2147483648}'::jsonb WHERE tenant_id='explicit';").await.unwrap();
+        let migration =
+            include_str!("../../brassclaw_pg/migrations/V137__monty_preparation_policy.sql");
+        client.batch_execute(migration).await.unwrap();
+        for (tenant, memory, artifact, revision) in [
+            ("legacy", 138412032u64, 1073741824u64, 9i64),
+            ("explicit", 201326592, 2147483648, 12),
+            ("wide", 541065216, 1073741824, 5),
+        ] {
+            let row = client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1", &[&tenant]).await.unwrap();
+            let limits: brassclaw_host_api::MontyExecutionLimits =
+                serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(limits.utility_worker_memory_bytes, memory);
+            assert_eq!(limits.max_native_artifact_bytes, artifact);
+            assert_eq!(row.get::<_, i64>(1), revision);
+            assert!(brassclaw_monty_host::utility::UtilityLimits::from_execution(limits).is_ok());
+        }
+        for field in ["utility_worker_memory_bytes", "max_native_artifact_bytes"] {
+            for value in [
+                serde_json::json!(0),
+                serde_json::json!(-1),
+                serde_json::json!(null),
+                serde_json::json!("2"),
+                serde_json::json!(true),
+                serde_json::json!(1.5),
+                serde_json::json!(u64::MAX),
+            ] {
+                let path = vec![field.to_owned()];
+                let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,$1,$2) WHERE tenant_id='explicit'", &[&path,&value]).await.unwrap_err();
+                assert_eq!(
+                    error.code(),
+                    Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+                );
+            }
+            let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text WHERE tenant_id='explicit'", &[&field]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        let error=client.batch_execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{utility_worker_memory_bytes}',execution_limits->'max_ipc_frame_bytes') WHERE tenant_id='explicit'").await.unwrap_err();
+        assert_eq!(
+            error.code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
+        let row=client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('new','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap();
+        let fresh: brassclaw_host_api::MontyExecutionLimits =
+            serde_json::from_value(row.get(0)).unwrap();
+        assert_eq!(fresh.utility_worker_memory_bytes, 138412032);
+        assert_eq!(fresh.max_native_artifact_bytes, 1073741824);
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_preparation_policy;
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'utility_worker_memory_bytes',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let row=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), i64::MAX);
+        assert!(
+            row.get::<_, serde_json::Value>(1)
+                .get("utility_worker_memory_bytes")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_catalogue_policy_upgrade_preserves_explicit_values_and_rejects_invalid_bounds()
+    {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE SCHEMA catalogue_policy_upgrade;
+            CREATE TABLE catalogue_policy_upgrade.reborn_monty_vm_settings
+            (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO catalogue_policy_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT IF EXISTS monty_pending_host_calls;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_catalogue_preparation_policy;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+            VALUES('legacy','owner','agent','project',8),('explicit','owner','agent','project',12);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-ARRAY['max_catalogue_recipes','max_catalogue_components_per_recipe','max_catalogue_variants_per_recipe','max_catalogue_bytes','max_catalogue_actor_bytes'] WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"max_catalogue_recipes\":1024,\"max_catalogue_bytes\":134217728}'::jsonb WHERE tenant_id='explicit';").await.unwrap();
+        let migration = include_str!(
+            "../../brassclaw_pg/migrations/V141__monty_catalogue_preparation_policy.sql"
+        );
+        client.batch_execute(migration).await.unwrap();
+        for (tenant, recipes, bytes, revision) in [
+            ("legacy", 512u32, 67108864u64, 9i64),
+            ("explicit", 1024, 134217728, 12),
+        ] {
+            let row=client.query_one("SELECT execution_limits,revision FROM reborn_monty_vm_settings WHERE tenant_id=$1", &[&tenant]).await.unwrap();
+            let policy: brassclaw_host_api::MontyExecutionLimits =
+                serde_json::from_value(row.get(0)).unwrap();
+            assert_eq!(policy.max_catalogue_recipes, recipes);
+            assert_eq!(policy.max_catalogue_bytes, bytes);
+            assert_eq!(row.get::<_, i64>(1), revision);
+            policy.validate().unwrap();
+        }
+        for field in [
+            "max_catalogue_recipes",
+            "max_catalogue_components_per_recipe",
+            "max_catalogue_variants_per_recipe",
+            "max_catalogue_bytes",
+            "max_catalogue_actor_bytes",
+        ] {
+            for value in [
+                serde_json::json!(0),
+                serde_json::json!(-1),
+                serde_json::json!(null),
+                serde_json::json!("2"),
+                serde_json::json!(1.5),
+                serde_json::json!(u64::MAX),
+            ] {
+                let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,$1,$2) WHERE tenant_id='explicit'", &[&vec![field.to_owned()],&value]).await.unwrap_err();
+                assert_eq!(
+                    error.code(),
+                    Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+                );
+            }
+            let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text WHERE tenant_id='explicit'", &[&field]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        let row=client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('fresh','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap();
+        let fresh: brassclaw_host_api::MontyExecutionLimits =
+            serde_json::from_value(row.get(0)).unwrap();
+        assert_eq!(fresh.max_catalogue_recipes, 512);
+        assert_eq!(fresh.max_catalogue_components_per_recipe, 4096);
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_catalogue_preparation_policy;
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_catalogue_recipes',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let row=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), i64::MAX);
+        assert!(
+            row.get::<_, serde_json::Value>(1)
+                .get("max_catalogue_recipes")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+    #[tokio::test]
+    async fn native_pending_host_call_upgrade_preserves_values_defaults_and_atomic_rejection() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute(r#"CREATE SCHEMA pending_call_upgrade;
+            CREATE TABLE pending_call_upgrade.reborn_monty_vm_settings
+                (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO pending_call_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_live_task_workers;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_pending_host_calls;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('legacy','owner','agent','project',7),('explicit','owner','agent','project',12);
+            UPDATE reborn_monty_vm_settings SET execution_limits=(execution_limits-'max_pending_host_calls')||'{"max_feeds":777}'::jsonb WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{"max_pending_host_calls":999}'::jsonb WHERE tenant_id='explicit';"#).await.unwrap();
+        let before = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get::<_, serde_json::Value>(0);
+        // A prior default expression must be preserved, and not executed by
+        // the migration itself. It runs exactly once for a subsequent insert.
+        client.batch_execute("CREATE SEQUENCE default_observations;
+            CREATE FUNCTION counted_limits() RETURNS jsonb LANGUAGE plpgsql AS $$ BEGIN
+                PERFORM nextval('default_observations');
+                RETURN (SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy');
+            END $$;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits SET DEFAULT counted_limits();").await.unwrap();
+        let migration =
+            include_str!("../../brassclaw_pg/migrations/V158__monty_pending_host_calls.sql");
+        client.batch_execute(migration).await.unwrap();
+        assert!(
+            !client
+                .query_one("SELECT is_called FROM default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        let legacy = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",&[]).await.unwrap();
+        assert_eq!(legacy.get::<_, i64>(0), 8);
+        let mut expected = before;
+        expected["max_pending_host_calls"] = serde_json::json!(128);
+        assert_eq!(legacy.get::<_, serde_json::Value>(1), expected);
+        let explicit=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'",&[]).await.unwrap();
+        assert_eq!(explicit.get::<_, i64>(0), 12);
+        assert_eq!(
+            explicit.get::<_, serde_json::Value>(1)["max_pending_host_calls"],
+            999
+        );
+        let fresh=client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('fresh','owner','agent','project') RETURNING execution_limits",&[]).await.unwrap().get::<_,serde_json::Value>(0);
+        assert_eq!(fresh["max_feeds"], 777);
+        assert_eq!(fresh["max_pending_host_calls"], 128);
+        assert_eq!(
+            client
+                .query_one("SELECT last_value FROM default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        for value in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!("2"),
+            serde_json::json!(null),
+            serde_json::json!(u32::MAX as u64 + 1),
+        ] {
+            let rejection=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{max_pending_host_calls}',$1) WHERE tenant_id='explicit'",&[&value]).await.unwrap_err();
+            assert_eq!(
+                rejection.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_pending_host_calls;
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_pending_host_calls',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let failed=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",&[]).await.unwrap();
+        assert_eq!(failed.get::<_, i64>(0), i64::MAX);
+        assert!(
+            failed
+                .get::<_, serde_json::Value>(1)
+                .get("max_pending_host_calls")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+    #[tokio::test]
+    async fn native_memory_tree_upgrade_preserves_overrides_and_single_default_evaluation() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute(r#"
+            CREATE SCHEMA memory_tree_upgrade;
+            CREATE TABLE memory_tree_upgrade.reborn_monty_vm_settings (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO memory_tree_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_memory_tree_depth;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('legacy','owner','agent','project',7),('explicit','owner','agent','project',12),('partial','owner','agent','project',22);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'default_memory_tree_depth'-'max_memory_tree_depth' WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{"default_memory_tree_depth":3,"max_memory_tree_depth":20}'::jsonb WHERE tenant_id='explicit';
+            UPDATE reborn_monty_vm_settings SET execution_limits=(execution_limits-'max_memory_tree_depth')||'{"default_memory_tree_depth":2}'::jsonb WHERE tenant_id='partial';
+            CREATE SEQUENCE tree_default_observations;
+            CREATE FUNCTION counted_tree_limits() RETURNS jsonb LANGUAGE plpgsql AS $$ BEGIN
+                PERFORM nextval('tree_default_observations');
+                RETURN (SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit');
+            END $$;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits SET DEFAULT counted_tree_limits();
+        "#).await.unwrap();
+        let before: serde_json::Value = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let migration = include_str!("../../brassclaw_pg/migrations/V165__memory_tree_policy.sql");
+        client.batch_execute(migration).await.unwrap();
+        assert!(
+            !client
+                .query_one("SELECT is_called FROM tree_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        let row = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        let mut expected = before;
+        expected["default_memory_tree_depth"] = serde_json::json!(1);
+        expected["max_memory_tree_depth"] = serde_json::json!(10);
+        assert_eq!(row.get::<_, i64>(0), 8);
+        assert_eq!(row.get::<_, serde_json::Value>(1), expected);
+        let partial=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='partial'", &[]).await.unwrap();
+        assert_eq!(partial.get::<_, i64>(0), 23);
+        assert_eq!(
+            partial.get::<_, serde_json::Value>(1)["default_memory_tree_depth"],
+            2
+        );
+        assert_eq!(
+            partial.get::<_, serde_json::Value>(1)["max_memory_tree_depth"],
+            10
+        );
+        let explicit=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'", &[]).await.unwrap();
+        assert_eq!(explicit.get::<_, i64>(0), 12);
+        let fresh:serde_json::Value=client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('fresh','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap().get(0);
+        assert_eq!(fresh, explicit.get::<_, serde_json::Value>(1));
+        assert_eq!(
+            client
+                .query_one("SELECT last_value FROM tree_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        for field in ["default_memory_tree_depth", "max_memory_tree_depth"] {
+            for value in [
+                serde_json::json!(0),
+                serde_json::json!(-1),
+                serde_json::json!(null),
+                serde_json::json!(true),
+                serde_json::json!(1.5),
+                serde_json::json!("2"),
+                serde_json::json!(4294967296_u64),
+            ] {
+                let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,ARRAY[$1::text],$2) WHERE tenant_id='explicit'", &[&field,&value]).await.unwrap_err();
+                assert_eq!(
+                    error.code(),
+                    Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+                );
+            }
+            let error=client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text WHERE tenant_id='explicit'", &[&field]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        assert_eq!(client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"default_memory_tree_depth\":21}'::jsonb WHERE tenant_id='explicit'", &[]).await.unwrap_err().code(),Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION));
+        client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{\"default_memory_tree_depth\":4294967295,\"max_memory_tree_depth\":4294967295}'::jsonb WHERE tenant_id='explicit'", &[]).await.unwrap();
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_memory_tree_depth; UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'default_memory_tree_depth'-'max_memory_tree_depth',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let row=client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), i64::MAX);
+        assert!(
+            row.get::<_, serde_json::Value>(1)
+                .get("max_memory_tree_depth")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+    #[tokio::test]
+    async fn native_mcp_transport_upgrade_preserves_partial_overrides_and_defaults() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute(r#"
+            CREATE SCHEMA mcp_transport_upgrade;
+            CREATE TABLE mcp_transport_upgrade.reborn_monty_vm_settings
+                (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO mcp_transport_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_mcp_transport_bytes;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('legacy','owner','agent','project',7),('explicit','owner','agent','project',12),('partial','owner','agent','project',22);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_mcp_request_bytes'-'max_mcp_response_bytes' WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{"max_mcp_request_bytes":8192,"max_mcp_response_bytes":2097152}'::jsonb WHERE tenant_id='explicit';
+            UPDATE reborn_monty_vm_settings SET execution_limits=(execution_limits-'max_mcp_response_bytes')||'{"max_mcp_request_bytes":17}'::jsonb WHERE tenant_id='partial';
+            CREATE SEQUENCE transport_default_observations;
+            CREATE FUNCTION counted_transport_limits() RETURNS jsonb LANGUAGE plpgsql AS $$ BEGIN
+                PERFORM nextval('transport_default_observations');
+                RETURN (SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit');
+            END $$;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits SET DEFAULT counted_transport_limits();
+        "#).await.unwrap();
+        let before: serde_json::Value = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        let migration =
+            include_str!("../../brassclaw_pg/migrations/V163__monty_mcp_transport_bytes.sql");
+        client.batch_execute(migration).await.unwrap();
+        assert!(
+            !client
+                .query_one("SELECT is_called FROM transport_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        let row = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), 8);
+        let mut expected = before;
+        expected["max_mcp_request_bytes"] = serde_json::json!(1048576);
+        expected["max_mcp_response_bytes"] = serde_json::json!(1048576);
+        assert_eq!(row.get::<_, serde_json::Value>(1), expected);
+        let row = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='partial'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), 23);
+        assert_eq!(
+            row.get::<_, serde_json::Value>(1)["max_mcp_request_bytes"],
+            17
+        );
+        assert_eq!(
+            row.get::<_, serde_json::Value>(1)["max_mcp_response_bytes"],
+            1048576
+        );
+        let explicit = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'", &[]).await.unwrap();
+        assert_eq!(explicit.get::<_, i64>(0), 12);
+        let fresh: serde_json::Value = client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('fresh','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap().get(0);
+        assert_eq!(fresh, explicit.get::<_, serde_json::Value>(1));
+        assert_eq!(
+            client
+                .query_one("SELECT last_value FROM transport_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        for field in ["max_mcp_request_bytes", "max_mcp_response_bytes"] {
+            for value in [
+                serde_json::json!(0),
+                serde_json::json!(-1),
+                serde_json::json!(null),
+                serde_json::json!(true),
+                serde_json::json!(1.5),
+                serde_json::json!("4"),
+                serde_json::json!(4294967296_u64),
+            ] {
+                let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,ARRAY[$1::text],$2) WHERE tenant_id='explicit'", &[&field,&value]).await.unwrap_err();
+                assert_eq!(
+                    error.code(),
+                    Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+                );
+            }
+            let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-$1::text WHERE tenant_id='explicit'", &[&field]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+            for value in [1_u64, u32::MAX as u64] {
+                client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,ARRAY[$1::text],$2) WHERE tenant_id='explicit'", &[&field,&serde_json::json!(value)]).await.unwrap();
+            }
+        }
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_mcp_transport_bytes; UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_mcp_request_bytes'-'max_mcp_response_bytes',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let row = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, i64>(0), i64::MAX);
+        let unchanged: serde_json::Value = row.get(1);
+        assert!(unchanged.get("max_mcp_request_bytes").is_none());
+        assert!(unchanged.get("max_mcp_response_bytes").is_none());
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+    #[tokio::test]
+    async fn native_mcp_capacity_upgrade_preserves_overrides_and_default_evaluation() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute(r#"
+            CREATE SCHEMA mcp_capacity_upgrade;
+            CREATE TABLE mcp_capacity_upgrade.reborn_monty_vm_settings
+                (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO mcp_capacity_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_mcp_inflight_capacity;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('legacy','owner','agent','project',7),('explicit','owner','agent','project',12);
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_mcp_inflight_calls'
+                WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits||'{"max_mcp_inflight_calls":8192}'::jsonb
+                WHERE tenant_id='explicit';
+            CREATE SEQUENCE mcp_default_observations;
+            CREATE FUNCTION counted_mcp_limits() RETURNS jsonb LANGUAGE plpgsql AS $$ BEGIN
+                PERFORM nextval('mcp_default_observations');
+                RETURN (SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit');
+            END $$;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits SET DEFAULT counted_mcp_limits();
+        "#).await.unwrap();
+        let before = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get::<_, serde_json::Value>(0);
+        let migration =
+            include_str!("../../brassclaw_pg/migrations/V160__monty_mcp_inflight_capacity.sql");
+        client.batch_execute(migration).await.unwrap();
+        assert!(
+            !client
+                .query_one("SELECT is_called FROM mcp_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        let legacy = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(legacy.get::<_, i64>(0), 8);
+        let mut expected = before;
+        expected["max_mcp_inflight_calls"] = serde_json::json!(4096);
+        assert_eq!(legacy.get::<_, serde_json::Value>(1), expected);
+        let explicit = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'", &[]).await.unwrap();
+        assert_eq!(explicit.get::<_, i64>(0), 12);
+        assert_eq!(
+            explicit.get::<_, serde_json::Value>(1)["max_mcp_inflight_calls"],
+            8192
+        );
+        let fresh = client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('fresh','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap().get::<_, serde_json::Value>(0);
+        assert_eq!(fresh["max_mcp_inflight_calls"], 8192);
+        assert_eq!(
+            client
+                .query_one("SELECT last_value FROM mcp_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        for value in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(null),
+            serde_json::json!(true),
+            serde_json::json!(1.5),
+            serde_json::json!("4"),
+            serde_json::json!(4294967296_u64),
+        ] {
+            let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{max_mcp_inflight_calls}',$1) WHERE tenant_id='explicit'", &[&value]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_mcp_inflight_calls' WHERE tenant_id='explicit'", &[]).await.unwrap_err();
+        assert_eq!(
+            error.code(),
+            Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+        );
+        for capacity in [1_u64, u32::MAX as u64] {
+            client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{max_mcp_inflight_calls}',$1) WHERE tenant_id='explicit'", &[&serde_json::json!(capacity)]).await.unwrap();
+        }
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_mcp_inflight_capacity; UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_mcp_inflight_calls',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let untouched = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(untouched.get::<_, i64>(0), i64::MAX);
+        assert!(
+            untouched
+                .get::<_, serde_json::Value>(1)
+                .get("max_mcp_inflight_calls")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
+    }
+    #[tokio::test]
+    async fn native_worker_pool_upgrade_preserves_overrides_and_evaluates_defaults_once() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute(r#"
+            CREATE SCHEMA worker_pool_upgrade;
+            CREATE TABLE worker_pool_upgrade.reborn_monty_vm_settings
+                (LIKE public.reborn_monty_vm_settings INCLUDING ALL);
+            SET search_path TO worker_pool_upgrade;
+            ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_live_task_workers;
+            INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id,revision)
+                VALUES('legacy','owner','agent','project',7),('explicit','owner','agent','project',12);
+            UPDATE reborn_monty_vm_settings SET execution_limits=
+                jsonb_set(execution_limits-'max_workers','{max_pending_host_calls}','2')
+                WHERE tenant_id='legacy';
+            UPDATE reborn_monty_vm_settings SET execution_limits=
+                execution_limits||'{"max_workers":8,"max_pending_host_calls":999}'::jsonb
+                WHERE tenant_id='explicit';
+            CREATE SEQUENCE pool_default_observations;
+            CREATE FUNCTION counted_pool_limits() RETURNS jsonb LANGUAGE plpgsql AS $$ BEGIN
+                PERFORM nextval('pool_default_observations');
+                RETURN (SELECT jsonb_set(execution_limits-'max_workers','{max_pending_host_calls}','2')
+                    FROM reborn_monty_vm_settings WHERE tenant_id='legacy');
+            END $$;
+            ALTER TABLE reborn_monty_vm_settings ALTER COLUMN execution_limits
+                SET DEFAULT counted_pool_limits();
+        "#).await.unwrap();
+        let before = client
+            .query_one(
+                "SELECT execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get::<_, serde_json::Value>(0);
+        let migration =
+            include_str!("../../brassclaw_pg/migrations/V159__monty_live_task_workers.sql");
+        client.batch_execute(migration).await.unwrap();
+        assert!(
+            !client
+                .query_one("SELECT is_called FROM pool_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, bool>(0)
+        );
+        let legacy = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(legacy.get::<_, i64>(0), 8);
+        let mut expected = before;
+        expected["max_workers"] = serde_json::json!(2);
+        expected["max_pending_host_calls"] = serde_json::json!(3);
+        assert_eq!(legacy.get::<_, serde_json::Value>(1), expected);
+        let explicit = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='explicit'", &[]).await.unwrap();
+        assert_eq!(explicit.get::<_, i64>(0), 12);
+        assert_eq!(explicit.get::<_, serde_json::Value>(1)["max_workers"], 8);
+        assert_eq!(
+            explicit.get::<_, serde_json::Value>(1)["max_pending_host_calls"],
+            999
+        );
+        let fresh = client.query_one("INSERT INTO reborn_monty_vm_settings(tenant_id,user_id,agent_id,project_id) VALUES('fresh','owner','agent','project') RETURNING execution_limits", &[]).await.unwrap().get::<_, serde_json::Value>(0);
+        assert_eq!(fresh["max_workers"], 2);
+        assert_eq!(fresh["max_pending_host_calls"], 3);
+        assert_eq!(
+            client
+                .query_one("SELECT last_value FROM pool_default_observations", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        for value in [
+            serde_json::json!(0),
+            serde_json::json!(null),
+            serde_json::json!(true),
+            serde_json::json!(1.5),
+            serde_json::json!("4"),
+            serde_json::json!(4294967295_u64),
+            serde_json::json!(1000),
+        ] {
+            let error = client.execute("UPDATE reborn_monty_vm_settings SET execution_limits=jsonb_set(execution_limits,'{max_workers}',$1) WHERE tenant_id='explicit'", &[&value]).await.unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        client.batch_execute("ALTER TABLE reborn_monty_vm_settings DROP CONSTRAINT monty_live_task_workers; UPDATE reborn_monty_vm_settings SET execution_limits=execution_limits-'max_workers',revision=9223372036854775807 WHERE tenant_id='legacy';").await.unwrap();
+        assert_eq!(
+            client.batch_execute(migration).await.unwrap_err().code(),
+            Some(&tokio_postgres::error::SqlState::NUMERIC_VALUE_OUT_OF_RANGE)
+        );
+        let untouched = client.query_one("SELECT revision,execution_limits FROM reborn_monty_vm_settings WHERE tenant_id='legacy'", &[]).await.unwrap();
+        assert_eq!(untouched.get::<_, i64>(0), i64::MAX);
+        assert!(
+            untouched
+                .get::<_, serde_json::Value>(1)
+                .get("max_workers")
+                .is_none()
+        );
+        client.batch_execute("RESET search_path").await.unwrap();
     }
 }

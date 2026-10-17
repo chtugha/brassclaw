@@ -381,12 +381,16 @@ pub struct BackfillResult {
 /// Returns `Ok(BackfillResult)` with counts.  Per-record errors are logged at
 /// `debug!` level and counted in `failed` — they do not abort the batch.
 ///
-/// Returns `Err(...)` only for fatal I/O errors (pool exhausted, bad SQL).
+/// Returns `Err(...)` for fatal I/O or selected provider/configuration failures. The runtime
+/// storage root and secret-store owner must match serve; they need not equal the
+/// tenant of the chat-memory records being indexed.
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub async fn run_backfill_embeddings(
     pool: Arc<PgPool>,
     tenant_id: &str,
     batch_size: i64,
+    runtime_storage_root: &std::path::Path,
+    secret_store_tenant: &str,
 ) -> Result<BackfillResult, Box<dyn std::error::Error + Send + Sync>> {
     use brassclaw_filesystem::PostgresRootFilesystem;
     use brassclaw_memory::{
@@ -394,10 +398,18 @@ pub async fn run_backfill_embeddings(
         MemoryDocumentScope,
     };
 
-    // Resolve embedding provider from DB config (same logic as factory).
+    if batch_size <= 0 {
+        return Err("embedding backfill batch size must be positive".into());
+    }
+    // Resolve embedding provider from one DB snapshot and the retained secret store.
     let raw_pool: deadpool_postgres::Pool = (*pool).clone();
-    let embedding_provider =
-        crate::factory::resolve_pg_embedding_provider_pub(&raw_pool, tenant_id).await;
+    let embedding_provider = crate::factory::resolve_pg_embedding_provider_pub(
+        &raw_pool,
+        tenant_id,
+        runtime_storage_root,
+        secret_store_tenant,
+    )
+    .await?;
 
     let Some(embedding_provider) = embedding_provider else {
         tracing::debug!(
@@ -417,6 +429,9 @@ pub async fn run_backfill_embeddings(
     struct DynWrapper(Arc<dyn brassclaw_memory::EmbeddingProvider>);
     #[async_trait::async_trait]
     impl brassclaw_memory::EmbeddingProvider for DynWrapper {
+        fn space_id(&self) -> &brassclaw_memory::EmbeddingSpaceId {
+            self.0.space_id()
+        }
         fn dimension(&self) -> usize {
             self.0.dimension()
         }

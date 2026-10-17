@@ -488,6 +488,10 @@ async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_rank
         compile_retained_recipe(graph, recipe, "selected", WorkflowClass::Deterministic).unwrap();
     let eligible = RetainedIntentEligibility::from_instructions(&[&instruction]).unwrap();
     let empty = RetainedIntentEligibility::from_instructions(&[]).unwrap();
+    // Repeated selected variants share one immutable graph. More than the old
+    // instruction/visit counters must not invalidate this one eligible workflow.
+    let repeated = vec![&instruction; 22_000];
+    let repeated = RetainedIntentEligibility::from_instructions(&repeated).unwrap();
     let mut client = rig.pool.get().await.unwrap();
     client
         .execute(
@@ -518,6 +522,9 @@ async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_rank
     }
     assert!(
         matches!(lookup(&rig.pool,&scope,&eligible).await,IntentResolution::Match { component_id,.. } if component_id==recipe)
+    );
+    assert!(
+        matches!(lookup(&rig.pool,&scope,&repeated).await,IntentResolution::Match { component_id,.. } if component_id==recipe)
     );
     assert!(matches!(
         lookup(&rig.pool, &scope, &empty).await,
@@ -605,4 +612,40 @@ async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_rank
             .roots()
             .contains(&excluded)
     );
+}
+
+#[test]
+fn retained_eligibility_accepts_complete_large_exact_graphs() {
+    use brassclaw_engine::memory::intent_system::RetainedIntentEligibility;
+    use brassclaw_skills::component_revision::RetainedComponentSnapshot;
+    let recipe = Uuid::new_v4();
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let mut ids = vec![first, second];
+    ids.extend((0..4_100).map(|_| Uuid::new_v4()));
+    let mut revisions = ids
+        .iter()
+        .map(|id| {
+            draft(*id, 22, json!({"content":"result = 1"}), &[])
+                .at_version(1)
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    revisions.push(
+        draft(
+            recipe,
+            21,
+            recipe_document(first, second, "2:1-2:E+0:1-0:E"),
+            &ids,
+        )
+        .at_version(1)
+        .unwrap(),
+    );
+    let graph = Arc::new(RetainedComponentSnapshot::new(&[recipe], revisions).unwrap());
+    assert!(graph.revisions().len() > 4_096);
+    let instruction =
+        compile_retained_recipe(graph, recipe, "selected", WorkflowClass::Deterministic).unwrap();
+    // Validated in-memory revision data tests this neutral compiler/helper only;
+    // it is not a catalogue activation or fabricated component approval.
+    RetainedIntentEligibility::from_instructions(&[&instruction]).unwrap();
 }

@@ -32,13 +32,13 @@
 //! not relied upon — every consumer must work against backends that
 //! expose only CAS (see `brassclaw_filesystem/CLAUDE.md` invariant 2).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use brassclaw_filesystem::{
-    CasExpectation, Entry, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexKind,
-    IndexName, IndexSpec, IndexValue, Page, RecordKind, RootFilesystem,
+    CasExpectation, Entry, EntryMetadata, FilesystemError, FilesystemOperation, Filter, IndexKey,
+    IndexKind, IndexName, IndexSpec, IndexValue, Page, RecordKind, RootFilesystem,
 };
 use brassclaw_host_api::VirtualPath;
 
@@ -130,6 +130,7 @@ where
         &self,
         prefix: &VirtualPath,
         embedding_dim: Option<u32>,
+        embedding_space: Option<&crate::embedding::EmbeddingSpaceId>,
     ) -> Result<(), FilesystemError> {
         let fts = IndexSpec::new(
             IndexName::new("memory_chunks_content_fts")
@@ -142,10 +143,17 @@ where
             Err(error) => return Err(error),
         }
         if let Some(dim) = embedding_dim {
+            let space = embedding_space.ok_or_else(|| {
+                memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "vector search requires an explicit embedding space",
+                )
+            })?;
             let vector = IndexSpec::new(
-                IndexName::new("memory_chunks_embedding_vector")
+                IndexName::new(format!("memory_vector_{}", space.as_str()))
                     .unwrap_or_else(|_| unreachable!("valid index name")),
-                vec![Self::index_key(fs_keys::EMBEDDING)],
+                vec![space.index_key()],
                 IndexKind::Vector { dim },
             );
             match self.filesystem.ensure_index(prefix, &vector).await {
@@ -269,10 +277,11 @@ where
                 IndexValue::Text(path.relative_path().to_string()),
             );
         if let Some(embedding) = &chunk.embedding {
-            entry = entry.with_indexed(
-                Self::index_key(fs_keys::EMBEDDING),
-                IndexValue::Bytes(encode_embedding_blob(embedding)),
+            let key = chunk.embedding_space.as_ref().map_or_else(
+                || Self::index_key(fs_keys::EMBEDDING),
+                |space| space.index_key(),
             );
+            entry = entry.with_indexed(key, IndexValue::Bytes(encode_embedding_blob(embedding)));
         }
         if let Some(chat_record_id) = &chunk.chat_record_id {
             entry = entry.with_indexed(
@@ -285,7 +294,7 @@ where
 
     fn build_version_entry(
         path: &MemoryDocumentPath,
-        version: u64,
+        version: i64,
         previous_content: &str,
         changed_by: Option<&str>,
     ) -> Entry {
@@ -311,39 +320,8 @@ where
                 Self::index_key(fs_keys::DOC_PATH),
                 IndexValue::Text(path.relative_path().to_string()),
             )
-            .with_indexed(
-                Self::index_key(fs_keys::VERSION),
-                IndexValue::I64(version as i64),
-            );
+            .with_indexed(Self::index_key(fs_keys::VERSION), IndexValue::I64(version));
         entry
-    }
-
-    /// Iterate every record under `scope` in pages of `Page::MAX_LIMIT`,
-    /// regardless of how many records the backend stores. Mirrors the
-    /// helper that the scaffold's prior `list_documents` used (PR #3679
-    /// audit F1 — single-shot queries silently truncate at MAX_LIMIT).
-    async fn query_all(
-        &self,
-        prefix: &VirtualPath,
-        filter: &Filter,
-    ) -> Result<Vec<brassclaw_filesystem::VersionedEntry>, FilesystemError> {
-        let mut out = Vec::new();
-        let mut offset: u64 = 0;
-        loop {
-            let page = Page::new(offset, Page::MAX_LIMIT);
-            let entries = match self.filesystem.query(prefix, filter, page).await {
-                Ok(entries) => entries,
-                Err(FilesystemError::NotFound { .. }) => break,
-                Err(error) => return Err(error),
-            };
-            let received = entries.len() as u64;
-            out.extend(entries);
-            if received < Page::MAX_LIMIT as u64 {
-                break;
-            }
-            offset = offset.saturating_add(received);
-        }
-        Ok(out)
     }
 
     /// Read the document body bytes plus its current backend version
@@ -367,36 +345,67 @@ where
         changed_by: Option<&str>,
     ) -> Result<u64, FilesystemError> {
         let prefix = Self::versions_prefix_path(path, FilesystemOperation::WriteFile)?;
-        let entries = self.query_all(&prefix, &Filter::All).await?;
-        let next_version = entries
-            .iter()
-            .filter(|versioned| {
-                versioned
-                    .entry
+        // Inspect only the declared version field, never archived contents or
+        // unrelated indexed payloads. Validate the field against its canonical
+        // archive address rather than trusting either representation alone.
+        let key = Self::index_key(fs_keys::VERSION);
+        let invalid = || {
+            memory_error(
+                prefix.clone(),
+                FilesystemOperation::WriteFile,
+                "invalid memory archive version index",
+            )
+        };
+        let mut maximum = 0_i64;
+        let mut offset = 0_u64;
+        loop {
+            let entries = self
+                .filesystem
+                .query_index_metadata(&prefix, &key, Page::new(offset, Page::MAX_LIMIT))
+                .await?;
+            let received = entries.len();
+            if received > Page::MAX_LIMIT as usize {
+                return Err(invalid());
+            }
+            for entry in entries {
+                if entry
+                    .metadata
                     .kind
                     .as_ref()
-                    .is_some_and(|kind| kind.as_str() == VERSION_KIND)
-            })
-            .filter_map(|versioned| {
-                match versioned
-                    .entry
-                    .indexed
-                    .get(&Self::index_key(fs_keys::VERSION))
+                    .is_none_or(|kind| kind.as_str() != VERSION_KIND)
                 {
-                    Some(IndexValue::I64(version)) => u64::try_from(*version).ok(),
-                    _ => None,
+                    continue;
                 }
-            })
-            .max()
-            .unwrap_or(0)
-            + 1;
+                let Some(IndexValue::I64(version)) = entry.value else {
+                    return Err(invalid());
+                };
+                if version <= 0
+                    || entry.metadata.path.as_str() != format!("{}/{version}", prefix.as_str())
+                {
+                    return Err(invalid());
+                }
+                maximum = maximum.max(version);
+            }
+            if received < Page::MAX_LIMIT as usize {
+                break;
+            }
+            offset = offset.checked_add(received as u64).ok_or_else(invalid)?;
+        }
+        let next_version = maximum.checked_add(1).ok_or_else(|| {
+            memory_error(
+                prefix.clone(),
+                FilesystemOperation::WriteFile,
+                "memory archive version exceeds its storage representation",
+            )
+        })?;
+        let next_unsigned = u64::try_from(next_version).map_err(|_| invalid())?;
         let entry = Self::build_version_entry(path, next_version, previous_content, changed_by);
         let virtual_path =
-            Self::version_child_path(path, next_version, FilesystemOperation::WriteFile)?;
+            Self::version_child_path(path, next_unsigned, FilesystemOperation::WriteFile)?;
         self.filesystem
             .put(&virtual_path, entry, CasExpectation::Absent)
             .await?;
-        Ok(next_version)
+        Ok(next_unsigned)
     }
 
     /// Delete every chunk record under a document's `.chunks/` sibling
@@ -407,17 +416,47 @@ where
         path: &MemoryDocumentPath,
     ) -> Result<(), FilesystemError> {
         let prefix = Self::chunks_prefix_path(path, FilesystemOperation::WriteFile)?;
-        let entries = self.query_all(&prefix, &Filter::All).await?;
-        for versioned in entries {
-            let is_chunk = versioned
-                .entry
-                .kind
-                .as_ref()
-                .is_some_and(|kind| kind.as_str() == CHUNK_KIND);
-            if !is_chunk {
-                continue;
+        // Snapshot only matching paths before deleting. Deleting while using
+        // offset pages would shift the remaining rows and skip chunks.
+        let mut paths = BTreeSet::new();
+        let mut offset = 0_u64;
+        loop {
+            let entries = self
+                .filesystem
+                .query_metadata(&prefix, Page::new(offset, Page::MAX_LIMIT))
+                .await?;
+            let received = entries.len();
+            if received > Page::MAX_LIMIT as usize {
+                return Err(memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "filesystem returned too many metadata entries",
+                ));
             }
-            match self.filesystem.delete(&versioned.path).await {
+            paths.extend(
+                entries
+                    .into_iter()
+                    .filter(|entry| {
+                        entry
+                            .kind
+                            .as_ref()
+                            .is_some_and(|kind| kind.as_str() == CHUNK_KIND)
+                    })
+                    .map(|entry| entry.path),
+            );
+            if received < Page::MAX_LIMIT as usize {
+                break;
+            }
+            offset = offset.checked_add(received as u64).ok_or_else(|| {
+                memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "metadata offset overflow",
+                )
+            })?;
+        }
+        for path in paths {
+            match self.filesystem.delete(&path).await {
                 Ok(()) | Err(FilesystemError::NotFound { .. }) => {}
                 Err(error) => return Err(error),
             }
@@ -473,6 +512,204 @@ where
             Some(IndexValue::Text(value)) => Some(value.clone()),
             _ => None,
         }
+    }
+
+    /// Apply exactly the same document/sidecar/scope rules to complete listings
+    /// and the narrow namespace preflight. Indexed chunks are not documents.
+    fn document_paths_from_metadata(
+        scope: &MemoryDocumentScope,
+        scope_prefix: &VirtualPath,
+        entries: impl IntoIterator<Item = EntryMetadata>,
+    ) -> Vec<MemoryDocumentPath> {
+        let prefix_str = format!("{}/", scope_prefix.as_str().trim_end_matches('/'));
+        let mut documents = Vec::new();
+        let mut seen = HashSet::<String>::new();
+        for versioned in entries {
+            // Only true document records contribute to the listing.
+            if versioned
+                .kind
+                .as_ref()
+                .is_none_or(|kind| kind.as_str() != DOCUMENT_KIND)
+            {
+                continue;
+            }
+            let Some(relative) = versioned.path.as_str().strip_prefix(&prefix_str) else {
+                continue;
+            };
+            // Defensive sibling-suffix filter: even though kind alone
+            // should exclude these, the convention is small enough
+            // that being explicit guards against any future
+            // kind-less write landing on a sibling subtree.
+            if relative.ends_with(META_SUFFIX) || relative_is_sidecar(relative) {
+                continue;
+            }
+            if !seen.insert(relative.to_string()) {
+                continue;
+            }
+            if let Ok(document) = MemoryDocumentPath::new_with_agent(
+                scope.tenant_id(),
+                scope.user_id(),
+                scope.agent_id(),
+                scope.project_id(),
+                relative,
+            ) {
+                documents.push(document);
+            }
+        }
+        documents.sort();
+        documents
+    }
+
+    /// Project one live page at a time and immediately discard unrelated record
+    /// kinds/sidecars. Only eligible document paths survive across pages.
+    async fn document_paths_under(
+        &self,
+        scope: &MemoryDocumentScope,
+        scope_prefix: &VirtualPath,
+        prefix: &VirtualPath,
+    ) -> Result<Vec<MemoryDocumentPath>, FilesystemError> {
+        let mut documents = BTreeSet::new();
+        let mut offset = 0_u64;
+        loop {
+            let entries = self
+                .filesystem
+                .query_metadata(prefix, Page::new(offset, Page::MAX_LIMIT))
+                .await?;
+            let received = entries.len();
+            if received > Page::MAX_LIMIT as usize {
+                return Err(memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "filesystem returned too many metadata entries",
+                ));
+            }
+            documents.extend(Self::document_paths_from_metadata(
+                scope,
+                scope_prefix,
+                entries,
+            ));
+            if received < Page::MAX_LIMIT as usize {
+                break;
+            }
+            offset = offset.checked_add(received as u64).ok_or_else(|| {
+                memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "metadata offset overflow",
+                )
+            })?;
+        }
+        let mut result = Vec::new();
+        result.try_reserve_exact(documents.len()).map_err(|_| {
+            memory_error(
+                prefix.clone(),
+                FilesystemOperation::Query,
+                "document path capacity unavailable",
+            )
+        })?;
+        result.extend(documents);
+        Ok(result)
+    }
+
+    /// Inspect only paths which can conflict with this leaf. Do not load every
+    /// unrelated document, chunk and archived version for each write. This is
+    /// the existing preflight, not an atomic multi-key namespace transaction;
+    /// actual put/CAS and backend namespace enforcement remain independent.
+    async fn check_document_path_conflicts(
+        &self,
+        path: &MemoryDocumentPath,
+        operation: FilesystemOperation,
+    ) -> Result<(), FilesystemError> {
+        let target = Self::document_virtual_path(path, operation)?;
+        let scope_prefix = path
+            .scope()
+            .virtual_prefix()
+            .map_err(|error| memory_error(valid_memory_path(), operation, error.to_string()))?;
+        let mut documents = self
+            .document_paths_under(path.scope(), &scope_prefix, &target)
+            .await?;
+        // Every proper ancestor is an exact scoped read. Never infer scope from
+        // an untrusted prefix or treat metadata/version records as documents.
+        for (offset, _) in path.relative_path().match_indices('/') {
+            let relative = &path.relative_path()[..offset];
+            let ancestor = VirtualPath::new(format!("{}/{}", scope_prefix.as_str(), relative))
+                .map_err(|error| memory_error(valid_memory_path(), operation, error.to_string()))?;
+            if let Some(entry) = self.filesystem.get_metadata(&ancestor).await? {
+                documents.extend(Self::document_paths_from_metadata(
+                    path.scope(),
+                    &scope_prefix,
+                    [entry],
+                ));
+            }
+        }
+        ensure_document_path_does_not_conflict(path, &documents, operation)
+    }
+
+    /// Reuse the filesystem's live-read pagination for complete enumeration or
+    /// an explicit FTS candidate count. Allocate for actual hits only; a page
+    /// boundary must not become a hidden total result boundary.
+    async fn query_candidates(
+        &self,
+        prefix: &VirtualPath,
+        filter: &Filter,
+        count: Option<usize>,
+    ) -> Result<Vec<brassclaw_filesystem::VersionedEntry>, FilesystemError> {
+        let mut entries = Vec::new();
+        let mut seen = HashSet::new();
+        let mut offset = 0_u64;
+        while count.is_none_or(|count| entries.len() < count) {
+            let remaining = count.map_or(usize::MAX, |count| count - entries.len());
+            let limit = remaining.min(Page::MAX_LIMIT as usize) as u32;
+            let page = match self
+                .filesystem
+                .query(prefix, filter, Page::new(offset, limit))
+                .await
+            {
+                Ok(page) => page,
+                Err(FilesystemError::NotFound { .. }) => break,
+                Err(error) => return Err(error),
+            };
+            let received = page.len();
+            if received > limit as usize {
+                return Err(memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "filesystem returned more candidates than its requested page",
+                ));
+            }
+            entries.try_reserve(received).map_err(|_| {
+                memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "search capacity unavailable",
+                )
+            })?;
+            seen.try_reserve(received).map_err(|_| {
+                memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "search capacity unavailable",
+                )
+            })?;
+            for entry in page {
+                // A concurrent write can shift an offset page. Do not score
+                // the same chunk twice; distinct chunks still contribute.
+                if seen.insert(entry.path.clone()) {
+                    entries.push(entry);
+                }
+            }
+            if received < limit as usize {
+                break;
+            }
+            offset = offset.checked_add(received as u64).ok_or_else(|| {
+                memory_error(
+                    prefix.clone(),
+                    FilesystemOperation::Query,
+                    "search offset overflow",
+                )
+            })?;
+        }
+        Ok(entries)
     }
 
     fn map_chunk_hits_to_ranked_results(
@@ -552,12 +789,8 @@ where
     ) -> Result<(), FilesystemError> {
         // Path-conflict check against existing documents in the scope:
         // a new path must not shadow or be shadowed by another doc.
-        let existing_documents = self.list_documents(path.scope()).await?;
-        ensure_document_path_does_not_conflict(
-            path,
-            &existing_documents,
-            FilesystemOperation::WriteFile,
-        )?;
+        self.check_document_path_conflicts(path, FilesystemOperation::WriteFile)
+            .await?;
 
         let previous = self
             .read_document_with_version(path, FilesystemOperation::WriteFile)
@@ -688,12 +921,8 @@ where
                 }
             }
             None => {
-                let existing_documents = self.list_documents(path.scope()).await?;
-                ensure_document_path_does_not_conflict(
-                    path,
-                    &existing_documents,
-                    FilesystemOperation::AppendFile,
-                )?;
+                self.check_document_path_conflicts(path, FilesystemOperation::AppendFile)
+                    .await?;
                 let entry = Self::build_document_entry(path.scope(), bytes);
                 match self
                     .filesystem
@@ -775,12 +1004,8 @@ where
                 }
             }
             None => {
-                let existing_documents = self.list_documents(path.scope()).await?;
-                ensure_document_path_does_not_conflict(
-                    path,
-                    &existing_documents,
-                    FilesystemOperation::WriteFile,
-                )?;
+                self.check_document_path_conflicts(path, FilesystemOperation::WriteFile)
+                    .await?;
                 let entry = Self::build_document_entry(path.scope(), bytes);
                 match self
                     .filesystem
@@ -876,45 +1101,8 @@ where
                 error.to_string(),
             )
         })?;
-        let prefix_str = format!("{}/", prefix.as_str().trim_end_matches('/'));
-        let entries = self.query_all(&prefix, &Filter::All).await?;
-        let mut documents = Vec::new();
-        let mut seen = HashSet::<String>::new();
-        for versioned in entries {
-            // Only true document records contribute to the listing.
-            if versioned
-                .entry
-                .kind
-                .as_ref()
-                .is_none_or(|kind| kind.as_str() != DOCUMENT_KIND)
-            {
-                continue;
-            }
-            let Some(relative) = versioned.path.as_str().strip_prefix(&prefix_str) else {
-                continue;
-            };
-            // Defensive sibling-suffix filter: even though kind alone
-            // should exclude these, the convention is small enough
-            // that being explicit guards against any future
-            // kind-less write landing on a sibling subtree.
-            if relative.ends_with(META_SUFFIX) || relative_is_sidecar(relative) {
-                continue;
-            }
-            if !seen.insert(relative.to_string()) {
-                continue;
-            }
-            if let Ok(document) = MemoryDocumentPath::new_with_agent(
-                scope.tenant_id(),
-                scope.user_id(),
-                scope.agent_id(),
-                scope.project_id(),
-                relative,
-            ) {
-                documents.push(document);
-            }
-        }
-        documents.sort();
-        Ok(documents)
+
+        self.document_paths_under(scope, &prefix, &prefix).await
     }
 
     async fn search_documents(
@@ -930,6 +1118,14 @@ where
             )
         })?;
 
+        request.validate_result_limits().map_err(|_| {
+            memory_error(
+                prefix.clone(),
+                FilesystemOperation::Query,
+                "invalid memory search result limits",
+            )
+        })?;
+
         // PR #3679 review fix (finding #4): declare the FTS / Vector
         // indexes the query path requires. libSQL / Postgres backends
         // need the index registered before they translate `Filter::Fts`
@@ -937,19 +1133,37 @@ where
         // return `Unsupported` and the search silently degrades. Tolerate
         // `Unsupported` for backends that don't support these index
         // kinds (the in-memory backend still serves FTS over a scan).
-        self.ensure_search_indexes(&prefix, request.query_embedding_dim())
-            .await?;
+        if request.vector()
+            && let Some(embedding) = request.query_embedding()
+            && (request.embedding_space().is_none()
+                || embedding.is_empty()
+                || u32::try_from(embedding.len()).is_err()
+                || embedding.iter().any(|value| !value.is_finite()))
+        {
+            return Err(memory_error(
+                prefix.clone(),
+                FilesystemOperation::Query,
+                "vector search requires finite values and an explicit embedding space",
+            ));
+        }
+        self.ensure_search_indexes(
+            &prefix,
+            request
+                .vector()
+                .then(|| request.query_embedding_dim())
+                .flatten(),
+            request.embedding_space(),
+        )
+        .await?;
 
         let full_text_results = if request.full_text() {
             let filter = Filter::Fts {
                 key: Self::index_key(fs_keys::CONTENT),
                 query: request.query().to_string(),
             };
-            let page = Page::new(
-                0,
-                request.pre_fusion_limit().min(Page::MAX_LIMIT as usize) as u32,
-            );
-            let entries = self.filesystem.query(&prefix, &filter, page).await?;
+            let entries = self
+                .query_candidates(&prefix, &filter, Some(request.pre_fusion_limit()))
+                .await?;
             Self::map_chunk_hits_to_ranked_results(scope, entries)
         } else {
             Vec::new()
@@ -957,8 +1171,15 @@ where
 
         let vector_results = if request.vector() {
             if let Some(embedding) = request.query_embedding() {
+                let space = request.embedding_space().ok_or_else(|| {
+                    memory_error(
+                        prefix.clone(),
+                        FilesystemOperation::Query,
+                        "vector search requires an explicit embedding space",
+                    )
+                })?;
                 let filter = Filter::VectorNearest {
-                    key: Self::index_key(fs_keys::EMBEDDING),
+                    key: space.index_key(),
                     embedding: embedding.to_vec(),
                     limit: request.pre_fusion_limit() as u32,
                 };
@@ -1207,7 +1428,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let versions: Vec<_> = entries
             .iter()
             .filter(|v| {
@@ -1234,7 +1458,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let versions = entries
             .iter()
             .filter(|v| {
@@ -1326,11 +1553,13 @@ mod tests {
                 chat_record_id: None,
                 content: "alpha beta".to_string(),
                 embedding: Some(vec![TEST_EMBED_A, TEST_EMBED_B, TEST_EMBED_C]),
+                embedding_space: None,
             },
             MemoryChunkWrite {
                 chat_record_id: None,
                 content: "gamma".to_string(),
                 embedding: None,
+                embedding_space: None,
             },
         ];
         let outcome = repo
@@ -1344,7 +1573,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let chunk_entries: Vec<_> = entries
             .iter()
             .filter(|v| {
@@ -1366,6 +1598,7 @@ mod tests {
             chat_record_id: None,
             content: "orig".to_string(),
             embedding: None,
+            embedding_space: None,
         }];
         let outcome = repo
             .replace_document_chunks_if_current(&path, "sha256:nope", &chunks)
@@ -1377,7 +1610,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         assert!(
             entries.iter().all(|v| v
                 .entry
@@ -1409,6 +1645,7 @@ mod tests {
             chat_record_id: None,
             content: "body".to_string(),
             embedding: None,
+            embedding_space: None,
         }];
         repo.replace_document_chunks_if_current(&path, &hash, &chunks)
             .await
@@ -1421,7 +1658,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let chunk_entries = entries
             .iter()
             .filter(|v| {
@@ -1447,6 +1687,7 @@ mod tests {
                 chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1461,7 +1702,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let chunk_entries = entries
             .iter()
             .filter(|v| {
@@ -1488,6 +1732,7 @@ mod tests {
                 chat_record_id: None,
                 content: "inside".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1499,6 +1744,7 @@ mod tests {
                 chat_record_id: None,
                 content: "outside".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1517,7 +1763,10 @@ mod tests {
                 FilesystemOperation::ReadFile,
             )
             .unwrap();
-        let folder_entries = repo.query_all(&folder_prefix, &Filter::All).await.unwrap();
+        let folder_entries = repo
+            .query_candidates(&folder_prefix, &Filter::All, None)
+            .await
+            .unwrap();
         assert!(
             folder_entries.iter().all(|v| v
                 .entry
@@ -1533,7 +1782,10 @@ mod tests {
                 FilesystemOperation::ReadFile,
             )
             .unwrap();
-        let other_entries = repo.query_all(&other_prefix, &Filter::All).await.unwrap();
+        let other_entries = repo
+            .query_candidates(&other_prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let other_chunks = other_entries
             .iter()
             .filter(|v| {
@@ -1562,6 +1814,7 @@ mod tests {
                 chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1585,7 +1838,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let chunk_entries = entries
             .iter()
             .filter(|v| {
@@ -1613,6 +1869,7 @@ mod tests {
                 chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1629,7 +1886,10 @@ mod tests {
             FilesystemOperation::ReadFile,
         )
         .unwrap();
-        let entries = repo.query_all(&prefix, &Filter::All).await.unwrap();
+        let entries = repo
+            .query_candidates(&prefix, &Filter::All, None)
+            .await
+            .unwrap();
         let chunk_entries = entries
             .iter()
             .filter(|v| {
@@ -1663,6 +1923,7 @@ mod tests {
                 chat_record_id: None,
                 content: "alpha document text".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1674,6 +1935,7 @@ mod tests {
                 chat_record_id: None,
                 content: "beta document text".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1706,6 +1968,7 @@ mod tests {
                 chat_record_id: None,
                 content: "alpha".to_string(),
                 embedding: Some(vec![1.0, 0.0, 0.0]),
+                embedding_space: Some(crate::EmbeddingSpaceId::from_digest([1; 32])),
             }],
         )
         .await
@@ -1717,12 +1980,15 @@ mod tests {
                 chat_record_id: None,
                 content: "beta".to_string(),
                 embedding: Some(vec![0.0, 1.0, 0.0]),
+                embedding_space: Some(crate::EmbeddingSpaceId::from_digest([1; 32])),
             }],
         )
         .await
         .unwrap();
 
-        let request = search_request("alpha").with_query_embedding(vec![0.99, 0.01, 0.0]);
+        let request = search_request("alpha")
+            .with_query_embedding(vec![0.99, 0.01, 0.0])
+            .with_embedding_space(crate::EmbeddingSpaceId::from_digest([1; 32]));
         let results = repo
             .search_documents(alpha.scope(), &request)
             .await
@@ -1732,6 +1998,70 @@ mod tests {
             .find(|r| r.path.relative_path() == "notes/alpha.md")
             .expect("alpha must rank");
         assert!(alpha_result.is_hybrid(), "alpha should fuse FTS + vector");
+    }
+
+    #[tokio::test]
+    async fn vector_spaces_filter_before_ranking_and_preserve_untagged_text() {
+        let (_, repo) = fresh_repo();
+        let selected_space = crate::EmbeddingSpaceId::from_digest([1; 32]);
+        let other_space = crate::EmbeddingSpaceId::from_digest([2; 32]);
+        let a = doc("notes/selected.md");
+        for (path, text, vector, space) in [
+            (
+                a.clone(),
+                "selected model",
+                vec![0.0, 1.0, 0.0],
+                Some(selected_space.clone()),
+            ),
+            (
+                doc("notes/other.md"),
+                "other model",
+                vec![1.0, 0.0, 0.0],
+                Some(other_space),
+            ),
+            (
+                doc("notes/legacy.md"),
+                "legacy model",
+                vec![1.0, 0.0, 0.0],
+                None,
+            ),
+        ] {
+            repo.write_document(&path, text.as_bytes()).await.unwrap();
+            repo.replace_document_chunks_if_current(
+                &path,
+                &content_sha256(text),
+                &[MemoryChunkWrite {
+                    content: text.into(),
+                    embedding: Some(vector),
+                    embedding_space: space,
+                    chat_record_id: None,
+                }],
+            )
+            .await
+            .unwrap();
+        }
+        let request = search_request("model")
+            .with_full_text(false)
+            .with_limit(1)
+            .with_query_embedding(vec![1.0, 0.0, 0.0])
+            .with_embedding_space(selected_space);
+        let hits = repo.search_documents(a.scope(), &request).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            hits[0].path, a,
+            "closer vectors from another/unknown space cannot occupy top-k"
+        );
+        let text = search_request("legacy").with_vector(false);
+        assert_eq!(
+            repo.search_documents(a.scope(), &text).await.unwrap()[0]
+                .path
+                .relative_path(),
+            "notes/legacy.md"
+        );
+        let untagged = search_request("model")
+            .with_full_text(false)
+            .with_query_embedding(vec![1.0, 0.0, 0.0]);
+        assert!(repo.search_documents(a.scope(), &untagged).await.is_err());
     }
 
     #[tokio::test]
@@ -1751,6 +2081,7 @@ mod tests {
                 chat_record_id: None,
                 content: "v1".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await
@@ -1777,6 +2108,7 @@ mod tests {
                 chat_record_id: None,
                 content: "b".to_string(),
                 embedding: None,
+                embedding_space: None,
             }],
         )
         .await

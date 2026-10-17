@@ -215,6 +215,7 @@ fn route_validation_rejects_secret_like_model_ids() {
 fn nearai_config(model: &str) -> LlmConfig {
     LlmConfig {
         backend: "nearai".to_string(),
+        resolved_protocol: None,
         session: SessionConfig::default(),
         nearai: NearAiConfig {
             model: model.to_string(),
@@ -237,6 +238,8 @@ fn nearai_config(model: &str) -> LlmConfig {
         gemini_oauth: None,
         openai_codex: None,
         request_timeout_secs: 120,
+        retry_timing: Default::default(),
+        max_response_bytes: None,
         cheap_model: None,
         smart_routing_cascade: true,
         max_retries: 3,

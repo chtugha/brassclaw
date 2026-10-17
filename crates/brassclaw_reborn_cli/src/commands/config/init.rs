@@ -57,9 +57,9 @@ pub(crate) struct ConfigInitCommand {
     #[arg(long, default_value = "BRASSCLAW_REBORN_WEBUI_USER_ID")]
     pub webui_user_id_env: String,
 
-    /// Tenant ID.
-    #[arg(long, default_value = "default")]
-    pub tenant: String,
+    /// Installation namespace; defaults to the same owner as serve/run.
+    #[arg(long)]
+    pub tenant: Option<String>,
 
     /// Default owner ID.
     #[arg(long, default_value = "admin")]
@@ -87,6 +87,7 @@ impl ConfigInitCommand {
     }
 
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             // Step 2: run schema migrations (idempotent).
             brassclaw_pg::migrations::run_migrations(&pool)
@@ -94,7 +95,7 @@ impl ConfigInitCommand {
                 .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
             // §6.1 — detect already-initialized.
-            let existing_keys = list_config_keys(&pool, &self.tenant)
+            let existing_keys = list_config_keys(&pool, &tenant)
                 .await
                 .map_err(|e| anyhow::anyhow!("config read failed: {e}"))?;
             let already_initialized = existing_keys
@@ -105,7 +106,7 @@ impl ConfigInitCommand {
                 println!(
                     "BrassClaw Reborn is already initialized for tenant `{}`. \
                  Use --yes to re-run and overwrite existing settings.",
-                    self.tenant
+                    tenant
                 );
                 return Ok(());
             }
@@ -131,12 +132,12 @@ impl ConfigInitCommand {
 
             // Step 3: write all config rows.
             println!("\nWriting to PostgreSQL…");
-            inputs.write_to_db(&pool, &self.tenant).await?;
+            inputs.write_to_db(&pool, &tenant).await?;
 
             // Mark initialized.
             save_config_key(
                 &pool,
-                &self.tenant,
+                &tenant,
                 "boot.initialized",
                 "true",
                 ConfigWriteContext::Operator,
@@ -144,10 +145,7 @@ impl ConfigInitCommand {
             .await
             .map_err(|e| anyhow::anyhow!("failed to set boot.initialized: {e}"))?;
 
-            println!(
-                "✓  BrassClaw Reborn configured for tenant `{}`.",
-                self.tenant
-            );
+            println!("✓  BrassClaw Reborn configured for tenant `{}`.", tenant);
             println!("   Run `brassclaw serve` to start.");
             Ok(())
         })

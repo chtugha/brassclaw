@@ -379,6 +379,20 @@ fn reborn_cli_binary_crate_stays_separate_from_v1_root() {
     );
     assert_workspace_deps_exactly(
         &dependencies_all_kinds,
+        "brassclaw_reborn_cli",
+        [
+            "brassclaw_reborn_composition",
+            "brassclaw_reborn_config",
+            "brassclaw_reborn_traces",
+            "brassclaw_reborn_webui_ingress",
+            "brassclaw_embedded_postgres",
+            "brassclaw_pg",
+            "brassclaw_secrets",
+        ],
+        "the native CLI integration fixture may prepare real encrypted credentials through a dev-only brassclaw_secrets dependency; the normal CLI boundary above still prohibits direct secret-store access",
+    );
+    assert_workspace_deps_exactly(
+        &dependencies_all_kinds,
         "brassclaw_reborn_config",
         [],
         "brassclaw_reborn_config must remain a standalone boot contract crate with no BrassClaw workspace dependencies of any dependency kind",
@@ -403,6 +417,33 @@ fn reborn_cli_binary_crate_stays_separate_from_v1_root() {
             !cli_runtime_source.contains(forbidden),
             "Reborn CLI runtime/ must not wire lower-level Reborn runtime pieces directly via `{forbidden}`; keep REPL as a UX shell over brassclaw_reborn_composition."
         );
+    }
+}
+
+#[test]
+fn provider_library_uses_only_supplied_catalogue_snapshot() {
+    let root = workspace_root();
+    assert!(
+        !root.join("providers.json").exists(),
+        "the repository must not ship a parallel provider catalogue; V140 owns installation data"
+    );
+    for module in ["registry.rs", "resolution.rs"] {
+        let source = std::fs::read_to_string(root.join("crates/brassclaw_llm/src").join(module))
+            .expect("provider module readable");
+        let production = source.split("#[cfg(test)]").next().unwrap();
+        for forbidden in [
+            "load_from_path(",
+            "builtin_provider_definitions(",
+            "providers.json",
+            "std::env::var(",
+            "std::env::var_os(",
+            "resolve_provider_config_from_env(",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "provider {module} must only consume supplied catalogue data, found `{forbidden}`"
+            );
+        }
     }
 }
 
@@ -828,22 +869,23 @@ fn reborn_boot_config_file_layout_is_pinned() {
          Landmines` section: \"Do not bake secret material into blueprints/config.\""
     );
 
-    // Provider-catalog load-from-path must be reachable from
-    // composition without forcing `brassclaw_reborn_config` to depend
-    // on `brassclaw_llm` (which would violate _config's standalone
-    // boundary). The composition crate is the legitimate consumer.
+    // Provider selection belongs to the coherent database composition port.
+    // Bootstrap TOML parsing must not create a parallel provider catalogue.
     let llm_catalog = root.join("crates/brassclaw_reborn_composition/src/llm_catalog.rs");
     assert!(
         llm_catalog.exists(),
-        "composition must expose a catalog resolver at {} so the CLI can stitch \
-         RebornConfigFile + providers.json into a RebornLlmConfig without itself \
-         depending on brassclaw_llm",
+        "composition must expose the database catalog resolver at {} without \
+         making the CLI depend directly on brassclaw_llm",
         llm_catalog.display()
     );
     let llm_catalog_src = std::fs::read_to_string(&llm_catalog).expect("llm_catalog readable");
     for required in [
-        "pub fn resolve_llm_selection_against_catalog",
-        "pub fn resolve_against_registry",
+        "pub async fn resolve_llm_selection_against_catalog_db",
+        "capture_selection",
+        "ProviderSelectionSource::Role",
+        "ProviderRegistry::new",
+        "resolve_provider_config_with_credentials",
+        "build_llm_config_with_provider_policy",
     ] {
         assert!(
             llm_catalog_src.contains(required),
@@ -852,15 +894,19 @@ fn reborn_boot_config_file_layout_is_pinned() {
         );
     }
 
-    // `brassclaw_llm` must expose the path-overridable loader so the
-    // catalog file location is selectable per-deployment.
-    let llm_registry = std::fs::read_to_string(root.join("crates/brassclaw_llm/src/registry.rs"))
-        .expect("brassclaw_llm registry.rs must be readable");
-    assert!(
-        llm_registry.contains("pub fn load_from_path"),
-        "brassclaw_llm::ProviderRegistry must expose `load_from_path` so callers can \
-         override the user-overlay catalog path"
-    );
+    for forbidden in [
+        "ProviderRegistry::load(",
+        "ProviderRegistry::load_from_path(",
+        "ProviderRegistry::try_load_from_path(",
+        "resolve_provider_config_from_env(",
+        "resolve_llm_config_from_env(",
+    ] {
+        assert!(
+            !llm_catalog_src.contains(forbidden),
+            "composition catalog resolution must not use `{forbidden}`; \
+             simplified_v3.md §10 requires PostgreSQL selection"
+        );
+    }
 }
 
 #[test]
@@ -2760,10 +2806,6 @@ fn no_direct_fs_reads_outside_migration_path() {
         (
             "brassclaw_llm/src/gemini_oauth.rs",
             "LLM provider OAuth — loads Gemini OAuth credentials from disk",
-        ),
-        (
-            "brassclaw_llm/src/registry.rs",
-            "LLM provider registry — reads user provider config file",
         ),
         (
             "brassclaw_llm/src/openai_codex_session.rs",

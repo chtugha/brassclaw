@@ -24,7 +24,6 @@ COPY crates/ crates/
 COPY vendor/monty-control/ vendor/monty-control/
 COPY *.md ./
 COPY docs/ docs/
-COPY providers.json providers.json
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/

@@ -9,7 +9,49 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-const MAX_IMAGE_BYTES: u64 = 1_073_741_824;
+#[cfg(target_os = "windows")]
+#[path = "native_image_windows.rs"]
+mod windows;
+
+/// Bounds for the native identity verifier, separate from artifact file size.
+/// The installation owner supplies its accepted preparation policy; these are
+/// ceilings rather than reserved memory or a trust decision.
+#[derive(Debug, Clone, Copy)]
+pub struct NativeVerificationLimits {
+    max_output_bytes: u64,
+    timeout: std::time::Duration,
+}
+impl NativeVerificationLimits {
+    pub fn new(
+        max_output_bytes: usize,
+        timeout: std::time::Duration,
+    ) -> Result<Self, NativeImageError> {
+        let max_output_bytes =
+            u64::try_from(max_output_bytes).map_err(|_| NativeImageError::Capacity)?;
+        Self {
+            max_output_bytes,
+            timeout,
+        }
+        .validate()
+    }
+
+    fn validate(self) -> Result<Self, NativeImageError> {
+        if self.max_output_bytes == 0
+            || self.max_output_bytes == u64::MAX
+            || usize::try_from(self.max_output_bytes)
+                .ok()
+                .filter(|value| *value < usize::MAX)
+                .is_none()
+            || self.timeout.is_zero()
+            || std::time::Instant::now()
+                .checked_add(self.timeout)
+                .is_none()
+        {
+            return Err(NativeImageError::Capacity);
+        }
+        Ok(self)
+    }
+}
 
 /// Private copy of a packaged executable supplied by the installation owner.
 /// This establishes byte identity only, not running-image identity, provenance,
@@ -18,9 +60,14 @@ pub struct PackagedExecutableImage {
     directory: tempfile::TempDir,
     checksum: [u8; 32],
 }
+const PACKAGED_EXECUTABLE_NAME: &str = if cfg!(windows) {
+    "executable.exe"
+} else {
+    "executable"
+};
 impl PackagedExecutableImage {
     pub async fn capture(path: &std::path::Path, max_bytes: u64) -> Result<Self, NativeImageError> {
-        if max_bytes == 0 || max_bytes > MAX_IMAGE_BYTES {
+        if max_bytes == 0 || max_bytes == u64::MAX {
             return Err(NativeImageError::Capacity);
         }
         let path = path.to_owned();
@@ -29,7 +76,7 @@ impl PackagedExecutableImage {
             .map_err(|_| NativeImageError::Verification)?
     }
     pub fn path(&self) -> std::path::PathBuf {
-        self.directory.path().join("executable")
+        self.directory.path().join(PACKAGED_EXECUTABLE_NAME)
     }
     pub fn checksum(&self) -> [u8; 32] {
         self.checksum
@@ -57,7 +104,7 @@ fn stage_packaged(
         options.mode(0o600);
     }
     let mut copy = options
-        .open(directory.path().join("executable"))
+        .open(directory.path().join(PACKAGED_EXECUTABLE_NAME))
         .map_err(|_| NativeImageError::Storage)?;
     let mut hash = Sha256::new();
     let mut size = 0u64;
@@ -130,7 +177,20 @@ impl NativeExecutableImage {
     /// retained signed copy must satisfy the running SecCode's exact cdhash.
     /// An ad-hoc signature establishes code identity, never trusted provenance.
     pub async fn capture(max_bytes: u64) -> Result<Arc<Self>, NativeImageError> {
-        if max_bytes == 0 || max_bytes > MAX_IMAGE_BYTES {
+        let defaults = brassclaw_host_api::MontyExecutionLimits::default();
+        let verification = NativeVerificationLimits::new(
+            usize::try_from(defaults.max_stdout_bytes).map_err(|_| NativeImageError::Capacity)?,
+            std::time::Duration::from_millis(defaults.response_timeout_millis),
+        )?;
+        Self::capture_with_verification(max_bytes, verification).await
+    }
+
+    pub async fn capture_with_verification(
+        max_bytes: u64,
+        verification: NativeVerificationLimits,
+    ) -> Result<Arc<Self>, NativeImageError> {
+        verification.validate()?;
+        if max_bytes == 0 || max_bytes == u64::MAX {
             return Err(NativeImageError::Capacity);
         }
         let staged = tokio::task::spawn_blocking(move || stage(max_bytes))
@@ -138,7 +198,7 @@ impl NativeExecutableImage {
             .map_err(|_| NativeImageError::Verification)??;
         #[cfg(target_os = "macos")]
         {
-            let hash = macos::directory_hash(&staged.path()).await?;
+            let hash = macos::directory_hash(&staged.path(), verification).await?;
             let path = staged.path();
             tokio::task::spawn_blocking(move || macos::verify_running(&path, &hash))
                 .await
@@ -197,7 +257,11 @@ fn loaded_file() -> Result<File, NativeImageError> {
             .ok_or(NativeImageError::Identity)?;
         File::open(path).map_err(|_| NativeImageError::Identity)
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    {
+        windows::loaded_file()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         Err(NativeImageError::Unsupported)
     }
@@ -282,13 +346,13 @@ fn hash_file(file: &mut File, max_bytes: u64) -> Result<([u8; 32], u64), NativeI
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::NativeImageError;
-    use std::{path::Path, process::Stdio, time::Duration};
+    use super::{NativeImageError, NativeVerificationLimits};
+    use std::{path::Path, process::Stdio};
     use tokio::{io::AsyncReadExt, process::Command};
-    const OUTPUT_BYTES: u64 = 65_536;
-    const DEADLINE: Duration = Duration::from_secs(5);
-
-    pub(super) async fn directory_hash(path: &Path) -> Result<String, NativeImageError> {
+    pub(super) async fn directory_hash(
+        path: &Path,
+        limits: NativeVerificationLimits,
+    ) -> Result<String, NativeImageError> {
         let arch = match std::env::consts::ARCH {
             "aarch64" => "arm64",
             "x86_64" => "x86_64",
@@ -307,15 +371,15 @@ mod macos {
             .stdout
             .take()
             .ok_or(NativeImageError::Verification)?
-            .take(OUTPUT_BYTES + 1);
+            .take(limits.max_output_bytes + 1);
         let mut stderr = child
             .stderr
             .take()
             .ok_or(NativeImageError::Verification)?
-            .take(OUTPUT_BYTES + 1);
+            .take(limits.max_output_bytes + 1);
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let result = tokio::time::timeout(DEADLINE, async {
+        let result = tokio::time::timeout(limits.timeout, async {
             tokio::try_join!(
                 stdout.read_to_end(&mut out),
                 stderr.read_to_end(&mut err),
@@ -327,13 +391,16 @@ mod macos {
             child
                 .start_kill()
                 .map_err(|_| NativeImageError::Containment)?;
-            tokio::time::timeout(DEADLINE, child.wait())
+            tokio::time::timeout(limits.timeout, child.wait())
                 .await
                 .map_err(|_| NativeImageError::Containment)?
                 .map_err(|_| NativeImageError::Containment)?;
             return Err(NativeImageError::Verification);
         };
-        if !status.success() || out.len() as u64 > OUTPUT_BYTES || err.len() as u64 > OUTPUT_BYTES {
+        if !status.success()
+            || out.len() as u64 > limits.max_output_bytes
+            || err.len() as u64 > limits.max_output_bytes
+        {
             return Err(NativeImageError::Verification);
         }
         let text = std::str::from_utf8(&err).map_err(|_| NativeImageError::Identity)?;
@@ -385,7 +452,10 @@ mod macos {
     }
 }
 
-#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+#[cfg(all(
+    test,
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
 mod tests {
     use super::*;
     #[tokio::test]
@@ -399,6 +469,11 @@ mod tests {
         let image = PackagedExecutableImage::capture(source.path(), 64)
             .await
             .unwrap();
+        let larger_policy = PackagedExecutableImage::capture(source.path(), 1_073_741_825)
+            .await
+            .unwrap();
+        assert_eq!(larger_policy.checksum(), image.checksum());
+
         std::fs::write(source.path(), b"changed").unwrap();
         assert_eq!(
             std::fs::read(image.path()).unwrap(),
@@ -411,16 +486,21 @@ mod tests {
     }
     #[tokio::test]
     async fn actual_loaded_executable_is_retained_and_corruption_is_rejected() {
-        let image = NativeExecutableImage::capture(MAX_IMAGE_BYTES)
-            .await
-            .unwrap();
+        let image = NativeExecutableImage::capture(
+            brassclaw_host_api::MontyExecutionLimits::default().max_native_artifact_bytes,
+        )
+        .await
+        .unwrap();
         assert!(image.size() > 0);
         assert_ne!(image.checksum(), [0; 32]);
         image.verify().await.unwrap();
         // Corrupt this private artifact only; the running executable is untouched.
         let path = image._directory.path().join("executable");
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
         let mut file = File::options().write(true).open(path).unwrap();
         file.write_all(b"BAD!").unwrap();
         file.flush().unwrap();
@@ -437,15 +517,32 @@ mod tests {
             Err(NativeImageError::Capacity)
         ));
         assert!(matches!(
-            NativeExecutableImage::capture(MAX_IMAGE_BYTES + 1).await,
+            NativeExecutableImage::capture(u64::MAX).await,
             Err(NativeImageError::Capacity)
         ));
     }
     #[cfg(target_os = "macos")]
     #[tokio::test]
+    async fn actual_native_verifier_rejects_oversized_output_without_truncation() {
+        let limits = NativeVerificationLimits::new(64, std::time::Duration::from_secs(30)).unwrap();
+        let result = NativeExecutableImage::capture_with_verification(
+            brassclaw_host_api::MontyExecutionLimits::default().max_native_artifact_bytes,
+            limits,
+        )
+        .await;
+        assert!(matches!(result, Err(NativeImageError::Verification)));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
     async fn another_signed_executable_cannot_impersonate_this_process() {
         let path = std::path::Path::new("/usr/bin/true");
-        let hash = macos::directory_hash(path).await.unwrap();
+        let hash = macos::directory_hash(
+            path,
+            NativeVerificationLimits::new(1024 * 1024, std::time::Duration::from_secs(10)).unwrap(),
+        )
+        .await
+        .unwrap();
         assert_eq!(
             macos::verify_running_code(&hash),
             Err(NativeImageError::Identity)

@@ -35,36 +35,32 @@ Multi-provider LLM integration with circuit breaker, retry, failover, and respon
 | `host.rs` | Host-side trait surface: `SessionDb`, `SessionSecrets`, `SessionRenewer`, `SessionKeyPersistor` (binary supplies adapters in `src/llm_host.rs`) |
 | `runtime.rs` | `SwappableLlmProvider` + `LlmReloadHandle` for hot-reloading the provider chain on settings change |
 | `registry.rs` | Provider registry (`ProviderDefinition`, `ProviderProtocol`); resolves backend strings to clients |
-| `resolution.rs` | Full `LlmConfig` resolution for composition roots that select from `providers.json` and need dedicated providers plus the shared provider chain |
+| `resolution.rs` | Explicit captured catalogue/credential selection and technical-policy construction; no file or environment resolver |
 | `tool_schema.rs` | Tool schema normalization policies (`FlattenOnly` for NearAI, strict OpenAI for `RigAdapter` / Codex) |
 | `transcription/{mod,openai,chat_completions}.rs` | Audio transcription pipeline (Whisper / chat-completions back-ends) |
 | `image_models.rs` | Image-generation model metadata table |
 | `vision_models.rs` | Vision-capable model registry for attachment routing |
 | `reasoning_models.rs` | Reasoning-capable model registry (Codex, R1, o-series, etc.) used for thinking-mode dispatch |
-| `models.rs` | Top-level model-name catalog and helpers |
+| `model_discovery.rs` | Explicit protocol/endpoint/credential model discovery with selected technical limits; no fabricated fallback list |
+| `response_body.rs` | Optional model-response byte ceilings with classified overflow and private rejection decoding |
 | `testing/` | `StubLlm`, `StubErrorKind`, `fault_injection` — gated behind the `testing` cargo feature for downstream test harnesses |
 
 ## Provider Selection
 
-Set via `LLM_BACKEND` env var:
+Reborn startup, WebUI and reload select from PostgreSQL provider definitions and
+role selections. The explicit provider-policy path carries selected request,
+retry and response-cache settings without environment overrides. Credentials
+come through the encrypted-store boundary. Dedicated setup/session migration
+and complete model-property/task snapshot support remain incomplete.
 
-| Value | Provider | Key env vars |
-|-------|----------|-------------|
-| `nearai` (default) | NEAR AI Chat Completions | `NEARAI_SESSION_TOKEN` or `NEARAI_API_KEY` |
-| `openai` | OpenAI | `OPENAI_API_KEY` |
-| `anthropic` | Anthropic | `ANTHROPIC_API_KEY` |
-| `github_copilot` | GitHub Copilot Chat API | `GITHUB_COPILOT_TOKEN`, `GITHUB_COPILOT_MODEL` |
-| `ollama` | Ollama local | `OLLAMA_BASE_URL` |
-| `openai_compatible` | Any OpenAI-compatible endpoint | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` |
-| `tinfoil` | Tinfoil TEE inference | `TINFOIL_API_KEY`, `TINFOIL_MODEL` |
-| `bedrock` | AWS Bedrock (requires `--features bedrock`) | `BEDROCK_REGION`, `BEDROCK_MODEL`, `AWS_PROFILE` |
-| `openai_codex` | OpenAI Codex (ChatGPT subscription) | `OPENAI_CODEX_MODEL`, `OPENAI_CODEX_CLIENT_ID` |
-
-Codex auth reuse:
-- Set `LLM_USE_CODEX_AUTH=true` to load credentials from `~/.codex/auth.json` (override with `CODEX_AUTH_PATH`).
-- If Codex is logged in with API-key mode, BrassClaw uses the standard OpenAI endpoint.
-- If Codex is logged in with ChatGPT OAuth mode, BrassClaw routes to the private `chatgpt.com/backend-api/codex` Responses API via `codex_chatgpt.rs`.
-- ChatGPT mode supports one automatic 401 refresh using the refresh token persisted in `auth.json`.
+Database-selected dedicated config ignores Bedrock/Gemini/Codex process
+configuration overrides; Gemini request construction also excludes ambient
+generation, cache, safety, custom-header and alternate-key options. The
+file/environment catalogue resolvers have been removed. The in-memory registry
+contains only supplied definitions. The installation-owned PostgreSQL migration
+provides initial data; unit fixtures derive that exact migration payload rather
+than maintaining another provider list. Explicit legacy import stays in the
+upgrade composition, not the provider library or ordinary startup.
 
 ## AWS Bedrock Provider
 
@@ -72,10 +68,11 @@ Uses the native Converse API via `aws-sdk-bedrockruntime` (`bedrock.rs`). Requir
 
 **Auth:** Standard AWS credential chain — IAM credentials (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`), SSO profiles (`AWS_PROFILE`), or instance roles. The SDK resolves auth automatically from the environment.
 
-**Config:**
-- `BEDROCK_REGION` — AWS region (default: `us-east-1`)
-- `BEDROCK_MODEL` — Required model ID (e.g., `anthropic.claude-opus-4-6-v1`)
-- `BEDROCK_CROSS_REGION` — Optional cross-region inference prefix (`us`, `eu`, `apac`, `global`)
+**Config:** The selected model comes from the database definition/role. Region,
+cross-region and profile setup metadata still need the dedicated database/UI
+contract. Explicit catalogue resolution does not read `BEDROCK_REGION`,
+`BEDROCK_MODEL` or `BEDROCK_CROSS_REGION` as configuration overrides. Standard
+AWS external credential resolution remains its separate authentication boundary.
 
 ## GitHub Copilot Provider Notes
 

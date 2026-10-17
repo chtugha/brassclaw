@@ -30,6 +30,48 @@ use crate::{
 
 const PROTOCOL: u32 = 3;
 
+/// One accepted preparation policy. Callers resolve the authoritative settings
+/// once before an operation; later edits cannot retime or resize its worker.
+#[derive(Clone, Copy)]
+pub struct UtilityLimits {
+    pub bounds: VmBounds,
+    pub process: ProcessLimits,
+    pub max_native_artifact_bytes: u64,
+}
+impl UtilityLimits {
+    pub fn from_execution(
+        limits: brassclaw_host_api::MontyExecutionLimits,
+    ) -> Result<Self, &'static str> {
+        limits.validate()?;
+        let native = |bytes| usize::try_from(bytes).map_err(|_| "preparation limit out of range");
+        let policy = Self {
+            bounds: VmBounds {
+                max_source_bytes: native(limits.max_source_bytes)?,
+                max_compiled_source_bytes: native(limits.max_compiled_source_bytes)?,
+                max_feeds: native(limits.max_feeds)?,
+                max_stdout_bytes: native(limits.max_stdout_bytes)?,
+                execution_slice: Duration::from_millis(limits.execution_slice_millis),
+                max_value_depth: native(u64::from(limits.max_value_depth))?,
+                max_value_nodes: native(limits.max_value_nodes)?,
+                max_value_bytes: native(limits.max_value_bytes)?,
+            },
+            process: ProcessLimits {
+                hard_memory_bytes: native(limits.utility_worker_memory_bytes)?,
+                max_frame_bytes: native(limits.max_ipc_frame_bytes)?,
+                response_timeout: Duration::from_millis(limits.response_timeout_millis),
+            },
+            max_native_artifact_bytes: limits.max_native_artifact_bytes,
+        };
+        if !policy.bounds.valid()
+            || !policy.process.valid()
+            || native(policy.max_native_artifact_bytes)? == usize::MAX
+        {
+            return Err("unsupported preparation limits");
+        }
+        Ok(policy)
+    }
+}
+
 /// Caller-authored utility source is intentionally not an approved component.
 /// Data remains separately injected values, never Python source substitution.
 #[derive(Serialize, Deserialize)]

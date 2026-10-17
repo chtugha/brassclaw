@@ -229,10 +229,8 @@ mod tests {
 
     #[test]
     fn block_on_filesystem_maps_worker_panic_to_failed_error() {
-        let result = block_on_filesystem(async {
+        let result: Result<(), RuntimeHttpBodyStoreError> = block_on_filesystem(async {
             panic!("filesystem worker test panic");
-            #[allow(unreachable_code)]
-            Ok::<(), FilesystemError>(())
         });
 
         assert_eq!(

@@ -6,7 +6,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use brassclaw_engine::executor::{
     retained_recipe::{
-        RetainedRecipeExecution, RetainedStepFailure, port_answer_checksum, typed_value_checksum,
+        RetainedRecipeExecution, RetainedStepFailure, port_answer_checksum_with_limits,
+        typed_value_checksum_with_limits,
     },
     retained_source::InspectedRetainedProgram,
 };
@@ -133,29 +134,43 @@ impl WorkflowReview {
             let wanted = expected
                 .get(step)
                 .ok_or(StructuralReviewFailure::Observation)?;
-            let input = typed_value_checksum(&wanted.inputs).map_err(|_| {
-                StructuralReviewFailure::Preparation("expected inputs exceed capacity")
-            })?;
+            let input = typed_value_checksum_with_limits(&wanted.inputs, observed.data_limits())
+                .map_err(|_| {
+                    StructuralReviewFailure::Preparation("expected inputs exceed capacity")
+                })?;
             let (arguments, answer) = match &wanted.tool {
                 Some((arguments, answer)) => (
-                    Some(typed_value_checksum(arguments).map_err(|_| {
-                        StructuralReviewFailure::Preparation(
-                            "expected Tool arguments exceed capacity",
-                        )
-                    })?),
-                    Some(port_answer_checksum(answer).map_err(|_| {
-                        StructuralReviewFailure::Preparation(
-                            "expected Tool answer exceeds capacity",
-                        )
-                    })?),
+                    Some(
+                        typed_value_checksum_with_limits(arguments, observed.data_limits())
+                            .map_err(|_| {
+                                StructuralReviewFailure::Preparation(
+                                    "expected Tool arguments exceed capacity",
+                                )
+                            })?,
+                    ),
+                    Some(
+                        port_answer_checksum_with_limits(answer, observed.data_limits()).map_err(
+                            |_| {
+                                StructuralReviewFailure::Preparation(
+                                    "expected Tool answer exceeds capacity",
+                                )
+                            },
+                        )?,
+                    ),
                 ),
                 None => (None, None),
             };
             let (result, failure) = match &wanted.result {
                 ExpectedStepResult::Return(value) => (
-                    Some(typed_value_checksum(value).map_err(|_| {
-                        StructuralReviewFailure::Preparation("expected result exceeds capacity")
-                    })?),
+                    Some(
+                        typed_value_checksum_with_limits(value, observed.data_limits()).map_err(
+                            |_| {
+                                StructuralReviewFailure::Preparation(
+                                    "expected result exceeds capacity",
+                                )
+                            },
+                        )?,
+                    ),
                     None,
                 ),
                 ExpectedStepResult::Failure(failure) => (None, Some(*failure)),
@@ -179,7 +194,9 @@ impl WorkflowReview {
                 && failure == terminal;
             succeeded &= passed;
             observations.push(json!({
-                "step_id":step, "inputs_checksum":hex(observed.input_checksum()),
+                "step_id":step,
+                "data_limits":{"max_depth":observed.data_limits().max_depth,"max_nodes":observed.data_limits().max_nodes,"max_bytes":observed.data_limits().max_bytes},
+                "inputs_checksum":hex(observed.input_checksum()),
                 "arguments_checksum":observed.arguments_checksum().map(hex),
                 "answer_checksum":observed.answer_checksum().map(hex),
                 "result_checksum":observed.result_checksum().map(hex),

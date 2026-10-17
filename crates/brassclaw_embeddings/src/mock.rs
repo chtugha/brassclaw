@@ -32,8 +32,8 @@ impl EmbeddingProvider for MockEmbeddings {
         "mock-embedding"
     }
 
-    fn max_input_length(&self) -> usize {
-        MOCK_MAX_INPUT_LENGTH
+    fn max_input_length(&self) -> Option<usize> {
+        Some(MOCK_MAX_INPUT_LENGTH)
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {

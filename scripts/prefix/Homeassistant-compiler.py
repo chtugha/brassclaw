@@ -15,6 +15,9 @@ Source fidelity is checked; improved task accuracy must be measured separately.
 
 from __future__ import annotations
 
+from prefix_procedure import snapshot_procedure, finish_procedure
+from prefix_evidence import inject_reference, markdown_literal, source_units, template_probe_tokens
+
 import argparse
 import hashlib
 import json
@@ -1492,35 +1495,10 @@ def required_reference_cards(cards):
     return list(selected.values())
 
 
-def template_probe_tokens(tok, template, *, complete=True):
-    """Render real request variants; deduplicate before exact batch tokenization.
-
-    Never concatenate separately tokenized reference and suffix: BPE merges at
-    their boundary would make the token count and cache-prefix claim unreliable.
-    """
-    requests=[]
-    for thinking in (False,True):
-        system='Operator instructions.'
-        requests.append(([{'role':'system','content':system},{'role':'user','content':'CACHE-PROBE-A'}],None,thinking))
-        if not complete: continue
-        for content in (system,[{'type':'text','text':system}],None,''):
-            for tool_name in (None,'read_configuration','list_interfaces'):
-                tools=None if tool_name is None else [{'type':'function','function':{
-                    'name':tool_name,'description':'Read-only diagnostic '+tool_name,
-                    'parameters':{'type':'object','properties':{}}}}]
-                requests.append(([{'role':'system','content':content},
-                                  {'role':'user','content':'CACHE-PROBE-B'}],tools,thinking))
-        requests.append(([{'role':'user','content':'CACHE-PROBE-A'}],None,thinking))
-        requests.append(([{'role':'user','content':[{'type':'text','text':'CACHE-PROBE-B'}]}],None,thinking))
-        requests.append(([{'role':'system','content':system},{'role':'user','content':'Earlier question'},
-                          {'role':'assistant','content':'Earlier answer'},{'role':'user','content':'CACHE-PROBE-B'}],None,thinking))
-    rendered=list(dict.fromkeys(tok.apply_chat_template(messages,tools=tools,chat_template=template,
-        tokenize=False,add_generation_prompt=True,enable_thinking=thinking)
-        for messages,tools,thinking in requests))
-    return tok(rendered,add_special_tokens=False,return_attention_mask=False)['input_ids']
 
 
 def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
+    procedure_snapshot = snapshot_procedure(__file__, helpers=('prefix_evidence.py', 'prefix_units.py'))
     profile=model_profile(verify_server=not offline); cards=accepted_cards(); tok=tokenizer()
     reserve=int(os.getenv('PREFIX_WORKSPACE_RESERVE_TOKENS','31072'))
     if reserve<8192: raise ValueError('Reserve at least 8192 tokens for task, evidence, reasoning and output')
@@ -1575,31 +1553,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
         # Merge into the existing system message in either representation.
         # A non-whitespace boundary prevents the model template's strip() from
         # removing the reference's final newline for absent/empty system content.
-        wrapper='{% set _engineering_reference = '+json.dumps(full+'\n\n# REQUEST CONTEXT\n',ensure_ascii=False)+' %}\n'
-        wrapper+="""{%- if not (tools and tools is iterable and tools is not mapping) -%}
-{%- if messages and messages[0]['role'] == 'system' -%}
-{%- if messages[0]['content'] is string -%}
-{%- set _system_content = _engineering_reference ~ '\n\n' ~ messages[0]['content'] -%}
-{%- elif messages[0]['content'] is iterable and messages[0]['content'] is not mapping -%}
-{%- set _system_content = [{'type':'text','text':_engineering_reference ~ '\n\n'}] + messages[0]['content'] -%}
-{%- elif messages[0]['content'] is none -%}
-{%- set _system_content = _engineering_reference -%}
-{%- else -%}
-{{- raise_exception('Unexpected system content type.') -}}
-{%- endif -%}
-{%- set messages = [{'role':'system','content':_system_content}] + messages[1:] -%}
-{%- else -%}
-{%- set messages = [{'role':'system','content':_engineering_reference}] + messages -%}
-{%- endif -%}
-{%- endif -%}
-"""
-        # Original Qwen puts changing tools before system content. Insert the
-        # static reference immediately after that system opening instead.
-        opening="{{- '<|im_start|>system\\n' }}"
-        if original.count(opening)!=1:
-            raise ValueError('Deployed chat template tool-system opening changed; inspect before exporting')
-        tool_first=original.replace(opening,"{{- '<|im_start|>system\\n' + _engineering_reference + '\\n\\n' }}",1)
-        return full,wrapper+tool_first
+        return full,inject_reference(full,original)
     # Only two probes are needed during budget trimming. The full render/token
     # matrix is checked once per candidate that fits, with exact BPE accounting.
     while selected:
@@ -1630,9 +1584,11 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     # Provenance can change without changing rendered words. Bind the complete
     # evidence payload as well, otherwise an immutable directory could collide.
     evidence_sha256=digest(evidence_records)
-    generation=digest(json.dumps([PIPELINE_VERSION,profile,full,template,evidence_sha256],sort_keys=True))
+    shared_evidence_sha256=file_sha256(Path(__file__).with_name('prefix_evidence.py'))
+    procedure_sha256, procedure, procedure_payloads = finish_procedure(procedure_snapshot)
+    generation=digest(json.dumps([PIPELINE_VERSION,procedure_sha256,shared_evidence_sha256,profile,full,template,evidence_sha256],sort_keys=True))
     directory=BASE/'generations'/generation; directory.mkdir(parents=True,exist_ok=True)
-    manifest={'schema':2,'generation':generation,'model_profile':profile,
+    manifest={'schema':2,'generation':generation,'compiler_procedure':procedure,'compiler_procedure_sha256':procedure_sha256,'shared_evidence_sha256':shared_evidence_sha256,'model_profile':profile,
               'sha256':digest(full),'text_tokens':count(full),'rendered_probe_tokens':total,
               'prefix_token_budget':budget,'workspace_reserve_tokens':reserve,
               'shared_prefix_tokens':common,'complete_cache_blocks':common//block,
@@ -1656,6 +1612,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     payloads={CONTEXT.name:full,SERVER_TEMPLATE.name:template,
               'evidence_cards.jsonl':evidence_records,
               PREFIX_MANIFEST.name:json.dumps(manifest,indent=2,sort_keys=True)+'\n'}
+    payloads.update(procedure_payloads)
     for name,content in payloads.items():
         artifact=directory/name
         if artifact.exists() and artifact.read_text()!=content:
@@ -1898,49 +1855,6 @@ def reset():
 # PIPELINE / CLI
 # -----------------------------------------------------------------------------
 
-@lru_cache(maxsize=64)
-def source_units(text: str, suffix: str = '.md') -> list[tuple[int, int, str, str]]:
-    """Complete documentation sections; executable files remain whole.
-
-    Literal parent preambles travel with children. If these are too large, the
-    complete card is omitted from the bounded prefix rather than trimming its
-    qualifications. RST literal blocks are indented and cannot become headings.
-    """
-    lines=text.splitlines(keepends=True)
-    if suffix not in {'.md','.markdown','.mdx','.rst','.adoc','.txt'}:
-        return [(1,len(lines),text,'')] if lines else []
-    boundaries=[0]; parents={}; stack=[]; fence=None; rst_levels={}
-    for index,line in enumerate(lines):
-        heading=None
-        if suffix=='.rst':
-            if (line.strip() and not line[0].isspace() and index+1<len(lines)
-                and re.fullmatch(r'([=\-~^"\x27`:+*#_])\1{3,}\s*',lines[index+1])
-                and len(lines[index+1].strip())>=len(line.strip())):
-                marker=lines[index+1].strip()[0]
-                if marker not in rst_levels: rst_levels[marker]=len(rst_levels)+1
-                heading=rst_levels[marker]
-        else:
-            marker=re.match(r'^\s{0,3}(`{3,}|~{3,})',line)
-            if marker:
-                value=marker.group(1)
-                if fence is None: fence=value
-                elif value[0]==fence[0] and len(value)>=len(fence): fence=None
-                continue
-            match=re.match(r'^(#{1,6})\s+',line) if fence is None else None
-            if suffix=='.adoc': match=re.match(r'^(={1,6})\s+',line) if fence is None else None
-            if match: heading=len(match.group(1))
-        if heading:
-            stack=[(depth,start) for depth,start in stack if depth<heading]
-            parents[index]=[start for _,start in stack]; stack.append((heading,index))
-            if index: boundaries.append(index)
-    boundaries.append(len(lines)); ends=dict(zip(boundaries,boundaries[1:]))
-    return [(start+1,end,''.join(lines[start:end]),
-             '\n'.join(''.join(lines[parent:ends[parent]]) for parent in parents.get(start,[])))
-            for start,end in zip(boundaries,boundaries[1:]) if end>start]
-
-
-
-
 def card_for_unit(repo, path, document, unit, metadata):
     start, end, excerpt, parents = unit
     snapshot = digest(document)
@@ -2009,9 +1923,6 @@ def transport_text(text):
 
 
 
-def markdown_literal(excerpt):
-    fence='`'*max(3,max((len(m.group()) for m in re.finditer(r'`+',excerpt)),default=0)+1)
-    return f'{fence}text\n{excerpt}' + ('' if excerpt.endswith('\n') else '\n') + fence
 
 
 def literal_block(text):

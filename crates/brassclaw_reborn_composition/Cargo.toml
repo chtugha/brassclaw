@@ -23,6 +23,7 @@ migrate-from-libsql = ["dep:libsql"]
 skills-db = ["postgres", "brassclaw_engine/skills-db", "dep:brassclaw_skills"]
 # Wire a host-managed LLM model gateway into the assembled runtime.
 root-llm-provider = [
+    "postgres",
     "dep:brassclaw_llm",
     "brassclaw_llm/registry-provider-factory",
     "brassclaw_reborn/root-llm-provider",
@@ -37,6 +38,9 @@ test-support = []
 # Backward-compat alias.
 libsql = ["migrate-from-libsql"]
 postgres = [
+    # PostgreSQL bootstrap always retains typed component drafts, even when
+    # the optional engine/catalogue runner feature is not selected.
+    "dep:brassclaw_skills",
     "brassclaw_filesystem/postgres",
     "brassclaw_host_runtime/postgres",
     "brassclaw_reborn_event_store/postgres",

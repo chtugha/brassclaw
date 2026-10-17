@@ -35,14 +35,11 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Get the model name.
     fn model_name(&self) -> &str;
 
-    /// Maximum input length in **bytes** (matches `str::len()` semantics).
-    ///
-    /// Provider implementations enforce this against `text.len()`, which
-    /// counts UTF-8 bytes, not Unicode characters. Implementations document
-    /// the byte budget for their underlying model (typically derived from a
-    /// token limit; e.g. 8191 tokens ≈ 32_000 bytes for the OpenAI
-    /// embedding family).
-    fn max_input_length(&self) -> usize;
+    /// An explicitly known model input limit in UTF-8 bytes, if available.
+    /// `None` imposes no artificial byte quota. Token limits cannot be converted
+    /// to a reliable byte limit; the provider enforces its actual model limits.
+    /// Implementations never truncate input to satisfy either form of limit.
+    fn max_input_length(&self) -> Option<usize>;
 
     /// Generate an embedding for a single text.
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError>;

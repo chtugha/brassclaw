@@ -11,6 +11,16 @@ use crate::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+/// Shared installation identity namespace, independent of the optional runner.
+/// This preserves the existing IDs; an identifier supplies no bootstrap trust,
+/// review evidence, component activation or Tool permission.
+pub fn packaged_component_id(name: &str) -> Uuid {
+    Uuid::new_v5(
+        &Uuid::from_u128(0x19ddf38d_487e_4732_b008_5a1ec57d2ef9),
+        name.as_bytes(),
+    )
+}
+
 /// Stable identities allocated/resolved by the component-library owner.
 /// Versions and checksums belong to retained selection, never Recipe includes.
 #[derive(Clone, Copy)]

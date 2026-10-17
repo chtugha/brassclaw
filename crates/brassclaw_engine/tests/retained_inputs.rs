@@ -49,6 +49,223 @@ fn code(text: &str, input: &str) -> Value {
         "type":"object","allow_extra_fields":false,"fields":{
             "text":{"type":"string","required":true}}}})
 }
+
+#[test]
+fn prepared_flow_keeps_all_steps_and_deep_typed_result_paths() {
+    use brassclaw_skills::component_revision::RetainedComponentSnapshot;
+    let root = Uuid::new_v4();
+    let component = Uuid::new_v4();
+    let steps:Vec<_> = (1..=300).map(|number| json!({"stepnumber":number,"knowledge":"orchestrator",
+        "goal":"Execute retained pure export","content":"","type":"component","include":[component]})).collect();
+    let locals: serde_json::Map<String, Value> = (1..=300)
+        .map(|number| (format!("0:{number}"), json!({})))
+        .collect();
+    let program = draft(
+        root,
+        21,
+        json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
+        "step_descriptions":[{"desc_idx":0,"label":"complete pure flow","yaml_source":"","steps":steps}],
+        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{},"steps":locals}}}),
+        &[component],
+    );
+    let source = draft(
+        component,
+        22,
+        json!({"content":"def unchanged_value(inputs):\n    return 'retained'",
+        "input_contract":{},"result_contract":{"type":"string"},"preload":{"format":"python-preload/2",
+            "exports":{"unchanged_value":{"symbol":"unchanged_value","parameters":["inputs"],"mapping":true}},
+            "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"unchanged_value"}}),
+        &[],
+    );
+    let graph = Arc::new(
+        RetainedComponentSnapshot::new(
+            &[root],
+            vec![
+                program.at_version(1).unwrap(),
+                source.at_version(1).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    let instruction =
+        compile_retained_recipe(graph, root, "selected", WorkflowClass::Deterministic).unwrap();
+    let prepared = prepare_retained_unbound_program(instruction).unwrap();
+    let flow = prepared.inputs().monty_flow().unwrap();
+    assert_eq!(flow["body"].as_array().unwrap().len(), 301);
+    assert_eq!(flow["body"][299]["step_id"], "0:300");
+    assert_eq!(flow["body"][300]["source"]["step_id"], "0:300");
+
+    let (first, second, root) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let mut nested = json!({"type":"string","required":true});
+    for _ in 0..17 {
+        nested = json!({"type":"object","required":true,"checks":[],"allow_extra_fields":false,"fields":{"field":nested}});
+    }
+    nested.as_object_mut().unwrap().remove("required");
+    let preload = |export: &str| {
+        json!({"format":"python-preload/2",
+        "exports":{export:{"symbol":export,"parameters":["inputs"],"mapping":true}},
+        "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":export})
+    };
+    let mut first_document = code(
+        "def nested_value(inputs):\n    value = inputs['text']\n    for _ in range(17):\n        value = {'field': value}\n    return value",
+        "text",
+    );
+    first_document["preload"] = preload("nested_value");
+    first_document["result_contract"] = nested;
+    let mut second_document = code(
+        "def consume_nested(inputs):\n    return inputs['previous']",
+        "previous",
+    );
+    second_document["preload"] = preload("consume_nested");
+    second_document["result_contract"] = json!({"type":"string"});
+    let mut root_document = recipe(first, second);
+    root_document["input_layouts"]["selected"]["steps"]["0:2"]["previous"]["path"] =
+        json!(vec!["field"; 17]);
+    let graph = Arc::new(
+        RetainedComponentSnapshot::new(
+            &[root],
+            vec![
+                draft(root, 21, root_document, &[first, second])
+                    .at_version(1)
+                    .unwrap(),
+                draft(first, 22, first_document, &[]).at_version(1).unwrap(),
+                draft(second, 22, second_document, &[])
+                    .at_version(1)
+                    .unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    let instruction =
+        compile_retained_recipe(graph, root, "selected", WorkflowClass::Deterministic).unwrap();
+    let prepared = prepare_retained_unbound_program(instruction).unwrap();
+    let flow = prepared.inputs().monty_flow().unwrap();
+    assert_eq!(
+        flow["body"][1]["inputs"]["previous"]["path"],
+        json!(vec!["field"; 17])
+    );
+}
+#[test]
+fn retained_data_limits_apply_without_replacing_selected_contracts() {
+    use brassclaw_skills::{
+        component_revision::RetainedComponentSnapshot, value_contract::ContractLimits,
+    };
+    let root = Uuid::new_v4();
+    let component = Uuid::new_v4();
+    let list = json!({"type":"list","items":{"type":"string"},"checks":[]});
+    let mut required_list = list.clone();
+    required_list["required"] = json!(true);
+    let graph = Arc::new(RetainedComponentSnapshot::new(&[root], vec![
+        draft(root, 21, json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
+            "step_descriptions":[{"desc_idx":0,"label":"typed data","yaml_source":"","steps":[{"stepnumber":1,"knowledge":"orchestrator","goal":"return data","content":"","type":"component","include":[component]}]}],
+            "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{"values":required_list},"steps":{"0:1":{"values":{"kind":"task_input","reference":"{{vars.values}}"}}}}}}), &[component]).at_version(1).unwrap(),
+        draft(component, 22, json!({"content":"return inputs['values']","includes":[],"dependency_registry":null,"input_contract":{"values":required_list},"result_contract":list}), &[]).at_version(1).unwrap(),
+    ]).unwrap());
+    let instruction =
+        compile_retained_recipe(graph, root, "selected", WorkflowClass::Deterministic).unwrap();
+    let original = instruction.recipe();
+    let program = prepare_retained_unbound_program(instruction).unwrap();
+    let values = json!(vec!["x"; 300_000]);
+    let supplied = json!({"values":values});
+    assert!(program.inputs().bind_task_inputs(&supplied).is_err());
+    let limits = ContractLimits {
+        max_depth: 48,
+        max_nodes: 1_048_576,
+        max_bytes: 2 * 1024 * 1024,
+    };
+    let bound = program
+        .inputs()
+        .bind_task_inputs_with_limits(&supplied, limits)
+        .unwrap();
+    assert_eq!(bound, supplied);
+    use brassclaw_engine::executor::retained_recipe::{
+        port_answer_checksum_with_limits, typed_value_checksum, typed_value_checksum_with_limits,
+    };
+    assert!(typed_value_checksum(&bound).is_err());
+    let checksum = typed_value_checksum_with_limits(&bound, limits).unwrap();
+    assert_eq!(
+        checksum,
+        typed_value_checksum_with_limits(&supplied, limits).unwrap()
+    );
+    assert!(
+        port_answer_checksum_with_limits(
+            &PortAnswer::Return {
+                value: bound.clone()
+            },
+            limits
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        typed_value_checksum(&json!({"small":1})).unwrap(),
+        typed_value_checksum_with_limits(&json!({"small":1}), limits).unwrap()
+    );
+    assert_eq!(
+        program
+            .inputs()
+            .bind_step_inputs_with_limits("0:1", &bound, limits)
+            .unwrap(),
+        supplied
+    );
+    program
+        .inputs()
+        .validate_step_result_with_limits("0:1", &bound["values"], limits)
+        .unwrap();
+    assert_eq!(program.inputs().instruction().recipe(), original);
+    let reduced = ContractLimits {
+        max_nodes: 100,
+        ..limits
+    };
+    assert!(
+        program
+            .inputs()
+            .bind_task_inputs_with_limits(&supplied, reduced)
+            .is_err()
+    );
+    assert!(
+        program
+            .inputs()
+            .validate_step_result_with_limits("0:1", &bound["values"], reduced)
+            .is_err()
+    );
+    assert!(
+        program
+            .inputs()
+            .bind_task_inputs_with_limits(&json!({"values":null}), limits)
+            .is_err()
+    );
+    assert!(
+        program
+            .inputs()
+            .bind_step_inputs_with_limits("0:1", &json!({"values":[1]}), limits)
+            .is_err()
+    );
+    assert!(
+        program
+            .inputs()
+            .validate_step_result_with_limits("0:1", &json!([1]), limits)
+            .is_err()
+    );
+    let small_bytes = ContractLimits {
+        max_bytes: 10,
+        ..limits
+    };
+    assert!(
+        program
+            .inputs()
+            .bind_task_inputs_with_limits(&supplied, small_bytes)
+            .is_err()
+    );
+    // A reduction never rewrites the selected contract for a retained consumer.
+    assert_eq!(
+        program
+            .inputs()
+            .bind_task_inputs_with_limits(&supplied, limits)
+            .unwrap(),
+        supplied
+    );
+}
+
 fn recipe(first: Uuid, second: Uuid) -> Value {
     json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":["show %"],
         "variable_patterns":[{"name":"value","pattern":null,"description":null}]}],

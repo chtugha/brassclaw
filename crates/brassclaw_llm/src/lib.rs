@@ -19,6 +19,7 @@ pub(crate) mod codex_auth;
 mod codex_chatgpt;
 pub mod config;
 pub mod costs;
+mod embedding_models;
 pub mod error;
 pub mod failover;
 pub(crate) mod gemini_oauth;
@@ -35,6 +36,7 @@ pub mod recording;
 pub mod registry;
 #[cfg(feature = "registry-provider-factory")]
 mod resolution;
+mod response_body;
 pub mod response_cache;
 mod responses_reasoning;
 pub mod retry;
@@ -54,15 +56,16 @@ pub mod testing;
 mod codex_test_helpers;
 
 pub mod image_models;
-pub mod models;
+pub mod model_discovery;
 pub mod reasoning_models;
 pub mod vision_models;
 
 pub use circuit_breaker::{CircuitBreakerConfig, CircuitBreakerProvider};
 pub use config::{
     BedrockConfig, CacheRetention, GeminiOauthConfig, LlmBackendKind, LlmConfig, NearAiConfig,
-    OAUTH_PLACEHOLDER, OpenAiCodexConfig, RegistryProviderConfig,
+    OAUTH_PLACEHOLDER, OpenAiCodexConfig, ProviderRequestPolicy, RegistryProviderConfig,
 };
+pub use embedding_models::{EmbeddingModelContract, EmbeddingModelContracts};
 pub use error::{LlmConfigError, LlmError};
 pub use failover::{CooldownConfig, FailoverProvider};
 pub(crate) use gemini_oauth::GeminiOauthProvider;
@@ -77,8 +80,9 @@ pub use openai_codex_session::{DeviceCodeStart, OpenAiCodexSessionManager};
 pub use provider::sanitize_tool_messages;
 pub use provider::{
     ChatMessage, CompletionRequest, CompletionResponse, ContentPart, FinishReason, ImageUrl,
-    LlmProvider, ModelMetadata, Role, ToolCall, ToolCompletionRequest, ToolCompletionResponse,
-    ToolDefinition, ToolResult, generate_tool_call_id, normalized_model_override,
+    LlmProvider, ModelMetadata, RetainedLlmProvider, Role, ToolCall, ToolCompletionRequest,
+    ToolCompletionResponse, ToolDefinition, ToolResult, generate_tool_call_id,
+    normalized_model_override,
 };
 pub use reasoning::{
     ActionPlan, Reasoning, ReasoningContext, RespondOutput, RespondResult, ResponseAnomaly,
@@ -95,13 +99,14 @@ pub use registry::{ProviderDefinition, ProviderProtocol, ProviderRegistry, Provi
 #[cfg(feature = "registry-provider-factory")]
 pub use resolution::{
     ProviderResolutionError, ProviderSelection, ResolvedDedicatedProviderConfig,
-    ResolvedProviderConfig, build_llm_config_from_resolved_provider,
-    build_registry_provider_config_from_resolved_provider, resolve_llm_config_from_env,
-    resolve_llm_config_from_selection, resolve_provider_config_from_env,
-    resolve_provider_config_from_selection,
+    ResolvedProviderConfig, build_llm_config_with_provider_policy,
+    resolve_provider_config_with_credentials,
 };
-pub use response_cache::{CachedProvider, ResponseCacheConfig};
-pub use retry::{RetryConfig, RetryProvider};
+pub use response_body::{
+    ResponseBodyError as ProviderResponseBodyError, read as read_provider_response_body,
+};
+pub use response_cache::{CachedProvider, ResponseCacheConfig, ResponseCachePolicy};
+pub use retry::{RetryConfig, RetryProvider, RetryTimingPolicy};
 pub use rig_adapter::RigAdapter;
 pub use role::ProviderRole;
 pub use runtime::{LlmReloadHandle, SwappableLlmProvider};
@@ -109,8 +114,6 @@ pub use session::{NearWalletSignedMessage, SessionConfig, SessionManager, create
 pub use smart_routing::{SmartRoutingConfig, SmartRoutingProvider, TaskComplexity};
 pub use token_refreshing::TokenRefreshingProvider;
 
-#[cfg(feature = "registry-provider-factory")]
-use std::path::Path;
 use std::sync::Arc;
 
 use rig::client::CompletionClient;
@@ -128,17 +131,25 @@ pub async fn create_llm_provider(
     session: Arc<SessionManager>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     let timeout = config.request_timeout_secs;
-
-    if config.backend == "nearai" || config.backend == "near_ai" || config.backend == "near" {
-        return create_llm_provider_with_config(&config.nearai, session, timeout);
+    if config.max_response_bytes.is_some()
+        && matches!(config.backend_kind(), LlmBackendKind::Bedrock)
+    {
+        return Err(LlmError::RequestFailed {
+            provider: config.active_provider_id(),
+            reason: "this adapter does not yet support a response-body limit".into(),
+        });
     }
 
-    if config.backend == "gemini_oauth" || config.backend == "gemini-oauth" {
+    if matches!(config.backend_kind(), LlmBackendKind::NearAi) {
+        return create_nearai_bounded(&config.nearai, session, timeout, config.max_response_bytes);
+    }
+
+    if matches!(config.backend_kind(), LlmBackendKind::GeminiOauth) {
         return create_gemini_oauth_provider(config);
     }
 
     // Bedrock uses a native AWS SDK, not the rig-core registry
-    if config.backend == "bedrock" {
+    if matches!(config.backend_kind(), LlmBackendKind::Bedrock) {
         #[cfg(feature = "bedrock")]
         {
             return create_bedrock_provider(config).await;
@@ -152,7 +163,7 @@ pub async fn create_llm_provider(
         }
     }
 
-    if config.backend == "openai_codex" {
+    if matches!(config.backend_kind(), LlmBackendKind::OpenAiCodex) {
         return Err(LlmError::RequestFailed {
             provider: "openai_codex".to_string(),
             reason:
@@ -168,7 +179,7 @@ pub async fn create_llm_provider(
             provider: config.backend.clone(),
         })?;
 
-    create_registry_provider_inner(reg_config, timeout)
+    create_registry_provider_bounded(reg_config, timeout, config.max_response_bytes)
 }
 
 /// Create an LLM provider from a `NearAiConfig` directly.
@@ -179,6 +190,14 @@ pub fn create_llm_provider_with_config(
     config: &NearAiConfig,
     session: Arc<SessionManager>,
     request_timeout_secs: u64,
+) -> Result<Arc<dyn LlmProvider>, LlmError> {
+    create_nearai_bounded(config, session, request_timeout_secs, None)
+}
+fn create_nearai_bounded(
+    config: &NearAiConfig,
+    session: Arc<SessionManager>,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     let auth_mode = if config.api_key.is_some() {
         "API key"
@@ -192,10 +211,12 @@ pub fn create_llm_provider_with_config(
         timeout_secs = request_timeout_secs,
         "Using NEAR AI (Chat Completions API)"
     );
-    Ok(Arc::new(NearAiChatProvider::new_with_timeout(
+    Ok(Arc::new(NearAiChatProvider::new_with_response_limit(
         config.clone(),
         session,
+        true,
         request_timeout_secs,
+        max_response_bytes,
     )?))
 }
 
@@ -213,40 +234,56 @@ pub fn create_registry_provider(
     create_registry_provider_inner(config, request_timeout_secs)
 }
 
-/// Resolve a registry-provider configuration from generic LLM environment.
-///
-/// This keeps provider/backend-specific environment conventions inside
-/// `brassclaw_llm` for composition roots that already bridge through
-/// [`create_registry_provider`]. Returns `Ok(None)` when no LLM environment
-/// selection is present.
-#[cfg(feature = "registry-provider-factory")]
-pub fn resolve_registry_provider_from_env(
-    user_providers_path: Option<&Path>,
-) -> Result<Option<RegistryProviderConfig>, LlmError> {
-    resolution::resolve_provider_config_from_env(user_providers_path)?
-        .map(resolution::build_registry_provider_config_from_resolved_provider)
-        .transpose()
-}
-
+#[cfg(any(test, feature = "registry-provider-factory"))]
 fn create_registry_provider_inner(
     config: &RegistryProviderConfig,
     request_timeout_secs: u64,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
+    create_registry_provider_bounded(config, request_timeout_secs, None)
+}
+
+fn create_registry_provider_bounded(
+    config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
+) -> Result<Arc<dyn LlmProvider>, LlmError> {
+    if config.is_codex_chatgpt && max_response_bytes.is_some() {
+        return Err(LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: "the legacy Codex ChatGPT adapter does not yet support a response-body limit"
+                .into(),
+        });
+    }
     // Codex ChatGPT mode: use the Responses API provider
     if config.is_codex_chatgpt {
         return create_codex_chatgpt_from_registry(config, request_timeout_secs);
     }
 
     match config.protocol {
-        ProviderProtocol::OpenAiCompletions => create_openai_compat_from_registry(config),
-        ProviderProtocol::Anthropic => create_anthropic_from_registry(config),
-        ProviderProtocol::Ollama => create_ollama_from_registry(config),
-        ProviderProtocol::DeepSeek => create_deepseek_from_registry(config),
-        ProviderProtocol::Gemini => create_gemini_from_registry(config),
-        ProviderProtocol::OpenRouter => create_openrouter_from_registry(config),
+        ProviderProtocol::OpenAiCompletions => {
+            create_openai_compat_from_registry(config, request_timeout_secs, max_response_bytes)
+        }
+        ProviderProtocol::Anthropic => {
+            create_anthropic_from_registry(config, request_timeout_secs, max_response_bytes)
+        }
+        ProviderProtocol::Ollama => {
+            create_ollama_from_registry(config, request_timeout_secs, max_response_bytes)
+        }
+        ProviderProtocol::DeepSeek => {
+            create_deepseek_from_registry(config, request_timeout_secs, max_response_bytes)
+        }
+        ProviderProtocol::Gemini => {
+            create_gemini_from_registry(config, request_timeout_secs, max_response_bytes)
+        }
+        ProviderProtocol::OpenRouter => {
+            create_openrouter_from_registry(config, request_timeout_secs, max_response_bytes)
+        }
         ProviderProtocol::GithubCopilot => {
-            let provider =
-                github_copilot::GithubCopilotProvider::new(config, request_timeout_secs)?;
+            let provider = github_copilot::GithubCopilotProvider::new(
+                config,
+                request_timeout_secs,
+                max_response_bytes,
+            )?;
             tracing::debug!(
                 provider = %config.provider_id,
                 model = %config.model,
@@ -323,39 +360,52 @@ async fn create_bedrock_provider(config: &LlmConfig) -> Result<Arc<dyn LlmProvid
     Ok(Arc::new(provider))
 }
 
+/// One explicit deadline/redirect policy for registry SDK adapters. Clients
+/// remain owned by their provider and are reused across its requests.
+fn registry_http_client(provider: &str, timeout_secs: u64) -> Result<reqwest::Client, LlmError> {
+    let timeout = std::time::Duration::from_secs(timeout_secs);
+    if timeout.is_zero() || std::time::Instant::now().checked_add(timeout).is_none() {
+        return Err(LlmError::RequestFailed {
+            provider: provider.into(),
+            reason: "provider request deadline is invalid".into(),
+        });
+    }
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| LlmError::RequestFailed {
+            provider: provider.into(),
+            reason: "provider HTTP client could not be constructed".into(),
+        })
+}
+
+fn registry_extra_headers(
+    config: &RegistryProviderConfig,
+) -> Result<reqwest::header::HeaderMap, LlmError> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    for (name, value) in &config.extra_headers {
+        let invalid = || LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: "configured provider header is invalid".into(),
+        };
+        let name =
+            reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|_| invalid())?;
+        let mut value = reqwest::header::HeaderValue::from_str(value).map_err(|_| invalid())?;
+        value.set_sensitive(true);
+        headers.insert(name, value);
+    }
+    Ok(headers)
+}
+
 fn create_openai_compat_from_registry(
     config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     use rig::providers::openai;
 
-    let mut extra_headers = reqwest::header::HeaderMap::new();
-    for (key, value) in &config.extra_headers {
-        let name = match reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
-            Ok(n) => n,
-            Err(e) => {
-                tracing::debug!(
-                    provider = %config.provider_id,
-                    header = %key,
-                    error = %e,
-                    "Skipping extra header: invalid name",
-                );
-                continue;
-            }
-        };
-        let val = match reqwest::header::HeaderValue::from_str(value) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::debug!(
-                    provider = %config.provider_id,
-                    header = %key,
-                    error = %e,
-                    "Skipping extra header: invalid value",
-                );
-                continue;
-            }
-        };
-        extra_headers.insert(name, val);
-    }
+    let extra_headers = registry_extra_headers(config)?;
 
     let auth_override = config
         .api_key
@@ -372,8 +422,10 @@ fn create_openai_compat_from_registry(
     let mut builder = openai::Client::<reqwest::Client>::builder()
         .api_key(&api_key)
         .http_client(optional_auth_http::OptionalAuthHttp {
-            client: reqwest::Client::new(),
+            client: registry_http_client(&config.provider_id, request_timeout_secs)?,
             auth_override,
+            query_key_header: None,
+            max_response_bytes,
         });
     if !config.base_url.is_empty() {
         let base_url = normalize_openai_base_url(&config.base_url);
@@ -409,6 +461,8 @@ fn create_openai_compat_from_registry(
 
 fn create_anthropic_from_registry(
     config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     // Route to OAuth provider when an OAuth token is present and no real API
     // key was provided. When both are set, the API key takes priority (standard
@@ -424,7 +478,11 @@ fn create_anthropic_from_registry(
             base_url = if config.base_url.is_empty() { "default" } else { &config.base_url },
             "Using Anthropic OAuth API"
         );
-        let provider = anthropic_oauth::AnthropicOAuthProvider::new(config)?;
+        let provider = anthropic_oauth::AnthropicOAuthProvider::new(
+            config,
+            request_timeout_secs,
+            max_response_bytes,
+        )?;
         return Ok(Arc::new(provider));
     }
 
@@ -439,18 +497,22 @@ fn create_anthropic_from_registry(
             provider: config.provider_id.clone(),
         })?;
 
-    let client: anthropic::Client = if config.base_url.is_empty() {
-        anthropic::Client::new(&api_key)
-    } else {
-        anthropic::Client::builder()
-            .api_key(&api_key)
-            .base_url(&config.base_url)
-            .build()
+    let mut builder = anthropic::Client::<reqwest::Client>::builder()
+        .api_key(&api_key)
+        .http_client(optional_auth_http::OptionalAuthHttp {
+            client: registry_http_client(&config.provider_id, request_timeout_secs)?,
+            auth_override: None,
+            query_key_header: None,
+            max_response_bytes,
+        });
+    if !config.base_url.is_empty() {
+        builder = builder.base_url(&config.base_url);
     }
-    .map_err(|e| LlmError::RequestFailed {
-        provider: config.provider_id.clone(),
-        reason: format!("Failed to create Anthropic client: {e}"),
-    })?;
+    let client: anthropic::Client<optional_auth_http::OptionalAuthHttp> =
+        builder.build().map_err(|_| LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: "provider SDK client could not be constructed".into(),
+        })?;
 
     let cache_retention = config.cache_retention;
 
@@ -480,18 +542,27 @@ fn create_anthropic_from_registry(
 
 fn create_ollama_from_registry(
     config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     use rig::client::Nothing;
     use rig::providers::ollama;
 
-    let client: ollama::Client = ollama::Client::builder()
-        .base_url(&config.base_url)
-        .api_key(Nothing)
-        .build()
-        .map_err(|e| LlmError::RequestFailed {
-            provider: config.provider_id.clone(),
-            reason: format!("Failed to create Ollama client: {e}"),
-        })?;
+    let client: ollama::Client<optional_auth_http::OptionalAuthHttp> =
+        ollama::Client::<reqwest::Client>::builder()
+            .http_client(optional_auth_http::OptionalAuthHttp {
+                client: registry_http_client(&config.provider_id, request_timeout_secs)?,
+                auth_override: None,
+                query_key_header: None,
+                max_response_bytes,
+            })
+            .base_url(&config.base_url)
+            .api_key(Nothing)
+            .build()
+            .map_err(|e| LlmError::RequestFailed {
+                provider: config.provider_id.clone(),
+                reason: format!("Failed to create Ollama client: {e}"),
+            })?;
 
     let model = client.completion_model(&config.model);
 
@@ -522,6 +593,8 @@ fn create_ollama_from_registry(
 /// See #3201.
 fn create_deepseek_from_registry(
     config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     use rig::providers::deepseek;
 
@@ -533,18 +606,22 @@ fn create_deepseek_from_registry(
             provider: config.provider_id.clone(),
         })?;
 
-    let client: deepseek::Client = if config.base_url.is_empty() {
-        deepseek::Client::new(&api_key)
-    } else {
-        deepseek::Client::builder()
-            .api_key(&api_key)
-            .base_url(&config.base_url)
-            .build()
+    let mut builder = deepseek::Client::<reqwest::Client>::builder()
+        .api_key(&api_key)
+        .http_client(optional_auth_http::OptionalAuthHttp {
+            client: registry_http_client(&config.provider_id, request_timeout_secs)?,
+            auth_override: None,
+            query_key_header: None,
+            max_response_bytes,
+        });
+    if !config.base_url.is_empty() {
+        builder = builder.base_url(&config.base_url);
     }
-    .map_err(|e| LlmError::RequestFailed {
-        provider: config.provider_id.clone(),
-        reason: format!("Failed to create DeepSeek client: {e}"),
-    })?;
+    let client: deepseek::Client<optional_auth_http::OptionalAuthHttp> =
+        builder.build().map_err(|_| LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: "provider SDK client could not be constructed".into(),
+        })?;
 
     let model = client.completion_model(&config.model);
 
@@ -572,6 +649,8 @@ fn create_deepseek_from_registry(
 /// the same way as #3201 / #3225.
 fn create_openrouter_from_registry(
     config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     use rig::providers::openrouter;
 
@@ -587,36 +666,16 @@ fn create_openrouter_from_registry(
     // user-configured extras must follow the request through. The `http` crate
     // normalizes header names to lowercase internally, so configuring
     // `HTTP-Referer` or `X-Title` (canonical OpenRouter spelling) parses fine.
-    let mut extra_headers = reqwest::header::HeaderMap::new();
-    for (key, value) in &config.extra_headers {
-        let name = match reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
-            Ok(n) => n,
-            Err(e) => {
-                tracing::debug!(
-                    provider = %config.provider_id,
-                    header = %key,
-                    error = %e,
-                    "Skipping extra header: invalid name",
-                );
-                continue;
-            }
-        };
-        let val = match reqwest::header::HeaderValue::from_str(value) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::debug!(
-                    provider = %config.provider_id,
-                    header = %key,
-                    error = %e,
-                    "Skipping extra header: invalid value",
-                );
-                continue;
-            }
-        };
-        extra_headers.insert(name, val);
-    }
+    let extra_headers = registry_extra_headers(config)?;
 
-    let mut builder = openrouter::Client::builder().api_key(&api_key);
+    let mut builder = openrouter::Client::<reqwest::Client>::builder()
+        .api_key(&api_key)
+        .http_client(optional_auth_http::OptionalAuthHttp {
+            client: registry_http_client(&config.provider_id, request_timeout_secs)?,
+            auth_override: None,
+            query_key_header: None,
+            max_response_bytes,
+        });
     if !config.base_url.is_empty() {
         builder = builder.base_url(&config.base_url);
     }
@@ -624,10 +683,11 @@ fn create_openrouter_from_registry(
         builder = builder.http_headers(extra_headers);
     }
 
-    let client: openrouter::Client = builder.build().map_err(|e| LlmError::RequestFailed {
-        provider: config.provider_id.clone(),
-        reason: format!("Failed to create OpenRouter client: {e}"),
-    })?;
+    let client: openrouter::Client<optional_auth_http::OptionalAuthHttp> =
+        builder.build().map_err(|e| LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: format!("Failed to create OpenRouter client: {e}"),
+        })?;
 
     let model = client.completion_model(&config.model);
 
@@ -657,6 +717,8 @@ fn create_openrouter_from_registry(
 /// through the separate `gemini_oauth` backend.
 fn create_gemini_from_registry(
     config: &RegistryProviderConfig,
+    request_timeout_secs: u64,
+    max_response_bytes: Option<u64>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
     use rig::providers::gemini;
 
@@ -668,28 +730,31 @@ fn create_gemini_from_registry(
             provider: config.provider_id.clone(),
         })?;
 
-    // Pre-3201/3225 installs persisted the OpenAI-shim URL
-    // (`https://generativelanguage.googleapis.com/v1beta/openai`) under
-    // `llm_builtin_overrides[gemini].base_url`. Passing that to rig-core's
-    // native Gemini client would produce
-    // `…/v1beta/openai/v1beta/models/{model}:generateContent` and break every
-    // request. Discard any persisted shim URL and use the native default.
-    let base_url = sanitize_gemini_base_url(&config.base_url);
-
-    let client: gemini::Client = if base_url.is_empty() {
-        gemini::Client::new(&api_key)
-    } else {
-        gemini::Client::builder()
-            .api_key(&api_key)
-            .base_url(&base_url)
-            .build()
-    }
-    .map_err(|e| LlmError::RequestFailed {
-        provider: config.provider_id.clone(),
-        reason: format!("Failed to create Gemini client: {e}"),
+    // Adapt a legacy shim path on the same host; never discard an explicitly
+    // selected proxy and send its key to the SDK's public default instead.
+    let base_url = sanitize_gemini_base_url(&config.base_url).map_err(|_| LlmError::RequestFailed {
+        provider: config.provider_id.clone(), reason: "Gemini endpoint must use HTTP(S) without URL credentials/query/fragment; this SDK requires its native v1beta API".into(),
     })?;
+    let mut builder = gemini::Client::<reqwest::Client>::builder()
+        .api_key(&api_key)
+        .http_client(optional_auth_http::OptionalAuthHttp {
+            client: registry_http_client(&config.provider_id, request_timeout_secs)?,
+            auth_override: None,
+            query_key_header: Some("x-goog-api-key"),
+            max_response_bytes,
+        });
+    if !base_url.is_empty() {
+        builder = builder.base_url(&base_url);
+    }
+    let client: gemini::Client<optional_auth_http::OptionalAuthHttp> =
+        builder.build().map_err(|_| LlmError::RequestFailed {
+            provider: config.provider_id.clone(),
+            reason: "Gemini SDK client could not be constructed".into(),
+        })?;
 
-    let model = client.completion_model(&config.model);
+    // Rig 0.30's Gemini Capabilities<H> names the default transport model;
+    // its public generic constructor preserves our actual HTTP adapter.
+    let model = gemini::CompletionModel::new(client, &config.model);
 
     tracing::debug!(
         provider = %config.provider_id,
@@ -704,27 +769,38 @@ fn create_gemini_from_registry(
     ))
 }
 
-/// Discard pre-3225 OpenAI-shim Gemini URLs (`…/v1beta/openai`).
-///
-/// Returns the empty string to signal "use rig-core's native default" when the
-/// configured base URL is the legacy shim. Other URLs (custom proxies, region
-/// endpoints, etc.) pass through unchanged.
-fn sanitize_gemini_base_url(base_url: &str) -> String {
+/// Normalize native/shim v1beta paths while preserving the exact authority
+/// and proxy prefix. Stable v1 cannot be silently rewritten by this v1beta SDK.
+fn sanitize_gemini_base_url(base_url: &str) -> Result<String, ()> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.ends_with("/v1beta/openai") || lower.ends_with("/v1/openai") {
-        tracing::debug!(
-            stale_base_url = %base_url,
-            "Ignoring legacy OpenAI-shim base URL for native Gemini provider; \
-             using rig-core default. Clear `llm_builtin_overrides[gemini].base_url` \
-             in settings to silence this warning."
-        );
-        return String::new();
+    let mut url = reqwest::Url::parse(trimmed).map_err(|_| ())?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(());
     }
-    trimmed.to_string()
+    let path = url.path().trim_end_matches('/');
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with("/v1") || lower.ends_with("/v1/openai") {
+        return Err(());
+    }
+    let path = if lower.ends_with("/v1beta/openai") {
+        &path[..path.len() - "/v1beta/openai".len()]
+    } else if lower.ends_with("/v1beta") {
+        &path[..path.len() - "/v1beta".len()]
+    } else {
+        path
+    };
+    let path = path.to_owned();
+    url.set_path(&path);
+    Ok(url.as_str().trim_end_matches('/').to_owned())
 }
 
 /// Create an OpenAI Codex provider with OAuth authentication.
@@ -749,11 +825,12 @@ async fn create_openai_codex_provider(
 
     let token = session_mgr.get_access_token().await?;
 
-    let provider = Arc::new(OpenAiCodexProvider::new(
+    let provider = Arc::new(OpenAiCodexProvider::new_with_response_limit(
         &codex.model,
         &codex.api_base_url,
         token.expose_secret(),
         config.request_timeout_secs,
+        config.max_response_bytes,
     )?);
 
     tracing::debug!(
@@ -797,22 +874,26 @@ fn create_cheap_provider_for_backend(
     session: Arc<SessionManager>,
     cheap_model: &str,
 ) -> Result<Option<Arc<dyn LlmProvider>>, LlmError> {
-    if config.backend == "nearai" {
+    if matches!(config.backend_kind(), LlmBackendKind::NearAi) {
         let mut cheap_config = config.nearai.clone();
         cheap_config.model = cheap_model.to_string();
-        let provider =
-            create_llm_provider_with_config(&cheap_config, session, config.request_timeout_secs)?;
+        let provider = create_nearai_bounded(
+            &cheap_config,
+            session,
+            config.request_timeout_secs,
+            config.max_response_bytes,
+        )?;
         return Ok(Some(provider));
     }
 
-    if config.backend == "bedrock" {
+    if matches!(config.backend_kind(), LlmBackendKind::Bedrock) {
         return Err(LlmError::RequestFailed {
             provider: "bedrock".to_string(),
             reason: "Smart routing with cheap model is not supported for Bedrock yet".to_string(),
         });
     }
 
-    if config.backend == "gemini_oauth" {
+    if matches!(config.backend_kind(), LlmBackendKind::GeminiOauth) {
         let Some(ref gemini_config) = config.gemini_oauth else {
             return Err(LlmError::RequestFailed {
                 provider: "gemini_oauth".to_string(),
@@ -821,7 +902,11 @@ fn create_cheap_provider_for_backend(
         };
         let mut cheap_gemini_config = gemini_config.clone();
         cheap_gemini_config.model = cheap_model.to_string();
-        let provider = GeminiOauthProvider::new(cheap_gemini_config)?;
+        let provider = GeminiOauthProvider::new(
+            cheap_gemini_config,
+            config.request_timeout_secs,
+            config.max_response_bytes,
+        )?;
         return Ok(Some(Arc::new(provider)));
     }
 
@@ -836,7 +921,11 @@ fn create_cheap_provider_for_backend(
 
     let mut cheap_reg_config = reg_config.clone();
     cheap_reg_config.model = cheap_model.to_string();
-    let provider = create_registry_provider_inner(&cheap_reg_config, config.request_timeout_secs)?;
+    let provider = create_registry_provider_bounded(
+        &cheap_reg_config,
+        config.request_timeout_secs,
+        config.max_response_bytes,
+    )?;
     Ok(Some(provider))
 }
 
@@ -879,7 +968,8 @@ async fn build_provider_chain_components_with_options(
     session: Arc<SessionManager>,
     include_standalone_cheap: bool,
 ) -> Result<ProviderChainComponents, LlmError> {
-    let llm: Arc<dyn LlmProvider> = if config.backend == "openai_codex" {
+    let llm: Arc<dyn LlmProvider> = if matches!(config.backend_kind(), LlmBackendKind::OpenAiCodex)
+    {
         create_openai_codex_provider(config).await?
     } else {
         create_llm_provider(config, session.clone()).await?
@@ -896,7 +986,11 @@ async fn build_provider_chain_components_with_options(
             max_retries = retry_config.max_retries,
             "LLM retry wrapper enabled"
         );
-        Arc::new(RetryProvider::new(llm, retry_config.clone()))
+        Arc::new(RetryProvider::new_with_timing(
+            llm,
+            retry_config.clone(),
+            config.retry_timing,
+        )?)
     } else {
         llm
     };
@@ -912,7 +1006,11 @@ async fn build_provider_chain_components_with_options(
                 ),
             })?;
         let cheap: Arc<dyn LlmProvider> = if retry_config.max_retries > 0 {
-            Arc::new(RetryProvider::new(cheap, retry_config.clone()))
+            Arc::new(RetryProvider::new_with_timing(
+                cheap,
+                retry_config.clone(),
+                config.retry_timing,
+            )?)
         } else {
             cheap
         };
@@ -933,8 +1031,12 @@ async fn build_provider_chain_components_with_options(
         llm
     };
 
-    // 3. Failover
-    let llm: Arc<dyn LlmProvider> = if let Some(ref fallback_model) = config.nearai.fallback_model {
+    // 3. A NEAR configuration cannot redirect another selected protocol's
+    // failed request to a different service or credential owner.
+    let nearai_fallback = matches!(config.backend_kind(), LlmBackendKind::NearAi)
+        .then_some(config.nearai.fallback_model.as_ref())
+        .flatten();
+    let llm: Arc<dyn LlmProvider> = if let Some(fallback_model) = nearai_fallback {
         if fallback_model == &config.nearai.model {
             tracing::debug!(
                 "fallback_model is the same as primary model, failover may not be effective"
@@ -942,10 +1044,11 @@ async fn build_provider_chain_components_with_options(
         }
         let mut fallback_config = config.nearai.clone();
         fallback_config.model = fallback_model.clone();
-        let fallback = create_llm_provider_with_config(
+        let fallback = create_nearai_bounded(
             &fallback_config,
             session.clone(),
             config.request_timeout_secs,
+            config.max_response_bytes,
         )?;
         tracing::debug!(
             primary = %llm.model_name(),
@@ -953,7 +1056,11 @@ async fn build_provider_chain_components_with_options(
             "LLM failover enabled"
         );
         let fallback: Arc<dyn LlmProvider> = if retry_config.max_retries > 0 {
-            Arc::new(RetryProvider::new(fallback, retry_config.clone()))
+            Arc::new(RetryProvider::new_with_timing(
+                fallback,
+                retry_config.clone(),
+                config.retry_timing,
+            )?)
         } else {
             fallback
         };
@@ -1122,7 +1229,11 @@ pub fn create_gemini_oauth_provider(config: &LlmConfig) -> Result<Arc<dyn LlmPro
         .ok_or_else(|| LlmError::AuthFailed {
             provider: "gemini_oauth".to_string(),
         })?;
-    let provider = gemini_oauth::GeminiOauthProvider::new(gemini_config)?;
+    let provider = gemini_oauth::GeminiOauthProvider::new(
+        gemini_config,
+        config.request_timeout_secs,
+        config.max_response_bytes,
+    )?;
     Ok(Arc::new(provider))
 }
 
@@ -1181,12 +1292,15 @@ mod tests {
     fn test_llm_config() -> LlmConfig {
         LlmConfig {
             backend: "nearai".to_string(),
+            resolved_protocol: None,
             session: SessionConfig::default(),
             nearai: test_nearai_config(),
             provider: None,
             bedrock: None,
             gemini_oauth: None,
             request_timeout_secs: 120,
+            retry_timing: Default::default(),
+            max_response_bytes: None,
             cheap_model: None,
             smart_routing_cascade: true,
             openai_codex: None,
@@ -1483,63 +1597,166 @@ mod tests {
 
     /// Regression for #3225: pre-PR, the configure UI/setup default for
     /// Gemini was the OpenAI shim URL ending in `/v1beta/openai`. Once
-    /// `ProviderProtocol::Gemini` switches to rig-core's native client
-    /// (which appends `/v1beta/models/{model}:generateContent`), passing
-    /// the persisted shim URL through would produce
-    /// `…/v1beta/openai/v1beta/models/...` and break every Gemini call.
-    /// `sanitize_gemini_base_url` must strip those legacy values.
-    #[test]
-    fn sanitize_gemini_base_url_strips_legacy_openai_shim() {
-        // The exact string the old configure UI persisted.
-        assert_eq!(
-            sanitize_gemini_base_url("https://generativelanguage.googleapis.com/v1beta/openai"),
-            "",
-            "legacy OpenAI-shim base URL must be discarded so rig-core's \
-             native default takes over",
+    #[tokio::test]
+    async fn actual_registry_http_preserves_proxy_credentials_and_request_deadline() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut observations = Vec::new();
+            for index in 0..3 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let mut buffer = [0u8; 4096];
+                let header_end = loop {
+                    let n = socket.read(&mut buffer).await.unwrap();
+                    assert!(n > 0);
+                    bytes.extend_from_slice(&buffer[..n]);
+                    assert!(bytes.len() < 65536);
+                    if let Some(end) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                        break end + 4;
+                    }
+                };
+                let headers = String::from_utf8(bytes[..header_end].to_vec()).unwrap();
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|v| v.parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                while bytes.len() < header_end + length {
+                    let n = socket.read(&mut buffer).await.unwrap();
+                    assert!(n > 0);
+                    bytes.extend_from_slice(&buffer[..n]);
+                    assert!(bytes.len() < 65536);
+                }
+                observations.push(headers);
+                if index == 2 {
+                    tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+                    break;
+                }
+                if index == 1 {
+                    socket.write_all(b"HTTP/1.1 302 Found\r\nLocation: /must-not-follow\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+                } else {
+                    let body = r#"{"responseId":"native-gemini-response","candidates":[{"content":{"role":"model","parts":[{"text":"native proxy answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2,"totalTokenCount":3}}"#;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                }
+            }
+            observations
+        });
+        let gemini = RegistryProviderConfig::generic(
+            ProviderProtocol::Gemini,
+            "local-gemini",
+            Some(secrecy::SecretString::from("native-gemini-fixture-key")),
+            format!("http://{address}/proxy/v1beta/openai"),
+            "native-gemini-model",
         );
-        // With trailing slash (also seen in saved overrides).
+        let mut chain = crate::testing::nearai_test_config("unselected-near-model");
+        chain.backend = gemini.provider_id.clone();
+        chain.resolved_protocol = Some(ProviderProtocol::Gemini);
+        chain.provider = Some(gemini.clone());
+        chain.request_timeout_secs = 1;
+        chain.nearai.base_url = format!("http://{address}/must-not-fail-over");
+        chain.nearai.api_key = Some(secrecy::SecretString::from("unselected-near-fixture-key"));
+        chain.nearai.fallback_model = Some("unselected-fallback-model".into());
+        let session_dir = tempfile::tempdir().unwrap();
+        let session = Arc::new(SessionManager::new(SessionConfig {
+            auth_base_url: format!("http://{address}/unused-auth"),
+            session_path: session_dir.path().join("session.json"),
+        }));
+        let provider = build_static_provider_chain(&chain, session).await.unwrap();
+        let request = || {
+            CompletionRequest::new(vec![ChatMessage::user("native transport check")])
+                .with_max_tokens(16)
+        };
         assert_eq!(
-            sanitize_gemini_base_url("https://generativelanguage.googleapis.com/v1beta/openai/"),
-            "",
+            provider.complete(request()).await.unwrap().content,
+            "native proxy answer"
         );
-        // Case-insensitive on the suffix match.
-        assert_eq!(
-            sanitize_gemini_base_url("https://Generativelanguage.googleapis.com/V1beta/OpenAI"),
-            "",
+        let rejected = provider
+            .complete(request())
+            .await
+            .expect_err("redirect must remain an error");
+        assert!(!rejected.to_string().contains("native-gemini-fixture-key"));
+        let openai = RegistryProviderConfig::generic(
+            ProviderProtocol::OpenAiCompletions,
+            "local-openai",
+            None,
+            format!("http://{address}/slow/v1"),
+            "native-openai-model",
         );
-        // The alternate `/v1/openai` shape (some adapters used this).
-        assert_eq!(
-            sanitize_gemini_base_url("https://example.com/v1/openai"),
-            "",
+        let provider = create_registry_provider_inner(&openai, 1).unwrap();
+        let started = std::time::Instant::now();
+        assert!(provider.complete(request()).await.is_err());
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(2500),
+            "configured one-second deadline must reach the SDK client"
         );
+        let observed = server.await.unwrap();
+        assert_eq!(observed.len(), 3);
+        for request in &observed[..2] {
+            assert!(request.starts_with(
+                "POST /proxy/v1beta/models/native-gemini-model:generateContent HTTP/1.1"
+            ));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-goog-api-key: native-gemini-fixture-key")
+            );
+            assert!(!request.contains("?key=") && !request.contains("authorization:"));
+        }
+        assert!(observed[2].starts_with("POST /slow/v1/chat/completions HTTP/1.1"));
+        assert!(!observed[2].contains("authorization:"));
+        let mut invalid = openai;
+        invalid
+            .extra_headers
+            .push(("x-invalid".into(), "invalid\r\nvalue".into()));
+        assert!(
+            create_registry_provider_inner(&invalid, 1).is_err(),
+            "malformed configured headers cannot be silently dropped"
+        );
+        assert!(create_registry_provider_inner(&gemini, 0).is_err());
     }
 
-    /// Empty/whitespace-only input must still be treated as "use the default",
-    /// not get accidentally upgraded to a real URL.
     #[test]
-    fn sanitize_gemini_base_url_passes_through_empty() {
-        assert_eq!(sanitize_gemini_base_url(""), "");
-        assert_eq!(sanitize_gemini_base_url("   "), "");
-    }
-
-    /// Custom proxies / region endpoints / native Gemini bases must
-    /// pass through unchanged (modulo trailing-slash trimming).
-    #[test]
-    fn sanitize_gemini_base_url_preserves_custom_endpoints() {
-        // Native default base (rig-core would also use this).
+    fn sanitize_gemini_base_url_retains_authority_and_proxy_prefix() {
+        for endpoint in [
+            "https://proxy.example/proxy/v1beta/openai",
+            "https://proxy.example/proxy/v1beta",
+            "https://proxy.example/proxy/v1beta/openai/",
+        ] {
+            assert_eq!(
+                sanitize_gemini_base_url(endpoint).unwrap(),
+                "https://proxy.example/proxy"
+            );
+        }
         assert_eq!(
-            sanitize_gemini_base_url("https://generativelanguage.googleapis.com"),
-            "https://generativelanguage.googleapis.com",
+            sanitize_gemini_base_url("https://Generativelanguage.googleapis.com/V1beta/OpenAI")
+                .unwrap(),
+            "https://generativelanguage.googleapis.com"
         );
-        // Custom proxy.
         assert_eq!(
-            sanitize_gemini_base_url("https://gemini-proxy.internal.example.com"),
-            "https://gemini-proxy.internal.example.com",
+            sanitize_gemini_base_url("https://proxy.example").unwrap(),
+            "https://proxy.example"
         );
-        // Trailing slash gets trimmed.
-        assert_eq!(
-            sanitize_gemini_base_url("https://gemini-proxy.internal.example.com/"),
-            "https://gemini-proxy.internal.example.com",
-        );
+        assert_eq!(sanitize_gemini_base_url("").unwrap(), "");
+        for invalid in [
+            "https://proxy.example/v1/openai",
+            "https://proxy.example/v1",
+            "https://user:credential@proxy.example",
+            "https://proxy.example?key=credential",
+            "file:///private/provider",
+        ] {
+            assert!(sanitize_gemini_base_url(invalid).is_err());
+        }
     }
 }

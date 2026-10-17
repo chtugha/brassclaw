@@ -1,3 +1,6 @@
+import { PrefixModelDesigns } from "./prefix-model-designs.js";
+import { PrefixSourcesPanel } from "./prefix-sources-panel.js";
+import { PrefixGenerationHistory } from "./prefix-generation-history.js";
 import { React, html } from "../../../lib/html.js";
 import { Badge } from "../../../design-system/badge.js";
 import { Button } from "../../../design-system/button.js";
@@ -37,6 +40,7 @@ export function PrefixTab() {
 
   return html`
     <div className="space-y-5">
+      <${PrefixModelDesigns} t=${t} />
       ${regenerateError &&
         html`
           <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -70,7 +74,7 @@ export function PrefixTab() {
                 ${entries.map(
                   (entry) =>
                     html`<${PrefixEntryRow}
-                      key=${entry.name}
+                      key=${entry.label || entry.name}
                       entry=${entry}
                       isRegenerating=${regenerating.has(entry.name)}
                       onRegenerate=${handleRegenerate}
@@ -115,11 +119,13 @@ function fmtGeneratedAgo(days, t) {
 // PrefixEntryRow — one row per named prefix bundle.
 // ---------------------------------------------------------------------------
 
-function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
+export function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
   // An entry that has never been generated has no fingerprint or assembled_at.
   const neverGenerated = !entry.assembled_at && !entry.fingerprint;
-  const staleTone = neverGenerated ? "muted" : entry.is_stale ? "warning" : "positive";
-  const staleLabel = neverGenerated
+  const blocked = entry.generation_available !== true;
+  const legacy = entry.generation_status === "legacy-unverified";
+  const staleTone = blocked || legacy ? "warning" : neverGenerated ? "muted" : entry.is_stale ? "warning" : "positive";
+  const staleLabel = blocked ? t("prefix.blocked") : legacy ? t("prefix.legacyUnverified") : neverGenerated
     ? t("prefix.neverGenerated")
     : entry.is_stale
     ? t("prefix.stale")
@@ -152,12 +158,16 @@ function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
               aria-label="Generating"
             />`}
         </div>
+        ${entry.description && html`<p className="mt-1 text-xs text-[var(--v2-text-muted)]">${entry.description}</p>`}
+        ${blocked && html`<p role="status" className="mt-1 text-xs text-[var(--v2-text-muted)]">${t(entry.blocked_reason || "prefix.generationPrerequisites")}</p>`}
+        ${legacy && html`<p className="mt-1 text-xs text-[var(--v2-text-muted)]">${t("prefix.legacyNotice")}</p>`}
         ${entry.fingerprint &&
           html`
             <div className="mt-1 truncate font-mono text-[11px] text-[var(--v2-text-muted)]">
               ${t("prefix.fingerprint")}: ${entry.fingerprint}
             </div>
           `}
+        <${PrefixGenerationHistory} entry=${entry} t=${t} />
         ${(generatedAgoLabel || generationTimeLabel) &&
           html`
             <div className="mt-1 flex gap-3 text-[11px] text-[var(--v2-text-muted)]">
@@ -166,11 +176,12 @@ function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
             </div>
           `}
       </div>
+      <${PrefixSourcesPanel} entry=${entry} t=${t} />
       <${Button}
         variant="secondary"
         size="sm"
-        disabled=${isRegenerating}
-        onClick=${() => onRegenerate(entry.name)}
+        disabled=${isRegenerating || blocked}
+        onClick=${() => { if (!blocked && !isRegenerating) onRegenerate(entry.name); }}
       >
         ${actionLabel}
       <//>

@@ -1,0 +1,74 @@
+PREFIX-MAKER — EXACT OFFLINE BUILD COMMANDS (LINUX OR macOS)
+
+Run from the BrassClaw repository root. This creates a quarantined reference;
+it does not call a model, change vLLM/cache services or activate a prefix.
+Python 3 is required. Target tokenization additionally requires the existing
+transformers/tokenizers runtime and a complete local immutable tokenizer.
+
+1. Write the minimum required development-source inventory:
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+names = ['skills.md', 'recipe.md', 'tools.md', 'toolskills.md',
+         'CLAUDE.md', 'AGENTS.md', 'simplified_v3.md',
+         'scripts/prefix/prefix-maker-reference.md']
+Path('prefix-maker-inventory.json').write_text(json.dumps({
+    'format': 'brassclaw-prefix-source-inventory/1',
+    'release': 'prefix-maker-development-snapshot',
+    'sources': [{'path': name, 'kind': 'document', 'disposition': 'included',
+                 'reason': 'complete required Prefix-Maker reference'} for name in names]
+}, indent=2))
+PY
+
+2. Snapshot those exact originals:
+
+SNAPSHOT_JSON=$(python3 scripts/prefix/prefix-maker-compiler.py \
+  --inventory prefix-maker-inventory.json --source-root . \
+  --output prefix-maker-build/sources)
+PACKAGE_ID=$(printf '%s' "$SNAPSHOT_JSON" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["source_package"])')
+
+The minimum inventory teaches design/BrassClaw contracts. It is not a claim of
+complete verified architecture documentation for every model. Include reviewed,
+versioned target/runtime evidence and complete registered compiler/adapter
+documentation in the real inventory. Mark unavailable facts Unknown. Imported
+catalogue bytes can be supplied with --catalogue-export as in BASE-PROMPT-USAGE.txt.
+Compilation never refreshes remote references or invents approval from JSON.
+
+3. Build with the actual local tokenizer and effective target context:
+
+TOKENIZER_DIR="/path/to/local/immutable/tokenizer-snapshot"
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+python3 scripts/prefix/prefix-maker-compiler.py \
+  --package "prefix-maker-build/sources/$PACKAGE_ID" \
+  --output prefix-maker-build/generations \
+  --tokenizer-dir "$TOKENIZER_DIR" --max-model-len 131072 --reserve-tokens 8192
+
+Use 131072 only for a target whose effective context was verified as that size.
+The current shared rendering adapter requires the supported Ornith/Qwen template;
+another model needs its qualified adapter. Oversized complete references fail
+without publication or source omission. Increase reserve for larger dynamic input.
+
+Without tokenizer/target artifacts, build source-only with unmeasured geometry:
+
+BUILD_JSON=$(python3 scripts/prefix/prefix-maker-compiler.py \
+  --package "prefix-maker-build/sources/$PACKAGE_ID" \
+  --output prefix-maker-build/generations)
+GENERATION_ID=$(printf '%s' "$BUILD_JSON" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["generation"])')
+python3 scripts/prefix/prefix-maker-compiler.py \
+  --export-generation "prefix-maker-build/generations/$GENERATION_ID" \
+  --output prefix-maker-generation.json
+
+The export retains raw originals, full evidence, stable reference, exact compiler/
+adapter identities and design coverage. Import it through Prefix-Maker's generation
+history in the existing WebUI to retain it as quarantined. Source quality, model
+behavior, runtime qualification, design acceptance and serving selection are
+separate gates; an export or HTTP 200 is not a Ready/cache-correctness receipt.
+
+To test the explicit whole-unit deduplicated design, add
+--evidence-view literal-reference/v2-deduplicated to a compile command.
+This retains a complete range/canonical-origin reconstruction map and original
+artifacts. It is a separate design candidate; it does not silently replace an
+accepted literal-reference/v1 design or prove stronger model/cache behavior.

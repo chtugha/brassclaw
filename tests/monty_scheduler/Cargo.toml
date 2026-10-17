@@ -1,0 +1,21 @@
+[package]
+name = "brassclaw_monty_scheduler_tests"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+# A small actual-interpreter gate for mechanical scheduler changes. Product
+# admission, resource publication and retained task acceptance are additional.
+[workspace]
+
+[dependencies]
+monty = { path = "../../vendor/monty-control/crates/monty", features = ["memory-model-checks", "test-hooks"] }
+monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[[test]]
+name = "scheduler_accounting"
+path = "../monty_control/tests/scheduler_accounting.rs"

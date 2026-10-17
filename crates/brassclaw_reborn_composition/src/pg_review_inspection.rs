@@ -30,7 +30,8 @@ pub(crate) async fn list(
         .query(
             "SELECT source_run_id,attempt_id,phase,model_dispatch_count,
         EXISTS(SELECT 1 FROM brassclaw_monty_review_settlements s WHERE s.attempt_id=w.attempt_id),
-        (SELECT count(*) FROM brassclaw_monty_review_dispositions d WHERE d.attempt_id=w.attempt_id)
+        (SELECT count(*) FROM brassclaw_monty_review_dispositions d WHERE d.attempt_id=w.attempt_id),
+        EXISTS(SELECT 1 FROM brassclaw_monty_review_reconciliations r WHERE r.attempt_id=w.attempt_id)
         FROM brassclaw_monty_review_work w WHERE attempt_id>$1 ORDER BY attempt_id LIMIT 51",
             &[&after],
         )
@@ -46,6 +47,7 @@ pub(crate) async fn list(
             model_dispatch_count: r.get(3),
             settlement_recorded: r.get(4),
             disposition_count: r.get(5),
+            reconciliation_recorded: r.get(6),
         })
         .collect();
     let next_after = (rows.len() > 50).then(|| items.last().unwrap().attempt_id.clone());
@@ -70,6 +72,7 @@ async fn snapshot<C: GenericClient + Sync>(
                             encode(sha256(convert_to(o.output_bytes,'UTF8')),'hex')))),
             'operations',COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.operation)
                 FROM brassclaw_monty_review_operations o WHERE o.attempt_id=w.attempt_id),'[]'::jsonb),
+            'reconciliation',(SELECT to_jsonb(r) FROM brassclaw_monty_review_reconciliations r WHERE r.attempt_id=w.attempt_id),
             'settlement',(SELECT to_jsonb(s) FROM brassclaw_monty_review_settlements s
                 WHERE s.attempt_id=w.attempt_id))::text AS bytes
         FROM brassclaw_monty_review_work w JOIN brassclaw_monty_review_events e ON e.run_id=w.source_run_id
@@ -203,4 +206,57 @@ pub(crate) async fn record(
         &[&disposition,&attempt,&actor,&evidence,&checksum,&request.note]).await.map_err(unavailable)?;
     tx.commit().await.map_err(unavailable)?;
     Ok(receipt(disposition, attempt, checksum))
+}
+
+#[cfg(feature = "root-llm-provider")]
+pub(crate) async fn reconcile(
+    pool: &Arc<PgPool>,
+    attempt: &str,
+    request: brassclaw_product_workflow::ReviewReconciliationRequest,
+) -> Result<brassclaw_product_workflow::ReviewReconciliationReceipt, RecipeStoreError> {
+    let parsed = id(attempt)?;
+    if request.evidence_checksum.len() != 64
+        || !request
+            .evidence_checksum
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(RecipeStoreError::Invalid(
+            "exact evidence checksum required".into(),
+        ));
+    }
+    let client = pool.get().await.map_err(unavailable)?;
+    let (_, _, checksum) = snapshot(&**client, parsed).await?;
+    // Repeating a successful release is bookkeeping only. The immutable proof
+    // is not proof that another process's lost native handles were released.
+    let recorded = client
+        .query_opt(
+            "SELECT evidence_bytes FROM brassclaw_monty_review_reconciliations WHERE attempt_id=$1",
+            &[&parsed],
+        )
+        .await
+        .map_err(unavailable)?
+        .is_some();
+    if !recorded && checksum != request.evidence_checksum {
+        return Err(RecipeStoreError::Conflict(
+            "review evidence changed; inspect again".into(),
+        ));
+    }
+    let released = crate::completed_turn_review::reconcile_attempt(pool, parsed)
+        .await
+        .map_err(|_| RecipeStoreError::Unavailable("native reconciliation unresolved".into()))?;
+    let recorded = client
+        .query_opt(
+            "SELECT evidence_bytes FROM brassclaw_monty_review_reconciliations WHERE attempt_id=$1",
+            &[&parsed],
+        )
+        .await
+        .map_err(unavailable)?
+        .is_some();
+    Ok(brassclaw_product_workflow::ReviewReconciliationReceipt {
+        attempt_id: attempt.into(),
+        retention_released: released,
+        reconciliation_recorded: recorded,
+        work_replayed: false,
+    })
 }

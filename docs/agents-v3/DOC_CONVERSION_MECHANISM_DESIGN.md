@@ -29,7 +29,7 @@ not completed runtime or database functionality.
   Python source. Monty owns each task's intermediate results; unrelated tasks
   and attempts stay isolated, including across child execution and waits.
 - Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
 Current code still has plain text substitution, fresh state in nested step
@@ -253,7 +253,7 @@ just concatenates it with the other validated components, ordered by
 ### 3.3 Token budget
 
 Per §0.13, the base prompt is the cached prefix; per-turn patches are
-<4k tokens. The converted docs live in the **prefix**. **There is no
+`<4k` tokens. The converted docs live in the **prefix**. **There is no
 per-doc token budget (Answer 5)** — docs are not budget-limited. The
 deterministic §7 extract is used verbatim; the LLM-assisted compression
 pass (Sempai, when connected) runs for clarity/injection-safety, **not**
@@ -316,7 +316,7 @@ general-purpose, not doc-specific.
 | **Recipe** | 21 | orchestrator (IBS); routes sub-steps to channels | the orchestrator (runs steps one by one) | the per-doc converter `doc-convert` — **composes** leaves (§4.3). |
 | **Skill** | 1-3 prose + 22 code | orchestrator | the orchestrator | ONE tool-usage pattern: prose plus explicitly associated PythonCode. |
 | **Extension overview** | 23 | context, not executable steps | humans / explicit LLM context | `doc-convert-method` in the doc-sync catalogue overview; references reusable units. |
-| **ToolSkill** | 13 | **rust** (`rust_items`) | the **executor** (never the orchestrator) | executor-facing param/precondition description, one per Tool, <5000 tok. |
+| **ToolSkill** | 13 | **rust** (`rust_items`) | the **executor** (never the orchestrator) | executor-facing param/precondition description, one per Tool, `<5000` tok. |
 | **Tool** | 0 | **rust** (executor applies it) | opaque to the orchestrator | the Rust capability; one concern each; the only kind that touches Postgres. |
 | **PythonCode** | 22 | orchestrator (`orchestrator_items`) | the orchestrator | executable Skill part calling `host.<tool>(...)`, or standalone pure-logic helper; no direct I/O/DB. |
 | **ExtensionCatalogue** | 23 | (namespace) | humans / overview | the `doc-sync` namespace + `overview_doc`. |
@@ -556,7 +556,7 @@ Kohai/Sempai system is **not** in the refresh loop.
    LLM KV cache.
 5. **No per-turn cost.** The conversion is an event-time action, not a
    per-turn action. Per-turn prompts only carry the `base-prompt`
-   placeholder + a <4k patch (§0.13); the converted docs are already in
+   placeholder + a `<4k` patch (§0.13); the converted docs are already in
    the cached prefix.
 
 ---

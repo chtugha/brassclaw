@@ -311,8 +311,10 @@ pub enum IntentSystemError {
     InvalidChoice,
     #[error("intent selection requires repeatable-read or serializable isolation")]
     SnapshotIsolation,
-    #[error("intent catalogue eligibility is inconsistent or exceeds technical capacity")]
+    #[error("intent catalogue eligibility is inconsistent")]
     InvalidEligibility,
+    #[error("intent catalogue eligibility cannot fit in available memory")]
+    EligibilityCapacity,
 }
 
 // ---------------------------------------------------------------------------
@@ -393,29 +395,49 @@ impl RetainedIntentEligibility {
     pub fn from_instructions(
         instructions: &[&super::retained_instruction::RetainedRecipeInstruction],
     ) -> Result<Self, IntentSystemError> {
-        use std::collections::{BTreeMap, BTreeSet};
-        let mut references = BTreeMap::new();
-        let mut rows = BTreeSet::new();
-        let mut bytes = 0usize;
-        let mut visited = 0usize;
-        if instructions.len() > 4096 {
+        // Admission belongs to the catalogue owner and its retained policy.
+        // Adding separate fixed limits here makes acknowledged larger settings
+        // ineffective. This helper rejects inconsistency/allocation failure,
+        // never truncates the owner's already selected workflows.
+        let capacity = || IntentSystemError::EligibilityCapacity;
+        let mut graphs = Vec::new();
+        graphs
+            .try_reserve_exact(instructions.len())
+            .map_err(|_| capacity())?;
+        graphs.extend(instructions.iter().map(|i| i.snapshot()));
+        // Variants of one Recipe share the same immutable snapshot. Inspect it
+        // once; pointer identity only removes repeated reads, never substitutes
+        // for the exact reference comparison across distinct graphs below.
+        graphs.sort_unstable_by_key(|g| std::ptr::from_ref(*g));
+        graphs.dedup_by_key(|g| std::ptr::from_ref(*g));
+        let reference_count = graphs.iter().try_fold(0usize, |n, g| {
+            n.checked_add(g.revisions().len()).ok_or_else(capacity)
+        })?;
+        let mut references = Vec::new();
+        references
+            .try_reserve_exact(reference_count)
+            .map_err(|_| capacity())?;
+        for graph in graphs {
+            references.extend(graph.revisions().values().map(|r| r.reference()));
+        }
+        references.sort_unstable_by_key(|r| r.uuid);
+        if references
+            .windows(2)
+            .any(|pair| pair[0].uuid == pair[1].uuid && pair[0] != pair[1])
+        {
             return Err(IntentSystemError::InvalidEligibility);
         }
+        drop(references);
+
+        let row_count = instructions.iter().try_fold(0usize, |n, i| {
+            n.checked_add(i.variant().intent_examples.len())
+                .ok_or_else(capacity)
+        })?;
+        // Borrow strings until deduplication: repeated variants/examples do not
+        // allocate and discard a full extra copy of every link and template.
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(row_count).map_err(|_| capacity())?;
         for instruction in instructions {
-            for revision in instruction.snapshot().revisions().values() {
-                visited += 1;
-                if visited > 65536 {
-                    return Err(IntentSystemError::InvalidEligibility);
-                }
-                let reference = revision.reference();
-                if references
-                    .insert(reference.uuid, reference)
-                    .is_some_and(|old| old != reference)
-                    || references.len() > 4096
-                {
-                    return Err(IntentSystemError::InvalidEligibility);
-                }
-            }
             let link = instruction
                 .variant()
                 .step_link
@@ -423,26 +445,43 @@ impl RetainedIntentEligibility {
                 .filter(|link| !link.is_empty())
                 .ok_or(IntentSystemError::InvalidEligibility)?;
             for example in &instruction.variant().intent_examples {
-                if example.is_empty() || example.chars().count() > 2048 || rows.len() >= 8192 {
+                if example.is_empty() {
                     return Err(IntentSystemError::InvalidEligibility);
                 }
-                bytes = bytes
-                    .checked_add(link.len())
-                    .and_then(|n| n.checked_add(example.len()))
-                    .filter(|n| *n <= 64 * 1024 * 1024)
-                    .ok_or(IntentSystemError::InvalidEligibility)?;
-                rows.insert((instruction.recipe().uuid, link.to_owned(), example.clone()));
+                rows.push((instruction.recipe().uuid, link, example.as_str()));
             }
         }
+        rows.sort_unstable();
+        rows.dedup();
         let mut selected = Self {
             ids: Vec::new(),
             links: Vec::new(),
             texts: Vec::new(),
         };
+        selected
+            .ids
+            .try_reserve_exact(rows.len())
+            .map_err(|_| capacity())?;
+        selected
+            .links
+            .try_reserve_exact(rows.len())
+            .map_err(|_| capacity())?;
+        selected
+            .texts
+            .try_reserve_exact(rows.len())
+            .map_err(|_| capacity())?;
+        let copy = |text: &str| -> Result<String, IntentSystemError> {
+            let mut value = String::new();
+            value
+                .try_reserve_exact(text.len())
+                .map_err(|_| capacity())?;
+            value.push_str(text);
+            Ok(value)
+        };
         for (id, link, text) in rows {
             selected.ids.push(id);
-            selected.links.push(link);
-            selected.texts.push(text);
+            selected.links.push(copy(link)?);
+            selected.texts.push(copy(text)?);
         }
         Ok(selected)
     }

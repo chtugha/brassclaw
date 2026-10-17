@@ -45,6 +45,27 @@ fn local_development_safety_context() -> InstructionSafetyContext {
     InstructionSafetyContext::local_development_noop()
 }
 
+#[cfg(target_pointer_width = "64")]
+#[tokio::test]
+async fn output_token_limit_overflow_fails_before_provider_dispatch() {
+    let provider = Arc::new(RecordingLlmProvider::reply("unused"));
+    let policy = LlmModelProfilePolicy::new().allow_model_profile(interactive_model(), None);
+    let gateway = LlmProviderModelGateway::with_provider_identity(
+        STATIC_PROVIDER_ID,
+        provider.clone(),
+        policy,
+    )
+    .with_max_output_tokens(Some(brassclaw_agent_loop::LiveTokenBudget::new(Some(
+        usize::MAX,
+    ))));
+    let error = gateway
+        .stream_model(model_request(interactive_model()))
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HostManagedModelErrorKind::ConfigurationError);
+    assert!(provider.requests.lock().unwrap().is_empty());
+}
+
 #[tokio::test]
 async fn gateway_calls_llm_provider_for_allowed_model_profile() {
     let provider = Arc::new(RecordingLlmProvider::reply("assistant response"));

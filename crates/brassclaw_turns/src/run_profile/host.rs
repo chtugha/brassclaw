@@ -1548,6 +1548,8 @@ pub struct CapabilityDenied {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CapabilityDeniedReasonKind {
     EmptySurface,
+    /// Fixed host outcome category, not arbitrary credential-bearing text.
+    Authorization,
     Unknown(CapabilityDeniedReasonKindValue),
 }
 
@@ -1572,6 +1574,7 @@ impl CapabilityDeniedReasonKind {
     pub fn as_str(&self) -> &str {
         match self {
             Self::EmptySurface => "empty_surface",
+            Self::Authorization => "authorization",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -1600,6 +1603,7 @@ impl<'de> Deserialize<'de> for CapabilityDeniedReasonKind {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "empty_surface" => Ok(Self::EmptySurface),
+            "authorization" => Ok(Self::Authorization),
             _ => Self::unknown(value).map_err(serde::de::Error::custom),
         }
     }

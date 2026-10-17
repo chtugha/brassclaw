@@ -2206,9 +2206,17 @@ mod tests {
             let cid = Uuid::new_v4();
             store.submit(&scope, cid, 20, None).await.unwrap();
 
-            let outcome = run_q1_validation(&rig.pool, &scope, cid, 20, &store)
-                .await
-                .expect("run q1");
+            let outcome = run_q1_validation(
+                &rig.pool,
+                &scope,
+                cid,
+                20,
+                &store,
+                brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default())
+                    .unwrap(),
+            )
+            .await
+            .expect("run q1");
 
             // No validator Recipe in the test DB → Deferred, not Passed or Failed.
             assert!(

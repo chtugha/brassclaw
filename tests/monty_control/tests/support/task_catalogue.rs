@@ -172,10 +172,15 @@ impl MontyTaskCatalogue for ValidationCatalogue {
                 tx.commit().await.map_err(|_| failure())?;
                 // Local draft-validation generation; this is a committed match
                 // observation and supplies neither approval nor activation.
-                let normal_match = crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
-                    uuid::Uuid::new_v4(), query, &matched,
-                    program.inputs().instruction(), &inputs,
-                ).ok_or_else(failure)?;
+                let normal_match =
+                    crate::normal_match_evidence::NormalMatchEvidence::from_committed_match(
+                        uuid::Uuid::new_v4(),
+                        query,
+                        &matched,
+                        program.inputs().instruction(),
+                        &inputs,
+                    )
+                    .ok_or_else(failure)?;
                 let inspected = Arc::new(
                     InspectedRetainedProgram::inspect(
                         RetainedProgram::Tools(program),
@@ -225,7 +230,12 @@ impl RetainedToolPort for JsonPort {
         assert_eq!(retained.python(), binding.python());
         let record = self
             .admission
-            .begin_tool_invocation(&self.program, invocation.step_id(), &arguments)
+            .begin_tool_invocation(
+                &self.program,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
             .await
             .unwrap();
         let context = ExecutionContext::local_default(

@@ -326,6 +326,10 @@ impl DefaultHostRuntime {
 
 #[async_trait]
 impl HostRuntime for DefaultHostRuntime {
+    fn dispatch_authority_model(&self) -> brassclaw_host_api::DispatchAuthorityModel {
+        self.authorizer.dispatch_authority_model()
+    }
+
     async fn invoke_capability(
         &self,
         request: RuntimeCapabilityRequest,

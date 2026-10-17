@@ -3,7 +3,7 @@
 //! Moved here from `brassclaw_embeddings` as part of the S10 refactor (§3,
 //! revision 17).  `brassclaw_embeddings` is now a pure trait-and-utilities
 //! crate (`EmbeddingProvider`, `EmbeddingError`, `CachedEmbeddingProvider`,
-//! `url_check`, `default_dimension_for_model`, `MockEmbeddings`).
+//! `url_check`, `MockEmbeddings`).
 //!
 //! Concrete provider types (`OpenAiEmbeddings`, `NearAiEmbeddings`,
 //! `OllamaEmbeddings`, `BedrockEmbeddings`) and the `create_provider` async
@@ -17,8 +17,7 @@
 //! |--------|-----|
 //! | `EmbeddingsConfig` | Pure-data provider config shape |
 //! | `ProviderDeps` | Runtime wiring (session manager, optional Bedrock setup) |
-//! | `create_provider(config, deps) -> Option<Arc<dyn EmbeddingProvider>>` | Factory |
-//! | `default_dimension_for_model` | Re-exported from `brassclaw_embeddings` |
+//! | `create_provider(config, deps) -> Result<Option<Arc<dyn EmbeddingProvider>>, EmbeddingError>` | Factory |
 //!
 //! Concrete provider structs are crate-private; downstream code holds
 //! `Arc<dyn brassclaw_embeddings::EmbeddingProvider>` only.
@@ -26,7 +25,6 @@
 #[cfg(feature = "root-llm-provider")]
 use std::sync::Arc;
 
-pub(crate) use brassclaw_embeddings::default_dimension_for_model;
 use secrecy::{ExposeSecret, SecretString};
 
 // ---------------------------------------------------------------------------
@@ -45,19 +43,22 @@ pub(crate) struct EmbeddingsConfig {
     pub provider: String,
     /// OpenAI API key (for OpenAI / OpenAI-compatible providers).
     pub openai_api_key: Option<SecretString>,
+    /// Whether this selected catalogue definition requires an API key.
+    pub api_key_required: bool,
     /// Model to use for embeddings.
     pub model: String,
-    /// Ollama base URL (for Ollama provider). Defaults to `http://localhost:11434`.
+    /// Exact selected Ollama base URL.
     pub ollama_base_url: String,
-    /// Embedding vector dimension. Inferred from the model name when not set explicitly.
+    /// Expected vector dimension from the exact database model contract.
     pub dimension: usize,
     /// Custom base URL for OpenAI-compatible embedding providers.
     pub openai_base_url: Option<String>,
     /// Base URL for the NEAR AI embeddings endpoint.
     pub nearai_base_url: String,
-    /// Maximum entries in the embedding LRU cache (default 10,000).
-    #[allow(dead_code)]
+    /// Selected model's entry ceiling; zero disables caching.
     pub cache_size: usize,
+    /// Captured technical deadline/body limits; embedding calls are not retried.
+    pub request_policy: brassclaw_llm::ProviderRequestPolicy,
 }
 
 impl EmbeddingsConfig {
@@ -69,18 +70,18 @@ impl EmbeddingsConfig {
 
 impl Default for EmbeddingsConfig {
     fn default() -> Self {
-        let model = "text-embedding-3-small".to_string();
-        let dimension = default_dimension_for_model(&model);
         Self {
             enabled: false,
-            provider: "openai".to_string(),
+            provider: String::new(),
             openai_api_key: None,
-            model,
-            ollama_base_url: "http://localhost:11434".to_string(),
-            dimension,
+            api_key_required: true,
+            model: String::new(),
+            ollama_base_url: String::new(),
+            dimension: 0,
             openai_base_url: None,
-            nearai_base_url: "https://api.near.ai".to_string(),
-            cache_size: brassclaw_embeddings::DEFAULT_EMBEDDING_CACHE_SIZE,
+            nearai_base_url: String::new(),
+            cache_size: 0,
+            request_policy: Default::default(),
         }
     }
 }
@@ -125,94 +126,116 @@ pub(crate) struct BedrockEmbeddingSetup {
 
 /// Build the configured embedding provider.
 ///
-/// Returns `None` if embeddings are disabled, required credentials are missing,
-/// or the URL check fails.  All rejects are logged at debug level.
+/// Only a disabled selection returns `Ok(None)`. Invalid selected configuration,
+/// unsupported adapters and initialization failures remain explicit errors.
 #[cfg(feature = "root-llm-provider")]
 pub(crate) async fn create_provider(
     config: &EmbeddingsConfig,
     deps: ProviderDeps,
-) -> Option<Arc<dyn brassclaw_embeddings::EmbeddingProvider>> {
-    use brassclaw_embeddings::url_check::check_base_url;
-
+) -> Result<Option<Arc<dyn brassclaw_embeddings::EmbeddingProvider>>, EmbeddingError> {
     if !config.enabled {
         tracing::debug!("embeddings disabled");
-        return None;
+        return Ok(None);
     }
 
-    match config.provider.as_str() {
+    config.request_policy.validate().map_err(|_| {
+        EmbeddingError::InvalidResponse("embedding request policy is invalid".into())
+    })?;
+
+    if config.model.trim().is_empty() || config.dimension == 0 {
+        return Err(EmbeddingError::InvalidResponse(
+            "embedding model and positive dimension must be configured".into(),
+        ));
+    }
+    if config
+        .openai_api_key()
+        .is_some_and(|key| key.trim().is_empty())
+        || (config.api_key_required && config.openai_api_key.is_none())
+    {
+        return Err(EmbeddingError::AuthFailed);
+    }
+
+    let provider = match config.provider.as_str() {
         "nearai" => {
-            if let Err(e) = check_base_url(&config.nearai_base_url, "nearai_base_url") {
-                tracing::debug!(error = %e, "refusing to build NEAR AI embeddings");
-                return None;
-            }
+            check_embedding_base_url(&config.nearai_base_url, "nearai_base_url")?;
             tracing::debug!(model = %config.model, dim = %config.dimension, "embeddings via NEAR AI");
-            Some(Arc::new(
-                NearAiEmbeddings::new(&config.nearai_base_url, deps.session)
-                    .with_model(&config.model, config.dimension),
+            Ok(Some(Arc::new(
+                NearAiEmbeddings::new(
+                    &config.nearai_base_url,
+                    deps.session,
+                    &config.model,
+                    config.dimension,
+                    config.request_policy,
+                )?
+                .with_api_key(config.openai_api_key.clone()),
             )
-                as Arc<dyn brassclaw_embeddings::EmbeddingProvider>)
+                as Arc<dyn brassclaw_embeddings::EmbeddingProvider>))
         }
         "bedrock" => {
+            if config.request_policy.max_response_bytes.is_some() {
+                return Err(EmbeddingError::InvalidResponse(
+                    "embedding Bedrock adapter does not support a response-body limit".into(),
+                ));
+            }
             #[cfg(feature = "bedrock")]
             {
                 let Some(setup) = deps.bedrock_setup.as_ref() else {
-                    tracing::debug!(
-                        "embeddings configured for Bedrock but no Bedrock setup available"
-                    );
-                    return None;
+                    return Err(EmbeddingError::InvalidResponse(
+                        "embedding Bedrock connection settings are missing".into(),
+                    ));
                 };
                 tracing::debug!(model = %config.model, region = %setup.region, dim = %config.dimension, "embeddings via Bedrock");
-                match BedrockEmbeddings::new(setup, &config.model, config.dimension).await {
-                    Ok(provider) => {
-                        Some(Arc::new(provider) as Arc<dyn brassclaw_embeddings::EmbeddingProvider>)
-                    }
-                    Err(e) => {
-                        tracing::debug!(error = %e, "failed to initialise Bedrock embeddings provider");
-                        None
-                    }
-                }
+                let provider =
+                    BedrockEmbeddings::new(setup, &config.model, config.dimension).await?;
+                Ok(Some(
+                    Arc::new(provider) as Arc<dyn brassclaw_embeddings::EmbeddingProvider>
+                ))
             }
             #[cfg(not(feature = "bedrock"))]
             {
-                tracing::debug!(
-                    "embeddings configured for Bedrock but the `bedrock` feature is disabled"
-                );
-                None
+                Err(EmbeddingError::InvalidResponse(
+                    "embedding Bedrock adapter is unavailable in this build".into(),
+                ))
             }
         }
         "ollama" => {
-            if let Err(e) = check_base_url(&config.ollama_base_url, "ollama_base_url") {
-                tracing::debug!(error = %e, "refusing to build Ollama embeddings");
-                return None;
-            }
+            check_embedding_base_url(&config.ollama_base_url, "ollama_base_url")?;
             tracing::debug!(model = %config.model, url = %config.ollama_base_url, dim = %config.dimension, "embeddings via Ollama");
-            Some(Arc::new(
-                OllamaEmbeddings::new(&config.ollama_base_url)
-                    .with_model(&config.model, config.dimension),
-            )
-                as Arc<dyn brassclaw_embeddings::EmbeddingProvider>)
+            Ok(Some(Arc::new(OllamaEmbeddings::new(
+                &config.ollama_base_url,
+                &config.model,
+                config.dimension,
+                config.request_policy,
+            )?)
+                as Arc<dyn brassclaw_embeddings::EmbeddingProvider>))
         }
-        _ => {
-            // OpenAI / OpenAI-compatible fallback.
-            let Some(api_key) = config.openai_api_key() else {
-                tracing::debug!("embeddings configured but API key not set");
-                return None;
-            };
-            let mut provider =
-                OpenAiEmbeddings::with_model(api_key, &config.model, config.dimension);
-            if let Some(ref base_url) = config.openai_base_url {
-                if let Err(e) = check_base_url(base_url, "openai_base_url") {
-                    tracing::debug!(error = %e, "refusing to build OpenAI embeddings");
-                    return None;
-                }
-                tracing::debug!(model = %config.model, base_url = %base_url, dim = %config.dimension, "embeddings via OpenAI-compatible");
-                provider = provider.with_base_url(base_url);
-            } else {
-                tracing::debug!(model = %config.model, dim = %config.dimension, "embeddings via OpenAI");
-            }
-            Some(Arc::new(provider) as Arc<dyn brassclaw_embeddings::EmbeddingProvider>)
+        "openai" => {
+            let base_url = config.openai_base_url.as_deref().ok_or_else(|| {
+                EmbeddingError::InvalidResponse("embedding endpoint must be configured".into())
+            })?;
+            check_embedding_base_url(base_url, "openai_base_url")?;
+            let provider = OpenAiEmbeddings::with_model(
+                config.openai_api_key.clone(),
+                &config.model,
+                config.dimension,
+                base_url,
+                config.request_policy,
+            )?;
+            tracing::debug!(model = %config.model, dim = %config.dimension, "embeddings via OpenAI-compatible");
+            Ok(Some(
+                Arc::new(provider) as Arc<dyn brassclaw_embeddings::EmbeddingProvider>
+            ))
         }
-    }
+        _ => Err(EmbeddingError::InvalidResponse(
+            "selected embedding protocol has no supported adapter".into(),
+        )),
+    }?;
+    Ok(provider.map(|inner| {
+        Arc::new(DeadlineEmbeddingProvider {
+            inner,
+            timeout: std::time::Duration::from_secs(config.request_policy.timeout_secs),
+        }) as Arc<dyn EmbeddingProvider>
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -225,46 +248,151 @@ use async_trait::async_trait;
 use brassclaw_embeddings::{EmbeddingError, EmbeddingProvider};
 use serde::{Deserialize, Serialize};
 
-const OPENAI_API_BASE_URL: &str = "https://api.openai.com";
-/// Maximum input text length for embedding providers that accept free-form text.
-/// This matches the practical token limit for most embedding models used here.
-const EMBEDDING_MAX_INPUT_CHARS: usize = 32_000;
+#[cfg(feature = "root-llm-provider")]
+fn check_embedding_base_url(base_url: &str, field: &str) -> Result<(), EmbeddingError> {
+    let parsed = url::Url::parse(base_url).map_err(|_| {
+        EmbeddingError::InvalidResponse("embedding endpoint is not a valid URL".into())
+    })?;
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(EmbeddingError::InvalidResponse(
+            "embedding endpoint cannot contain credentials, a query or a fragment".into(),
+        ));
+    }
+    brassclaw_embeddings::url_check::check_base_url(base_url, field)
+}
+
+fn embeddings_endpoint(base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    if base.ends_with("/v1") {
+        format!("{base}/embeddings")
+    } else {
+        format!("{base}/v1/embeddings")
+    }
+}
+
+// Provider error bodies can echo the input or authentication material. Keep
+// classification/status, without reading or propagating those payloads or URLs.
+fn embedding_status_error(response: &reqwest::Response) -> Option<EmbeddingError> {
+    let status = response.status();
+    if status.is_success() {
+        None
+    } else if status == reqwest::StatusCode::UNAUTHORIZED {
+        Some(EmbeddingError::AuthFailed)
+    } else if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        Some(EmbeddingError::RateLimited {
+            retry_after: Some(brassclaw_llm::retry::parse_retry_after(
+                response.headers().get("retry-after"),
+            )),
+        })
+    } else {
+        Some(EmbeddingError::HttpError(format!(
+            "embedding service returned HTTP {}",
+            status.as_u16()
+        )))
+    }
+}
+
+fn embedding_transport_error(error: reqwest::Error) -> EmbeddingError {
+    let reason = if error.is_timeout() {
+        "embedding request timed out"
+    } else if error.is_connect() {
+        "embedding connection failed"
+    } else {
+        "embedding transport failed"
+    };
+    EmbeddingError::HttpError(reason.into())
+}
+
+fn embedding_client(
+    policy: brassclaw_llm::ProviderRequestPolicy,
+) -> Result<reqwest::Client, EmbeddingError> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(policy.timeout_secs))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| EmbeddingError::HttpError("embedding transport could not be created".into()))
+}
+
+async fn read_embedding_response<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+    max_bytes: Option<u64>,
+) -> Result<T, EmbeddingError> {
+    let body = brassclaw_llm::read_provider_response_body(response, max_bytes)
+        .await
+        .map_err(|error| match error {
+            brassclaw_llm::ProviderResponseBodyError::Capacity { limit } => {
+                EmbeddingError::InvalidResponse(format!(
+                    "embedding response exceeded configured byte capacity ({limit})"
+                ))
+            }
+            brassclaw_llm::ProviderResponseBodyError::Transport(error) => {
+                embedding_transport_error(error)
+            }
+        })?;
+    serde_json::from_slice(&body).map_err(|_| {
+        EmbeddingError::InvalidResponse("embedding response could not be decoded".into())
+    })
+}
+
+/// The deadline covers authentication and the complete batch as well as HTTP
+/// body reads. Dropping an expired future never starts another request.
+struct DeadlineEmbeddingProvider {
+    inner: Arc<dyn EmbeddingProvider>,
+    timeout: std::time::Duration,
+}
+
+#[async_trait]
+impl EmbeddingProvider for DeadlineEmbeddingProvider {
+    fn dimension(&self) -> usize {
+        self.inner.dimension()
+    }
+    fn model_name(&self) -> &str {
+        self.inner.model_name()
+    }
+    fn max_input_length(&self) -> Option<usize> {
+        self.inner.max_input_length()
+    }
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
+        tokio::time::timeout(self.timeout, self.inner.embed(text))
+            .await
+            .map_err(|_| EmbeddingError::HttpError("embedding request timed out".into()))?
+    }
+    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        tokio::time::timeout(self.timeout, self.inner.embed_batch(texts))
+            .await
+            .map_err(|_| EmbeddingError::HttpError("embedding request timed out".into()))?
+    }
+}
 
 struct OpenAiEmbeddings {
     client: reqwest::Client,
-    api_key: SecretString,
+    api_key: Option<SecretString>,
     model: String,
     dimension: usize,
     base_url: String,
+    max_response_bytes: Option<u64>,
 }
 
 impl OpenAiEmbeddings {
     fn with_model(
-        api_key: impl Into<SecretString>,
+        api_key: Option<SecretString>,
         model: impl Into<String>,
         dimension: usize,
-    ) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            api_key: api_key.into(),
+        base_url: &str,
+        policy: brassclaw_llm::ProviderRequestPolicy,
+    ) -> Result<Self, EmbeddingError> {
+        Ok(Self {
+            client: embedding_client(policy)?,
+            api_key,
             model: model.into(),
             dimension,
-            base_url: OPENAI_API_BASE_URL.to_string(),
-        }
-    }
-
-    fn with_base_url(mut self, base_url: &str) -> Self {
-        let url = base_url.trim();
-        let mut url = if !url.starts_with("http://") && !url.starts_with("https://") {
-            format!("https://{url}")
-        } else {
-            url.to_string()
-        };
-        while url.ends_with('/') {
-            url.pop();
-        }
-        self.base_url = url;
-        self
+            base_url: base_url.trim_end_matches('/').to_string(),
+            max_response_bytes: policy.max_response_bytes,
+        })
     }
 }
 
@@ -281,7 +409,74 @@ struct OpenAiEmbeddingResponse {
 
 #[derive(Debug, Deserialize)]
 struct OpenAiEmbeddingData {
+    index: usize,
     embedding: Vec<f32>,
+}
+
+fn validate_embedding_inputs(
+    texts: &[String],
+    max_bytes: Option<usize>,
+) -> Result<(), EmbeddingError> {
+    if let Some(max_bytes) = max_bytes
+        && let Some(text) = texts.iter().find(|text| text.len() > max_bytes)
+    {
+        return Err(EmbeddingError::TextTooLong {
+            length: text.len(),
+            max: max_bytes,
+        });
+    }
+    Ok(())
+}
+
+fn validate_indexed_embeddings(
+    response: OpenAiEmbeddingResponse,
+    expected_count: usize,
+    dimension: usize,
+) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    if response.data.len() != expected_count {
+        return Err(EmbeddingError::InvalidResponse(
+            "embedding response count differs from input count".into(),
+        ));
+    }
+    let mut ordered = vec![None; expected_count];
+    for item in response.data {
+        let Some(slot) = ordered.get_mut(item.index) else {
+            return Err(EmbeddingError::InvalidResponse(
+                "embedding response index is out of bounds".into(),
+            ));
+        };
+        if slot.replace(item.embedding).is_some() {
+            return Err(EmbeddingError::InvalidResponse(
+                "embedding response repeats an input index".into(),
+            ));
+        }
+    }
+    let vectors = ordered
+        .into_iter()
+        .map(|item| {
+            item.ok_or_else(|| {
+                EmbeddingError::InvalidResponse("embedding response omits an input index".into())
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    validate_embeddings(vectors, expected_count, dimension)
+}
+
+fn validate_embeddings(
+    vectors: Vec<Vec<f32>>,
+    expected_count: usize,
+    dimension: usize,
+) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    if vectors.len() != expected_count
+        || vectors.iter().any(|vector| {
+            vector.len() != dimension || vector.iter().any(|value| !value.is_finite())
+        })
+    {
+        return Err(EmbeddingError::InvalidResponse(
+            "embedding response count, dimension or numeric values differ from the selected contract".into(),
+        ));
+    }
+    Ok(vectors)
 }
 
 #[async_trait]
@@ -292,15 +487,17 @@ impl EmbeddingProvider for OpenAiEmbeddings {
     fn model_name(&self) -> &str {
         &self.model
     }
-    fn max_input_length(&self) -> usize {
-        EMBEDDING_MAX_INPUT_CHARS
+    fn max_input_length(&self) -> Option<usize> {
+        None
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-        if text.len() > self.max_input_length() {
+        if let Some(max) = self.max_input_length()
+            && text.len() > max
+        {
             return Err(EmbeddingError::TextTooLong {
                 length: text.len(),
-                max: self.max_input_length(),
+                max,
             });
         }
         self.embed_batch(&[text.to_string()])
@@ -311,6 +508,7 @@ impl EmbeddingProvider for OpenAiEmbeddings {
     }
 
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        validate_embedding_inputs(texts, self.max_input_length())?;
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -318,39 +516,22 @@ impl EmbeddingProvider for OpenAiEmbeddings {
             model: &self.model,
             input: texts,
         };
-        let url = format!("{}/v1/embeddings", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.api_key.expose_secret()),
-            )
+        let url = embeddings_endpoint(&self.base_url);
+        let mut request_builder = self.client.post(&url);
+        if let Some(key) = self.api_key.as_ref() {
+            request_builder = request_builder.bearer_auth(key.expose_secret());
+        }
+        let response = request_builder
             .json(&request)
             .send()
             .await
-            .map_err(|e| EmbeddingError::HttpError(e.to_string()))?;
-        let status = response.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(EmbeddingError::AuthFailed);
+            .map_err(embedding_transport_error)?;
+        if let Some(error) = embedding_status_error(&response) {
+            return Err(error);
         }
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry_after = Some(brassclaw_llm::retry::parse_retry_after(
-                response.headers().get("retry-after"),
-            ));
-            return Err(EmbeddingError::RateLimited { retry_after });
-        }
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(EmbeddingError::HttpError(format!(
-                "Status {status}: {body}"
-            )));
-        }
-        let result: OpenAiEmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| EmbeddingError::InvalidResponse(format!("parse error: {e}")))?;
-        Ok(result.data.into_iter().map(|d| d.embedding).collect())
+        let result: OpenAiEmbeddingResponse =
+            read_embedding_response(response, self.max_response_bytes).await?;
+        validate_indexed_embeddings(result, texts.len(), self.dimension)
     }
 }
 
@@ -361,25 +542,34 @@ struct NearAiEmbeddings {
     client: reqwest::Client,
     base_url: String,
     session: Arc<brassclaw_llm::SessionManager>,
+    api_key: Option<SecretString>,
     model: String,
     dimension: usize,
+    max_response_bytes: Option<u64>,
 }
 
 #[cfg(feature = "root-llm-provider")]
 impl NearAiEmbeddings {
-    fn new(base_url: impl Into<String>, session: Arc<brassclaw_llm::SessionManager>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
+    fn new(
+        base_url: impl Into<String>,
+        session: Arc<brassclaw_llm::SessionManager>,
+        model: impl Into<String>,
+        dimension: usize,
+        policy: brassclaw_llm::ProviderRequestPolicy,
+    ) -> Result<Self, EmbeddingError> {
+        Ok(Self {
+            client: embedding_client(policy)?,
             base_url: base_url.into(),
             session,
-            model: "text-embedding-3-small".to_string(),
-            dimension: 1536,
-        }
+            api_key: None,
+            model: model.into(),
+            dimension,
+            max_response_bytes: policy.max_response_bytes,
+        })
     }
 
-    fn with_model(mut self, model: impl Into<String>, dimension: usize) -> Self {
-        self.model = model.into();
-        self.dimension = dimension;
+    fn with_api_key(mut self, api_key: Option<SecretString>) -> Self {
+        self.api_key = api_key;
         self
     }
 }
@@ -392,18 +582,6 @@ struct NearAiEmbeddingRequest<'a> {
 }
 
 #[cfg(feature = "root-llm-provider")]
-#[derive(Debug, Deserialize)]
-struct NearAiEmbeddingResponse {
-    data: Vec<NearAiEmbeddingData>,
-}
-
-#[cfg(feature = "root-llm-provider")]
-#[derive(Debug, Deserialize)]
-struct NearAiEmbeddingData {
-    embedding: Vec<f32>,
-}
-
-#[cfg(feature = "root-llm-provider")]
 #[async_trait]
 impl EmbeddingProvider for NearAiEmbeddings {
     fn dimension(&self) -> usize {
@@ -412,15 +590,17 @@ impl EmbeddingProvider for NearAiEmbeddings {
     fn model_name(&self) -> &str {
         &self.model
     }
-    fn max_input_length(&self) -> usize {
-        EMBEDDING_MAX_INPUT_CHARS
+    fn max_input_length(&self) -> Option<usize> {
+        None
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-        if text.len() > self.max_input_length() {
+        if let Some(max) = self.max_input_length()
+            && text.len() > max
+        {
             return Err(EmbeddingError::TextTooLong {
                 length: text.len(),
-                max: self.max_input_length(),
+                max,
             });
         }
         self.embed_batch(&[text.to_string()])
@@ -432,6 +612,7 @@ impl EmbeddingProvider for NearAiEmbeddings {
 
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         use secrecy::ExposeSecret as _;
+        validate_embedding_inputs(texts, self.max_input_length())?;
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -439,41 +620,29 @@ impl EmbeddingProvider for NearAiEmbeddings {
             model: &self.model,
             input: texts,
         };
-        let token = self
-            .session
-            .get_token()
-            .await
-            .map_err(|_| EmbeddingError::AuthFailed)?;
-        let url = format!("{}/v1/embeddings", self.base_url);
+        let token = match self.api_key.as_ref() {
+            Some(key) => key.clone(),
+            None => self
+                .session
+                .get_token()
+                .await
+                .map_err(|_| EmbeddingError::AuthFailed)?,
+        };
+        let url = embeddings_endpoint(&self.base_url);
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", token.expose_secret()))
+            .bearer_auth(token.expose_secret())
             .json(&request)
             .send()
             .await
-            .map_err(|e| EmbeddingError::HttpError(e.to_string()))?;
-        let status = response.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(EmbeddingError::AuthFailed);
+            .map_err(embedding_transport_error)?;
+        if let Some(error) = embedding_status_error(&response) {
+            return Err(error);
         }
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry_after = Some(brassclaw_llm::retry::parse_retry_after(
-                response.headers().get("retry-after"),
-            ));
-            return Err(EmbeddingError::RateLimited { retry_after });
-        }
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(EmbeddingError::HttpError(format!(
-                "Status {status}: {body}"
-            )));
-        }
-        let result: NearAiEmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| EmbeddingError::InvalidResponse(format!("parse error: {e}")))?;
-        Ok(result.data.into_iter().map(|d| d.embedding).collect())
+        let result: OpenAiEmbeddingResponse =
+            read_embedding_response(response, self.max_response_bytes).await?;
+        validate_indexed_embeddings(result, texts.len(), self.dimension)
     }
 }
 
@@ -484,22 +653,23 @@ struct OllamaEmbeddings {
     base_url: String,
     model: String,
     dimension: usize,
+    max_response_bytes: Option<u64>,
 }
 
 impl OllamaEmbeddings {
-    fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            base_url: base_url.into(),
-            model: "nomic-embed-text".to_string(),
-            dimension: 768,
-        }
-    }
-
-    fn with_model(mut self, model: impl Into<String>, dimension: usize) -> Self {
-        self.model = model.into();
-        self.dimension = dimension;
-        self
+    fn new(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        dimension: usize,
+        policy: brassclaw_llm::ProviderRequestPolicy,
+    ) -> Result<Self, EmbeddingError> {
+        Ok(Self {
+            client: embedding_client(policy)?,
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            model: model.into(),
+            dimension,
+            max_response_bytes: policy.max_response_bytes,
+        })
     }
 }
 
@@ -507,6 +677,8 @@ impl OllamaEmbeddings {
 struct OllamaEmbedRequest<'a> {
     model: &'a str,
     input: &'a [String],
+    // Oversized model inputs must fail explicitly rather than be truncated.
+    truncate: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -522,15 +694,17 @@ impl EmbeddingProvider for OllamaEmbeddings {
     fn model_name(&self) -> &str {
         &self.model
     }
-    fn max_input_length(&self) -> usize {
-        EMBEDDING_MAX_INPUT_CHARS
+    fn max_input_length(&self) -> Option<usize> {
+        None
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-        if text.len() > self.max_input_length() {
+        if let Some(max) = self.max_input_length()
+            && text.len() > max
+        {
             return Err(EmbeddingError::TextTooLong {
                 length: text.len(),
-                max: self.max_input_length(),
+                max,
             });
         }
         self.embed_batch(&[text.to_string()])
@@ -541,12 +715,14 @@ impl EmbeddingProvider for OllamaEmbeddings {
     }
 
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        validate_embedding_inputs(texts, self.max_input_length())?;
         if texts.is_empty() {
             return Ok(Vec::new());
         }
         let request = OllamaEmbedRequest {
             model: &self.model,
             input: texts,
+            truncate: false,
         };
         let url = format!("{}/api/embed", self.base_url);
         let response = self
@@ -555,28 +731,13 @@ impl EmbeddingProvider for OllamaEmbeddings {
             .json(&request)
             .send()
             .await
-            .map_err(|e| EmbeddingError::HttpError(e.to_string()))?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(EmbeddingError::HttpError(format!(
-                "Ollama {status}: {body}"
-            )));
+            .map_err(embedding_transport_error)?;
+        if let Some(error) = embedding_status_error(&response) {
+            return Err(error);
         }
-        let result: OllamaEmbedResponse = response
-            .json()
-            .await
-            .map_err(|e| EmbeddingError::InvalidResponse(format!("parse error: {e}")))?;
-        for (i, emb) in result.embeddings.iter().enumerate() {
-            if emb.len() != self.dimension {
-                return Err(EmbeddingError::InvalidResponse(format!(
-                    "dimension mismatch at index {i}: got {}, expected {}",
-                    emb.len(),
-                    self.dimension
-                )));
-            }
-        }
-        Ok(result.embeddings)
+        let result: OllamaEmbedResponse =
+            read_embedding_response(response, self.max_response_bytes).await?;
+        validate_embeddings(result.embeddings, texts.len(), self.dimension)
     }
 }
 
@@ -640,20 +801,18 @@ fn map_bedrock_error<R: std::fmt::Debug>(
                 EmbeddingError::RateLimited { retry_after: None }
             }
             InvokeModelError::AccessDeniedException(_) => EmbeddingError::AuthFailed,
-            InvokeModelError::ValidationException(e) => EmbeddingError::InvalidResponse(format!(
-                "Bedrock validation error: {}",
-                e.message().unwrap_or("unknown")
-            )),
-            InvokeModelError::ModelNotReadyException(e) => EmbeddingError::HttpError(format!(
-                "Bedrock model not ready: {}",
-                e.message().unwrap_or("unknown")
-            )),
-            other => EmbeddingError::HttpError(format!("Bedrock service error: {other:?}")),
+            InvokeModelError::ValidationException(_) => {
+                EmbeddingError::InvalidResponse("Bedrock validation error".into())
+            }
+            InvokeModelError::ModelNotReadyException(_) => {
+                EmbeddingError::HttpError("Bedrock model not ready".into())
+            }
+            _ => EmbeddingError::HttpError("Bedrock service error".into()),
         },
         SdkError::TimeoutError(_) => {
             EmbeddingError::HttpError("Bedrock request timed out".to_string())
         }
-        other => EmbeddingError::HttpError(format!("Bedrock request failed: {other:?}")),
+        _ => EmbeddingError::HttpError("Bedrock request failed".into()),
     }
 }
 
@@ -668,15 +827,17 @@ impl EmbeddingProvider for BedrockEmbeddings {
         &self.model
     }
 
-    fn max_input_length(&self) -> usize {
-        EMBEDDING_MAX_INPUT_CHARS
+    fn max_input_length(&self) -> Option<usize> {
+        None
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-        if text.len() > self.max_input_length() {
+        if let Some(max) = self.max_input_length()
+            && text.len() > max
+        {
             return Err(EmbeddingError::TextTooLong {
                 length: text.len(),
-                max: self.max_input_length(),
+                max,
             });
         }
 
@@ -702,18 +863,110 @@ impl EmbeddingProvider for BedrockEmbeddings {
             .map_err(|e| map_bedrock_error(&e))?;
 
         let result: BedrockTitanEmbeddingResponse = serde_json::from_slice(response.body.as_ref())
-            .map_err(|e| {
-                EmbeddingError::InvalidResponse(format!("failed to parse response: {e}"))
+            .map_err(|_| {
+                EmbeddingError::InvalidResponse("Bedrock response could not be decoded".into())
             })?;
 
-        if result.embedding.len() != self.dimension {
-            return Err(EmbeddingError::InvalidResponse(format!(
-                "Bedrock returned embedding of dimension {}, expected {}",
-                result.embedding.len(),
-                self.dimension,
-            )));
-        }
+        validate_embeddings(vec![result.embedding], 1, self.dimension)?
+            .pop()
+            .ok_or_else(|| EmbeddingError::InvalidResponse("no embedding returned".into()))
+    }
+}
 
-        Ok(result.embedding)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indexed_embedding_response_preserves_inputs_and_rejects_invalid_contracts() {
+        let response = |items: &[(usize, Vec<f32>)]| OpenAiEmbeddingResponse {
+            data: items
+                .iter()
+                .map(|(index, embedding)| OpenAiEmbeddingData {
+                    index: *index,
+                    embedding: embedding.clone(),
+                })
+                .collect(),
+        };
+        assert_eq!(
+            validate_indexed_embeddings(
+                response(&[(1, vec![2.0, 3.0]), (0, vec![0.0, 1.0])]),
+                2,
+                2
+            )
+            .unwrap(),
+            vec![vec![0.0, 1.0], vec![2.0, 3.0]]
+        );
+        for items in [
+            vec![(0, vec![0.0, 1.0])],
+            vec![(0, vec![0.0, 1.0]), (0, vec![2.0, 3.0])],
+            vec![(0, vec![0.0, 1.0]), (2, vec![2.0, 3.0])],
+            vec![(0, vec![0.0]), (1, vec![2.0, 3.0])],
+            vec![(0, vec![f32::INFINITY, 1.0]), (1, vec![2.0, 3.0])],
+        ] {
+            assert!(validate_indexed_embeddings(response(&items), 2, 2).is_err());
+        }
+        assert!(validate_embeddings(vec![], 1, 2).is_err());
+        assert!(validate_embedding_inputs(&["ä".into()], Some(1)).is_err());
+        assert!(validate_embedding_inputs(&["Ü λ🦀".repeat(5000)], None).is_ok());
+    }
+
+    #[cfg(feature = "root-llm-provider")]
+    #[tokio::test]
+    async fn configured_embedding_errors_are_distinct_from_disabled() {
+        let deps = || ProviderDeps {
+            session: Arc::new(brassclaw_llm::SessionManager::new(
+                brassclaw_llm::SessionConfig::default(),
+            )),
+            #[cfg(feature = "bedrock")]
+            bedrock_setup: None,
+        };
+        assert!(
+            create_provider(&EmbeddingsConfig::default(), deps())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let mut config = EmbeddingsConfig {
+            enabled: true,
+            provider: "openai".into(),
+            model: "unit-vector-model".into(),
+            dimension: 3,
+            ..EmbeddingsConfig::default()
+        };
+        assert!(matches!(
+            create_provider(&config, deps()).await,
+            Err(EmbeddingError::AuthFailed)
+        ));
+        config.api_key_required = false;
+        config.openai_base_url = Some("http://127.0.0.1:8000/v1/".into());
+        assert_eq!(
+            create_provider(&config, deps())
+                .await
+                .unwrap()
+                .unwrap()
+                .max_input_length(),
+            None
+        );
+        for endpoint in [
+            "file:///tmp/private",
+            "https://secret:password@example.com/v1",
+            "https://example.com/v1?key=private",
+            "https://example.com/v1#fragment",
+            "http://169.254.169.254/v1",
+        ] {
+            config.openai_base_url = Some(endpoint.into());
+            assert!(create_provider(&config, deps()).await.is_err());
+        }
+        config.provider = "unknown".into();
+        assert!(create_provider(&config, deps()).await.is_err());
+        assert_eq!(
+            embeddings_endpoint("http://127.0.0.1:8000/v1/"),
+            "http://127.0.0.1:8000/v1/embeddings"
+        );
+        assert_eq!(
+            embeddings_endpoint("https://example.com/custom/"),
+            "https://example.com/custom/v1/embeddings"
+        );
     }
 }

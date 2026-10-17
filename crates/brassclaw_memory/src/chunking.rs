@@ -54,6 +54,8 @@ impl ChunkConfig {
 pub struct MemoryChunkWrite {
     pub content: String,
     pub embedding: Option<Vec<f32>>,
+    /// Untagged historical vectors are retained but never inferred compatible.
+    pub embedding_space: Option<crate::embedding::EmbeddingSpaceId>,
     /// Optional back-link to the `brassclaw_memory_chat_records` row that
     /// produced this chunk (§4.30.1). Stored as an indexed key
     /// `fs_keys::CHAT_RECORD_ID` on the chunk VFS entry.

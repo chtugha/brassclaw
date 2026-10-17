@@ -31,6 +31,27 @@ fn invalid() -> AgentLoopHostError {
     )
 }
 
+/// Tests drive the same HTTP response consumer as CommandPort, using an
+/// already authenticated ordinary-chat exchange; no execution seam is exposed.
+#[cfg(test)]
+pub(crate) async fn native_post_for_transport_test(
+    lease: Arc<McpProviderExchange>,
+    endpoint: &str,
+    body: Value,
+) -> Result<Value, AgentLoopHostError> {
+    ConnectedExchange {
+        lease,
+        client: reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| unavailable())?,
+        endpoint: endpoint.into(),
+    }
+    .post(body, true)
+    .await
+}
+
 #[derive(Default)]
 pub(crate) struct McpProviderBinding {
     ready: tokio_util::sync::CancellationToken,
@@ -38,6 +59,18 @@ pub(crate) struct McpProviderBinding {
     ports: Mutex<HashMap<TurnRunId, Weak<CommandPort>>>,
 }
 impl McpProviderBinding {
+    pub(crate) fn snapshot_for_surface(
+        &self,
+        run_id: TurnRunId,
+        version: &CapabilitySurfaceVersion,
+    ) -> Result<Option<Arc<McpRecipeDiscoverySnapshot>>, AgentLoopHostError> {
+        Ok(self
+            .port(run_id)?
+            .filter(|port| {
+                &port.version == version && !port.revoked.load(std::sync::atomic::Ordering::SeqCst)
+            })
+            .map(|port| port.snapshot.clone()))
+    }
     pub(crate) fn activate(
         &self,
         bridge: &Arc<McpChatBridge>,
@@ -130,6 +163,10 @@ impl TaskProviderLease for McpTaskProviderLease {
         self.port.surface_version()
     }
 
+    fn is_live(&self) -> bool {
+        !self.port.revoked.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     async fn finish(&self) {
         self.binding.finish_port(&self.port).await;
     }
@@ -209,6 +246,12 @@ struct ConnectedExchange {
 }
 impl ConnectedExchange {
     async fn post(&self, body: Value, initialized: bool) -> Result<Value, AgentLoopHostError> {
+        let response_limit = self
+            .lease
+            .transport_limits()
+            .await
+            .map_err(|_| unavailable())?
+            .max_mcp_response_bytes as usize;
         let mut request = self
             .client
             .post(&self.endpoint)
@@ -229,9 +272,10 @@ impl ConnectedExchange {
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| unavailable())? {
-            if bytes.len().saturating_add(chunk.len()) > 1024 * 1024 {
+            if chunk.len() > response_limit.saturating_sub(bytes.len()) {
                 return Err(unavailable());
             }
+            bytes.try_reserve(chunk.len()).map_err(|_| unavailable())?;
             bytes.extend_from_slice(&chunk);
         }
         let value: Value = serde_json::from_slice(&bytes).map_err(|_| unavailable())?;
@@ -281,7 +325,7 @@ impl CommandPort {
         }
         let lease = Arc::new(
             self.bridge
-                .connect(self.context.run_id.as_uuid())
+                .connect(self.context.run_id.as_uuid(), self.version.clone())
                 .await
                 .map_err(|_| unavailable())?,
         );
@@ -371,7 +415,7 @@ impl CommandPort {
             || object
                 .get("command")
                 .and_then(Value::as_str)
-                .is_none_or(|command| command.trim().is_empty() || command.len() > 64 * 1024)
+                .is_none_or(|command| command.trim().is_empty())
             || call.id.is_empty()
             || call.turn_id.as_ref().is_none_or(String::is_empty)
         {

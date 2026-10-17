@@ -1338,6 +1338,38 @@ async fn operator_routes_check_the_presented_bearer_in_a_mixed_authenticator() {
             }
         }
     }
+    for (method, uri) in [
+        (Method::GET, "/api/settings/tool-policies"),
+        (
+            Method::PUT,
+            "/api/settings/tool-policies/00000000-0000-0000-0000-000000000001",
+        ),
+    ] {
+        for (token, reject) in [("session-user-token", true), (VALID_TOKEN, false)] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method.clone())
+                        .uri(uri)
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(if method == Method::GET {
+                            Body::empty()
+                        } else {
+                            Body::from(r#"{"expected_revision":"1","enabled":false}"#)
+                        })
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            if reject {
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            } else {
+                assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
+            }
+        }
+    }
     let response = app
         .oneshot(
             Request::builder()
@@ -1356,6 +1388,11 @@ async fn llm_config_routes_are_not_mounted_for_multi_user_authenticator() {
     let (app, _services) = build_app_with_authenticator(Arc::new(MultiUserToken));
 
     for (method, uri) in [
+        (Method::GET, "/api/settings/tool-policies"),
+        (
+            Method::PUT,
+            "/api/settings/tool-policies/00000000-0000-0000-0000-000000000001",
+        ),
         (Method::GET, "/api/webchat/v2/llm/providers"),
         (Method::POST, "/api/webchat/v2/llm/providers"),
         (Method::POST, "/api/webchat/v2/llm/providers/openai/delete"),
@@ -2174,5 +2211,54 @@ async fn update_docus_route_requires_bearer_auth() {
         response.status(),
         StatusCode::UNAUTHORIZED,
         "PUT /docus/:id without bearer must return 401"
+    );
+}
+
+#[tokio::test]
+async fn prefix_artifact_outer_limit_preserves_route_and_operator_bounds() {
+    let (app, _) = build_app();
+    // A real tokenizer can exceed the old attachment-sized outer ceiling.
+    // Descriptor limits and authentication still run before the artifact facade.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/prefix-model-artifacts")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("x".repeat(14 * 1024 * 1024 + 1)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let services = Arc::new(StubServices::default());
+    let bundle = RebornWebuiBundle {
+        api: services,
+        product_auth: None,
+        readiness: RebornReadiness::disabled(),
+    };
+    let config = WebuiServeConfig::new(
+        TenantId::new(TENANT).unwrap(),
+        Arc::new(OnlyValidToken),
+        vec![],
+    )
+    .with_max_body_bytes(1024);
+    let app = webui_v2_app(bundle, config).unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/prefix-model-artifacts")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("x".repeat(2048)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "explicit operator ceiling must remain effective"
     );
 }

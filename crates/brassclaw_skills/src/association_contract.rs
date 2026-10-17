@@ -346,6 +346,24 @@ impl SkillAssociation {
     pub fn callable(&self) -> &str {
         &self.callable
     }
+    /// Retain exact reviewed bytes/checksum and all semantic contracts. Only
+    /// finite typed-data resource bounds change for the execution environment.
+    pub fn with_data_limits(mut self, limits: ContractLimits) -> Result<Self, AssociationError> {
+        self.inputs = self.inputs.with_data_limits(limits)?;
+        self.result = self.result.with_data_limits(limits)?;
+        self.computed = self
+            .computed
+            .into_iter()
+            .map(|(name, contract)| {
+                contract
+                    .with_data_limits(limits)
+                    .map(|contract| (name, contract))
+            })
+            .collect::<Result<_, _>>()?;
+        self.limits = limits;
+        Ok(self)
+    }
+
     pub fn inputs(&self) -> &InputContract {
         &self.inputs
     }
@@ -387,8 +405,17 @@ impl SkillAssociation {
         supplied_inputs: &Value,
         actual: &Value,
     ) -> Result<(), AssociationError> {
-        validate_data_bounds(actual, self.limits)?;
-        let bound = self.inputs.bind(supplied_inputs)?;
+        self.validate_arguments_with_limits(supplied_inputs, actual, self.limits)
+    }
+
+    pub fn validate_arguments_with_limits(
+        &self,
+        supplied_inputs: &Value,
+        actual: &Value,
+        limits: ContractLimits,
+    ) -> Result<(), AssociationError> {
+        validate_data_bounds(actual, limits)?;
+        let bound = self.inputs.bind_with_limits(supplied_inputs, limits)?;
         let args = actual
             .as_object()
             .ok_or_else(|| invalid("Tool arguments must be an object"))?;
@@ -401,9 +428,10 @@ impl SkillAssociation {
             }
         }
         for (name, contract) in &self.computed {
-            contract.validate(
+            contract.validate_with_limits(
                 args.get(name)
                     .ok_or_else(|| invalid("computed Tool argument missing"))?,
+                limits,
             )?;
         }
         Ok(())

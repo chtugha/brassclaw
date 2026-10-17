@@ -488,3 +488,26 @@ Do not add in `brassclaw_filesystem`:
 - secret material storage
 
 Those are separate services using filesystem contracts.
+
+
+## Implemented universal-surface extension: entry metadata projection
+
+The later universal-filesystem ADR and crate guide supersede this draft's old
+separate record-plane and LibSQL backend descriptions. The current substrate
+adds `EntryMetadata { path, kind }`, `RootFilesystem::get_metadata` and paginated
+`query_metadata`. This is structural projection of the one Entry model, with no
+body/indexed payload and no fallback to materialized query. `Capability::EntryMetadata`
+is an appended capability flag, preserving existing bit identities. Actual
+PostgreSQL/in-memory backends provide it, Composite forwards the selected mount,
+and ScopedFilesystem uses existing read and read+list permission gates.
+Metadata pages use canonical UTF-8 path order and existing Page semantics; they
+are live reads, not an immutable multi-page snapshot. Domain filtering, duplicate
+handling and complete enumeration remain the consumer's responsibility.
+
+The selected-field extension `query_index_metadata(prefix, key, page)` returns
+`EntryIndexMetadata { metadata, value }` with one requested `IndexValue` and no
+body or other index fields. `Capability::EntryIndexMetadata` advertises native
+support. Missing differs from malformed: an absent key yields `None`, whereas
+an invalid selected value/container fails the page. It inherits the same live
+ordering, mount selection, permissions and complete-pagination responsibilities;
+it grants no authority and provides no full-record compatibility fallback.

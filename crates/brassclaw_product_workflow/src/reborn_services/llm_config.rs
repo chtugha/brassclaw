@@ -56,11 +56,12 @@ pub trait LlmConfigService: Send + Sync {
         request: UpsertLlmProviderRequest,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError>;
 
-    /// Remove a custom provider and any stored key for it.
+    /// Deactivate a provider while retaining its definition and encrypted key.
     async fn delete_provider(
         &self,
         caller: WebUiAuthenticatedCaller,
         provider_id: String,
+        expected_revision: u64,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError>;
 
     /// Select the active provider + model.
@@ -192,6 +193,12 @@ pub struct CodexLoginStart {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmConfigSnapshot {
     pub providers: Vec<LlmProviderView>,
+    /// Retained definitions available only for explicit operator reactivation.
+    #[serde(default)]
+    pub inactive_providers: Vec<LlmProviderView>,
+    pub response_cache_defaults: brassclaw_llm::ResponseCachePolicy,
+    pub model_discovery_defaults: brassclaw_llm::model_discovery::ModelDiscoveryPolicy,
+    pub request_policy_defaults: brassclaw_llm::ProviderRequestPolicy,
     /// Active Kohai (primary inference) selection.
     /// This field is always kept in sync with `kohai_active` so that old
     /// clients reading only `active` observe the Kohai selection unchanged.
@@ -217,6 +224,13 @@ pub struct LlmConfigSnapshot {
 /// One provider in the merged catalog, annotated for the settings UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmProviderView {
+    #[serde(default)]
+    pub embedding_models: brassclaw_llm::EmbeddingModelContracts,
+    /// Exact definition revision for compare-and-replace edits.
+    pub revision: u64,
+    pub response_cache: brassclaw_llm::ResponseCachePolicy,
+    pub model_discovery: brassclaw_llm::model_discovery::ModelDiscoveryPolicy,
+    pub request_policy: brassclaw_llm::ProviderRequestPolicy,
     pub id: String,
     pub description: String,
     /// Protocol/adapter wire name (e.g. `open_ai_completions`, `anthropic`).
@@ -270,6 +284,19 @@ pub struct LlmActiveSelection {
 /// Add or update a custom provider. Deserialize-only (carries a secret).
 #[derive(Deserialize)]
 pub struct UpsertLlmProviderRequest {
+    /// Omitted preserves the previous model contracts; an empty object clears them.
+    #[serde(default, deserialize_with = "deserialize_embedding_models_update")]
+    pub embedding_models: Option<brassclaw_llm::EmbeddingModelContracts>,
+    /// Required for replacing/reactivating a retained identity; omit only for a new ID.
+    #[serde(default)]
+    pub expected_revision: Option<u64>,
+    /// Omitted preserves the existing definition policy.
+    #[serde(default, deserialize_with = "deserialize_response_cache_update")]
+    pub response_cache: Option<brassclaw_llm::ResponseCachePolicy>,
+    #[serde(default, deserialize_with = "deserialize_model_discovery_update")]
+    pub model_discovery: Option<brassclaw_llm::model_discovery::ModelDiscoveryPolicy>,
+    #[serde(default, deserialize_with = "deserialize_request_policy_update")]
+    pub request_policy: Option<brassclaw_llm::ProviderRequestPolicy>,
     pub id: String,
     #[serde(default)]
     pub name: Option<String>,
@@ -295,6 +322,31 @@ pub struct UpsertLlmProviderRequest {
     pub token_budget: Option<ProviderTokenBudgetView>,
 }
 
+fn deserialize_request_policy_update<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<brassclaw_llm::ProviderRequestPolicy>, D::Error> {
+    brassclaw_llm::ProviderRequestPolicy::deserialize(deserializer).map(Some)
+}
+
+fn deserialize_embedding_models_update<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<brassclaw_llm::EmbeddingModelContracts>, D::Error> {
+    brassclaw_llm::EmbeddingModelContracts::deserialize(deserializer).map(Some)
+}
+
+fn deserialize_response_cache_update<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<brassclaw_llm::ResponseCachePolicy>, D::Error> {
+    // Omitted retains the old policy. Explicit null is not a reset instruction.
+    brassclaw_llm::ResponseCachePolicy::deserialize(deserializer).map(Some)
+}
+
+fn deserialize_model_discovery_update<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<brassclaw_llm::model_discovery::ModelDiscoveryPolicy>, D::Error> {
+    brassclaw_llm::model_discovery::ModelDiscoveryPolicy::deserialize(deserializer).map(Some)
+}
+
 /// Select the active provider + model.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SetActiveLlmRequest {
@@ -311,6 +363,10 @@ pub struct SetActiveLlmRequest {
 /// Probe a provider. Deserialize-only (may carry a secret).
 #[derive(Deserialize)]
 pub struct LlmProbeRequest {
+    /// Explicit unsaved operator discovery settings. Omission uses the captured
+    /// persisted provider policy, or the API's default for a new definition.
+    #[serde(default, deserialize_with = "deserialize_model_discovery_update")]
+    pub model_discovery: Option<brassclaw_llm::model_discovery::ModelDiscoveryPolicy>,
     pub adapter: String,
     #[serde(default)]
     pub base_url: Option<String>,
@@ -318,7 +374,7 @@ pub struct LlmProbeRequest {
     #[serde(default)]
     pub model: Option<String>,
     /// Optional override key for the probe; when absent the impl falls back to
-    /// the provider's stored key or env var.
+    /// the provider's encrypted stored key when the endpoint/adapter match.
     #[serde(default)]
     pub api_key: Option<SecretString>,
 }
@@ -353,8 +409,7 @@ pub enum LlmConfigServiceError {
     /// The named provider does not exist in the merged catalog.
     #[error("provider not found")]
     NotFound,
-    /// The provider is already assigned to the other role; assigning the same
-    /// provider to both Kohai and Sempai simultaneously is not allowed.
+    /// A revision or configuration conflict prevents publication.
     #[error("provider role conflict: {reason}")]
     Conflict { reason: String },
     /// The configuration backend (filesystem / secret store / reload) failed
@@ -364,10 +419,6 @@ pub enum LlmConfigServiceError {
     /// An internal invariant was violated.
     #[error("llm config internal error")]
     Internal,
-    /// Attempted to delete a builtin provider which is immutable.
-    /// Builtins can only be configured (reset), not deleted.
-    #[error("cannot delete a builtin provider")]
-    CannotDeleteBuiltin,
 }
 
 pub(super) fn map_llm_config_error(error: LlmConfigServiceError) -> RebornServicesError {
@@ -383,11 +434,6 @@ pub(super) fn map_llm_config_error(error: LlmConfigServiceError) -> RebornServic
         }
         LlmConfigServiceError::Unavailable => RebornServicesError::service_unavailable(true),
         LlmConfigServiceError::Internal => RebornServicesError::internal_invariant(),
-        LlmConfigServiceError::CannotDeleteBuiltin => {
-            // 422 Unprocessable Entity: the request is well-formed but semantically
-            // invalid — you cannot delete a builtin provider.
-            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 422, false)
-        }
     }
 }
 

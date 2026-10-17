@@ -21,7 +21,7 @@ pub const MCP_CHAT_UNAVAILABLE: &str = "inbound MCP requires qualified MCP-call 
 mod inner {
     use axum::{
         Json, Router,
-        extract::{DefaultBodyLimit, State},
+        extract::{DefaultBodyLimit, FromRequest, State},
         http::{HeaderMap, StatusCode},
         response::{IntoResponse, Response},
         routing::post,
@@ -38,6 +38,7 @@ mod inner {
     struct TransportState {
         discovery: Option<Arc<McpRecipeDiscovery>>,
         chat: Option<Arc<McpChatBridge>>,
+        fallback_request_bytes: usize,
     }
 
     const PROTOCOL: &str = "2025-06-18";
@@ -112,8 +113,11 @@ mod inner {
     ) -> Router {
         Router::new()
             .route("/mcp", post(handle_post).get(handle_get))
-            .layer(DefaultBodyLimit::max(config.max_request_bytes))
-            .with_state(TransportState { discovery, chat })
+            .with_state(TransportState {
+                discovery,
+                chat,
+                fallback_request_bytes: config.max_request_bytes,
+            })
     }
 
     async fn handle_get(State(state): State<TransportState>, headers: HeaderMap) -> StatusCode {
@@ -143,9 +147,9 @@ mod inner {
 
     async fn handle_post(
         State(state): State<TransportState>,
-        headers: HeaderMap,
-        Json(raw): Json<Value>,
+        mut request: axum::extract::Request,
     ) -> Response {
+        let headers = request.headers().clone();
         if headers.contains_key("origin") {
             return StatusCode::FORBIDDEN.into_response();
         }
@@ -173,7 +177,27 @@ mod inner {
             let Some(token) = token else {
                 return StatusCode::UNAUTHORIZED.into_response();
             };
-            let Ok(exchange_id) = chat.authenticate_exchange(token) else {
+            if chat.authenticate_exchange(token).is_err() {
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+        }
+        let body_limit = if let Some(chat) = &state.chat {
+            match chat.transport_limits(token.unwrap_or_default()).await {
+                Ok(limits) => limits.max_mcp_request_bytes as usize,
+                Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            }
+        } else {
+            state.fallback_request_bytes
+        };
+        // Capture once before decoding; a live reduction cannot invalidate a
+        // body read already accepted under the previous acknowledged revision.
+        DefaultBodyLimit::max(body_limit).apply(&mut request);
+        let Json(raw) = match Json::<Value>::from_request(request, &state).await {
+            Ok(raw) => raw,
+            Err(error) => return error.into_response(),
+        };
+        if let Some(chat) = &state.chat {
+            let Ok(exchange_id) = chat.authenticate_exchange(token.unwrap_or_default()) else {
                 return StatusCode::UNAUTHORIZED.into_response();
             };
             if raw.get("method").and_then(Value::as_str) != Some("initialize") {

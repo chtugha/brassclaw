@@ -323,6 +323,11 @@ pub enum Capability {
     IndexVector,
     // Event plane (`append`/`tail`).
     Events,
+    /// Native body-free `get_metadata` and paginated `query_metadata` support.
+    /// Appended so existing capability bit positions retain their meaning.
+    EntryMetadata,
+    /// Native body-free paginated projection of one indexed field.
+    EntryIndexMetadata,
 }
 
 impl Capability {
@@ -347,6 +352,8 @@ impl Capability {
             Capability::IndexFts,
             Capability::IndexVector,
             Capability::Events,
+            Capability::EntryMetadata,
+            Capability::EntryIndexMetadata,
         ]
     }
 }
@@ -434,7 +441,7 @@ impl BackendCapabilities {
     /// backend that advertises *only* `sql_typical()` claims it does
     /// **not** serve FTS or vector indexes — mount-time validation will
     /// refuse to attach it to a descriptor that demands either. The
-    /// two real backends in this crate (libsql + postgres) layer
+    /// PostgreSQL backend in this crate layers
     /// `IndexFts` and `IndexVector` on top of this base via
     /// [`Self::with`] / [`Self::sql_typical_full`]. New hand-rolled SQL
     /// backends should pick the variant that matches what they
@@ -455,14 +462,15 @@ impl BackendCapabilities {
             .with_txn(TxnCapability::Cas)
     }
 
-    /// Convenience: [`Self::sql_typical`] **plus** Events + IndexFts +
-    /// IndexVector — the shape the libsql and postgres backends in this
-    /// crate actually advertise.
+    /// Convenience: [`Self::sql_typical`] plus Events, IndexFts, IndexVector
+    /// and body-free entry metadata, as served by PostgreSQL and in-memory.
     pub const fn sql_typical_full() -> Self {
         Self::sql_typical()
             .with(Capability::Events)
             .with(Capability::IndexFts)
             .with(Capability::IndexVector)
+            .with(Capability::EntryMetadata)
+            .with(Capability::EntryIndexMetadata)
     }
 
     /// Convenience: every capability the in-memory reference backend

@@ -915,11 +915,11 @@ impl ReplProgress {
     /// progress.
     pub fn tracker(&self) -> &ResourceTracker {
         match self {
-            Self::FunctionCall(call) => call.snapshot.repl.tracker(),
-            Self::OsCall(call) => call.snapshot.repl.tracker(),
-            Self::ResolveFutures(state) => state.repl.tracker(),
-            Self::NameLookup(lookup) => lookup.snapshot.repl.tracker(),
-            Self::ControlYield(state) => state.snapshot.repl.tracker(),
+            Self::FunctionCall(call) => call.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
+            Self::OsCall(call) => call.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
+            Self::ResolveFutures(state) => state.repl.as_ref().expect("owned suspended REPL").tracker(),
+            Self::NameLookup(lookup) => lookup.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
+            Self::ControlYield(state) => state.snapshot.repl.as_ref().expect("owned suspended REPL").tracker(),
             Self::Complete { repl, .. } => repl.tracker(),
         }
     }
@@ -1130,11 +1130,7 @@ impl ReplNameLookup {
             name, scope, snapshot, ..
         } = self;
 
-        let ReplSnapshot {
-            mut repl,
-            mut executor,
-            vm_state,
-        } = snapshot;
+        let (mut repl, mut executor, vm_state) = snapshot.into_parts();
 
         repl.heap.tracker.on_turn_start();
         let (converted, vm_state) = HeapReader::with(
@@ -1180,11 +1176,14 @@ impl ReplNameLookup {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ReplResolveFutures {
     /// Persistent REPL session state while this snippet is suspended.
-    repl: MontyRepl,
+    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
+    repl: Option<MontyRepl>,
     /// Compiled snippet and intern/function tables for this execution.
-    executor: Executor,
+    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
+    executor: Option<Executor>,
     /// VM stack/frame state at suspension.
-    vm_state: VMSnapshot,
+    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
+    vm_state: Option<VMSnapshot>,
     /// Pending call IDs expected by this snapshot.
     pending_call_ids: Vec<u32>,
     /// Where the main task's blocked `await` is in the source.
@@ -1192,6 +1191,16 @@ pub struct ReplResolveFutures {
 }
 
 impl ReplResolveFutures {
+    fn into_parts(mut self) -> (MontyRepl, Executor, VMSnapshot, Vec<u32>, SourceRange) {
+        (
+            self.repl.take().expect("owned suspended REPL"),
+            self.executor.take().expect("owned suspended executor"),
+            self.vm_state.take().expect("owned suspended state"),
+            mem::take(&mut self.pending_call_ids),
+            self.position.clone(),
+        )
+    }
+
     /// Extracts the REPL session, restoring globals from the suspended VM state.
     ///
     /// As with the other REPL snapshot types, globals live inside the VM
@@ -1203,12 +1212,7 @@ impl ReplResolveFutures {
     /// rebound a global to a function or literal only they can resolve.
     #[must_use]
     pub fn into_repl(self) -> MontyRepl {
-        let Self {
-            mut repl,
-            executor,
-            vm_state,
-            ..
-        } = self;
+        let (mut repl, executor, vm_state, _, _) = self.into_parts();
         let (globals, cwd, random) = vm_state.abandon(&mut repl.heap);
         repl.globals = globals;
         repl.cwd = Arc::from(cwd);
@@ -1231,12 +1235,7 @@ impl ReplResolveFutures {
 
     /// Aborts with an uncatchable exception and abandons pending futures.
     pub fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<ReplProgress, Box<ReplStartError>> {
-        let Self {
-            repl,
-            executor,
-            vm_state,
-            ..
-        } = self;
+        let (repl, executor, vm_state, _, _) = self.into_parts();
         abort_restored(repl, executor, vm_state, exc, print)
     }
 
@@ -1253,13 +1252,7 @@ impl ReplResolveFutures {
         results: Vec<(u32, ExtFunctionResult)>,
         print: PrintWriter<'_>,
     ) -> Result<ReplProgress, Box<ReplStartError>> {
-        let Self {
-            mut repl,
-            mut executor,
-            vm_state,
-            pending_call_ids,
-            ..
-        } = self;
+        let (mut repl, mut executor, vm_state, pending_call_ids, _) = self.into_parts();
 
         let invalid_call_id = results
             .iter()
@@ -1439,10 +1432,10 @@ pub struct ReplControlYield {
 }
 impl ReplControlYield {
     pub fn tracker(&self) -> &ResourceTracker {
-        self.snapshot.repl.tracker()
+        self.snapshot.repl.as_ref().expect("owned suspended REPL").tracker()
     }
     pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
-        &mut self.snapshot.repl.heap.tracker
+        &mut self.snapshot.repl.as_mut().expect("owned suspended REPL").heap.tracker
     }
     pub fn resume(self, print: PrintWriter<'_>) -> Result<ReplProgress, Box<ReplStartError>> {
         self.snapshot.run_inner(None, None, print)
@@ -1458,21 +1451,48 @@ impl ReplControlYield {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ReplSnapshot {
     /// Persistent REPL session state while this snippet is suspended.
-    repl: MontyRepl,
+    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
+    repl: Option<MontyRepl>,
     /// Compiled snippet and intern/function tables for this execution.
-    executor: Executor,
+    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
+    executor: Option<Executor>,
     /// VM stack/frame state at suspension.
-    vm_state: VMSnapshot,
+    #[serde(deserialize_with = "crate::run_progress::deserialize_owned")]
+    vm_state: Option<VMSnapshot>,
+}
+
+fn release_repl_snapshot(vm_state: Option<VMSnapshot>, repl: &mut Option<MontyRepl>) {
+    if let Some(vm_state) = vm_state {
+        let repl = repl.as_mut().expect("owned suspended REPL");
+        let (globals, _, _) = vm_state.abandon(&mut repl.heap);
+        globals.drop_with(&mut repl.heap);
+    }
+}
+
+impl Drop for ReplSnapshot {
+    fn drop(&mut self) {
+        release_repl_snapshot(self.vm_state.take(), &mut self.repl);
+    }
+}
+
+impl Drop for ReplResolveFutures {
+    fn drop(&mut self) {
+        release_repl_snapshot(self.vm_state.take(), &mut self.repl);
+    }
 }
 
 impl ReplSnapshot {
+    fn into_parts(mut self) -> (MontyRepl, Executor, VMSnapshot) {
+        (
+            self.repl.take().expect("owned suspended REPL"),
+            self.executor.take().expect("owned suspended executor"),
+            self.vm_state.take().expect("owned suspended state"),
+        )
+    }
+
     /// Raises `exc` uncatchably at the suspension point.
     fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<ReplProgress, Box<ReplStartError>> {
-        let Self {
-            repl,
-            executor,
-            vm_state,
-        } = self;
+        let (repl, executor, vm_state) = self.into_parts();
         abort_restored(repl, executor, vm_state, exc, print)
     }
 
@@ -1484,11 +1504,7 @@ impl ReplSnapshot {
     /// into the session heap. The compiler tables are committed because the
     /// restored globals may reference ids the abandoned snippet appended.
     fn into_repl(self) -> MontyRepl {
-        let Self {
-            mut repl,
-            executor,
-            vm_state,
-        } = self;
+        let (mut repl, executor, vm_state) = self.into_parts();
         let (globals, cwd, random) = vm_state.abandon(&mut repl.heap);
         repl.globals = globals;
         repl.cwd = Arc::from(cwd);
@@ -1514,11 +1530,7 @@ impl ReplSnapshot {
         eager_call_id: Option<u32>,
         print: PrintWriter<'_>,
     ) -> Result<ReplProgress, Box<ReplStartError>> {
-        let Self {
-            mut repl,
-            mut executor,
-            vm_state,
-        } = self;
+        let (mut repl, mut executor, vm_state) = self.into_parts();
 
         repl.heap.tracker.on_turn_start();
         let (converted, vm_state) = HeapReader::with(
@@ -1608,9 +1620,9 @@ fn build_repl_progress(
     macro_rules! new_repl_snapshot {
         () => {
             ReplSnapshot {
-                repl,
-                executor,
-                vm_state: vm_state.expect("snapshot should exist"),
+                repl: Some(repl),
+                executor: Some(executor),
+                vm_state: Some(vm_state.expect("snapshot should exist")),
             }
         };
     }
@@ -1655,9 +1667,9 @@ fn build_repl_progress(
             pending_call_ids,
             position,
         } => Ok(ReplProgress::ResolveFutures(ReplResolveFutures {
-            repl,
-            executor,
-            vm_state: vm_state.expect("snapshot should exist for ResolveFutures"),
+            repl: Some(repl),
+            executor: Some(executor),
+            vm_state: Some(vm_state.expect("snapshot should exist for ResolveFutures")),
             pending_call_ids,
             position,
         })),

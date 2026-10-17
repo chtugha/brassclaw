@@ -238,6 +238,7 @@ where
                     .map(|content| MemoryChunkWrite {
                         content,
                         embedding: None,
+                        embedding_space: None,
                         chat_record_id: None,
                     })
                     .collect();
@@ -342,6 +343,7 @@ where
                     .map(|c| MemoryChunkWrite {
                         content: c,
                         embedding: None,
+                        embedding_space: None,
                         chat_record_id: None,
                     })
                     .collect();
@@ -378,6 +380,7 @@ async fn build_chunk_writes_with_record_id(
             .map(|content| MemoryChunkWrite {
                 content,
                 embedding: None,
+                embedding_space: None,
                 chat_record_id: chat_record_id.map(str::to_owned),
             })
             .collect());
@@ -415,6 +418,7 @@ async fn build_chunk_writes_with_record_id(
             Ok(MemoryChunkWrite {
                 content,
                 embedding: Some(embedding),
+                embedding_space: Some(provider.space_id().clone()),
                 chat_record_id: chat_record_id.map(str::to_owned),
             })
         })
@@ -440,6 +444,11 @@ mod tests {
 
     #[async_trait]
     impl EmbeddingProvider for RejectingEmbeddingProvider {
+        fn space_id(&self) -> &crate::EmbeddingSpaceId {
+            static SPACE: std::sync::OnceLock<crate::EmbeddingSpaceId> = std::sync::OnceLock::new();
+            SPACE.get_or_init(|| crate::EmbeddingSpaceId::from_digest([1; 32]))
+        }
+
         fn dimension(&self) -> usize {
             3
         }

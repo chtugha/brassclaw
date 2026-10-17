@@ -4,7 +4,6 @@ use brassclaw_host_api::{NetworkMethod, NetworkPolicy, NetworkTarget, ResourceSc
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub const DEFAULT_RESPONSE_BODY_LIMIT: u64 = 10 * 1024 * 1024;
-pub(crate) const MAX_RESPONSE_BODY_LIMIT: u64 = DEFAULT_RESPONSE_BODY_LIMIT;
 
 /// One scoped network operation to authorize before a runtime performs I/O.
 #[derive(Debug, Clone, PartialEq, Eq)]

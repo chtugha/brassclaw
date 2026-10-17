@@ -423,6 +423,16 @@ impl Drop for PreparationWindow {
 pub trait ExecutionControl: fmt::Debug + Send + Sync {
     fn checkpoint(&self, elapsed: Duration) -> Result<ExecutionControlAction, ExecutionControlError>;
 
+    /// A spawned coroutine has actually exited and its final clock interval
+    /// has closed. This is not a task finish, effect acknowledgement or host
+    /// cancellation. Owners may retire context-only telemetry; any separately
+    /// owned task/effect state must remain fenced. Never called for suspension
+    /// or mechanical snapshot destruction. Implementations must not block or
+    /// reenter the interpreter.
+    fn context_exited(&self, _context: u32) -> Result<(), ExecutionControlError> {
+        Ok(())
+    }
+
     /// Observe separate cumulative clocks and the actual loaded coroutine.
     /// Called on both sides of every context transition. Preparation does not
     /// belong to this coroutine: importing a host result can wake another one.
@@ -533,6 +543,28 @@ impl ResourceTracker {
                 debug_assert!(after.is_ok() || self.control_error.get().is_some());
             }
         }
+    }
+
+    /// Notify the host after a real spawned-coroutine exit. The scheduler must
+    /// first close its clock interval and release the loaded context. Rejection
+    /// latches the same terminal control error used by ordinary checkpoints;
+    /// it never clears an earlier failure or resets cumulative clocks.
+    pub fn retire_execution_context(&self, context: u32) -> Result<(), ResourceError> {
+        self.poll_execution_control()?;
+        let result = if self.execution_context.get() == Some(context) {
+            Err(ExecutionControlError::AccountingUnavailable)
+        } else if self.control_required {
+            self.execution_control
+                .as_ref()
+                .ok_or(ExecutionControlError::AccountingUnavailable)
+                .and_then(|control| control.context_exited(context))
+        } else {
+            Ok(())
+        };
+        result.map_err(|error| {
+            self.control_error.set(Some(error));
+            ResourceError::Control(error)
+        })
     }
 
     /// Begin synchronous interpreter preparation, never execution or a host wait.

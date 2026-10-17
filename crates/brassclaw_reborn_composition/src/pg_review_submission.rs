@@ -24,7 +24,9 @@ fn identifier(value: &str) -> Result<Uuid, RecipeStoreError> {
         .filter(|id| !id.is_nil() && id.to_string() == value)
         .ok_or_else(|| RecipeStoreError::Invalid("canonical non-nil UUID required".into()))
 }
-fn reference(value: &ComponentRevisionSelection) -> Result<ComponentRevisionRef, RecipeStoreError> {
+pub(crate) fn reference(
+    value: &ComponentRevisionSelection,
+) -> Result<ComponentRevisionRef, RecipeStoreError> {
     if value.version == 0
         || value.version > i64::MAX as u64
         || !matches!(value.class_code, 0..=10 | 12..=23 | 50)
@@ -53,7 +55,7 @@ fn reference(value: &ComponentRevisionSelection) -> Result<ComponentRevisionRef,
         checksum,
     })
 }
-fn selection(value: ComponentRevisionRef) -> ComponentRevisionSelection {
+pub(crate) fn selection(value: ComponentRevisionRef) -> ComponentRevisionSelection {
     ComponentRevisionSelection {
         uuid: value.uuid.to_string(),
         class_code: value.class_code,
@@ -108,24 +110,71 @@ pub(crate) async fn submit(
         .iter()
         .map(reference)
         .collect::<Result<Vec<_>, _>>()?;
-    let draft =
-        ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies).map_err(storage)?;
+    let draft = match request.expected_previous_version {
+        Some(head) => {
+            ReviewSubmissionDraft::new_after_head(id, actor, candidate, base, dependencies, head)
+        }
+        None => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
+    }
+    .map_err(storage)?;
     let retained = PgReviewSubmissionStore::new(pool.clone())
         .submit(&draft)
         .await
         .map_err(storage)?;
     Ok(receipt(&retained))
 }
+pub(crate) async fn head(
+    pool: &Arc<PgPool>,
+    component_id: &str,
+) -> Result<brassclaw_product_workflow::ComponentRevisionHeadView, RecipeStoreError> {
+    let id = identifier(component_id)?;
+    let value = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone())
+        .read_allocation_head(id)
+        .await
+        .map_err(|error| storage(SubmissionStoreError::Revisions(error)))?;
+    Ok(brassclaw_product_workflow::ComponentRevisionHeadView {
+        component_id: id.to_string(),
+        class_code: value.map(|(class, _)| class),
+        last_allocated_version: value.map_or(0, |(_, head)| head),
+    })
+}
+
 pub(crate) async fn get(
     pool: &Arc<PgPool>,
     submission_id: &str,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
     let id = identifier(submission_id)?;
-    let retained = PgReviewSubmissionStore::new(pool.clone())
-        .read(id)
+    let mut client = pool
+        .get()
+        .await
+        .map_err(|_| RecipeStoreError::Unavailable("review connection failed".into()))?;
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .map_err(|_| RecipeStoreError::Unavailable("review snapshot unavailable".into()))?;
+    let retained = PgReviewSubmissionStore::read_in_transaction(&tx, id)
         .await
         .map_err(storage)?
         .ok_or_else(|| RecipeStoreError::NotFound("review submission not found".into()))?;
+    let saved =
+        brassclaw_skills::review_submission_store::selection::read_preparation_in_transaction(
+            &tx,
+            id,
+            brassclaw_skills::component_revision::REVISION_LIMITS,
+        )
+        .await
+        .map_err(storage)?;
+    if let Some(saved) = &saved {
+        brassclaw_engine::memory::retained_validator::RetainedValidatorCoverage::restore_preparation(saved)
+            .map_err(|reason| RecipeStoreError::Invalid(reason.into()))?;
+    }
+    let review_selection_bytes = saved.map(|saved| saved.bytes().to_owned());
+    tx.commit()
+        .await
+        .map_err(|_| RecipeStoreError::Unavailable("review snapshot commit unavailable".into()))?;
     Ok(ComponentReviewSubmissionView {
         receipt: receipt(&retained),
         subject_bytes: retained.subject_bytes,
@@ -135,6 +184,7 @@ pub(crate) async fn get(
             .values()
             .map(|revision| revision.draft().exact_bytes().to_owned())
             .collect(),
+        review_selection_bytes,
     })
 }
 

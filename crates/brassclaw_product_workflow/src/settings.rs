@@ -427,6 +427,12 @@ pub struct MontyMemoryBudgetStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyExecutionLimitsStatus {
+    pub effective_workers: u32,
+    pub dependent_workers: u32,
+    pub workers_draining: bool,
+    pub pending_host_calls: u32,
+    pub withheld_host_answers: u32,
+    pub minimum_pending_host_calls: u32,
     pub configured_ipc_frame_bytes: u64,
     pub required_ipc_frame_capacity_bytes: u64,
     pub effective_ipc_frame_capacity_bytes: u64,

@@ -34,12 +34,44 @@ use crate::provider::{
 /// How often (in requests) to emit a cache statistics log line.
 const STATS_LOG_EVERY_N: u64 = 100;
 
+/// Database-owned response-cache policy for one provider definition. Zero
+/// capacity or TTL disables retention; this never caches tool-calling requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ResponseCachePolicy {
+    pub enabled: bool,
+    pub max_entries: u64,
+    pub ttl_secs: u64,
+}
+
+impl Default for ResponseCachePolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_entries: 1000,
+            ttl_secs: 3600,
+        }
+    }
+}
+
+impl ResponseCachePolicy {
+    pub fn validate(self) -> Result<(), &'static str> {
+        if self.max_entries == u64::MAX
+            || self.ttl_secs == u64::MAX
+            || usize::try_from(self.max_entries).is_err()
+        {
+            return Err("response cache requires finite, representable capacity and lifetime");
+        }
+        Ok(())
+    }
+}
+
 /// Configuration for the response cache.
 #[derive(Debug, Clone)]
 pub struct ResponseCacheConfig {
     /// Time-to-live for cache entries.
     pub ttl: Duration,
-    /// Maximum number of cached entries before LRU eviction.
+    /// Maximum number of cached entries before LRU eviction; zero disables storage.
     pub max_entries: usize,
 }
 
@@ -134,41 +166,28 @@ impl CachedProvider {
     }
 }
 
-/// Build a deterministic cache key from a completion request.
-///
-/// Hashes the model name, messages, and response-affecting parameters
-/// (max_tokens, temperature, stop_sequences) via SHA-256. Two requests
-/// with identical content and parameters produce the same key.
-fn cache_key(model: &str, request: &CompletionRequest) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(model.as_bytes());
-    hasher.update(b"|");
-
-    // Messages are Serialize, so we can deterministically hash them.
-    // serde_json produces stable output for the same input structure.
-    if let Ok(json) = serde_json::to_string(&request.messages) {
-        hasher.update(json.as_bytes());
-    }
-
-    // Include response-affecting parameters so different temperatures,
-    // max_tokens, or stop sequences produce distinct cache keys.
-    hasher.update(b"|");
-    if let Some(max_tokens) = request.max_tokens {
-        hasher.update(max_tokens.to_le_bytes());
-    }
-    hasher.update(b"|");
-    if let Some(temp) = request.temperature {
-        hasher.update(temp.to_le_bytes());
-    }
-    hasher.update(b"|");
-    if let Some(ref stops) = request.stop_sequences {
-        for s in stops {
-            hasher.update(s.as_bytes());
-            hasher.update(b"\x00");
-        }
-    }
-
-    format!("{:x}", hasher.finalize())
+/// Hash the effective model, all completion parameters and ordered metadata.
+/// Metadata can carry thread chaining, task scope and pinned prefix/component
+/// identities; omitting it can return another context's cached response.
+fn cache_key(model: &str, request: &CompletionRequest) -> Result<String, LlmError> {
+    let metadata: std::collections::BTreeMap<_, _> = request.metadata.iter().collect();
+    // A structured encoding keeps field and list boundaries unambiguous, even
+    // for embedded separators/NULs. Preserve floating-point bits rather than
+    // silently normalizing non-finite values to JSON null in the key.
+    let encoded = serde_json::to_vec(&(
+        "brassclaw-response-cache/2",
+        model,
+        &request.messages,
+        request.max_tokens,
+        request.temperature.map(f32::to_bits),
+        &request.stop_sequences,
+        metadata,
+    ))
+    .map_err(|_| LlmError::RequestFailed {
+        provider: "response_cache".into(),
+        reason: "completion request could not be encoded for caching".into(),
+    })?;
+    Ok(format!("{:x}", Sha256::digest(encoded)))
 }
 
 #[async_trait]
@@ -190,8 +209,12 @@ impl LlmProvider for CachedProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        if self.config.max_entries == 0 || self.config.ttl.is_zero() {
+            // A disabled cache must never retain even one response.
+            return self.inner.complete(request).await;
+        }
         let effective_model = self.inner.effective_model_name(request.model.as_deref());
-        let key = cache_key(&effective_model, &request);
+        let key = cache_key(&effective_model, &request)?;
         let now = Instant::now();
         let req_no = self.request_count.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -204,7 +227,15 @@ impl LlmProvider for CachedProvider {
                     entry.hit_count += 1;
                     let hit_count = entry.hit_count;
                     // Clone now so we can release the mutable borrow before stats.
-                    let cached_response = entry.response.clone();
+                    let mut cached_response = entry.response.clone();
+                    // No provider dispatch occurred for this hit. Reusing the
+                    // preceding call's billed usage would charge/count it twice.
+                    // Keep the stored original intact; only this exchange has
+                    // zero upstream usage. Content/reasoning remain observable.
+                    cached_response.input_tokens = 0;
+                    cached_response.output_tokens = 0;
+                    cached_response.cache_read_input_tokens = 0;
+                    cached_response.cache_creation_input_tokens = 0;
                     tracing::trace!(hits = hit_count, "response cache hit");
                     // Drop the mutable borrow of `entry` before reading `guard` immutably.
                     let _ = entry;
@@ -219,7 +250,9 @@ impl LlmProvider for CachedProvider {
 
         // Cache miss — call the real provider.
         let result = self.inner.complete(request).await;
+        let now = Instant::now();
 
+        // TTL begins when the answer is available, not before external waiting.
         // Store result and maybe log stats, all within one lock acquisition.
         // Stats are logged even on provider error so milestone intervals are
         // not silently skipped.
@@ -412,8 +445,8 @@ mod tests {
     #[test]
     fn cache_key_is_deterministic() {
         let req = simple_request();
-        let k1 = cache_key("model-a", &req);
-        let k2 = cache_key("model-a", &req);
+        let k1 = cache_key("model-a", &req).expect("valid cache key");
+        let k2 = cache_key("model-a", &req).expect("valid cache key");
         assert_eq!(k1, k2);
         assert_eq!(k1.len(), 64); // SHA-256 hex
     }
@@ -421,15 +454,15 @@ mod tests {
     #[test]
     fn cache_key_varies_by_model() {
         let req = simple_request();
-        let k1 = cache_key("model-a", &req);
-        let k2 = cache_key("model-b", &req);
+        let k1 = cache_key("model-a", &req).expect("valid cache key");
+        let k2 = cache_key("model-b", &req).expect("valid cache key");
         assert_ne!(k1, k2);
     }
 
     #[test]
     fn cache_key_varies_by_messages() {
-        let k1 = cache_key("model-a", &simple_request());
-        let k2 = cache_key("model-a", &different_request());
+        let k1 = cache_key("model-a", &simple_request()).expect("valid cache key");
+        let k2 = cache_key("model-a", &different_request()).expect("valid cache key");
         assert_ne!(k1, k2);
     }
 
@@ -439,7 +472,10 @@ mod tests {
         req_a.temperature = Some(0.0);
         let mut req_b = simple_request();
         req_b.temperature = Some(1.0);
-        assert_ne!(cache_key("m", &req_a), cache_key("m", &req_b));
+        assert_ne!(
+            cache_key("m", &req_a).expect("valid cache key"),
+            cache_key("m", &req_b).expect("valid cache key")
+        );
     }
 
     #[test]
@@ -448,7 +484,32 @@ mod tests {
         req_a.max_tokens = Some(100);
         let mut req_b = simple_request();
         req_b.max_tokens = Some(500);
-        assert_ne!(cache_key("m", &req_a), cache_key("m", &req_b));
+        assert_ne!(
+            cache_key("m", &req_a).expect("valid cache key"),
+            cache_key("m", &req_b).expect("valid cache key")
+        );
+    }
+
+    #[tokio::test]
+    async fn disabled_capacity_or_ttl_never_retains_a_response() {
+        for config in [
+            ResponseCacheConfig {
+                ttl: Duration::from_secs(60),
+                max_entries: 0,
+            },
+            ResponseCacheConfig {
+                ttl: Duration::ZERO,
+                max_entries: 100,
+            },
+        ] {
+            let stub = Arc::new(StubLlm::new("uncached answer"));
+            let cached = CachedProvider::new(stub.clone(), config);
+            cached.complete(simple_request()).await.unwrap();
+            cached.complete(simple_request()).await.unwrap();
+            assert_eq!(stub.calls(), 2);
+            assert!(cached.is_empty());
+            assert_eq!(cached.total_hits(), 0);
+        }
     }
 
     #[tokio::test]

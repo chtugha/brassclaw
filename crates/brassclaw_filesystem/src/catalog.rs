@@ -6,8 +6,9 @@ use brassclaw_host_api::VirtualPath;
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
     BackendCapabilities, BackendId, BackendKind, Capability, CasExpectation, ContentKind, DirEntry,
-    Entry, FileStat, FilesystemError, Filter, IndexPolicy, IndexSpec, Page, RecordVersion,
-    RootFilesystem, SeqNo, StorageClass, VersionedEntry, path_prefix_matches,
+    Entry, EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError, Filter, IndexKey,
+    IndexPolicy, IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo, StorageClass,
+    VersionedEntry, path_prefix_matches,
 };
 
 /// Trusted catalog record for one virtual filesystem mount.
@@ -162,6 +163,8 @@ fn validate_mount_capabilities(
         Capability::IndexFts,
         Capability::IndexVector,
         Capability::Events,
+        Capability::EntryMetadata,
+        Capability::EntryIndexMetadata,
     ];
     let mut shortfalls: Vec<Capability> = NEW_AXES
         .iter()
@@ -236,6 +239,36 @@ impl RootFilesystem for CompositeRootFilesystem {
 
     async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
         self.matching_mount(path)?.backend.get(path).await
+    }
+
+    async fn get_metadata(
+        &self,
+        path: &VirtualPath,
+    ) -> Result<Option<EntryMetadata>, FilesystemError> {
+        self.matching_mount(path)?.backend.get_metadata(path).await
+    }
+
+    async fn query_metadata(
+        &self,
+        path: &VirtualPath,
+        page: Page,
+    ) -> Result<Vec<EntryMetadata>, FilesystemError> {
+        self.matching_mount(path)?
+            .backend
+            .query_metadata(path, page)
+            .await
+    }
+
+    async fn query_index_metadata(
+        &self,
+        path: &VirtualPath,
+        key: &IndexKey,
+        page: Page,
+    ) -> Result<Vec<EntryIndexMetadata>, FilesystemError> {
+        self.matching_mount(path)?
+            .backend
+            .query_index_metadata(path, key, page)
+            .await
     }
 
     async fn query(

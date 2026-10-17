@@ -15,6 +15,9 @@ Source fidelity is checked; improved task accuracy must be measured separately.
 
 from __future__ import annotations
 
+from prefix_procedure import snapshot_procedure, finish_procedure
+from prefix_evidence import markdown_literal, template_probe_tokens
+
 import argparse
 import hashlib
 import json
@@ -1768,35 +1771,10 @@ def inject_template(original, full):
     return wrapper+tool_first
 
 
-def template_probe_tokens(tok, template, *, complete=True):
-    """Render real request variants; deduplicate before exact batch tokenization.
-
-    Never concatenate separately tokenized reference and suffix: BPE merges at
-    their boundary would make the token count and cache-prefix claim unreliable.
-    """
-    requests=[]
-    for thinking in (False,True):
-        system='Operator instructions.'
-        requests.append(([{'role':'system','content':system},{'role':'user','content':'CACHE-PROBE-A'}],None,thinking))
-        if not complete: continue
-        for content in (system,[{'type':'text','text':system}],None,''):
-            for tool_name in (None,'read_configuration','list_interfaces'):
-                tools=None if tool_name is None else [{'type':'function','function':{
-                    'name':tool_name,'description':'Read-only diagnostic '+tool_name,
-                    'parameters':{'type':'object','properties':{}}}}]
-                requests.append(([{'role':'system','content':content},
-                                  {'role':'user','content':'CACHE-PROBE-B'}],tools,thinking))
-        requests.append(([{'role':'user','content':'CACHE-PROBE-A'}],None,thinking))
-        requests.append(([{'role':'user','content':[{'type':'text','text':'CACHE-PROBE-B'}]}],None,thinking))
-        requests.append(([{'role':'system','content':system},{'role':'user','content':'Earlier question'},
-                          {'role':'assistant','content':'Earlier answer'},{'role':'user','content':'CACHE-PROBE-B'}],None,thinking))
-    rendered=list(dict.fromkeys(tok.apply_chat_template(messages,tools=tools,chat_template=template,
-        tokenize=False,add_generation_prompt=True,enable_thinking=thinking)
-        for messages,tools,thinking in requests))
-    return tok(rendered,add_special_tokens=False,return_attention_mask=False)['input_ids']
 
 
 def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
+    procedure_snapshot = snapshot_procedure(__file__, helpers=('prefix_evidence.py', 'prefix_units.py'))
     profile=model_profile(verify_server=not offline); cards=accepted_cards(); tok=tokenizer()
     reserve=int(os.getenv('PREFIX_WORKSPACE_RESERVE_TOKENS','31072'))
     if reserve<8192: raise ValueError('Reserve at least 8192 tokens for task, evidence, reasoning and output')
@@ -1878,9 +1856,11 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     # Provenance can change without changing rendered words. Bind the complete
     # evidence payload as well, otherwise an immutable directory could collide.
     evidence_sha256=digest(evidence_records)
-    generation=digest(json.dumps([PIPELINE_VERSION,profile,full,template,evidence_sha256],sort_keys=True))
+    shared_evidence_sha256=file_sha256(Path(__file__).with_name('prefix_evidence.py'))
+    procedure_sha256, procedure, procedure_payloads = finish_procedure(procedure_snapshot)
+    generation=digest(json.dumps([PIPELINE_VERSION,procedure_sha256,shared_evidence_sha256,profile,full,template,evidence_sha256],sort_keys=True))
     directory=BASE/'generations'/generation; directory.mkdir(parents=True,exist_ok=True)
-    manifest={'schema':2,'generation':generation,'model_profile':profile,
+    manifest={'schema':2,'generation':generation,'compiler_procedure':procedure,'compiler_procedure_sha256':procedure_sha256,'shared_evidence_sha256':shared_evidence_sha256,'model_profile':profile,
               'sha256':digest(full),'text_tokens':count(full),'rendered_probe_tokens':total,
               'prefix_token_budget':budget,'workspace_reserve_tokens':reserve,
               'shared_prefix_tokens':common,'complete_cache_blocks':common//block,
@@ -1905,6 +1885,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     payloads={CONTEXT.name:full,SERVER_TEMPLATE.name:template,
               'evidence_cards.jsonl':evidence_records,
               PREFIX_MANIFEST.name:json.dumps(manifest,indent=2,sort_keys=True)+'\n'}
+    payloads.update(procedure_payloads)
     for name,content in payloads.items():
         artifact=directory/name
         if artifact.exists() and artifact.read_text()!=content:
@@ -2256,9 +2237,6 @@ def transport_text(text):
 
 
 
-def markdown_literal(excerpt):
-    fence='`'*max(3,max((len(m.group()) for m in re.finditer(r'`+',excerpt)),default=0)+1)
-    return f'{fence}text\n{excerpt}' + ('' if excerpt.endswith('\n') else '\n') + fence
 
 
 def literal_block(text):

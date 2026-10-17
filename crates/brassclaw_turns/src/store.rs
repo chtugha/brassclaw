@@ -38,6 +38,19 @@ pub trait TurnStateStore: Send + Sync {
         request: CancelRunRequest,
     ) -> Result<CancelRunResponse, TurnError>;
 
+    /// Cancel a run and every live descendant in one state transition.
+    /// The complete selection and transitions must be atomic with admission.
+    /// Terminal intermediate runs do not hide their descendants. Returned
+    /// requests retain the per-run idempotency identity for lifecycle delivery.
+    async fn request_cancel_tree(
+        &self,
+        _request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "atomic tree cancellation is unavailable".into(),
+        })
+    }
+
     /// Return the run state when the run exists in the supplied exact scope.
     ///
     /// Missing runs and runs outside the supplied scope must both return
@@ -178,6 +191,13 @@ impl TurnStateStore for TurnStateDriverBox {
         request: crate::CancelRunRequest,
     ) -> Result<crate::CancelRunResponse, crate::TurnError> {
         self.0.request_cancel(request).await
+    }
+
+    async fn request_cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        self.0.request_cancel_tree(request).await
     }
 
     async fn get_run_state(

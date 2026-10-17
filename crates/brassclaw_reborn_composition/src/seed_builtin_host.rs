@@ -197,7 +197,11 @@ impl HostStores {
         {
             return Ok(existing.id);
         }
-        let id = self.python_code.insert(row).await.map_err(map)?;
+        let id = self
+            .python_code
+            .insert_installation_projection(row)
+            .await
+            .map_err(map)?;
         Ok(id)
     }
 
@@ -227,7 +231,7 @@ impl HostStores {
                 == Some(false);
         let id = self
             .recipe
-            .insert_with_builtin_tier(row, tier0_builtin)
+            .insert_installation_projection(row, tier0_builtin)
             .await
             .map_err(map)?;
         Ok(id)
@@ -286,7 +290,7 @@ pub async fn seed_builtin_host_components(
             };
             stores
                 .catalogue
-                .insert(row)
+                .insert_installation_projection(row)
                 .await
                 .map_err(|e| SeedBuiltinHostError::Db {
                     reason: e.to_string(),
@@ -368,7 +372,7 @@ pub async fn seed_builtin_host_components(
         child_components = child_ids.len(),
         "seeded builtin-host stack"
     );
-    crate::system_seed::ensure_system_seeds_validated(
+    crate::system_seed::repair_packaged_legacy_prompts(
         &stores.pool,
         &stores.tenant,
         SEED_USER,

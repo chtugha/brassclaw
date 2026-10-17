@@ -62,10 +62,22 @@ pub(super) async fn runtime(
     let package = builtin_first_party_package().unwrap();
     let mut registry = ExtensionRegistry::new();
     registry.insert(package).unwrap();
-    let mut registrations =
-        builtin_native_first_party_handlers(BuiltinFirstPartyTools::default(), 1_073_741_824)
-            .await
-            .unwrap();
+    let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
+        brassclaw_host_api::MontyExecutionLimits::default(),
+    )
+    .unwrap();
+    let verification = brassclaw_host_runtime::NativeVerificationLimits::new(
+        preparation.bounds.max_stdout_bytes,
+        preparation.process.response_timeout,
+    )
+    .unwrap();
+    let mut registrations = builtin_native_first_party_handlers(
+        BuiltinFirstPartyTools::default(),
+        preparation.max_native_artifact_bytes,
+        verification,
+    )
+    .await
+    .unwrap();
     let id = CapabilityId::new("builtin.json").unwrap();
     assert_eq!(registrations.native_identity(&id), Some(expected));
     let wrong_contract = registrations

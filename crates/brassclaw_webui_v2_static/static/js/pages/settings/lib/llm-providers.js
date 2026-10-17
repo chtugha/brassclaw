@@ -102,11 +102,82 @@ export function providerMissingReason(provider, overrides) {
   return "ok";
 }
 
+export function providerRequestPolicy(form) {
+  const fields = [form.requestTimeout, form.requestRetries, form.circuitThreshold, form.circuitRecovery];
+  if (fields.every((value) => value === undefined)) return undefined;
+  if (fields.some((value) => !["string", "number"].includes(typeof value) || String(value).trim() === "" || !Number.isSafeInteger(Number(value))) || Number(form.requestTimeout) < 1 || Number(form.circuitRecovery) < 1 || Number(form.requestRetries) < 0 || Number(form.requestRetries) > 4294967295 || Number(form.circuitThreshold) < 0 || Number(form.circuitThreshold) > 4294967295) {
+    throw new RangeError("Model request limits must be valid whole numbers.");
+  }
+  const timingValues = [form.retryBase, form.retryMax, form.retryJitter, form.retryAfterMax];
+  let timing;
+  if (!timingValues.every((value) => value === undefined)) {
+    if (timingValues.some((value) => !["string", "number"].includes(typeof value) || String(value).trim() === "" || !Number.isSafeInteger(Number(value))) || Number(form.retryBase) < 1 || Number(form.retryMax) < Number(form.retryBase) || Number(form.retryJitter) < 0 || Number(form.retryJitter) > 100 || Number(form.retryAfterMax) < 1) {
+      throw new RangeError("Retry timing must be positive whole numbers, the maximum must cover the base and jitter must be 0–100 percent.");
+    }
+    timing = { base_delay_ms: Number(form.retryBase), max_backoff_ms: Number(form.retryMax), jitter_percent: Number(form.retryJitter), max_retry_after_secs: Number(form.retryAfterMax) };
+  }
+  const policy = { timeout_secs: Number(form.requestTimeout), max_retries: Number(form.requestRetries), circuit_breaker_threshold: Number(form.circuitThreshold) || null, circuit_breaker_recovery_secs: Number(form.circuitRecovery) };
+  if (form.responseBytes !== undefined) {
+    if (!["string", "number"].includes(typeof form.responseBytes) || String(form.responseBytes).trim() === "" || !Number.isSafeInteger(Number(form.responseBytes)) || Number(form.responseBytes) < 0) {
+      throw new RangeError("Response capacity must be a nonnegative whole number; zero disables it.");
+    }
+    const bytes = Number(form.responseBytes);
+    if (bytes && !["open_ai_completions", "anthropic", "ollama", "deep_seek", "gemini", "open_router", "github_copilot", "nearai", "near_ai", "gemini_oauth", "openai_codex"].includes(form.adapter)) {
+      throw new RangeError("This adapter does not yet support a response-body capacity.");
+    }
+    policy.max_response_bytes = bytes || null;
+  }
+  if (timing) policy.retry_timing = timing;
+  return policy;
+}
+
+export function providerEmbeddingModels(form) {
+  if (form.embeddingModels === undefined) return undefined;
+  if (!Array.isArray(form.embeddingModels)) throw new RangeError("Invalid embedding model contracts.");
+  if (form.embeddingModels.length && form.adapter !== undefined && !["open_ai_completions", "open_router", "nearai", "near_ai", "ollama", "bedrock"].includes(form.adapter)) {
+    throw new RangeError("This protocol has no supported embedding adapter.");
+  }
+  const names = new Set();
+  const rows = form.embeddingModels.map((row) => {
+    const model = row?.model;
+    if (typeof model !== "string" || !model || model.trim() !== model || /[\u0000-\u001f\u007f-\u009f]/u.test(model) || names.has(model)) {
+      throw new RangeError("Embedding model names must be distinct and nonempty.");
+    }
+    names.add(model);
+    for (const value of [row.dimension, row.cacheMaxEntries]) {
+      if (!["string", "number"].includes(typeof value) || String(value).trim() === "" || !Number.isSafeInteger(Number(value)) || Number(value) < 0 || Number(value) > 4294967295) {
+        throw new RangeError("Embedding dimensions and cache entries must be valid whole numbers.");
+      }
+    }
+    if (Number(row.dimension) === 0) throw new RangeError("Embedding dimensions must be positive.");
+    const revision = row.vectorRevision === undefined ? "1" : row.vectorRevision;
+    if (!["string", "number"].includes(typeof revision) || String(revision).trim() === "" || !Number.isSafeInteger(Number(revision)) || Number(revision) < 1 || Number(revision) > 4294967295) {
+      throw new RangeError("Embedding vector revisions must be positive whole numbers.");
+    }
+    const contract = { dimension: Number(row.dimension), cache_max_entries: Number(row.cacheMaxEntries) };
+    if (Number(revision) !== 1) contract.vector_revision = Number(revision);
+    return [model, contract];
+  });
+  return Object.fromEntries(rows);
+}
+
+export function providerModelDiscoveryPolicy(form) {
+  // Older callers may omit a policy to retain the persisted one. A partially
+  // supplied or invalid policy must never become NaN/null on the wire.
+  if (form.discoveryTimeout === undefined && form.discoveryBytes === undefined) return undefined;
+  const values = [form.discoveryTimeout, form.discoveryBytes];
+  if (values.some((value) => !["string", "number"].includes(typeof value) || String(value).trim() === "" || !Number.isSafeInteger(Number(value)) || Number(value) < 1)) {
+    throw new RangeError("Model discovery limits must be positive whole numbers.");
+  }
+  return { timeout_secs: Number(form.discoveryTimeout), max_response_bytes: Number(form.discoveryBytes) };
+}
+
 export function providerPayload(provider, form, apiKey, overrides) {
   const baseUrl = form.baseUrl.trim();
   const model = form.model.trim();
   const payload = {
-    adapter: provider?.builtin ? provider.adapter : form.adapter,
+    model_discovery: providerModelDiscoveryPolicy(form),
+    adapter: form.adapter,
     base_url: baseUrl || provider?.base_url || "",
     provider_id: provider?.id || form.id.trim(),
     provider_type: provider?.builtin ? "builtin" : "custom",

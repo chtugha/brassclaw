@@ -5,7 +5,7 @@
 //!
 //! Uses `lru::LruCache` for O(1) insertion, lookup, and eviction.
 
-use std::num::NonZeroUsize;
+use std::collections::hash_map::RandomState;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -17,7 +17,7 @@ use crate::{DEFAULT_EMBEDDING_CACHE_SIZE, EmbeddingError, EmbeddingProvider};
 /// Configuration for the embedding cache.
 #[derive(Debug, Clone)]
 pub struct EmbeddingCacheConfig {
-    /// Maximum number of cached embeddings (default 10,000).
+    /// Maximum number of cached embeddings (default 10,000); zero disables caching.
     ///
     /// Approximate raw embedding payload: `max_entries × dimension × 4 bytes`.
     /// At 10,000 entries × 1536 floats ≈ 58 MB (payload only; actual memory
@@ -40,7 +40,26 @@ impl Default for EmbeddingCacheConfig {
 /// so a synchronous mutex is cheaper than `tokio::sync::Mutex`.
 pub struct CachedEmbeddingProvider {
     inner: Arc<dyn EmbeddingProvider>,
-    cache: Mutex<LruCache<[u8; 32], Vec<f32>>>,
+    cache: Mutex<CacheState>,
+}
+
+struct CacheState {
+    entries: LruCache<[u8; 32], Vec<f32>, RandomState>,
+    max_entries: usize,
+    // Holding this token across a request prevents old inserts after clear/resize.
+    generation: Arc<()>,
+}
+
+impl CacheState {
+    fn insert(&mut self, key: [u8; 32], embedding: Vec<f32>) {
+        if self.max_entries == 0 {
+            return;
+        }
+        if !self.entries.contains(&key) && self.entries.len() == self.max_entries {
+            self.entries.pop_lru();
+        }
+        self.entries.push(key, embedding);
+    }
 }
 
 /// Warn if the embedding cache is configured above this many entries.
@@ -49,39 +68,79 @@ const CACHE_LARGE_WARN_THRESHOLD: usize = 100_000;
 impl CachedEmbeddingProvider {
     /// Wrap a provider with LRU caching.
     ///
-    /// `config.max_entries` is clamped to at least 1.
+    /// A zero limit bypasses caching. The limit does not preallocate its capacity.
     pub fn new(inner: Arc<dyn EmbeddingProvider>, config: EmbeddingCacheConfig) -> Self {
-        let max_entries = config.max_entries.max(1);
+        let max_entries = config.max_entries;
+        Self::warn_large_capacity(max_entries);
+        Self {
+            inner,
+            cache: Mutex::new(CacheState {
+                entries: LruCache::unbounded_with_hasher(RandomState::new()),
+                max_entries,
+                generation: Arc::new(()),
+            }),
+        }
+    }
+
+    fn warn_large_capacity(max_entries: usize) {
         if max_entries > CACHE_LARGE_WARN_THRESHOLD {
             tracing::warn!(
                 max_entries,
                 "Embedding cache size exceeds 100,000 entries; memory usage may be significant"
             );
         }
-        // safety: max_entries >= 1 due to .max(1) above
-        let cap = NonZeroUsize::new(max_entries).expect("clamped to >= 1"); // safety: always >= 1
-        Self {
-            inner,
-            cache: Mutex::new(LruCache::new(cap)),
+    }
+
+    /// Effective entry ceiling. Zero means no cached results are retained.
+    pub fn max_entries(&self) -> usize {
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .max_entries
+    }
+
+    /// Change the ceiling synchronously, evicting oldest entries as necessary.
+    ///
+    /// Results from requests started before a change still reach their callers,
+    /// but cannot populate the new cache generation. Reapplying the same value
+    /// leaves the generation and retained entries intact.
+    pub fn set_max_entries(&self, max_entries: usize) {
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        if state.max_entries == max_entries {
+            return;
+        }
+        Self::warn_large_capacity(max_entries);
+        state.max_entries = max_entries;
+        state.generation = Arc::new(());
+        if max_entries == 0 {
+            // Drop the map allocation as well as its embedding payloads.
+            state.entries = LruCache::unbounded_with_hasher(RandomState::new());
+        } else {
+            while state.entries.len() > max_entries {
+                state.entries.pop_lru();
+            }
         }
     }
 
     /// Number of entries currently in the cache.
     pub fn len(&self) -> usize {
-        self.cache.lock().unwrap_or_else(|e| e.into_inner()).len()
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entries
+            .len()
     }
 
     /// Whether the cache is empty.
     pub fn is_empty(&self) -> bool {
-        self.cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .is_empty()
+        self.len() == 0
     }
 
     /// Clear all cached entries.
     pub fn clear(&self) {
-        self.cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        let mut state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        state.entries = LruCache::unbounded_with_hasher(RandomState::new());
+        state.generation = Arc::new(());
     }
 
     /// Build a deterministic cache key: `SHA-256(model_name + "\0" + text)`.
@@ -106,18 +165,27 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         self.inner.model_name()
     }
 
-    fn max_input_length(&self) -> usize {
+    fn max_input_length(&self) -> Option<usize> {
         self.inner.max_input_length()
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
+        let generation = {
+            let state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            (state.max_entries != 0).then(|| Arc::clone(&state.generation))
+        };
+        let Some(generation) = generation else {
+            return self.inner.embed(text).await;
+        };
+        // Text hashing can be expensive; keep it outside the cache lock.
         let key = self.cache_key(text);
-
         // Check cache (short critical section). LruCache::get promotes the
         // entry to most-recently-used automatically.
         {
             let mut guard = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(embedding) = guard.get(&key) {
+            if Arc::ptr_eq(&generation, &guard.generation)
+                && let Some(embedding) = guard.entries.get(&key)
+            {
                 tracing::trace!("embedding cache hit");
                 return Ok(embedding.clone());
             }
@@ -133,12 +201,15 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         // may have already cached this key while the lock was released.
         {
             let mut guard = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            if guard.get(&key).is_some() {
+            if !Arc::ptr_eq(&generation, &guard.generation) {
+                return Ok(embedding);
+            }
+            if guard.entries.get(&key).is_some() {
                 // Thundering herd — another caller beat us. LruCache::get
                 // already promoted it to most-recently-used; skip the clone.
                 tracing::trace!("embedding cache: concurrent insert, skipping clone");
             } else {
-                guard.push(key, embedding.clone());
+                guard.insert(key, embedding.clone());
             }
         }
 
@@ -151,6 +222,22 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
             return Ok(Vec::new());
         }
 
+        let generation = {
+            let state = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            (state.max_entries != 0).then(|| Arc::clone(&state.generation))
+        };
+        let Some(generation) = generation else {
+            let embeddings = self.inner.embed_batch(texts).await?;
+            if embeddings.len() != texts.len() {
+                return Err(EmbeddingError::InvalidResponse(format!(
+                    "embed_batch returned {} embeddings, expected {}",
+                    embeddings.len(),
+                    texts.len()
+                )));
+            }
+            return Ok(embeddings);
+        };
+
         // Partition into hits and misses
         let keys: Vec<[u8; 32]> = texts.iter().map(|t| self.cache_key(t)).collect();
         let mut results: Vec<Option<Vec<f32>>> = vec![None; texts.len()];
@@ -159,11 +246,13 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         {
             let mut guard = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             for (i, key) in keys.iter().enumerate() {
-                if let Some(embedding) = guard.get(key) {
+                if Arc::ptr_eq(&generation, &guard.generation)
+                    && let Some(embedding) = guard.entries.get(key)
+                {
                     results[i] = Some(embedding.clone());
-                } else {
-                    miss_indices.push(i);
+                    continue;
                 }
+                miss_indices.push(i);
             }
         }
         // Lock released before HTTP call
@@ -205,10 +294,11 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         // cache capacity wastes clone work on entries that are immediately evicted.
         {
             let mut guard = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            let cap = guard.cap().get();
-            let skip = miss_indices.len().saturating_sub(cap);
-            for (&orig_idx, emb) in miss_indices[skip..].iter().zip(&new_embeddings[skip..]) {
-                guard.push(keys[orig_idx], emb.clone());
+            if Arc::ptr_eq(&generation, &guard.generation) {
+                let skip = miss_indices.len().saturating_sub(guard.max_entries);
+                for (&orig_idx, emb) in miss_indices[skip..].iter().zip(&new_embeddings[skip..]) {
+                    guard.insert(keys[orig_idx], emb.clone());
+                }
             }
         }
 
@@ -274,8 +364,8 @@ mod tests {
         fn model_name(&self) -> &str {
             &self.model
         }
-        fn max_input_length(&self) -> usize {
-            MOCK_MAX_INPUT_LENGTH
+        fn max_input_length(&self) -> Option<usize> {
+            Some(MOCK_MAX_INPUT_LENGTH)
         }
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
             self.embed_calls.fetch_add(1, Ordering::SeqCst);
@@ -465,8 +555,8 @@ mod tests {
         fn model_name(&self) -> &str {
             &self.model
         }
-        fn max_input_length(&self) -> usize {
-            MOCK_MAX_INPUT_LENGTH
+        fn max_input_length(&self) -> Option<usize> {
+            Some(MOCK_MAX_INPUT_LENGTH)
         }
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
             if self.take_failure() {
@@ -537,18 +627,139 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn zero_max_entries_clamped_to_one() {
+    async fn zero_disables_cache_and_resizing_evicts_oldest_entries() {
         let inner = Arc::new(CountingMock::new(4, "test-model"));
         let cached =
             CachedEmbeddingProvider::new(inner.clone(), EmbeddingCacheConfig { max_entries: 0 });
 
-        // Should behave as max_entries=1 (clamped in constructor)
         cached.embed("hello").await.unwrap();
-        assert_eq!(cached.len(), 1);
-
-        // Second entry evicts the first
-        cached.embed("world").await.unwrap();
-        assert_eq!(cached.len(), 1);
+        cached.embed("hello").await.unwrap();
+        assert_eq!(cached.max_entries(), 0);
+        assert!(cached.is_empty());
         assert_eq!(inner.embed_calls(), 2);
+
+        let texts = vec!["hello".into(), "world".into()];
+        assert_eq!(cached.embed_batch(&texts).await.unwrap().len(), 2);
+        cached.embed_batch(&texts).await.unwrap();
+        assert_eq!(inner.batch_calls(), 2);
+        assert!(cached.is_empty());
+
+        cached.set_max_entries(3);
+        cached.embed("hello").await.unwrap();
+        cached.embed("world").await.unwrap();
+        cached.embed("third").await.unwrap();
+        cached.embed("hello").await.unwrap(); // Retain this most recent entry.
+        let calls = inner.embed_calls();
+        cached.set_max_entries(1);
+        assert_eq!(cached.len(), 1);
+        cached.embed("hello").await.unwrap();
+        assert_eq!(inner.embed_calls(), calls);
+        cached.embed("world").await.unwrap();
+        assert_eq!(inner.embed_calls(), calls + 1);
+        cached.set_max_entries(0);
+        assert!(cached.is_empty());
+        cached.set_max_entries(2);
+        cached.embed("world").await.unwrap();
+        assert_eq!(inner.embed_calls(), calls + 2);
+        cached.clear();
+        assert!(cached.is_empty());
+        assert_eq!(cached.max_entries(), 2);
+    }
+
+    struct GatedProvider {
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for GatedProvider {
+        fn dimension(&self) -> usize {
+            1
+        }
+
+        fn model_name(&self) -> &str {
+            "gated-model"
+        }
+
+        fn max_input_length(&self) -> Option<usize> {
+            None
+        }
+
+        async fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbeddingError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(vec![1.0])
+        }
+
+        async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(vec![vec![1.0]; texts.len()])
+        }
+    }
+
+    #[tokio::test]
+    async fn changed_cache_generation_fences_in_flight_single_and_batch_results() {
+        // Each interleaving holds a real adapter request at its await boundary.
+        for batch in [false, true] {
+            for action in ["clear", "disable-enable", "shrink", "unchanged"] {
+                let inner = Arc::new(GatedProvider {
+                    started: tokio::sync::Notify::new(),
+                    release: tokio::sync::Notify::new(),
+                });
+                let cached = Arc::new(CachedEmbeddingProvider::new(
+                    inner.clone(),
+                    EmbeddingCacheConfig { max_entries: 3 },
+                ));
+                let request = tokio::spawn({
+                    let cached = cached.clone();
+                    async move {
+                        if batch {
+                            cached.embed_batch(&["one".into(), "two".into()]).await
+                        } else {
+                            cached.embed("one").await.map(|v| vec![v])
+                        }
+                    }
+                });
+                inner.started.notified().await;
+                match action {
+                    "clear" => cached.clear(),
+                    "disable-enable" => {
+                        cached.set_max_entries(0);
+                        cached.set_max_entries(3);
+                    }
+                    "shrink" => cached.set_max_entries(1),
+                    "unchanged" => cached.set_max_entries(3),
+                    _ => unreachable!(),
+                }
+                inner.release.notify_one();
+                let result = request.await.unwrap().unwrap();
+                assert_eq!(result, vec![vec![1.0]; if batch { 2 } else { 1 }]);
+                let expected = if action == "unchanged" {
+                    result.len()
+                } else {
+                    0
+                };
+                assert_eq!(cached.len(), expected, "batch={batch}, action={action}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn large_logical_ceiling_does_not_reserve_entries() {
+        let inner = Arc::new(CountingMock::new(4, "test-model"));
+        let cached = CachedEmbeddingProvider::new(
+            inner.clone(),
+            EmbeddingCacheConfig {
+                max_entries: usize::MAX,
+            },
+        );
+        assert_eq!(cached.max_entries(), usize::MAX);
+        assert!(cached.is_empty());
+        cached.embed("one entry").await.unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(inner.embed_calls(), 1);
+        cached.set_max_entries(0);
+        assert!(cached.is_empty());
     }
 }

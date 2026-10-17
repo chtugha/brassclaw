@@ -11,7 +11,7 @@ use std::{
 
 use async_trait::async_trait;
 use brassclaw_monty_host::service::{
-    ServiceClient, TaskInput, TaskOutcome, TaskPorts, TaskReceipt,
+    ServiceClient, TaskInput, TaskOutcome, TaskPorts, TaskReceipt, UnsubmittedTask,
 };
 use brassclaw_pg::PgPool;
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
@@ -32,7 +32,7 @@ use crate::{
 };
 
 /// Capture a complete coherent catalogue view for this admitted task, without
-/// selection or execution. Production implementations retain approved exact
+/// execution. Production implementations retain approved exact
 /// revisions, combination reviews and actual implementations. Draft validation
 /// uses its own explicit provider; it cannot become a production approval flag.
 #[async_trait]
@@ -52,6 +52,7 @@ pub(crate) trait MontyCatalogueProvider: Send + Sync {
 #[async_trait]
 pub(crate) trait TaskProviderLease: Send + Sync {
     fn surface_version(&self) -> &CapabilitySurfaceVersion;
+    fn is_live(&self) -> bool;
     async fn finish(&self);
 }
 
@@ -72,6 +73,7 @@ struct RetainedTask {
     settled: bool,
     provider_watch: Option<tokio_util::task::AbortOnDropHandle<()>>,
     provider_port: Option<Arc<dyn TaskProviderLease>>,
+    unsubmitted: Option<Arc<UnsubmittedTask>>,
 }
 
 /// Transfers the real host, private admission address, child/Tool port state
@@ -91,6 +93,7 @@ pub(crate) type OwnedMontySettlement = (
 /// uncertain persistence retain evidence and consume capacity; neither outcome
 /// authorizes creating a replacement admission or replaying external work.
 pub(crate) struct OwnedGlobalTaskFactory {
+    root: brassclaw_monty_host::global::RootExecutionIdentity,
     pool: Arc<PgPool>,
     ownership: GlobalOwnerCheck,
     catalogue: Arc<dyn MontyCatalogueProvider>,
@@ -115,6 +118,7 @@ impl OwnedGlobalTaskFactory {
             return Err(failed("monty_retention_unavailable"));
         }
         Ok(Self {
+            root: service.root_identity(),
             pool,
             ownership,
             catalogue,
@@ -135,6 +139,100 @@ impl OwnedGlobalTaskFactory {
         self.tasks
             .lock()
             .map_err(|_| failed("monty_task_registry_failed"))
+    }
+
+    async fn dependency_parent(
+        &self,
+        host: &MontyTaskHost,
+        input: &TaskInput,
+    ) -> Result<Option<Arc<dyn TaskPorts>>, AgentLoopDriverError> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| failed("mcp_parent_database_failed"))?;
+        let row = client.query_opt("SELECT c.parent_run_id,c.owner_scope,c.command,c.phase,
+            e.parent_run_id,e.owner_scope,e.active,e.disconnected_at IS NULL,e.parent_surface_version
+            FROM brassclaw_mcp_chat_calls c JOIN brassclaw_mcp_exchanges e USING(exchange_id)
+            WHERE c.call_id=$1", &[&host.attempt().run_id.as_uuid()])
+            .await.map_err(|_| failed("mcp_parent_database_failed"))?;
+        drop(client);
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let Some(version) = row.get::<_, Option<String>>(8) else {
+            // Historical/protocol-only exchanges cannot identify a parent
+            // attempt. They receive no dependent slot and infer no successor.
+            return Ok(None);
+        };
+        let parent_run: uuid::Uuid = row.get(0);
+        let owner: brassclaw_threads::ThreadScope = serde_json::from_value(row.get(1))
+            .map_err(|_| failed("mcp_parent_identity_invalid"))?;
+        let context = host.run_context();
+        if parent_run == host.attempt().run_id.as_uuid()
+            || row.get::<_, uuid::Uuid>(4) != parent_run
+            || row.get::<_, Value>(1) != row.get::<_, Value>(5)
+            || row.get::<_, String>(2) != input.user_input
+            || row.get::<_, i16>(3) != 1
+            || !row.get::<_, bool>(6)
+            || !row.get::<_, bool>(7)
+            || context.scope.tenant_id != owner.tenant_id
+            || context.scope.agent_id.as_ref() != Some(&owner.agent_id)
+            || context.scope.project_id != owner.project_id
+            || context.scope.explicit_owner_user_id() != owner.owner_user_id.as_ref()
+        {
+            return Err(failed("mcp_parent_identity_invalid"));
+        }
+        let (parent_host, admission, ports, provider) = {
+            let tasks = self.tasks()?;
+            let mut matching = tasks.values().filter(|task| {
+                task.host.attempt().run_id.as_uuid() == parent_run
+                    && task.provider_port.as_ref().is_some_and(|port| {
+                        port.surface_version().as_str() == version && port.is_live()
+                    })
+            });
+            let parent = matching
+                .next()
+                .ok_or_else(|| failed("mcp_parent_attempt_fenced"))?;
+            if matching.next().is_some()
+                || parent.settled
+                || parent.receipt.is_some()
+                || parent.unsubmitted.is_some()
+            {
+                return Err(failed("mcp_parent_attempt_fenced"));
+            }
+            let parent_context = parent.host.run_context();
+            if parent_context.scope.tenant_id != context.scope.tenant_id
+                || parent_context.scope.agent_id != context.scope.agent_id
+                || parent_context.scope.project_id != context.scope.project_id
+                || parent_context.scope.thread_owner != context.scope.thread_owner
+            {
+                return Err(failed("mcp_parent_identity_invalid"));
+            }
+            (
+                parent.host.clone(),
+                parent.admission.clone(),
+                parent
+                    .ports
+                    .clone()
+                    .ok_or_else(|| failed("mcp_parent_attempt_fenced"))?,
+                parent
+                    .provider_port
+                    .clone()
+                    .ok_or_else(|| failed("mcp_parent_attempt_fenced"))?,
+            )
+        };
+        parent_host
+            .check_dispatch_open()
+            .map_err(|_| failed("mcp_parent_attempt_fenced"))?;
+        admission.check_live_dependency().await?;
+        parent_host
+            .check_dispatch_open()
+            .map_err(|_| failed("mcp_parent_attempt_fenced"))?;
+        if !provider.is_live() {
+            return Err(failed("mcp_parent_attempt_fenced"));
+        }
+        Ok(Some(ports))
     }
 
     #[cfg(test)]
@@ -254,12 +352,14 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                     settled: false,
                     provider_watch,
                     provider_port,
+                    unsubmitted: None,
                 },
             );
         }
         // Retention precedes every await below, including a lost COMMIT reply
         // and a caller dropping this future. No registry lock crosses I/O.
         admission.persist_reservation().await?;
+        let dependency_parent = self.dependency_parent(&host, input).await?;
         let catalogue = self
             .catalogue
             .capture(host.clone(), admission.clone(), input)
@@ -268,19 +368,70 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             .check()
             .await
             .map_err(|_| failed("monty_instance_ownership_failed"))?;
-        let ports = Arc::new(GlobalRecipePorts::new(
-            host.clone(),
-            admission,
-            catalogue,
-            input.user_input.clone(),
-            self.ownership.clone(),
-            self.recipe_capacity.clone(),
-        ));
+        let ports = Arc::new(
+            GlobalRecipePorts::new(
+                host.clone(),
+                admission,
+                catalogue,
+                input.user_input.clone(),
+                self.ownership.clone(),
+                self.recipe_capacity.clone(),
+            )
+            .with_dependency_parent(dependency_parent),
+        );
         self.tasks()?
             .get_mut(&host.attempt())
             .ok_or_else(|| failed("monty_task_registry_failed"))?
             .ports = Some(ports.clone());
         Ok(ports)
+    }
+
+    async fn settle_unsubmitted(
+        &self,
+        host: Arc<MontyTaskHost>,
+        proof: Arc<UnsubmittedTask>,
+    ) -> Result<(), AgentLoopDriverError> {
+        let (admission, provider) = {
+            let mut tasks = self.tasks()?;
+            let task = tasks
+                .get_mut(&host.attempt())
+                .ok_or_else(|| failed("monty_task_registry_failed"))?;
+            let ports: Arc<dyn TaskPorts> = task
+                .ports
+                .clone()
+                .ok_or_else(|| failed("monty_task_registry_failed"))?;
+            if !Arc::ptr_eq(&host, &task.host)
+                || !proof.matches(self.root, &host.attempt().run_id.to_string(), &ports)
+                || task.receipt.is_some()
+                || task.execution_report.is_some()
+                || task.settled
+                || task
+                    .unsubmitted
+                    .as_ref()
+                    .is_some_and(|old| !Arc::ptr_eq(old, &proof))
+                || host.review_dispatch_counts() != (0, 0)
+            {
+                return Err(failed("monty_unsubmitted_identity_conflict"));
+            }
+            ports.fence();
+            // Retain before any I/O, including an unknown COMMIT reply.
+            task.unsubmitted = Some(proof.clone());
+            (task.admission.clone(), task.provider_port.clone())
+        };
+        if let Some(provider) = provider {
+            provider.finish().await;
+        }
+        admission.settle_unsubmitted(proof.reason()).await?;
+        let mut tasks = self.tasks()?;
+        let task = tasks
+            .get(&host.attempt())
+            .ok_or_else(|| failed("monty_task_registry_failed"))?;
+        if !Arc::ptr_eq(&task.admission, &admission) {
+            return Err(failed("monty_task_settlement_conflict"));
+        }
+        task.retention.unsubmitted_settled()?;
+        tasks.remove(&host.attempt());
+        Ok(())
     }
 
     async fn settle(

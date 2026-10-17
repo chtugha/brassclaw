@@ -198,6 +198,10 @@ fn denied(reason: DenyReason) -> Decision {
 
 #[async_trait]
 impl TrustAwareCapabilityDispatchAuthorizer for InstanceToolAuthorizer {
+    fn dispatch_authority_model(&self) -> brassclaw_host_api::DispatchAuthorityModel {
+        brassclaw_host_api::DispatchAuthorityModel::InstancePolicy
+    }
+
     fn supports_operation_approval(&self) -> bool {
         false
     }

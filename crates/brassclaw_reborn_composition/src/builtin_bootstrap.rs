@@ -166,6 +166,8 @@ pub enum SeedBuiltinBootstrapError {
     Pool { reason: String },
     #[error("database error: {reason}")]
     Db { reason: String },
+    #[error("immutable component seed error: {reason}")]
+    ComponentRevision { reason: String },
 }
 
 /// The five seed-side stores + the catalogue store, all sharing one pool.
@@ -335,7 +337,11 @@ impl BootstrapStores {
             self.record_seed_review(existing.id, 22, name).await?;
             return Ok(existing.id);
         }
-        let id = self.python_code.insert(row).await.map_err(map)?;
+        let id = self
+            .python_code
+            .insert_installation_projection(row)
+            .await
+            .map_err(map)?;
         // Retain a pending request; no validation or approval is fabricated.
         self.record_seed_review(id, 22, name).await?;
         Ok(id)
@@ -361,7 +367,11 @@ impl BootstrapStores {
             self.record_seed_review(existing.id, 21, name).await?;
             return Ok(existing.id);
         }
-        let id = self.recipe.insert(row).await.map_err(map)?;
+        let id = self
+            .recipe
+            .insert_installation_projection(row, false)
+            .await
+            .map_err(map)?;
         // Retain a pending request; no validation or approval is fabricated.
         self.record_seed_review(id, 21, name).await?;
         Ok(id)
@@ -389,7 +399,11 @@ impl BootstrapStores {
             self.record_seed_review(existing.id, 23, name).await?;
             return Ok(existing.id);
         }
-        let id = self.catalogue.insert(row).await.map_err(map)?;
+        let id = self
+            .catalogue
+            .insert_installation_projection(row)
+            .await
+            .map_err(map)?;
         // Retain a pending request; no validation or approval is fabricated.
         self.record_seed_review(id, 23, name).await?;
         Ok(id)
@@ -636,6 +650,115 @@ pub(crate) async fn seed_memory_write_binding(
     Ok((tool_id, binding_id))
 }
 
+/// Retain the registered immutable-prefix primitive's ordinary Tool identity.
+/// This metadata is pending, not usage/combination approval. The closed prefix
+/// bootstrap owner supplies its independent exact-definition behavioral proof.
+#[cfg(feature = "skills-db")]
+pub(crate) async fn seed_prefix_generation_tool(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    seed_primitive_registration(pool,tenant_id,registered_primitive_row(tenant_id,"prefix_generation",
+        "Read or retain one immutable quarantined prefix generation; never compile or activate it.",
+        "write",brassclaw_host_runtime::PREFIX_GENERATION_CAPABILITY_ID),
+        crate::installed_monty_catalogue::id("prefix-generation:tool")).await
+}
+
+#[cfg(feature = "skills-db")]
+pub(crate) async fn seed_json_primitive_tool(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    seed_primitive_registration(
+        pool,
+        tenant_id,
+        registered_primitive_row(
+            tenant_id,
+            "json",
+            "Parse, query, stringify and validate JSON; hash one bounded ordered UTF-8 text batch.",
+            "read",
+            brassclaw_host_runtime::JSON_CAPABILITY_ID,
+        ),
+        crate::installed_monty_catalogue::id("builtin-json:tool"),
+    )
+    .await
+}
+
+#[cfg(feature = "skills-db")]
+fn registered_primitive_row(
+    tenant_id: &str,
+    name: &str,
+    description: &str,
+    effect: &str,
+    capability: &str,
+) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant_id.into(),
+        user_id: SEED_USER.into(),
+        agent_id: SEED_AGENT.into(),
+        project_id: SEED_PROJECT.into(),
+        name: name.into(),
+        description: description.into(),
+        param_schema: None,
+        param_template: None,
+        effect_type: effect.into(),
+        preconditions: None,
+        error_handling: None,
+        consumer_tags: vec!["00:rusty".into()],
+        source: "system".into(),
+        validation_status: "pending".into(),
+        capability_id: capability.into(),
+    }
+}
+
+// Preserve existing identities, operator metadata and live blocks. This registers
+// one primitive only; the closed bootstrap owner qualifies actual usages later.
+#[cfg(feature = "skills-db")]
+async fn seed_primitive_registration(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+    row: NewPgTool,
+    preferred: Uuid,
+) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    let store = PgToolStore::new(pool.clone());
+    let name = row.name.clone();
+    let capability = row.capability_id.clone();
+    let map = |error: crate::pg_tool_store::PgToolStoreError| SeedBuiltinBootstrapError::Db {
+        reason: error.to_string(),
+    };
+    let tool = match store
+        .insert_with_id(row, Some(preferred))
+        .await
+        .map_err(map)?
+    {
+        Some(id) => id,
+        None => store
+            .get_id_by_name(tenant_id, SEED_USER, SEED_AGENT, SEED_PROJECT, &name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinBootstrapError::Db {
+                reason: "primitive registration missing".into(),
+            })?,
+    };
+    let client = pool
+        .get()
+        .await
+        .map_err(|error| SeedBuiltinBootstrapError::Db {
+            reason: error.to_string(),
+        })?;
+    let rows=client.query("SELECT id,capability_id FROM reborn_tools WHERE tenant_id=$1 AND (id=$2 OR capability_id=$3)",
+        &[&tenant_id,&tool,&capability]).await.map_err(|error|SeedBuiltinBootstrapError::Db{reason:error.to_string()})?;
+    if rows.len() != 1
+        || rows[0].get::<_, Uuid>(0) != tool
+        || rows[0].get::<_, String>(1) != capability
+    {
+        return Err(SeedBuiltinBootstrapError::Db {
+            reason: "primitive registration identity is missing or conflicting".into(),
+        });
+    }
+    Ok(tool)
+}
+
 /// Seed the built-in first-party component stack for `tenant_id`.
 ///
 /// Idempotent: safe to call on every composition boot. Each domain group is
@@ -680,6 +803,23 @@ pub async fn seed_builtin_components(
     // Tier-0 structural validator Recipe per component class.  Seeds `05:validator`
     // Recipes that `find_validator_recipe` (q1_orchestrator.rs) can look up.
     seed_validator_recipes(&stores).await?;
+    // Typed replacement checking component only. Preserve every historical
+    // validator/body; do not substitute it into legacy routing, raise confidence
+    // or manufacture activation/Q1 evidence for this limited presence check.
+    let presence = brassclaw_skills::validator_components::structural_presence_draft(
+        brassclaw_skills::global_bootstrap_components::packaged_component_id(
+            "validator:structural-presence",
+        ),
+    )
+    .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+        reason: error.to_string(),
+    })?;
+    brassclaw_skills::revision_store::PgComponentRevisionStore::new(stores.pool.clone())
+        .retain_packaged_draft(&presence)
+        .await
+        .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+            reason: error.to_string(),
+        })?;
 
     // Pass 8–14 — workflow domain skills (Phase P.1): coding, commit, github,
     // code-review, qa-review, security-review, plan-mode.
@@ -708,7 +848,7 @@ pub async fn seed_builtin_components(
     // host capabilities and a Tier-0 recipe.
     seed_prefix_bundle_group(&stores).await?;
 
-    crate::system_seed::ensure_system_seeds_validated(
+    crate::system_seed::repair_packaged_legacy_prompts(
         &stores.pool,
         &stores.tenant,
         SEED_USER,
@@ -4914,7 +5054,7 @@ Effect: network_egress
 Permission: Ask
 
 Issues HTTP requests (GET, POST, PUT, PATCH, DELETE, HEAD) and returns the response
-inline (body capped at 256 KiB). For larger responses use ext-http-save.
+inline without formatting truncation. Use ext-http-save when persistence is needed.
 
 Approaches:
 - GET a URL: -> http-get recipe (Tier 0)
@@ -4934,7 +5074,7 @@ Effect: network_egress + write_filesystem
 Permission: Ask
 
 Issues an HTTP request and saves the response body to a scoped workspace file.
-Use when the response exceeds 256 KiB or must be persisted for later processing.
+Use when the response must be persisted for later processing.
 
 Approaches:
 - Download and save: url + save_to -> http-save recipe (Tier 0)
@@ -5869,8 +6009,8 @@ fn tool_http_row(tenant: &str) -> NewPgTool {
         project_id: SEED_PROJECT.to_string(),
         name: "http".to_string(),
         description: "Perform an HTTP or HTTPS request and return the response inline. \
-                       Supports GET, POST, PUT, PATCH, DELETE, HEAD. Response body capped \
-                       at 256 KiB inline; larger responses should use builtin.http.save."
+                       Supports GET, POST, PUT, PATCH, DELETE, HEAD. Returns complete sanitized \
+                       text or binary output. Omitted response bounds use live instance defaults."
             .to_string(),
         param_schema: Some(json!({
             "type": "object",
@@ -5881,9 +6021,9 @@ fn tool_http_row(tenant: &str) -> NewPgTool {
                 "headers": {"description": "HTTP headers as an object or [{name,value}] array"},
                 "body": {"description": "String or JSON request body"},
                 "body_base64": {"type": "string", "description": "Base64-encoded request body"},
-                "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 262144,
-                            "description": "Max inline response bytes, capped at 256 KiB."},
-                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 30000, "default": 10000}
+                "response_body_limit": {"type": "integer", "minimum": 1, "maximum": isize::MAX as u64,
+                            "description": "Exact response byte bound; omission uses the live instance default and overflow fails."},
+                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": u32::MAX, "description": "Exact positive timeout in milliseconds; omission uses the live instance host HTTP default."}
             },
             "required": ["url"],
             "additionalProperties": false
@@ -5894,7 +6034,7 @@ fn tool_http_row(tenant: &str) -> NewPgTool {
             "url must be absolute http/https; network egress must be permitted by policy".into(),
         ),
         error_handling: Some(
-            "connection failure -> tool error; body over limit -> truncated with guidance; \
+            "connection failure -> tool error; body over limit -> classified failure; \
              non-2xx -> in output (not a tool error)"
                 .into(),
         ),
@@ -5913,8 +6053,8 @@ fn tool_http_save_row(tenant: &str) -> NewPgTool {
         project_id: SEED_PROJECT.to_string(),
         name: "http.save".to_string(),
         description: "Perform an HTTP or HTTPS request and save the sanitized response body \
-                       to a scoped file path. Accepts up to 10 MiB of response body. Used when \
-                       the response is too large for inline delivery or must be persisted."
+                       to a scoped file path. Uses the live instance response default when no bound \
+                       is provided. Use when the response must be persisted."
             .to_string(),
         param_schema: Some(json!({
             "type": "object",
@@ -5925,9 +6065,9 @@ fn tool_http_save_row(tenant: &str) -> NewPgTool {
                 "headers": {"description": "HTTP headers as an object or [{name,value}] array"},
                 "body": {"description": "String or JSON request body"},
                 "body_base64": {"type": "string"},
-                "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 10485760,
-                            "description": "Max response body bytes to save. Default 10 MiB."},
-                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 30000, "default": 10000}
+                "response_body_limit": {"type": "integer", "minimum": 1, "maximum": isize::MAX as u64,
+                            "description": "Exact response byte bound to save; omission uses the live instance default and overflow fails."},
+                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": u32::MAX, "description": "Exact positive timeout in milliseconds; omission uses the live instance host HTTP default."}
             },
             "required": ["url", "save_to"],
             "additionalProperties": false
@@ -5955,15 +6095,14 @@ fn ts_http_fetch_row(tenant: &str) -> NewPgToolSkill {
         project_id: SEED_PROJECT.to_string(),
         name: "ts-http-fetch".to_string(),
         description: "Executor binding for builtin.http. Required: url. Optional: method \
-                       (default get), headers, body, body_base64, response_body_limit (max \
-                       256 KiB), timeout_ms (max 30 000). Non-2xx status codes are returned \
+                       (default get), headers, body, body_base64, response_body_limit (positive allocation-representable bytes; omitted uses live default), timeout_ms (positive u32 milliseconds; omitted uses live instance default). Non-2xx status codes are returned \
                        in output - not errors."
             .to_string(),
         content: "Call `host.http(url=<absolute url>, method=<get|post|put|patch|delete|head>, \
                   headers=<optional>, body=<optional>, body_base64=<optional>, \
-                  response_body_limit=<optional 1..262144>, timeout_ms=<optional 1..30000>)` \
+                  response_body_limit=<optional positive allocation-representable bytes>, timeout_ms=<optional positive u32 milliseconds>)` \
                   to issue an outbound HTTP request and receive the response inline. The \
-                  inline body is capped at 256 KiB; use ts-http-save for larger responses. \
+                  inline body is returned completely; use ts-http-save for persistence. \
                   Non-2xx status codes appear in the result's status field - they are not \
                   tool errors. Always inspect the status code after the call."
             .to_string(),
@@ -5976,8 +6115,8 @@ fn ts_http_fetch_row(tenant: &str) -> NewPgToolSkill {
             {"name": "headers", "param_type": "object", "required": false, "description": "HTTP headers object or [{name,value}]"},
             {"name": "body", "param_type": "string", "required": false, "description": "String or JSON request body"},
             {"name": "body_base64", "param_type": "string", "required": false, "description": "Base64-encoded request body"},
-            {"name": "response_body_limit", "param_type": "integer", "required": false, "description": "Max inline response bytes (1..262144)"},
-            {"name": "timeout_ms", "param_type": "integer", "required": false, "description": "Request timeout ms (1..30000)"}
+            {"name": "response_body_limit", "param_type": "integer", "required": false, "description": "Exact positive response bytes; omit for the live instance default"},
+            {"name": "timeout_ms", "param_type": "integer", "required": false, "description": "Exact positive u32 timeout milliseconds; omit for the live instance default"}
         ])),
         param_template: Some(json!({"url": "{{url}}"})),
         consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
@@ -5998,15 +6137,14 @@ fn ts_http_save_row(tenant: &str) -> NewPgToolSkill {
         name: "ts-http-save".to_string(),
         description: "Executor binding for builtin.http.save. Required: url, save_to (scoped \
                        path). Optional: method, headers, body, body_base64, \
-                       response_body_limit (default and max 10 MiB), timeout_ms (max 30 000). \
+                       response_body_limit (positive allocation-representable bytes; omitted uses live default), timeout_ms (positive u32 milliseconds; omitted uses live instance default). \
                        Returns metadata (status, bytes_saved)."
             .to_string(),
         content: "Call `host.http.save(url=<absolute url>, save_to=<scoped path>, \
                   method=<get|post|put|patch|delete|head>, headers=<optional>, \
-                  body=<optional>, body_base64=<optional>, response_body_limit=<optional \
-                  1..10485760>, timeout_ms=<optional 1..30000>)` to issue an outbound HTTP \
+                  body=<optional>, body_base64=<optional>, response_body_limit=<optional positive allocation-representable bytes>, timeout_ms=<optional positive u32 milliseconds>)` to issue an outbound HTTP \
                   request and save the sanitized response body to a workspace file. Use this \
-                  when the response exceeds 256 KiB or must be persisted. Returns metadata \
+                  when the response must be persisted. Returns metadata \
                   with the status code and bytes_saved - inspect the status field."
             .to_string(),
         prior_knowledge_content: None,
@@ -6019,8 +6157,8 @@ fn ts_http_save_row(tenant: &str) -> NewPgToolSkill {
             {"name": "headers", "param_type": "object", "required": false, "description": "HTTP headers object or [{name,value}]"},
             {"name": "body", "param_type": "string", "required": false, "description": "String or JSON request body"},
             {"name": "body_base64", "param_type": "string", "required": false, "description": "Base64-encoded request body"},
-            {"name": "response_body_limit", "param_type": "integer", "required": false, "description": "Max response body bytes to save (1..10485760)"},
-            {"name": "timeout_ms", "param_type": "integer", "required": false, "description": "Request timeout ms (1..30000)"}
+            {"name": "response_body_limit", "param_type": "integer", "required": false, "description": "Exact positive response bytes to save; omit for the live instance default"},
+            {"name": "timeout_ms", "param_type": "integer", "required": false, "description": "Exact positive u32 timeout milliseconds; omit for the live instance default"}
         ])),
         param_template: Some(json!({"url": "{{url}}", "save_to": "{{save_to}}"})),
         consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
@@ -6220,41 +6358,42 @@ result = {"encoded": _encoded, "raw": _raw}
 // ---------------------------------------------------------------------------
 
 const SKILL_HTTP_GET_BODY: &str = r#"Use `ts-http-fetch` with method='get' (via pc-exec-http-get) to fetch a URL and receive
-the response body inline. The body is capped at 256 KiB. If a larger response is needed,
-use skill-http-save instead. Non-2xx status codes appear in the result's status field -
+the complete sanitized response inline. Omitted bounds use live instance defaults;
+explicit bounds are exact and overflow fails. Use skill-http-save for persistence. Non-2xx status codes appear in the result's status field -
 they are not tool errors. Always inspect the status code after the call.
 "#;
 
 const SKILL_HTTP_POST_BODY: &str = r#"Use `ts-http-fetch` with method='post' and a `body` (string or JSON) to submit data
-to an API or webhook. Add an `Authorization` or `Content-Type` header when required.
+to an API or webhook. Add public `Content-Type` headers when required. Authentication must use kernel-staged secret injection, never raw credentials in inputs.
 For JSON bodies the server typically expects `Content-Type: application/json`. Non-2xx
 responses are not tool errors - check the status field and handle error responses.
 "#;
 
-const SKILL_HTTP_AUTHENTICATED_BODY: &str = r#"Use `ts-http-fetch` with a `headers` parameter to attach authentication. Common patterns:
-- Bearer token: headers={'Authorization': 'Bearer <token>'}
-- API key: headers={'X-Api-Key': '<key>'}
-- Basic auth: headers={'Authorization': 'Basic <base64(user:pass)>'}
-Never hardcode credentials in the skill body - always receive them from the session
-context or memory. Use skill-http-get or skill-http-post as the base dispatch pattern.
+const SKILL_HTTP_AUTHENTICATED_BODY: &str = r#"Use `ts-http-fetch` only with the kernel-staged secret injection configured for
+this usage. Public headers may describe content; raw bearer tokens, API keys and
+other credentials must never be supplied in Python inputs or headers, read from
+memory, or inserted into source. A binding without supported trusted injection
+is incomplete and must not activate. Missing credentials are classified failures,
+not permission to fall back to unauthenticated requests or another workflow.
+Use skill-http-get or skill-http-post as the base dispatch pattern.
 "#;
 
-const SKILL_HTTP_SAVE_DOWNLOAD_BODY: &str = r#"Use `ts-http-save` (via pc-exec-http-save) when the expected response exceeds 256 KiB
-or when the content must be persisted to disk. Provide the url and a scoped save_to
+const SKILL_HTTP_SAVE_DOWNLOAD_BODY: &str = r#"Use `ts-http-save` (via pc-exec-http-save) when the content must be persisted to disk. Provide the url and a scoped save_to
 path. After the call, use skill-read-file to inspect the saved content or report the
 file path to the user. The response is saved without decoding binary content.
 "#;
 
-const SKILL_HTTP_SAVE_API_BODY: &str = r#"When an API returns more data than can be processed inline (>256 KiB), use
+const SKILL_HTTP_SAVE_API_BODY: &str = r#"When API data must be persisted or processed from a file, use
 `ts-http-save` to write the full response to a temp file, then use skill-read-file
 or pc-json-extract-field to extract the needed fields from the saved file. This is
 the recommended pattern for paginated or bulk API responses.
 "#;
 
 const SKILL_HTTP_PATCH_BODY: &str = r#"Use `ts-http-fetch` with method='patch' and a `body` containing only the fields to
-update (via a custom pc-exec-http-patch-like call). PATCH is idempotent partial update
-- unlike PUT which replaces the full resource. Include Content-Type: application/json
-and Authorization headers when required. Non-2xx responses are not tool errors.
+update (via a custom pc-exec-http-patch-like call). PATCH is a partial update and is not inherently idempotent. Include public
+Content-Type: application/json when required; authentication uses kernel-staged
+secret injection. Retry only with verified deduplication/idempotency evidence;
+a timeout does not prove that no effect occurred. Non-2xx responses are not tool errors.
 "#;
 
 const SKILL_HTTP_HEAD_BODY: &str = r#"Use `ts-http-fetch` with method='head' (via pc-exec-http-head) when you only need
@@ -6291,7 +6430,7 @@ If no search API is configured, inform the user and ask them to configure one
 
 const SKILL_HTTP_BODY: &str = r#"The HTTP domain provides two tools for outbound HTTP requests:
 
-INLINE RESPONSE (<=256 KiB):
+INLINE RESPONSE (complete sanitized data within the accepted transport bound):
 - skill-http-get: GET request, response inline.
 - skill-http-post: POST request with body, response inline.
 - skill-http-authenticated: Any method with auth headers.
@@ -6300,7 +6439,7 @@ INLINE RESPONSE (<=256 KiB):
 - skill-http-patch: PATCH request - partial resource update.
 - skill-http-delete: DELETE request - remove a resource.
 
-SAVED RESPONSE (>256 KiB or must persist):
+SAVED RESPONSE (must persist or is processed from a file):
 - skill-http-save-download: Download and save to a workspace file.
 - skill-http-save-api: Save a large API response for later parsing.
 
@@ -6312,7 +6451,7 @@ Decision guide:
 - Full resource replace -> skill-http-put
 - Partial update -> skill-http-patch
 - Delete a resource -> skill-http-delete
-- Response >256 KiB or must be saved -> skill-http-save-download
+- Response must be saved -> skill-http-save-download
 - Large API response for later parsing -> skill-http-save-api
 
 Non-2xx HTTP responses are NOT tool errors. Always inspect the status field.
@@ -6588,7 +6727,7 @@ Permission: Allow
 
 Searches the agent's persistent memory store with a natural language query and
 returns the most relevant documents ranked by semantic similarity. Limit defaults
-to 5; maximum 20. Empty results are not an error.
+to 5; explicit positive limits are honored up to the backend count representation. Empty results are not an error.
 
 Approaches:
 - Focused recall: query -> memory-search recipe (Tier 0)
@@ -6781,7 +6920,7 @@ async fn seed_memory_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBo
                 "pc-exec-memory-search",
                 "Orchestrator executor: calls host.<tool> to search persistent memory \
                  via builtin.memory_search. Input: query (string), limit (optional int \
-                 1-20). Output: ranked memory documents.",
+                 positive integer). Output: ranked memory documents.",
                 PC_EXEC_MEMORY_SEARCH_CONTENT,
             ),
             "pc-exec-memory-search",
@@ -7607,13 +7746,13 @@ fn tool_memory_search_row(tenant: &str) -> NewPgTool {
         name: "memory_search".to_string(),
         description: "Search the agent's persistent memory store using a natural language \
                        query. Returns the most relevant memory documents ranked by semantic \
-                       similarity. Limit defaults to 5; maximum is 20."
+                       similarity. Limit defaults to 5; explicit positive limits are honored."
             .to_string(),
         param_schema: Some(json!({
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Natural language search query"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}
+                "limit": {"type": "integer", "minimum": 1, "maximum": u32::MAX, "default": 5}
             },
             "required": ["query"],
             "additionalProperties": false
@@ -7716,7 +7855,7 @@ fn tool_memory_tree_row(tenant: &str) -> NewPgTool {
             "type": "object",
             "properties": {
                 "path":  {"type": "string",  "description": "Relative memory directory path (omit for root)"},
-                "depth": {"type": "integer", "minimum": 1, "maximum": 10, "default": 1}
+                "depth": {"type": "integer", "minimum": 1, "maximum": 4294967295_u64, "description": "Omission uses the live Memory tree default; the live maximum and typed result limits apply without clamping"}
             },
             "additionalProperties": false
         })),
@@ -7739,11 +7878,11 @@ fn ts_memory_search_row(tenant: &str) -> NewPgToolSkill {
         project_id: SEED_PROJECT.to_string(),
         name: "ts-memory-search".to_string(),
         description: "Executor binding for memory_search. Required: query (natural language). \
-                       Optional: limit (1-20, default 5). Returns ranked memory documents with \
+                       Optional: limit (positive backend-representable integer, default 5). Returns ranked memory documents with \
                        content and relevance scores."
             .to_string(),
         content: "Call `host.memory_search(query=<natural language query>, limit=<optional \
-                  1..20>)` to search the agent's persistent memory. Results are ranked by \
+                  positive integer>)` to search the agent's persistent memory. Results are ranked by \
                   semantic similarity. Empty results are not an error - check the returned \
                   list length before using a result."
             .to_string(),
@@ -7752,7 +7891,7 @@ fn ts_memory_search_row(tenant: &str) -> NewPgToolSkill {
         tool_name: Some("memory_search".to_string()),
         param_schema: Some(json!([
             {"name": "query", "param_type": "string", "required": true, "description": "Natural language search query"},
-            {"name": "limit", "param_type": "integer", "required": false, "description": "Max results to return (1..20, default 5)"}
+            {"name": "limit", "param_type": "integer", "required": false, "description": "Requested positive result count (default 5; invalid or unrepresentable counts fail)"}
         ])),
         param_template: Some(json!({"query": "{{query}}"})),
         consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
@@ -7842,11 +7981,11 @@ fn ts_memory_tree_row(tenant: &str) -> NewPgToolSkill {
         project_id: SEED_PROJECT.to_string(),
         name: "ts-memory-tree".to_string(),
         description: "Executor binding for memory_tree. Optional: path (relative memory dir, \
-                       defaults to root), depth (1-10, default 1). Returns the directory tree \
+                       defaults to root), depth (positive integer, live default/maximum). Returns the directory tree \
                        of persistent memory."
             .to_string(),
-        content: "Call `host.memory_tree(path=<optional relative dir>, depth=<optional 1..10>)` \
-                  to list the memory directory tree. Omit both to get the root at depth=1. Use \
+        content: "Call `host.memory_tree(path=<optional relative dir>, depth=<optional positive integer>)` \
+                  to list the memory directory tree. Omit depth to use the live default. Use \
                   the result to decide which documents to read with ts-memory-read."
             .to_string(),
         prior_knowledge_content: None,
@@ -7854,7 +7993,7 @@ fn ts_memory_tree_row(tenant: &str) -> NewPgToolSkill {
         tool_name: Some("memory_tree".to_string()),
         param_schema: Some(json!([
             {"name": "path", "param_type": "string", "required": false, "description": "Relative memory directory path (omit for root)"},
-            {"name": "depth", "param_type": "integer", "required": false, "description": "Max directory depth (1..10, default 1)"}
+            {"name": "depth", "param_type": "integer", "required": false, "description": "Directory depth; omission uses the live default, values above the live maximum fail"}
         ])),
         param_template: Some(json!({})),
         consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
@@ -7952,7 +8091,7 @@ result = {"formatted_entry": formatted_entry}
 // list markers match the existing SKILL_FILESYSTEM_BODY convention.
 // ---------------------------------------------------------------------------
 
-const SKILL_MEMORY_SEARCH_BODY: &str = r#"Use `ts-memory-search` (via pc-exec-memory-search) when you need to recall past work, find saved notes, or check whether something was previously recorded. Provide a natural language query that describes what you are looking for. Set limit higher (up to 20) when broader recall coverage is needed. Review the returned documents and surface only those relevant to the current context.
+const SKILL_MEMORY_SEARCH_BODY: &str = r#"Use `ts-memory-search` (via pc-exec-memory-search) when you need to recall past work, find saved notes, or check whether something was previously recorded. Provide a natural language query that describes what you are looking for. Set an explicit positive limit when broader recall coverage is needed; resource failures remain errors rather than silently reducing that count. Review the returned documents and surface only those relevant to the current context.
 "#;
 
 const SKILL_MEMORY_SEARCH_BROAD_BODY: &str = r#"When a topic may span multiple memory documents, use `ts-memory-search` with `limit=20` to cast a wider net. Review all returned documents before deciding which are relevant. This is useful for session start — recovering full context about a project or topic before beginning work.
@@ -7970,7 +8109,7 @@ const SKILL_MEMORY_WRITE_PATCH_BODY: &str = r#"Use `ts-memory-write` in patch mo
 const SKILL_MEMORY_READ_BODY: &str = r#"Use `ts-memory-read` (via pc-exec-memory-read) when you know the exact path of a memory document (e.g. MEMORY.md, HEARTBEAT.md, or a specific note file). Returns the full content of the document. If you do not know the exact path, use skill-memory-search to discover it first, or use skill-memory-tree to browse the directory structure.
 "#;
 
-const SKILL_MEMORY_TREE_BODY: &str = r#"Use `ts-memory-tree` (via pc-exec-memory-tree) to discover what memory documents exist. Call with no parameters to get the root structure at depth=1. Increase depth to see deeper levels. Use the returned structure to decide which documents to read with skill-memory-read or to inform a skill-memory-search query.
+const SKILL_MEMORY_TREE_BODY: &str = r#"Use `ts-memory-tree` (via pc-exec-memory-tree) to discover what memory documents exist. Call with no parameters to get the root structure at the live default depth. Request a positive depth to see deeper levels, within the live maximum and typed result limits. Use the returned structure to decide which documents to read with skill-memory-read or to inform a skill-memory-search query.
 "#;
 
 const SKILL_MEMORY_SEARCH_AND_READ_BODY: &str = r#"Use when the user wants to recall information and immediately see the full content — not just the search summary. The pattern:

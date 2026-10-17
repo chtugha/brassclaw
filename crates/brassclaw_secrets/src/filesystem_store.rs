@@ -1621,6 +1621,30 @@ mod tests {
             self.inner.capabilities()
         }
 
+        async fn get_metadata(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Option<brassclaw_filesystem::EntryMetadata>, FilesystemError> {
+            self.inner.get_metadata(path).await
+        }
+
+        async fn query_metadata(
+            &self,
+            path: &VirtualPath,
+            page: brassclaw_filesystem::Page,
+        ) -> Result<Vec<brassclaw_filesystem::EntryMetadata>, FilesystemError> {
+            self.inner.query_metadata(path, page).await
+        }
+
+        async fn query_index_metadata(
+            &self,
+            path: &VirtualPath,
+            key: &brassclaw_filesystem::IndexKey,
+            page: brassclaw_filesystem::Page,
+        ) -> Result<Vec<brassclaw_filesystem::EntryIndexMetadata>, FilesystemError> {
+            self.inner.query_index_metadata(path, key, page).await
+        }
+
         async fn put(
             &self,
             path: &VirtualPath,
@@ -2027,6 +2051,30 @@ mod tests {
             self.inner.capabilities()
         }
 
+        async fn get_metadata(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Option<brassclaw_filesystem::EntryMetadata>, FilesystemError> {
+            self.inner.get_metadata(path).await
+        }
+
+        async fn query_metadata(
+            &self,
+            path: &VirtualPath,
+            page: brassclaw_filesystem::Page,
+        ) -> Result<Vec<brassclaw_filesystem::EntryMetadata>, FilesystemError> {
+            self.inner.query_metadata(path, page).await
+        }
+
+        async fn query_index_metadata(
+            &self,
+            path: &VirtualPath,
+            key: &brassclaw_filesystem::IndexKey,
+            page: brassclaw_filesystem::Page,
+        ) -> Result<Vec<brassclaw_filesystem::EntryIndexMetadata>, FilesystemError> {
+            self.inner.query_index_metadata(path, key, page).await
+        }
+
         async fn put(
             &self,
             path: &VirtualPath,
@@ -2119,6 +2167,30 @@ mod tests {
     impl RootFilesystem for AlwaysRacingBackend {
         fn capabilities(&self) -> BackendCapabilities {
             self.inner.capabilities()
+        }
+
+        async fn get_metadata(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Option<brassclaw_filesystem::EntryMetadata>, FilesystemError> {
+            self.inner.get_metadata(path).await
+        }
+
+        async fn query_metadata(
+            &self,
+            path: &VirtualPath,
+            page: brassclaw_filesystem::Page,
+        ) -> Result<Vec<brassclaw_filesystem::EntryMetadata>, FilesystemError> {
+            self.inner.query_metadata(path, page).await
+        }
+
+        async fn query_index_metadata(
+            &self,
+            path: &VirtualPath,
+            key: &brassclaw_filesystem::IndexKey,
+            page: brassclaw_filesystem::Page,
+        ) -> Result<Vec<brassclaw_filesystem::EntryIndexMetadata>, FilesystemError> {
+            self.inner.query_index_metadata(path, key, page).await
         }
 
         async fn put(

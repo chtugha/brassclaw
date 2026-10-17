@@ -7,7 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
     component_revision::{REVISION_LIMITS, RetainedComponentRevision},
-    value_contract::{ContractError, InputContract, ValueContract, validate_data_bounds},
+    value_contract::{
+        ContractError, ContractLimits, InputContract, ValueContract, validate_data_bounds,
+    },
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -200,11 +202,8 @@ impl RetainedRecipeInputs {
     /// the layout; Python selects each next step and owns concrete result state.
     /// No source, Tool grant or new program/attempt identity is issued here.
     pub fn monty_flow(&self) -> Result<Value, RetainedInputError> {
-        // Monty's validator retains both node and source-step identities and a
-        // final return under its 512-entry technical bound.
-        if self.layout.steps().len() > 255 {
-            return Err(invalid("prepared flow exceeds technical node capacity"));
-        }
+        // Runtime value/transport and task budgets bound the emitted complete
+        // tree. The current interpreter has no separate fixed node/path quota.
         let mut body = Vec::new();
         let mut last = None;
         for step_id in self.instruction.ordered().step_order() {
@@ -213,9 +212,9 @@ impl RetainedRecipeInputs {
             };
             for source in bindings.values() {
                 if let super::typed_bindings::PreparedReference::Result { path, .. } = source
-                    && (path.len() > 16 || path.iter().any(String::is_empty))
+                    && path.iter().any(String::is_empty)
                 {
-                    return Err(invalid("prepared field path exceeds Monty flow capacity"));
+                    return Err(invalid("prepared field path contains an empty field"));
                 }
             }
             body.push(serde_json::json!({
@@ -235,7 +234,18 @@ impl RetainedRecipeInputs {
     /// Missing defaults are materialized as independent data. Invalid or null
     /// supplied values never fall back to defaults or positional raw captures.
     pub fn bind_task_inputs(&self, supplied: &Value) -> Result<Value, RetainedInputError> {
-        Ok(Value::Object(self.task.bind(supplied)?))
+        self.bind_task_inputs_with_limits(
+            supplied,
+            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        )
+    }
+    /// Apply acknowledged execution bounds without changing the pinned schema.
+    pub fn bind_task_inputs_with_limits(
+        &self,
+        supplied: &Value,
+        limits: ContractLimits,
+    ) -> Result<Value, RetainedInputError> {
+        Ok(Value::Object(self.task.bind_with_limits(supplied, limits)?))
     }
     /// Capture an example from this exact variant. Strings remain
     /// strings; numeric/boolean conversion requires an explicit reviewed logic
@@ -347,11 +357,25 @@ impl RetainedRecipeInputs {
         step_id: &str,
         supplied: &Value,
     ) -> Result<Value, RetainedInputError> {
+        self.bind_step_inputs_with_limits(
+            step_id,
+            supplied,
+            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        )
+    }
+    pub fn bind_step_inputs_with_limits(
+        &self,
+        step_id: &str,
+        supplied: &Value,
+        limits: ContractLimits,
+    ) -> Result<Value, RetainedInputError> {
         let contract = self
             .contracts
             .get(step_id)
             .ok_or_else(|| invalid("step is not in the selected workflow"))?;
-        Ok(Value::Object(contract.inputs.bind(supplied)?))
+        Ok(Value::Object(
+            contract.inputs.bind_with_limits(supplied, limits)?,
+        ))
     }
     /// Validation never creates an output or changes completed effect evidence.
     pub fn validate_step_result(
@@ -359,11 +383,23 @@ impl RetainedRecipeInputs {
         step_id: &str,
         result: &Value,
     ) -> Result<(), RetainedInputError> {
+        self.validate_step_result_with_limits(
+            step_id,
+            result,
+            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        )
+    }
+    pub fn validate_step_result_with_limits(
+        &self,
+        step_id: &str,
+        result: &Value,
+        limits: ContractLimits,
+    ) -> Result<(), RetainedInputError> {
         self.contracts
             .get(step_id)
             .ok_or_else(|| invalid("step is not in the selected workflow"))?
             .result
-            .validate(result)?;
+            .validate_with_limits(result, limits)?;
         Ok(())
     }
 }
@@ -389,7 +425,8 @@ pub fn prepare_retained_inputs(
     if layout["format"] != "recipe-input-layout/1" {
         return Err(invalid("unsupported input layout format"));
     }
-    let task = InputContract::from_value(&layout["task_inputs"], REVISION_LIMITS)?;
+    let task = InputContract::from_value(&layout["task_inputs"], REVISION_LIMITS)?
+        .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
     if instruction.variant().variable_patterns.len() > MAX_CAPTURES {
         return Err(invalid("capture layout exceeds technical parser capacity"));
     }
@@ -486,13 +523,15 @@ pub fn prepare_retained_inputs(
                 .get("input_contract")
                 .ok_or_else(|| invalid("retained PythonCode input contract missing"))?,
             REVISION_LIMITS,
-        )?;
+        )?
+        .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         let result = ValueContract::result_from_value(
             document
                 .get("result_contract")
                 .ok_or_else(|| invalid("retained PythonCode result contract missing"))?,
             REVISION_LIMITS,
-        )?;
+        )?
+        .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         components.insert(step.step_id.clone(), component.reference());
         contracts.insert(step.step_id.clone(), StepContracts { inputs, result });
     }

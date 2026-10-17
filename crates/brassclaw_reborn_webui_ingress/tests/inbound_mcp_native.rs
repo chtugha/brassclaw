@@ -82,7 +82,10 @@ async fn instance_listener_keeps_serving_across_provider_disconnect() {
     let client = pg.pool.get().await.unwrap();
     client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=true,revision=revision+1 WHERE tool_id IN(SELECT id FROM reborn_tools WHERE capability_id='host.post_reply')", &[]).await.unwrap();
     drop(client);
-    let exchange = bridge.connect(parent.run_id.as_uuid()).await.unwrap();
+    let exchange = bridge
+        .connect_transport_fixture(parent.run_id.as_uuid())
+        .await
+        .unwrap();
     let endpoint = status.status().endpoint_url.unwrap();
     let http = reqwest::Client::new();
     let init=http.post(&endpoint).bearer_auth(exchange.bearer_token()).header("accept","application/json, text/event-stream")

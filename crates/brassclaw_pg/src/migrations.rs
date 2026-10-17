@@ -24,6 +24,25 @@ use crate::error::PgError;
 
 refinery::embed_migrations!("migrations");
 
+/// Preserve refinery's migration identity and expose only a safe native error
+/// classification. Driver Display often says only "db error"; private SQL
+/// diagnostics, query text and connection details are never appended here.
+fn migration_failure(error: &(dyn std::error::Error + 'static)) -> PgError {
+    let mut cause = Some(error);
+    while let Some(current) = cause {
+        if let Some(pg) = current.downcast_ref::<tokio_postgres::Error>() {
+            let class = match pg.code() {
+                Some(code) => format!("SQLSTATE {}", code.code()),
+                None if pg.is_closed() => "connection closed".to_owned(),
+                None => "database transport/protocol failure".to_owned(),
+            };
+            return PgError::Migration(format!("{error}; {class}"));
+        }
+        cause = current.source();
+    }
+    PgError::Migration(error.to_string())
+}
+
 /// Run all pending schema migrations against the given pool.
 ///
 /// Before running `refinery`, this function checks whether the DB is a
@@ -44,7 +63,7 @@ pub async fn run_migrations(pool: &Pool) -> Result<(), PgError> {
     let report = migrations::runner()
         .run_async(&mut **client)
         .await
-        .map_err(|e| PgError::Migration(e.to_string()))?;
+        .map_err(|e| migration_failure(&e))?;
 
     let applied = report.applied_migrations();
     if applied.is_empty() {
@@ -78,7 +97,7 @@ async fn reconcile_history(client: &deadpool_postgres::Client) -> Result<(), PgE
             &[],
         )
         .await
-        .map_err(|e| PgError::Migration(e.to_string()))?
+        .map_err(|e| migration_failure(&e))?
         .get::<_, bool>(0);
 
     if history_exists {
@@ -112,7 +131,7 @@ async fn reconcile_history(client: &deadpool_postgres::Client) -> Result<(), PgE
             )"
         ))
         .await
-        .map_err(|e| PgError::Migration(e.to_string()))?;
+        .map_err(|e| migration_failure(&e))?;
 
     // Insert placeholder rows for all pre-refinery migration versions.
     //
@@ -140,7 +159,7 @@ async fn reconcile_history(client: &deadpool_postgres::Client) -> Result<(), PgE
                 &[&version, &name],
             )
             .await
-            .map_err(|e| PgError::Migration(e.to_string()))?;
+            .map_err(|e| migration_failure(&e))?;
     }
 
     Ok(())
@@ -164,7 +183,7 @@ async fn table_exists(
         )
         .await
         .map(|r| r.get(0))
-        .map_err(|e| PgError::Migration(e.to_string()))
+        .map_err(|e| migration_failure(&e))
 }
 
 async fn detect_pre_existing_tables(

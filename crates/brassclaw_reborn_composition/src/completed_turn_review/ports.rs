@@ -29,7 +29,7 @@ use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, Trus
 use futures::{FutureExt, future::BoxFuture};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, atomic::Ordering},
 };
 use tokio::sync::Mutex;
@@ -80,6 +80,7 @@ impl ReviewPorts {
             package: package.clone(),
             runtimes,
             answers: Mutex::new(BTreeMap::new()),
+            settled_operations: Mutex::new(BTreeSet::new()),
         });
         Ok(Arc::new(Self {
             backend,
@@ -103,13 +104,19 @@ impl ReviewPorts {
         state.task = Some(task);
         let program = self.package.inspected.program();
         match name {
-            "resolve_intent" => {
-                if state.resolved || args != vec![json!(self.backend.source.to_string())] {
+            "resolve_internal_recipe" => {
+                if state.resolved
+                    || args
+                        != vec![
+                            json!("completed-turn-review"),
+                            json!(self.backend.source.to_string()),
+                        ]
+                {
                     return Err(failure());
                 }
                 state.resolved = true;
                 Ok(
-                    json!({"status":"internal_review","component_id":self.package.ids.recipe,"step_link":program.inputs().instruction().variant().step_link,
+                    json!({"status":"internal_recipe","component_id":self.package.ids.recipe,"step_link":program.inputs().instruction().variant().step_link,
                     "inputs":{"review_event_ref":self.backend.source.to_string()}}),
                 )
             }
@@ -192,6 +199,15 @@ impl ReviewPorts {
             _ => Err(failure()),
         }
     }
+    /// Exact native answers, retained before durable output I/O. Called only
+    /// after the real service receipt proves host futures and children settled.
+    pub(super) async fn settled_operations(&self) -> BTreeSet<String> {
+        self.tools.settled_operations.lock().await.clone()
+    }
+    pub(super) async fn retained_answers(&self) -> BTreeMap<String, String> {
+        self.tools.answers.lock().await.clone()
+    }
+
     pub(super) async fn retain_failure(&self) -> Result<(), PortFailure> {
         let client = self.backend.pool.get().await.map_err(|_| failure())?;
         client.execute("UPDATE brassclaw_monty_review_work SET phase=CASE WHEN model_dispatch_count=0 THEN 'failed' ELSE 'uncertain' END
@@ -293,7 +309,8 @@ struct ReviewTools {
     backend: Arc<Backend>,
     package: Arc<Package>,
     runtimes: BTreeMap<uuid::Uuid, Arc<RetainedFirstPartyCapability>>,
-    answers: Mutex<BTreeMap<String, Value>>,
+    answers: Mutex<BTreeMap<String, String>>,
+    settled_operations: Mutex<BTreeSet<String>>,
 }
 #[async_trait]
 impl RetainedToolPort for ReviewTools {
@@ -387,9 +404,20 @@ impl ReviewTools {
             ))
             .await
         {
-            Ok(RuntimeCapabilityOutcome::Completed(value)) => PortAnswer::Return {
-                value: value.output,
-            },
+            Ok(RuntimeCapabilityOutcome::Completed(value)) => {
+                self.settled_operations
+                    .lock()
+                    .await
+                    .insert(operation.to_string());
+                let classified = value
+                    .output
+                    .as_str()
+                    .and_then(|bytes| serde_json::from_str::<Value>(bytes).ok());
+                if classified.as_ref().is_some_and(|value| value == &json!({
+                    "format":"completed-turn-review-primitive-failure/1","reason_kind":"review_operation_failed"})) {
+                    PortAnswer::TerminalError { reason_kind: "review_operation_failed".into() }
+                } else { PortAnswer::Return { value: value.output } }
+            }
             Ok(RuntimeCapabilityOutcome::Failed(value)) => PortAnswer::TerminalError {
                 reason_kind: format!("review_{}", value.kind.as_str()),
             },
@@ -398,10 +426,10 @@ impl ReviewTools {
             },
         };
         let exact = serde_json::to_string(&answer).map_err(|_| failure())?;
-        self.answers.lock().await.insert(
-            operation.to_string(),
-            serde_json::to_value(&answer).map_err(|_| failure())?,
-        );
+        self.answers
+            .lock()
+            .await
+            .insert(operation.to_string(), exact.clone());
         let count=client.execute("UPDATE brassclaw_monty_review_operations SET output_bytes=$3,output_checksum=$4,answered_at=clock_timestamp()
             WHERE attempt_id=$1 AND operation=$2 AND output_bytes IS NULL",&[&self.backend.attempt,operation,&exact,&checksum(&exact)]).await.map_err(|_|failure())?;
         if count != 1 {

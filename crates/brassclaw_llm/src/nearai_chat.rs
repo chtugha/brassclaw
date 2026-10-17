@@ -8,7 +8,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::Client;
@@ -59,6 +58,7 @@ pub fn default_models() -> Vec<(String, String)> {
 /// NEAR AI provider (Chat Completions API, dual auth).
 pub struct NearAiChatProvider {
     client: Client,
+    max_response_bytes: Option<u64>,
     config: NearAiConfig,
     /// Session manager for session token auth (used when no API key is set).
     session: Arc<SessionManager>,
@@ -99,19 +99,30 @@ impl NearAiChatProvider {
         flatten_tool_messages: bool,
         request_timeout_secs: u64,
     ) -> Result<Self, LlmError> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(request_timeout_secs))
-            .build()
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "nearai_chat".to_string(),
-                reason: format!("Failed to build HTTP client: {}", e),
-            })?;
+        Self::new_with_response_limit(
+            config,
+            session,
+            flatten_tool_messages,
+            request_timeout_secs,
+            None,
+        )
+    }
+
+    pub(crate) fn new_with_response_limit(
+        config: NearAiConfig,
+        session: Arc<SessionManager>,
+        flatten_tool_messages: bool,
+        request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
+    ) -> Result<Self, LlmError> {
+        let client = crate::registry_http_client("nearai_chat", request_timeout_secs)?;
 
         let active_model = std::sync::RwLock::new(config.model.clone());
         let pricing = Arc::new(std::sync::RwLock::new(HashMap::new()));
 
         let provider = Self {
             client,
+            max_response_bytes,
             config,
             session,
             active_model,
@@ -129,7 +140,15 @@ impl NearAiChatProvider {
             let pricing = provider.pricing.clone();
 
             handle.spawn(async move {
-                match fetch_pricing(&client, &base_url, api_key.as_ref(), &session).await {
+                match fetch_pricing(
+                    &client,
+                    &base_url,
+                    api_key.as_ref(),
+                    &session,
+                    max_response_bytes,
+                )
+                .await
+                {
                     Ok(map) if !map.is_empty() => {
                         tracing::debug!("Loaded NEAR AI pricing for {} model(s)", map.len());
                         match pricing.write() {
@@ -243,12 +262,6 @@ impl NearAiChatProvider {
 
         tracing::debug!("Sending request to NEAR AI Chat: {}", url);
 
-        if tracing::enabled!(tracing::Level::DEBUG)
-            && let Ok(json) = serde_json::to_string(body)
-        {
-            tracing::debug!("NEAR AI Chat request body: {}", json);
-        }
-
         let response = self
             .client
             .post(&url)
@@ -263,27 +276,18 @@ impl NearAiChatProvider {
             })?;
 
         let status = response.status();
-        // Extract Retry-After header before consuming the response body.
-        // `retry_after_header` is `Some(parsed_or_60s_fallback)` only when the
-        // header was actually present on the response — `None` otherwise, so
-        // that 5xx retries fall back to `retry_backoff_delay`'s exponential
-        // schedule instead of the 60s default `parse_retry_after` applies to
-        // missing headers. The 60s floor for 429 (rate limit) is re-added
-        // explicitly at the 429 call site below via `.or(Some(...))`.
-        let retry_after_header: Option<Duration> = response
-            .headers()
-            .get("retry-after")
-            .map(crate::retry::parse_retry_after_value);
-        let response_text = response.text().await.map_err(|e| LlmError::RequestFailed {
-            provider: "nearai_chat".to_string(),
-            reason: format!("Failed to read response body: {}", e),
-        })?;
+        // Preserve the raw hint. The selected retry policy bounds the actual
+        // wait instead of silently clipping it in this protocol parser.
+        let retry_after_header =
+            crate::retry::parse_retry_after_hint(response.headers().get("retry-after"));
+        let response_text =
+            crate::response_body::text(response, self.max_response_bytes, "nearai_chat").await?;
 
-        // Log response body only at TRACE level to avoid exposing sensitive content
-        // (user-generated data, tool outputs, leaked secrets) in DEBUG logs
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!("NEAR AI Chat response body: {}", response_text);
-        }
+        tracing::trace!(
+            status = status.as_u16(),
+            body_bytes = response_text.len(),
+            "NEAR AI Chat response received"
+        );
 
         if !status.is_success() {
             let status_code = status.as_u16();
@@ -306,12 +310,10 @@ impl NearAiChatProvider {
             }
 
             if status_code == 429 {
-                // Preserve existing rate-limit behavior: fall back to a 60s
-                // default when the server omits Retry-After. Long sleeps are
-                // appropriate for rate-limit backpressure.
+                // The selected retry policy owns missing hints and wait ceilings.
                 return Err(LlmError::RateLimited {
                     provider: "nearai_chat".to_string(),
-                    retry_after: retry_after_header.or(Some(Duration::from_secs(60))),
+                    retry_after: retry_after_header,
                 });
             }
 
@@ -326,14 +328,13 @@ impl NearAiChatProvider {
             // traceback-leak report: upstream application errors frequently
             // return 500 with a Python traceback in the body. 502/503/504 are
             // the proxy-layer variants. The `status` field preserves the
-            // specific code for operators; the body is logged at debug and
-            // never carried on the error.
+            // specific code for operators; private bodies are neither logged
+            // nor carried on the error.
             if matches!(status_code, 500..=599) {
                 tracing::debug!(
                     provider = "nearai_chat",
                     status = status_code,
-                    body_preview =
-                        brassclaw_common::truncate_for_preview(&response_text, 512).as_str(),
+                    body_bytes = response_text.len(),
                     "NEAR AI Chat upstream 5xx response"
                 );
                 return Err(LlmError::BadGateway {
@@ -343,18 +344,26 @@ impl NearAiChatProvider {
                 });
             }
 
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
-            return Err(LlmError::RequestFailed {
-                provider: "nearai_chat".to_string(),
-                reason: format!("HTTP {}: {}", status, truncated),
+            if status_code == 403 {
+                return Err(LlmError::AuthFailed {
+                    provider: "nearai_chat".into(),
+                });
+            }
+            return Err(LlmError::RequestRejected {
+                provider: "nearai_chat".into(),
+                status: status_code,
             });
         }
 
         serde_json::from_str(&response_text).map_err(|e| {
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
+            tracing::warn!(
+                line = e.line(),
+                column = e.column(),
+                "NEAR AI response JSON was invalid"
+            );
             LlmError::InvalidResponse {
-                provider: "nearai_chat".to_string(),
-                reason: format!("JSON parse error: {}. Raw: {}", e, truncated),
+                provider: "nearai_chat".into(),
+                reason: "provider response was not valid JSON".into(),
             }
         })
     }
@@ -392,21 +401,24 @@ impl NearAiChatProvider {
             })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| LlmError::RequestFailed {
-            provider: "nearai_chat".to_string(),
-            reason: format!("Failed to read response body: {}", e),
-        })?;
+        let response_text =
+            crate::response_body::text(response, self.max_response_bytes, "nearai_chat").await?;
 
         if !status.is_success() {
+            let status_code = status.as_u16();
             if status.as_u16() == 401 && !self.uses_api_key() {
                 return Err(LlmError::SessionExpired {
                     provider: "nearai_chat".to_string(),
                 });
             }
-            let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
-            return Err(LlmError::RequestFailed {
-                provider: "nearai_chat".to_string(),
-                reason: format!("HTTP {}: {}", status, truncated),
+            if status_code == 403 {
+                return Err(LlmError::AuthFailed {
+                    provider: "nearai_chat".into(),
+                });
+            }
+            return Err(LlmError::RequestRejected {
+                provider: "nearai_chat".into(),
+                status: status_code,
             });
         }
 
@@ -877,6 +889,7 @@ async fn fetch_pricing(
     base_url: &str,
     api_key: Option<&secrecy::SecretString>,
     session: &SessionManager,
+    max_response_bytes: Option<u64>,
 ) -> Result<HashMap<String, (Decimal, Decimal)>, LlmError> {
     let base = base_url.trim_end_matches('/');
     let url = if base.ends_with("/v1") {
@@ -910,10 +923,7 @@ async fn fetch_pricing(
         });
     }
 
-    let body = response.text().await.map_err(|e| LlmError::RequestFailed {
-        provider: "nearai_chat".to_string(),
-        reason: format!("Failed to read pricing response: {}", e),
-    })?;
+    let body = crate::response_body::text(response, max_response_bytes, "nearai_chat").await?;
 
     // Parse as {models: [...]} or {data: [...]} or direct array
     let entries: Vec<PricingModelEntry> =
@@ -2671,5 +2681,63 @@ mod tests {
             provider.api_url("chat/completions"),
             "http://example.com/api/proxy/v1/chat/completions"
         );
+    }
+    #[tokio::test]
+    async fn actual_nearai_permanent_rejection_is_private_and_not_retried() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = calls.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let mut buffer = [0; 4096];
+                loop {
+                    let count = socket.read(&mut buffer).await.unwrap();
+                    if count == 0 {
+                        break;
+                    }
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = bytes.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&bytes[..end]);
+                        let length = headers
+                            .lines()
+                            .find_map(|line| {
+                                line.strip_prefix("content-length: ")
+                                    .map(|value| value.parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if bytes.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let (status, body) = if bytes.starts_with(b"POST ") {
+                    observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    ("400 Bad Request", "private-rejection-material")
+                } else {
+                    ("200 OK", "{\"models\":[]}")
+                };
+                socket.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        let provider = Arc::new(
+            NearAiChatProvider::new(test_nearai_config(&endpoint), test_session()).unwrap(),
+        );
+        let retry = crate::RetryProvider::new(provider, crate::RetryConfig { max_retries: 3 });
+        let error = retry
+            .complete(CompletionRequest::new(vec![ChatMessage::user("request")]))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            LlmError::RequestRejected { status: 400, .. }
+        ));
+        assert!(!format!("{error:?}").contains("private-rejection-material"));
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
     }
 }

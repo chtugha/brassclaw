@@ -7,8 +7,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use brassclaw_engine::executor::{
     retained_recipe::{
-        RetainedProgram, RetainedRecipeExecution, RetainedStepFailure, port_answer_checksum,
-        typed_value_checksum,
+        RetainedProgram, RetainedRecipeExecution, RetainedStepFailure,
+        port_answer_checksum_with_limits, typed_value_checksum_with_limits,
     },
     retained_source::InspectedRetainedProgram,
 };
@@ -324,22 +324,38 @@ impl BehavioralReviewSet {
             let actual_answer = observed
                 .answer_checksum()
                 .ok_or(StructuralReviewFailure::Observation)?;
-            let expected_inputs = typed_value_checksum(&expected.inputs).map_err(|_| {
-                StructuralReviewFailure::Preparation("expected inputs exceed technical capacity")
-            })?;
-            let expected_arguments = typed_value_checksum(&expected.arguments).map_err(|_| {
-                StructuralReviewFailure::Preparation("expected arguments exceed technical capacity")
-            })?;
-            let expected_answer = port_answer_checksum(&expected.answer).map_err(|_| {
-                StructuralReviewFailure::Preparation("expected answer exceeds technical capacity")
-            })?;
+            let expected_inputs =
+                typed_value_checksum_with_limits(&expected.inputs, observed.data_limits())
+                    .map_err(|_| {
+                        StructuralReviewFailure::Preparation(
+                            "expected inputs exceed technical capacity",
+                        )
+                    })?;
+            let expected_arguments =
+                typed_value_checksum_with_limits(&expected.arguments, observed.data_limits())
+                    .map_err(|_| {
+                        StructuralReviewFailure::Preparation(
+                            "expected arguments exceed technical capacity",
+                        )
+                    })?;
+            let expected_answer =
+                port_answer_checksum_with_limits(&expected.answer, observed.data_limits())
+                    .map_err(|_| {
+                        StructuralReviewFailure::Preparation(
+                            "expected answer exceeds technical capacity",
+                        )
+                    })?;
             let (expected_result, expected_failure) = match &expected.result {
                 ExpectedStepResult::Return(value) => (
-                    Some(typed_value_checksum(value).map_err(|_| {
-                        StructuralReviewFailure::Preparation(
-                            "expected result exceeds technical capacity",
-                        )
-                    })?),
+                    Some(
+                        typed_value_checksum_with_limits(value, observed.data_limits()).map_err(
+                            |_| {
+                                StructuralReviewFailure::Preparation(
+                                    "expected result exceeds technical capacity",
+                                )
+                            },
+                        )?,
+                    ),
                     None,
                 ),
                 ExpectedStepResult::Failure(kind) => (None, Some(*kind)),
@@ -351,6 +367,7 @@ impl BehavioralReviewSet {
                 && observed.failure() == expected_failure;
             cases.entry(binding.skill().uuid).or_default().push(json!({
                 "step_id":step,
+                "data_limits":{"max_depth":observed.data_limits().max_depth,"max_nodes":observed.data_limits().max_nodes,"max_bytes":observed.data_limits().max_bytes},
                 "inputs_checksum":hex(observed.input_checksum()),
                 "arguments_checksum":hex(actual_arguments),
                 "answer_checksum":hex(actual_answer),

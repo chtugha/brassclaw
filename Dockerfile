@@ -28,7 +28,6 @@ COPY vendor/monty-control/ vendor/monty-control/
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/
-COPY providers.json providers.json
 COPY *.md ./
 COPY docs/ docs/
 
@@ -54,7 +53,6 @@ COPY vendor/monty-control/ vendor/monty-control/
 COPY src/ src/
 COPY tests/ tests/
 COPY migrations/ migrations/
-COPY providers.json providers.json
 COPY *.md ./
 COPY docs/ docs/
 

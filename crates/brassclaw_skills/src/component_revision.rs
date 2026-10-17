@@ -220,7 +220,7 @@ impl RetainedComponentSnapshot {
         let mut visiting = BTreeSet::new();
         let mut visited = BTreeSet::new();
         for root in &root_set {
-            visit(*root, &graph, &mut visiting, &mut visited, 0)?;
+            visit(*root, &graph, &mut visiting, &mut visited)?;
         }
         if visited.len() != graph.len() {
             return Err(invalid("snapshot contains unrelated revisions"));
@@ -243,6 +243,30 @@ impl RetainedComponentSnapshot {
             revisions: graph,
         })
     }
+    /// Select another rooted view of this exact retained graph. No latest
+    /// lookup, revision substitution, approval or execution occurs here.
+    pub fn select_roots(&self, roots: &[Uuid]) -> Result<Self, RevisionError> {
+        let mut selected = BTreeSet::new();
+        let mut pending = roots.to_vec();
+        while let Some(id) = pending.pop() {
+            if !selected.insert(id) {
+                continue;
+            }
+            let revision = self
+                .revisions
+                .get(&id)
+                .ok_or_else(|| invalid("selected root is not retained"))?;
+            pending.extend(revision.draft().dependencies());
+        }
+        Self::new(
+            roots,
+            selected
+                .into_iter()
+                .map(|id| self.revisions[&id].clone())
+                .collect(),
+        )
+    }
+
     pub fn roots(&self) -> &BTreeSet<Uuid> {
         &self.roots
     }
@@ -255,24 +279,39 @@ fn visit(
     graph: &BTreeMap<Uuid, RetainedComponentRevision>,
     visiting: &mut BTreeSet<Uuid>,
     visited: &mut BTreeSet<Uuid>,
-    depth: usize,
 ) -> Result<(), RevisionError> {
     if visited.contains(&id) {
         return Ok(());
     }
-    if depth >= 64 {
-        return Err(invalid("dependency graph exceeds supported depth"));
-    }
-    if !visiting.insert(id) {
-        return Err(invalid("cyclic dependency graph"));
-    }
     let revision = graph
         .get(&id)
         .ok_or_else(|| invalid("missing dependency revision"))?;
-    for dependency in revision.draft.dependencies() {
-        visit(*dependency, graph, visiting, visited, depth + 1)?;
+    // Keep graph depth off the native stack. Each frame holds one iterator,
+    // rather than copying an entire adjacency list or imposing another quota.
+    let mut pending = Vec::new();
+    pending
+        .try_reserve_exact(graph.len())
+        .map_err(|_| invalid("dependency traversal memory unavailable"))?;
+    visiting.insert(id);
+    pending.push((id, revision.draft.dependencies().iter()));
+    while let Some((parent, children)) = pending.last_mut() {
+        if let Some(child) = children.next() {
+            if visited.contains(child) {
+                continue;
+            }
+            if !visiting.insert(*child) {
+                return Err(invalid("cyclic dependency graph"));
+            }
+            let revision = graph
+                .get(child)
+                .ok_or_else(|| invalid("missing dependency revision"))?;
+            pending.push((*child, revision.draft.dependencies().iter()));
+        } else {
+            let parent = *parent;
+            pending.pop();
+            visiting.remove(&parent);
+            visited.insert(parent);
+        }
     }
-    visiting.remove(&id);
-    visited.insert(id);
     Ok(())
 }

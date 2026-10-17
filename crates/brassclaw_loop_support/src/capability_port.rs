@@ -5,9 +5,9 @@ use std::{
 
 use async_trait::async_trait;
 use brassclaw_host_api::{
-    CapabilityDisplayOutputPreview, CapabilityId, CapabilitySet, CorrelationId, EffectKind,
-    ExecutionContext, ExtensionId, InvocationId, MountView, Principal, RuntimeKind,
-    sha256_digest_token,
+    CapabilityDisplayOutputPreview, CapabilityId, CapabilitySet, CorrelationId,
+    DispatchAuthorityModel, EffectKind, ExecutionContext, ExtensionId, InvocationId, MountView,
+    Principal, RuntimeKind, sha256_digest_token,
 };
 use brassclaw_host_runtime::{
     CapabilityFailureDisposition, HostRuntime, HostRuntimeError, IdempotencyKey,
@@ -1087,6 +1087,7 @@ impl LoopCapabilityPort for HostRuntimeLoopCapabilityPort {
                     capability_id.clone(),
                     SurfaceCapabilitySnapshot::Runtime(Box::new(
                         RuntimeSurfaceCapabilitySnapshot {
+                            authority_model: self.runtime.dispatch_authority_model(),
                             provider: capability.descriptor.provider.clone(),
                             runtime: capability.descriptor.runtime,
                             estimate: capability.estimated_resources.clone(),
@@ -1509,12 +1510,17 @@ fn invocation_context_from_visible(
     context.extension_id = loop_driver_extension.clone();
     context.runtime = capability.runtime;
     context.trust = trust;
-    context.grants = invocation_grants_from_visible(
-        base,
-        capability_id,
-        &loop_driver_extension,
-        allowed_effects,
-    )?;
+    context.grants = match capability.authority_model {
+        DispatchAuthorityModel::ScopedGrants => invocation_grants_from_visible(
+            base,
+            capability_id,
+            &loop_driver_extension,
+            allowed_effects,
+        )?,
+        // Data scope, host mounts and attempt identity remain intact. No
+        // ambient/invocation grant is minted for the instance-policy kernel.
+        DispatchAuthorityModel::InstancePolicy => CapabilitySet::default(),
+    };
     // Mount propagation is host-authority only: visible-request contexts must arrive with no
     // caller-supplied mounts, while this invocation context receives the execution mounts that the
     // authority resolver selected for the run and capability dispatch.
@@ -1874,7 +1880,11 @@ fn runtime_model_visible_failure_to_loop(
         RuntimeFailureKind::Authorization | RuntimeFailureKind::PolicyDenied
     ) {
         return Ok(CapabilityOutcome::Denied(CapabilityDenied {
-            reason_kind: capability_denied_reason_kind(failure.kind.as_str())?,
+            reason_kind: if failure.kind == RuntimeFailureKind::Authorization {
+                CapabilityDeniedReasonKind::Authorization
+            } else {
+                capability_denied_reason_kind(failure.kind.as_str())?
+            },
             safe_summary: runtime_failure_safe_summary(&failure, "capability authorization denied"),
         }));
     }
@@ -5020,6 +5030,7 @@ mod tests {
             },
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
+            authority_model: DispatchAuthorityModel::ScopedGrants,
             provider: ExtensionId::new("demo").expect("valid provider"),
             runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
@@ -5041,6 +5052,31 @@ mod tests {
         .expect_err("elevated grant must be rejected");
 
         assert_eq!(err.kind, AgentLoopHostErrorKind::Unauthorized);
+        // The same caller-carried grant cannot affect a trusted instance-policy
+        // host. It is removed, while the data scope and run identity survive.
+        let capability = RuntimeSurfaceCapabilitySnapshot {
+            authority_model: DispatchAuthorityModel::InstancePolicy,
+            ..capability
+        };
+        let invocation = invocation_context_from_visible(
+            &context,
+            &run_context,
+            &capability_id,
+            &capability,
+            TrustClass::Sandbox,
+            &[EffectKind::ReadFilesystem],
+            &MountView::default(),
+        )
+        .expect("instance-policy context does not require scoped grants");
+        assert!(invocation.grants.grants.is_empty());
+        assert_eq!(invocation.thread_id, context.thread_id);
+        assert_eq!(invocation.project_id, context.project_id);
+        assert_eq!(invocation.user_id, context.user_id);
+        assert_eq!(
+            context.grants.grants.len(),
+            1,
+            "caller context is unchanged"
+        );
     }
 
     #[tokio::test]
@@ -5072,6 +5108,7 @@ mod tests {
             },
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
+            authority_model: DispatchAuthorityModel::ScopedGrants,
             provider: ExtensionId::new("demo").expect("valid provider"),
             runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
@@ -5121,6 +5158,7 @@ mod tests {
             },
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
+            authority_model: DispatchAuthorityModel::ScopedGrants,
             provider: ExtensionId::new("demo").expect("valid provider"),
             runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
@@ -5171,6 +5209,7 @@ mod tests {
             },
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
+            authority_model: DispatchAuthorityModel::ScopedGrants,
             provider: ExtensionId::new("demo").expect("valid provider"),
             runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
@@ -5254,6 +5293,7 @@ mod tests {
             },
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
+            authority_model: DispatchAuthorityModel::ScopedGrants,
             provider: ExtensionId::new("demo").expect("valid provider"),
             runtime: RuntimeKind::Mcp,
             estimate: ResourceEstimate::default(),

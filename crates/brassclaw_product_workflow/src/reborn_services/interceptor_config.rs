@@ -30,10 +30,23 @@ pub struct UpdateInterceptorConfigRequest {
 
 /// A single named prefix-cache entry.
 ///
-/// Corresponds to one row in `reborn_basic_prompt_store`.  Phase K.1 only has
-/// the `"base-prompt"` entry; additional named entries are additive.
+/// Registry metadata is instance-wide; existing base bundle details remain
+/// compatibility projections. Registration does not qualify a compiler or cache.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrefixEntry {
+    /// Registry metadata, not executable authority or model-design qualification.
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub profile_revision: u64,
+    #[serde(default)]
+    pub generation_available: bool,
+    #[serde(default)]
+    pub generation_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<String>,
     /// Canonical name, e.g. `"base-prompt"`.
     pub name: String,
     /// SHA-256 hex over `(uuid_bytes || updated_at_micros_le)` for all
@@ -76,9 +89,228 @@ pub struct PrefixRegenerateResponse {
     pub generation_ms: Option<i64>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapturePrefixModelRequest {
+    pub provider_id: String,
+    pub expected_provider_revision: u64,
+    pub model: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixModelTarget {
+    pub provider_id: String,
+    pub provider_revision: u64,
+    pub model: String,
+    pub consumer: String,
+    pub configured_context_window: Option<u32>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixModelSpecification {
+    pub id: String,
+    pub provider_id: String,
+    pub provider_revision: u64,
+    pub model: String,
+    pub specification_bytes: String,
+    pub qualification: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixDesignProposal {
+    pub id: String,
+    pub profile: String,
+    pub specification: String,
+    pub proposal_bytes: String,
+    pub qualification: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixModelArtifactFile {
+    pub name: String,
+    pub sha256: String,
+    pub bytes: u64,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixModelArtifactSet {
+    pub id: String,
+    pub specification: String,
+    pub files: Vec<PrefixModelArtifactFile>,
+    pub binding_bytes: String,
+    pub qualification: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixModelArtifactDetail {
+    pub summary: PrefixModelArtifactSet,
+    pub artifact_set_bytes: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetainPrefixModelArtifactsRequest {
+    pub specification: String,
+    pub artifact_set_bytes: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixModelDesignCatalogue {
+    pub targets: Vec<PrefixModelTarget>,
+    pub specifications: Vec<PrefixModelSpecification>,
+    pub proposals: Vec<PrefixDesignProposal>,
+    #[serde(default)]
+    pub artifact_sets: Vec<PrefixModelArtifactSet>,
+    pub design_generation_available: bool,
+    pub blocked_reason: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetainPrefixDesignProposalRequest {
+    pub specification: String,
+    pub proposal_bytes: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterPrefixSourceRequest {
+    pub reference: String,
+    pub title: String,
+    pub applicability: String,
+    pub required: bool,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixSourceRegistration {
+    pub id: String,
+    pub revision: u64,
+    pub kind: String,
+    pub reference: String,
+    pub title: String,
+    pub applicability: String,
+    pub required: bool,
+    pub review_status: String,
+    pub availability: String,
+    pub checksum: String,
+    pub registration_origin: Option<String>,
+    pub registered_by: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixUsedSource {
+    pub reference: String,
+    pub checksum: String,
+    pub disposition: String,
+    pub reason: String,
+    pub archived: bool,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixSourceInventory {
+    pub profile: String,
+    pub generation: Option<String>,
+    pub used: Vec<PrefixUsedSource>,
+    pub registered: Vec<PrefixSourceRegistration>,
+    pub checks_available: bool,
+    pub check_blocked_reason: Option<String>,
+}
+
+/// Immutable retention is distinct from qualification and serving selection.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportPrefixGenerationRequest {
+    pub expected_profile_revision: u64,
+    /// Exact self-contained compiler package bytes, never a filesystem path.
+    pub generation_bytes: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixGenerationSummary {
+    pub profile: String,
+    pub generation: String,
+    pub profile_revision: u64,
+    pub kind: String,
+    pub qualification: String,
+    pub created_at: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixGenerationDetail {
+    pub summary: PrefixGenerationSummary,
+    pub generation_bytes: String,
+}
+
 /// Interceptor configuration + control service (product-layer port).
 #[async_trait]
 pub trait InterceptorConfigService: Send + Sync {
+    async fn model_design_catalogue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _targets: Vec<PrefixModelTarget>,
+    ) -> Result<PrefixModelDesignCatalogue, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn capture_model(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: CapturePrefixModelRequest,
+        _targets: Vec<PrefixModelTarget>,
+    ) -> Result<PrefixModelSpecification, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn get_model_artifacts(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _specification: &str,
+        _artifact_set: &str,
+    ) -> Result<PrefixModelArtifactDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn retain_model_artifacts(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: RetainPrefixModelArtifactsRequest,
+    ) -> Result<PrefixModelArtifactSet, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn retain_design_proposal(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _request: RetainPrefixDesignProposalRequest,
+    ) -> Result<PrefixDesignProposal, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+
+    async fn list_sources(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _generation: Option<&str>,
+    ) -> Result<PrefixSourceInventory, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn register_source(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _request: RegisterPrefixSourceRequest,
+    ) -> Result<PrefixSourceRegistration, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+
+    async fn list_generations(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+    ) -> Result<Vec<PrefixGenerationSummary>, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn get_generation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _generation: &str,
+    ) -> Result<PrefixGenerationDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+    async fn import_generation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _profile: &str,
+        _request: ImportPrefixGenerationRequest,
+    ) -> Result<PrefixGenerationDetail, InterceptorConfigServiceError> {
+        Err(InterceptorConfigServiceError::Unavailable)
+    }
+
     /// Return the current interceptor configuration snapshot.
     async fn snapshot(
         &self,
@@ -94,8 +326,8 @@ pub trait InterceptorConfigService: Send + Sync {
 
     /// List all named prefix-cache entries for a scope.
     ///
-    /// Returns one entry per known prefix name.  Phase K.1 returns only the
-    /// `"base-prompt"` entry.
+    /// Returns every registered profile, including profiles awaiting compiler
+    /// qualification. Bundle compatibility data still belongs to the caller.
     async fn list_prefix_entries(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -109,7 +341,8 @@ pub trait InterceptorConfigService: Send + Sync {
     /// Rate-limited to 1 request per minute per caller.
     ///
     /// Errors with [`InterceptorConfigServiceError::PrefixNotFound`] when
-    /// `name` is not a known prefix (currently only `"base-prompt"`).
+    /// `name` is not registered. Registered profiles without the qualified
+    /// generation path return Unavailable rather than pretending to build.
     async fn regenerate_prefix(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -122,6 +355,10 @@ pub trait InterceptorConfigService: Send + Sync {
 /// Errors returned by [`InterceptorConfigService`] methods.
 #[derive(Debug, thiserror::Error)]
 pub enum InterceptorConfigServiceError {
+    #[error("prefix revision conflict")]
+    Conflict,
+    #[error("prefix generation not found")]
+    GenerationNotFound,
     #[error("interceptor config service is unavailable")]
     Unavailable,
     #[error("interceptor: {reason}")]
@@ -143,6 +380,18 @@ pub fn map_interceptor_config_error(
     error: InterceptorConfigServiceError,
 ) -> crate::RebornServicesError {
     match error {
+        InterceptorConfigServiceError::Conflict => crate::RebornServicesError::from_status(
+            crate::RebornServicesErrorCode::InvalidRequest,
+            409,
+            false,
+        ),
+        InterceptorConfigServiceError::GenerationNotFound => {
+            crate::RebornServicesError::from_status(
+                crate::RebornServicesErrorCode::NotFound,
+                404,
+                false,
+            )
+        }
         InterceptorConfigServiceError::Unavailable => crate::RebornServicesError::from_status(
             crate::RebornServicesErrorCode::Unavailable,
             503,

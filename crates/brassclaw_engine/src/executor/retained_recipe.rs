@@ -21,8 +21,7 @@ use brassclaw_monty_host::{
 };
 use brassclaw_skills::{
     association_contract::FailureAction,
-    component_revision::REVISION_LIMITS,
-    value_contract::{ContractError, validate_data_bounds},
+    value_contract::{ContractError, ContractLimits, EXECUTION_DATA_LIMITS, validate_data_bounds},
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -75,8 +74,13 @@ impl RetainedProgram {
 pub struct RetainedToolInvocation<'a> {
     task: TaskHandle,
     step_id: &'a str,
+    data_limits: ContractLimits,
 }
 impl RetainedToolInvocation<'_> {
+    /// Bounds captured before this step began, retained through its actual answer.
+    pub fn data_limits(&self) -> ContractLimits {
+        self.data_limits
+    }
     pub fn task(&self) -> TaskHandle {
         self.task
     }
@@ -252,6 +256,7 @@ impl RetainedStepFailure {
 /// success flag from becoming evidence. Fingerprints use typed-value-sha256/1;
 /// full Tool arguments/answers remain in the durable invocation journal.
 pub struct RetainedStepObservation {
+    data_limits: ContractLimits,
     input_checksum: [u8; 32],
     arguments_checksum: Option<[u8; 32]>,
     answer_checksum: Option<[u8; 32]>,
@@ -261,6 +266,11 @@ pub struct RetainedStepObservation {
     observation_error: Option<ContractError>,
 }
 impl RetainedStepObservation {
+    /// Executor-captured bounds for this exact begun step, independent of later
+    /// settings or another step's profile. These are resources, never approval.
+    pub fn data_limits(&self) -> ContractLimits {
+        self.data_limits
+    }
     pub fn input_checksum(&self) -> [u8; 32] {
         self.input_checksum
     }
@@ -288,7 +298,13 @@ impl RetainedStepObservation {
 /// object insertion order. Numbers retain their transport representation; no
 /// numeric coercion, source interpretation or raw-value diagnostic is involved.
 pub fn typed_value_checksum(value: &Value) -> Result<[u8; 32], ContractError> {
-    validate_data_bounds(value, REVISION_LIMITS)?;
+    typed_value_checksum_with_limits(value, EXECUTION_DATA_LIMITS)
+}
+pub fn typed_value_checksum_with_limits(
+    value: &Value,
+    limits: ContractLimits,
+) -> Result<[u8; 32], ContractError> {
+    validate_data_bounds(value, limits)?;
     fn bytes(hash: &mut Sha256, value: &[u8]) {
         hash.update((value.len() as u64).to_be_bytes());
         hash.update(value);
@@ -333,12 +349,18 @@ pub fn typed_value_checksum(value: &Value) -> Result<[u8; 32], ContractError> {
 /// Fingerprint the actual answer variant as well as its contents. A returned
 /// error-looking object is distinct from a classified Domain/Terminal error.
 pub fn port_answer_checksum(answer: &PortAnswer) -> Result<[u8; 32], ContractError> {
+    port_answer_checksum_with_limits(answer, EXECUTION_DATA_LIMITS)
+}
+pub fn port_answer_checksum_with_limits(
+    answer: &PortAnswer,
+    limits: ContractLimits,
+) -> Result<[u8; 32], ContractError> {
     let mut hash = Sha256::new();
     hash.update(b"port-answer-sha256/1\0");
     match answer {
         PortAnswer::Return { value } => {
             hash.update([0]);
-            hash.update(typed_value_checksum(value)?);
+            hash.update(typed_value_checksum_with_limits(value, limits)?);
         }
         PortAnswer::DomainError { reason_kind } => {
             hash.update([1]);
@@ -373,6 +395,7 @@ pub struct RetainedRecipeExecution {
     /// Completed prefix of the immutable dependency-first library selection.
     /// Advance only after the worker acknowledges an effect-free preload.
     preloaded: usize,
+    data_limits: ContractLimits,
     transport_failure: Option<RetainedTransportEvidence>,
 }
 impl RetainedRecipeExecution {
@@ -402,6 +425,17 @@ impl RetainedRecipeExecution {
         inspected: Arc<super::retained_source::InspectedRetainedProgram>,
     ) -> Result<Self, RetainedExecutionError> {
         Self::prepare(task, inspected, true, None)
+    }
+
+    /// Observe the same requested-step runner beneath its actual task parent.
+    /// This preserves global Monty ownership; observation grants no approval
+    /// and does not select, retry or execute the next workflow step.
+    pub fn new_child_for_behavioral_validation(
+        task: TaskHandle,
+        parent: RecipeContextId,
+        inspected: Arc<super::retained_source::InspectedRetainedProgram>,
+    ) -> Result<Self, RetainedExecutionError> {
+        Self::prepare(task, inspected, true, Some(parent))
     }
 
     fn prepare(
@@ -437,6 +471,7 @@ impl RetainedRecipeExecution {
             observation_order: Vec::new(),
             observe_behavior,
             preloaded: 0,
+            data_limits: EXECUTION_DATA_LIMITS,
             transport_failure: None,
         })
     }
@@ -597,7 +632,19 @@ impl RetainedRecipeExecution {
             .ok_or(RetainedExecutionError::Invalid(
                 "step is not in retained program",
             ))?;
-        let inputs = selected.inputs().bind_step_inputs(step_id, supplied)?;
+        // One acknowledged resource observation per begun step. A setting edit
+        // may change the next step, never the pending effect/answer contract.
+        let bounds = *transport.live_vm_bounds().borrow();
+        let data_limits = ContractLimits {
+            max_depth: bounds.max_value_depth,
+            max_nodes: bounds.max_value_nodes,
+            max_bytes: bounds.max_value_bytes,
+        };
+        let inputs =
+            selected
+                .inputs()
+                .bind_step_inputs_with_limits(step_id, supplied, data_limits)?;
+        self.data_limits = data_limits;
         let binding = selected.binding(step_id);
         if binding.is_some() && tools.is_none() {
             return Err(RetainedExecutionError::Invalid(
@@ -621,7 +668,7 @@ impl RetainedRecipeExecution {
         };
         let input_checksum = self
             .observe_behavior
-            .then(|| typed_value_checksum(&inputs))
+            .then(|| typed_value_checksum_with_limits(&inputs, data_limits))
             .transpose()
             .map_err(RetainedInputError::from)?;
         self.phase = Phase::Running;
@@ -631,6 +678,7 @@ impl RetainedRecipeExecution {
             self.observations.insert(
                 step_id.to_owned(),
                 RetainedStepObservation {
+                    data_limits,
                     input_checksum,
                     arguments_checksum: None,
                     answer_checksum: None,
@@ -688,7 +736,7 @@ impl RetainedRecipeExecution {
         if let Some(observation) = self.observations.get_mut(step_id) {
             observation.settled = true;
             match &result {
-                Ok(value) => match typed_value_checksum(value) {
+                Ok(value) => match typed_value_checksum_with_limits(value, data_limits) {
                     Ok(checksum) => observation.result_checksum = Some(checksum),
                     Err(error) => observation.observation_error = Some(error),
                 },
@@ -809,9 +857,11 @@ impl RetainedRecipeExecution {
                                     ));
                                 }
                             } else {
-                                self.program
-                                    .inputs()
-                                    .validate_step_result(step_id, &value)?;
+                                self.program.inputs().validate_step_result_with_limits(
+                                    step_id,
+                                    &value,
+                                    self.data_limits,
+                                )?;
                             }
                             return Ok(value);
                         }
@@ -857,12 +907,17 @@ impl RetainedRecipeExecution {
                                 .ok_or(RetainedExecutionError::Invalid(
                                     "unbound or repeated Tool call",
                                 ))?;
-                            let arguments = binding.bind_tool_arguments(&inputs, &arguments)?;
+                            let arguments = binding.bind_tool_arguments_with_limits(
+                                &inputs,
+                                &arguments,
+                                self.data_limits,
+                            )?;
                             let port = tools.ok_or(RetainedExecutionError::Invalid(
                                 "missing retained Tool port",
                             ))?;
                             if let Some(observation) = self.observations.get_mut(step_id) {
-                                match typed_value_checksum(&arguments) {
+                                match typed_value_checksum_with_limits(&arguments, self.data_limits)
+                                {
                                     Ok(checksum) => observation.arguments_checksum = Some(checksum),
                                     Err(error) => observation.observation_error = Some(error),
                                 }
@@ -872,13 +927,14 @@ impl RetainedRecipeExecution {
                                     RetainedToolInvocation {
                                         task: self.task,
                                         step_id,
+                                        data_limits: self.data_limits,
                                     },
                                     binding,
                                     arguments,
                                 )
                                 .await;
                             if let Some(observation) = self.observations.get_mut(step_id) {
-                                match port_answer_checksum(&answer) {
+                                match port_answer_checksum_with_limits(&answer, self.data_limits) {
                                     Ok(checksum) => observation.answer_checksum = Some(checksum),
                                     Err(error) => observation.observation_error = Some(error),
                                 }

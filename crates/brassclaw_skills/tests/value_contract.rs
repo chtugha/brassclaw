@@ -303,3 +303,92 @@ fn aggregate_limits_cover_default_expansion_and_reject_entire_values() {
         .is_err()
     );
 }
+
+#[test]
+fn tool_parameters_preserve_omission_without_changing_recipe_defaults() {
+    let schema = serde_json::json!({
+        "operation":{"type":"string","required":true,"checks":[]},
+        "optional":{"type":"string","required":false,"checks":[]},
+        "defaulted":{"type":"integer","required":false,"default":3,"checks":[{"kind":"min","value":1}]}
+    });
+    let limits = brassclaw_skills::component_revision::REVISION_LIMITS;
+    assert!(brassclaw_skills::value_contract::InputContract::from_value(&schema, limits).is_err());
+    let tool = brassclaw_skills::value_contract::InputContract::tool_parameters_from_value(
+        &schema, limits,
+    )
+    .unwrap();
+    let bound = tool.bind(&serde_json::json!({"operation":"read"})).unwrap();
+    assert!(!bound.contains_key("optional"));
+    assert_eq!(bound["defaulted"], 3);
+    for supplied in [
+        serde_json::json!({"operation":"read","optional":null}),
+        serde_json::json!({"operation":"read","defaulted":null}),
+        serde_json::json!({"operation":"read","defaulted":0}),
+        serde_json::json!({"optional":"provided"}),
+        serde_json::json!({"operation":"read","unknown":true}),
+    ] {
+        assert!(tool.bind(&supplied).is_err());
+    }
+    let cross = brassclaw_skills::value_contract::InputContract::tool_parameters_from_value(&serde_json::json!({
+        "left":{"type":"integer","required":false,"checks":[{"kind":"max_field","input":"right"}]},
+        "right":{"type":"integer","required":false,"checks":[]}
+    }), limits).unwrap();
+    assert!(cross.bind(&serde_json::json!({})).unwrap().is_empty());
+    assert!(cross.bind(&serde_json::json!({"left":1})).is_err());
+    assert!(
+        cross
+            .bind(&serde_json::json!({"left":2,"right":1}))
+            .is_err()
+    );
+    assert!(cross.bind(&serde_json::json!({"left":1,"right":2})).is_ok());
+}
+
+#[test]
+fn execution_data_capacity_is_separate_from_schema_meaning_and_metadata() {
+    use brassclaw_skills::component_revision::REVISION_LIMITS;
+    use brassclaw_skills::value_contract::{EXECUTION_DATA_LIMITS, InputContract, ValueContract};
+    let schema = serde_json::json!({"artifact":{"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]}});
+    let original = InputContract::from_value(&schema, REVISION_LIMITS).unwrap();
+    let value = serde_json::json!({"artifact":"x".repeat(REVISION_LIMITS.max_bytes+1)});
+    assert!(original.bind(&value).is_err());
+    let execution = original
+        .clone()
+        .with_data_limits(EXECUTION_DATA_LIMITS)
+        .unwrap();
+    assert_eq!(
+        execution.bind(&value).unwrap()["artifact"],
+        value["artifact"]
+    );
+    assert!(
+        execution
+            .bind(&serde_json::json!({"artifact":null}))
+            .is_err()
+    );
+    assert!(execution.bind(&serde_json::json!({"artifact":""})).is_err());
+    assert!(
+        execution
+            .bind(&serde_json::json!({"artifact":"a","unexpected":true}))
+            .is_err()
+    );
+    let result = ValueContract::result_from_value(
+        &serde_json::json!({"type":"integer","checks":[{"kind":"max","value":10}]}),
+        REVISION_LIMITS,
+    )
+    .unwrap()
+    .with_data_limits(EXECUTION_DATA_LIMITS)
+    .unwrap();
+    assert!(
+        result
+            .validate(&serde_json::json!("still-too-long"))
+            .is_err(),
+        "a technical bound never weakens the reviewed semantic checks"
+    );
+    assert!(
+        original
+            .with_data_limits(brassclaw_skills::value_contract::ContractLimits {
+                max_bytes: 0,
+                ..EXECUTION_DATA_LIMITS
+            })
+            .is_err()
+    );
+}

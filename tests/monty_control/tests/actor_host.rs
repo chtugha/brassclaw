@@ -54,6 +54,8 @@ async fn live_frame_policy_preserves_old_receipts_and_reclaims_capacity_after_la
     let initial = ready.vm_bounds.unwrap();
     let update = |expected, configured, required| WorkerCommand::Recipe {
         command: RecipeCommand::UpdateRuntimeSettings {
+            max_pending_host_calls: None,
+            max_workers: None,
             expected_revision: expected,
             settings: TaskSettings {
                 revision: expected + 1,
@@ -330,6 +332,8 @@ async fn worker_ack_commits_rust_policy_before_child_progress_even_without_a_wai
         .try_submit_runtime_publication(
             WorkerCommand::Recipe {
                 command: RecipeCommand::UpdateRuntimeSettings {
+                    max_pending_host_calls: None,
+                    max_workers: None,
                     expected_revision: 1,
                     settings: next,
                     values: bounds,
@@ -706,7 +710,7 @@ async fn dropped_turn_wait_retains_real_admission_and_does_not_kill_instance() {
     assert!(inbox.outstanding().unwrap().is_empty());
     let deferred = exchange(&client, WorkerCommand::Defer { key }).await;
     assert_eq!(deferred.lifecycle, Lifecycle::Stopping);
-    assert_eq!(deferred.outstanding.len(), 2);
+    assert_eq!(deferred.outstanding.len(), 3);
     owner.request_termination();
     let exit = tokio::time::timeout(Duration::from_secs(15), owner.join())
         .await
@@ -757,7 +761,10 @@ async fn frame_credits_and_graceful_exit_reject_queued_work_with_full_evidence()
         .unwrap();
     // This smaller budget admits one receipt at a time. Its credit is released
     // only after collection; the actual Stopped handshake closes admission.
-    let stopped = last.wait().await.unwrap().outcome.unwrap();
+    let drained = last.wait().await.unwrap().outcome.unwrap();
+    assert_eq!(drained.lifecycle, Lifecycle::Stopping);
+    assert_eq!(drained.outstanding.len(), 1);
+    let stopped = exchange(&client, WorkerCommand::ClosePoolCoordinator).await;
     assert_eq!(stopped.lifecycle, Lifecycle::Stopped);
     let exit = tokio::time::timeout(Duration::from_secs(15), owner.join())
         .await

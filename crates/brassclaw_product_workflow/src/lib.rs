@@ -39,6 +39,7 @@ mod fakes;
 mod gate_state;
 mod in_memory_ledger;
 mod inbound_turn;
+pub mod instance_tools;
 mod ledger;
 mod lifecycle;
 mod outbound_delivery;
@@ -133,19 +134,28 @@ pub use policy::{
 };
 pub use reborn_services::CapabilityPermissionStore;
 pub use reborn_services::{
-    InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
-    PrefixEntry, PrefixListResponse, PrefixRegenerateResponse, UpdateInterceptorConfigRequest,
-    interceptor_config_unavailable, map_interceptor_config_error,
+    CapturePrefixModelRequest, ImportPrefixGenerationRequest, InterceptorConfigService,
+    InterceptorConfigServiceError, InterceptorConfigSnapshot, PrefixDesignProposal, PrefixEntry,
+    PrefixGenerationDetail, PrefixGenerationSummary, PrefixListResponse, PrefixModelArtifactDetail,
+    PrefixModelArtifactFile, PrefixModelArtifactSet, PrefixModelDesignCatalogue,
+    PrefixModelSpecification, PrefixModelTarget, PrefixRegenerateResponse, PrefixSourceInventory,
+    PrefixSourceRegistration, PrefixUsedSource, RegisterPrefixSourceRequest,
+    RetainPrefixDesignProposalRequest, RetainPrefixModelArtifactsRequest,
+    UpdateInterceptorConfigRequest, interceptor_config_unavailable, map_interceptor_config_error,
 };
 pub use recipes::{
-    ApproveAssociationRequest, AssociationApprovalResponse, AssociationReviewSelection,
-    AssociationReviewView, ComponentAuditStatus, ComponentReviewSubmissionReceipt,
-    ComponentReviewSubmissionView, ComponentRevisionSelection, OutcomeKind,
-    PostTurnReviewInspection, PostTurnReviewList, PostTurnReviewSummary, RecipeDetail, RecipeKind,
-    RecipeListRequest, RecipeListResponse, RecipeStore, RecipeStoreError, RecipeSummary,
-    RecordOutcomeRequest, RecordOutcomeResponse, ReviewDispositionReceipt,
-    ReviewDispositionRequest, ReviewDispositionView, SubmitComponentReviewRequest, ToolSkillDetail,
-    ToolSkillListResponse, ToolSkillSummary, UpdateValidationStatusRequest,
+    ActivateCatalogueRequest, ApproveAssociationRequest, AssociationApprovalResponse,
+    AssociationReviewSelection, AssociationReviewView, CatalogueActivationReceipt,
+    CatalogueActivationStatus, CatalogueRecipeSelection, CatalogueSourceComponent,
+    CatalogueSourceExport, CatalogueWorkflowClass, ComponentAuditStatus, ComponentDeploymentPlan,
+    ComponentReviewSubmissionReceipt, ComponentReviewSubmissionView, ComponentRevisionHeadView,
+    ComponentRevisionSelection, DeploymentSubjectPin, OutcomeKind, PostTurnReviewInspection,
+    PostTurnReviewList, PostTurnReviewSummary, PrepareComponentDeploymentRequest,
+    RecipeDeploymentSubject, RecipeDetail, RecipeKind, RecipeListRequest, RecipeListResponse,
+    RecipeStore, RecipeStoreError, RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse,
+    ReviewDispositionReceipt, ReviewDispositionRequest, ReviewDispositionView,
+    ReviewReconciliationReceipt, ReviewReconciliationRequest, SubmitComponentReviewRequest,
+    ToolSkillDetail, ToolSkillListResponse, ToolSkillSummary, UpdateValidationStatusRequest,
     UpdateValidationStatusResponse, ValidationQueueCountResponse, ValidationQueueFilter,
     ValidationQueueItem, ValidationQueueListResponse, ValidationStatusValue,
 };

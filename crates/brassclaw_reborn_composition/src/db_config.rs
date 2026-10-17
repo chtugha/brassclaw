@@ -37,6 +37,9 @@ pub enum ConfigError {
     #[error("database error: {0}")]
     Db(String),
 
+    #[error("config update contains duplicate key `{key}`")]
+    DuplicateKey { key: String },
+
     #[error(
         "config value for `{key}` looks like inline secret material — \
              store secret values in env vars, not in config"
@@ -135,6 +138,63 @@ pub async fn delete_config_key(
     Ok(())
 }
 
+/// Publish related operator configuration keys atomically. `None` deletes a
+/// key; values are validated before writing. Sorting
+/// gives concurrent publications a consistent row-lock order.
+pub async fn save_config_changes(
+    pool: &PgPool,
+    tenant_id: &str,
+    changes: &[(&str, Option<&str>)],
+    caller: ConfigWriteContext,
+) -> Result<(), ConfigError> {
+    let mut client = pool.get().await?;
+    let transaction = client.transaction().await?;
+    save_config_changes_in_transaction(&transaction, tenant_id, changes, caller).await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+/// Validated setup writes joining a composition-owned transaction.
+pub(crate) async fn save_config_changes_in_transaction(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    changes: &[(&str, Option<&str>)],
+    caller: ConfigWriteContext,
+) -> Result<(), ConfigError> {
+    let mut ordered = BTreeMap::new();
+    for &(key, value) in changes {
+        if caller == ConfigWriteContext::AgentSession && key.ends_with("_env") {
+            return Err(ConfigError::EnvKeyWriteForbidden { key: key.into() });
+        }
+        if let Some(value) = value {
+            reject_inline_secret(key.to_owned(), value)
+                .map_err(|_| ConfigError::InlineSecretForbidden { key: key.into() })?;
+        }
+        if ordered.insert(key, value).is_some() {
+            return Err(ConfigError::DuplicateKey { key: key.into() });
+        }
+    }
+    for (key, value) in ordered {
+        if let Some(value) = value {
+            transaction
+                .execute(
+                    "INSERT INTO brassclaw_config (tenant_id,key,value) VALUES ($1,$2,$3)
+                 ON CONFLICT (tenant_id,key) DO UPDATE SET value=excluded.value, updated_at=now()",
+                    &[&tenant_id, &key, &value],
+                )
+                .await?;
+        } else {
+            transaction
+                .execute(
+                    "DELETE FROM brassclaw_config WHERE tenant_id=$1 AND key=$2",
+                    &[&tenant_id, &key],
+                )
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 /// Load all config rows for a tenant and reconstruct a `RebornConfigFile`.
 ///
 /// Rows absent from the DB produce `None` on the corresponding optional
@@ -144,6 +204,15 @@ pub async fn load_config_snapshot(
     tenant_id: &str,
 ) -> Result<RebornConfigFile, ConfigError> {
     let client = pool.get().await?;
+    load_config_snapshot_from_client(&**client, tenant_id).await
+}
+
+/// Read through an existing transaction so management selection and catalogue
+/// consumers can share its consistent PostgreSQL snapshot.
+pub(crate) async fn load_config_snapshot_from_client<C: tokio_postgres::GenericClient + Sync>(
+    client: &C,
+    tenant_id: &str,
+) -> Result<RebornConfigFile, ConfigError> {
     let rows = client
         .query(
             "SELECT key, value FROM brassclaw_config WHERE tenant_id = $1",
@@ -154,12 +223,8 @@ pub async fn load_config_snapshot(
     // Build a flat key→value map.
     let mut kv: BTreeMap<String, String> = BTreeMap::new();
     for row in &rows {
-        let Ok(key): Result<String, _> = row.try_get("key") else {
-            continue;
-        };
-        let Ok(value): Result<String, _> = row.try_get("value") else {
-            continue;
-        };
+        let key: String = row.try_get("key")?;
+        let value: String = row.try_get("value")?;
         if !key.is_empty() {
             kv.insert(key, value);
         }
@@ -181,14 +246,13 @@ pub async fn list_config_keys(
         )
         .await?;
 
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            let key: String = r.try_get("key").ok()?;
-            let value: String = r.try_get("value").ok()?;
-            Some((key, value))
+    rows.iter()
+        .map(|row| {
+            let key: String = row.try_get("key")?;
+            let value: String = row.try_get("value")?;
+            Ok((key, value))
         })
-        .collect())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,8 @@ use crate::capability_info::{self, CapabilityInfoEntry};
 
 #[derive(Clone)]
 pub(super) struct RuntimeSurfaceCapabilitySnapshot {
+    // Captured from immutable host wiring, never from provider metadata.
+    pub(super) authority_model: brassclaw_host_api::DispatchAuthorityModel,
     pub(super) provider: ExtensionId,
     pub(super) runtime: RuntimeKind,
     pub(super) estimate: ResourceEstimate,

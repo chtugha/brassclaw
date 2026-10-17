@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 function fixture({ phase = "uncertain", failId = false } = {}) {
-  const state = []; let cursor = 0; let calls = []; let ids = 0;
+  const state = []; let cursor = 0; let calls = []; let ids = 0; let reconciliationCalls = [];
   let failed = true;
   const evidence = JSON.stringify({ work: { phase }, journal_integrity: true, user: "<script>evil()</script>" });
   const context = {
@@ -21,6 +21,11 @@ function fixture({ phase = "uncertain", failId = false } = {}) {
     TextEncoder, clientActionId: () => { ids++; if (failId) throw Error("randomness unavailable"); return "stable-id"; },
     fetchPostTurnReviews: async () => ({ items: [{ attempt_id: "attempt", phase, model_dispatch_count: 1 }], next_after: null }),
     inspectPostTurnReview: async () => ({ evidence_bytes: evidence, evidence_checksum: "exact-hash", dispositions: [], disposition_count: 0 }),
+    reconcilePostTurnReview: async (attempt, checksum) => {
+      reconciliationCalls.push({ attempt, checksum });
+      await Promise.resolve();
+      return { retention_released: false, reconciliation_recorded: false, work_replayed: false };
+    },
     recordReviewDisposition: async (attempt, request) => {
       calls.push({ attempt, request });
       if (failed) { failed = false; throw Error("unknown commit"); }
@@ -32,7 +37,7 @@ function fixture({ phase = "uncertain", failId = false } = {}) {
     .replace("export function", "function");
   vm.createContext(context);
   vm.runInContext(source + "\nglobalThis.render = PostTurnReviewPanel;", context);
-  return { render: () => { cursor = 0; return context.render(); }, calls, ids: () => ids, evidence };
+  return { render: () => { cursor = 0; return context.render(); }, calls, reconciliationCalls, ids: () => ids, evidence };
 }
 function nodes(root) {
   const result = [];
@@ -94,3 +99,19 @@ test("missing secure randomness reports failure without leaving the panel busy",
   assert.equal(f.ids(), 1);
   assert.strictEqual(f.calls[0].request, f.calls[1].request);
  });
+
+
+test("reconciliation uses exact observed checksum and reports unresolved retention", async () => {
+  const f = fixture(); await inspect(f);
+  const reconcile = prop(button(f.render(), "postTurnReview.reconcile"), "onClick");
+  await Promise.all([reconcile(), reconcile()]);
+  assert.equal(f.reconciliationCalls.length, 1);
+  assert.equal(f.reconciliationCalls[0].checksum, "exact-hash");
+  assert.ok(nodes(f.render()).some(node => node.values.includes("postTurnReview.retained")));
+  assert.equal(f.calls.length, 0, "reconciliation does not write an operator observation");
+});
+
+test("running review offers no release action", async () => {
+  const f = fixture({ phase: "model_dispatching" }); await inspect(f);
+  assert.equal(button(f.render(), "postTurnReview.reconcile"), undefined);
+});

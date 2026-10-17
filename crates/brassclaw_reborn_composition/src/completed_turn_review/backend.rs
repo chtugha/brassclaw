@@ -53,6 +53,14 @@ pub(super) struct PinnedModel {
     pub prefix: String,
     pub accountant: Arc<dyn LoopModelBudgetAccountant>,
 }
+#[derive(Default)]
+pub(super) struct RetainedModelWork {
+    // Set before reservation I/O. Missing usage is never assumed to be zero.
+    pub request: Option<ModelWorkRequest>,
+    pub response: Option<LoopModelResponse>,
+    pub settled: bool,
+}
+
 pub(super) struct Backend {
     pub pool: Arc<PgPool>,
     pub source: Uuid,
@@ -61,6 +69,7 @@ pub(super) struct Backend {
     pub ownership: GlobalOwnerCheck,
     pub closed: AtomicBool,
     pub observed_model: tokio::sync::Mutex<Option<String>>,
+    pub model_work: tokio::sync::Mutex<RetainedModelWork>,
     pub threads: Arc<dyn SessionThreadService>,
     pub scope: ThreadScope,
     pub context: LoopRunContext,
@@ -449,6 +458,28 @@ impl Backend {
         Ok(bundle)
     }
 
+    pub(super) async fn reconcile_accounting(&self) -> bool {
+        let mut state = self.model_work.lock().await;
+        if state.request.is_none() || state.settled {
+            return true;
+        }
+        let (Some(request), Some(response)) = (&state.request, &state.response) else {
+            return false;
+        };
+        if matches!(
+            self.model
+                .accountant
+                .reconcile_retained_model_work(&self.context, request, response,)
+                .await,
+            Some(Ok(()))
+        ) {
+            state.settled = true;
+            true
+        } else {
+            false
+        }
+    }
+
     async fn ask(&self, bytes: &str) -> Result<String, FirstPartyCapabilityError> {
         let value = parse(bytes)?;
         let request: AnalysisRequest = serde_json::from_value(value).map_err(|_| error())?;
@@ -507,6 +538,7 @@ impl Backend {
                 .div_ceil(4),
             estimated_output_tokens: None,
         };
+        self.model_work.lock().await.request = Some(work.clone());
         self.model
             .accountant
             .pre_model_work(&self.context, &work)
@@ -525,6 +557,9 @@ impl Backend {
             return Err(error());
         }
         self.check().await?;
+        // Disarm before entering the gateway: dropping the provider future
+        // after entry must never release an unknown-spend reservation.
+        reservation.armed = false;
         let response = self
             .model
             .gateway
@@ -555,20 +590,13 @@ impl Backend {
             }
         };
         let exact = serde_json::to_string(&response).map_err(|_| {
-            tracing::warn!(stage="serialize_model_response", "internal review response retention failed");
+            tracing::warn!(
+                stage = "serialize_model_response",
+                "internal review response retention failed"
+            );
             error()
         })?;
         *self.observed_model.lock().await = Some(exact.clone());
-        let changed = self.pool.get().await.map_err(|_|error())?.execute(
-            "UPDATE brassclaw_monty_review_work SET phase='model_returned',response_bytes=$2 WHERE attempt_id=$1 AND owner_id=$3 AND phase='model_dispatching'",
-            &[&self.attempt,&exact,&self.owner]).await.map_err(|failure| {
-                tracing::warn!(stage="persist_model_response", sqlstate=failure.code().map(|c| c.code()),
-                    "internal review response retention failed");
-                error()
-            })?;
-        if changed != 1 {
-            return Err(error());
-        }
         let usage = LoopModelResponse {
             chunks: response
                 .safe_text_deltas
@@ -580,6 +608,7 @@ impl Backend {
             effective_model_profile_id: profile,
             usage: response.usage,
         };
+        self.model_work.lock().await.response = Some(usage.clone());
         let reconciled = self
             .model
             .accountant
@@ -587,6 +616,17 @@ impl Backend {
             .await;
         reservation.armed = false; // failed reconcile retains actual reservation
         reconciled.map_err(|_| error())?;
+        self.model_work.lock().await.settled = true;
+        let changed = self.pool.get().await.map_err(|_|error())?.execute(
+            "UPDATE brassclaw_monty_review_work SET phase='model_returned',response_bytes=$2 WHERE attempt_id=$1 AND owner_id=$3 AND phase='model_dispatching'",
+            &[&self.attempt,&exact,&self.owner]).await.map_err(|failure| {
+                tracing::warn!(stage="persist_model_response", sqlstate=failure.code().map(|c| c.code()),
+                    "internal review response retention failed");
+                error()
+            })?;
+        if changed != 1 {
+            return Err(error());
+        }
         let ParentLoopOutput::AssistantReply(reply) = usage.output else {
             return Err(error());
         };
@@ -641,7 +681,16 @@ impl FirstPartyCapabilityHandler for ReviewPrimitive {
             return Err(error());
         }
         let bytes = request.input["record_bytes"].as_str().ok_or_else(error)?;
-        let result = self.backend.run(self.operation, bytes).await?;
+        // Transport a classified handler failure through the trusted native
+        // result envelope, so the kernel can settle this primitive's actual
+        // accounting before Monty receives its original terminal failure.
+        // Unknown runtime/accounting failures never produce this envelope.
+        let result = match self.backend.run(self.operation, bytes).await {
+            Ok(result) => result,
+            Err(_) => json!({"format":"completed-turn-review-primitive-failure/1",
+                "reason_kind":"review_operation_failed"})
+            .to_string(),
+        };
         Ok(FirstPartyCapabilityResult::new(
             json!(result),
             ResourceUsage::default(),

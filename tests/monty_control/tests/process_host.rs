@@ -20,6 +20,492 @@ use tokio::io::AsyncWriteExt;
 mod support;
 use support::{SOURCE, boot, limits, task, worker};
 
+const POOL_ROOT: &str = include_str!("support/worker_pool.py");
+
+async fn pool_progress(
+    process: &mut GlobalProcess,
+    mut state: brassclaw_monty_host::process::ProcessSnapshot,
+) -> brassclaw_monty_host::process::ProcessSnapshot {
+    for _ in 0..128 {
+        state = match state.boundary.take() {
+            Some(ProcessBoundary::HostCall { key, name, .. }) => {
+                assert!(matches!(
+                    name.as_str(),
+                    "await_next_task" | "await_pool_update"
+                ));
+                process
+                    .exchange(WorkerCommand::Defer { key })
+                    .await
+                    .unwrap()
+            }
+            Some(ProcessBoundary::ControlYield { key }) => process
+                .exchange(WorkerCommand::ResumeControl { key })
+                .await
+                .unwrap(),
+            Some(ProcessBoundary::Waiting { .. }) => return state,
+            _ => panic!("pool progress must retain a live root boundary"),
+        };
+    }
+    panic!("pool hosting events did not settle")
+}
+
+fn pool_boot() -> brassclaw_monty_host::process::RootBoot {
+    let mut configuration = boot(POOL_ROOT);
+    configuration.aliases.insert("await_pool_update".into());
+    configuration
+}
+
+#[tokio::test]
+async fn complete_worker_settings_preflight_sizes_future_membership_before_publication() {
+    use brassclaw_monty_host::process::{RecipeCommand, RuntimeSettingsCandidate};
+    let (mut process, ready) = GlobalProcess::start(worker(), pool_boot(), limits())
+        .await
+        .unwrap();
+    let pid = process.process_id();
+    let candidate = RuntimeSettingsCandidate {
+        expected_revision: 1,
+        settings: TaskSettings {
+            revision: 2,
+            ..ready.effective_task_settings.unwrap()
+        },
+        values: ready.vm_bounds.unwrap(),
+        max_recipe_contexts: None,
+        max_pending_host_calls: Some(8),
+        max_workers: Some(4),
+        adapter_reserve_bytes: None,
+        heap_update: None,
+        frame_update: None,
+    };
+    let impossible = RuntimeSettingsCandidate {
+        max_workers: Some(1_000_000),
+        max_pending_host_calls: Some(1_000_001),
+        ..candidate
+    };
+    // Scalar/control-input bounds fit. The future million-member response must
+    // be rejected by bounded streaming size validation without creating workers.
+    let rejected = process
+        .exchange(WorkerCommand::ValidateRuntimeSettings {
+            candidate: impossible,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+    let unchanged = rejected.snapshot.unwrap();
+    assert_eq!(unchanged.worker_pool, ready.worker_pool);
+    assert_eq!(unchanged.runtime_settings(), ready.runtime_settings());
+    assert_eq!(unchanged.outstanding, ready.outstanding);
+    assert_eq!(unchanged.root, ready.root);
+    assert_eq!(process.process_id(), pid);
+    let valid = process
+        .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+        .await
+        .unwrap();
+    assert_eq!(valid.worker_pool, ready.worker_pool);
+    assert_eq!(valid.runtime_settings(), ready.runtime_settings());
+    let published = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: candidate.expected_revision,
+                settings: candidate.settings,
+                values: candidate.values,
+                max_recipe_contexts: candidate.max_recipe_contexts,
+                max_pending_host_calls: candidate.max_pending_host_calls,
+                max_workers: candidate.max_workers,
+                adapter_reserve_bytes: candidate.adapter_reserve_bytes,
+                heap_update: candidate.heap_update,
+                frame_update: candidate.frame_update,
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(published.runtime_settings().max_workers, Some(4));
+    assert_eq!(published.effective_task_settings.unwrap().revision, 2);
+    assert!(published.worker_pool.as_ref().unwrap().capacity.settled());
+    assert_eq!(
+        published.worker_pool.as_ref().unwrap().capacity.effective,
+        4
+    );
+    assert_eq!(published.root, ready.root);
+    let stale = process
+        .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        stale.kind,
+        ProcessFailure::Vm(VmFailure::SettingsRevisionConflict)
+    );
+    let current = *stale.snapshot.unwrap();
+    assert_eq!(current.runtime_settings(), published.runtime_settings());
+    assert_eq!(current.outstanding, published.outstanding);
+    process
+        .exchange(WorkerCommand::BeginShutdown)
+        .await
+        .unwrap();
+    for (_, key) in current.work_waits {
+        process
+            .exchange(WorkerCommand::CloseWorker { key })
+            .await
+            .unwrap();
+    }
+    process
+        .exchange(WorkerCommand::ClosePoolCoordinator)
+        .await
+        .unwrap();
+    assert!(process.wait_stopped().await.unwrap().success());
+}
+
+#[tokio::test]
+async fn incomplete_coordinator_membership_never_acknowledges_settings_publication() {
+    use brassclaw_monty_host::process::RecipeCommand;
+    let source = POOL_ROOT.replace(
+        "range(update['workers'])",
+        "range(min(update['workers'], 3))",
+    );
+    let mut configuration = boot(&source);
+    configuration.aliases.insert("await_pool_update".into());
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    let error = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: 1,
+                settings: TaskSettings {
+                    revision: 2,
+                    ..ready.effective_task_settings.unwrap()
+                },
+                values: ready.vm_bounds.unwrap(),
+                max_recipe_contexts: None,
+                max_pending_host_calls: None,
+                max_workers: Some(4),
+                adapter_reserve_bytes: None,
+                heap_update: None,
+                frame_update: None,
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ProcessFailure::Transport);
+    assert!(matches!(
+        error.command.as_deref(),
+        Some(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                max_workers: Some(4),
+                ..
+            }
+        })
+    ));
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn actual_worker_pool_protocol_preserves_boot_identity_through_grow_drain_and_shutdown() {
+    let (mut process, ready) = GlobalProcess::start(worker(), pool_boot(), limits())
+        .await
+        .unwrap();
+    let identity = ready.root;
+    let pid = process.process_id();
+    let first_wait = ready.work_waits[0];
+    assert!(ready.worker_pool.as_ref().unwrap().capacity.settled());
+    assert_eq!(ready.pending_call_capacity.unwrap().minimum, 3);
+    for _ in 0..20 {
+        let grown = process
+            .exchange(WorkerCommand::RequestWorkerPool { workers: 4 })
+            .await
+            .unwrap();
+        let grown = pool_progress(&mut process, grown).await;
+        assert!(grown.worker_pool.as_ref().unwrap().capacity.settled());
+        assert_eq!(grown.worker_pool.as_ref().unwrap().capacity.effective, 4);
+        let reduced = process
+            .exchange(WorkerCommand::RequestWorkerPool { workers: 1 })
+            .await
+            .unwrap();
+        let mut reduced = pool_progress(&mut process, reduced).await;
+        assert_eq!(reduced.worker_pool.as_ref().unwrap().capacity.desired, 1);
+        assert_eq!(reduced.worker_pool.as_ref().unwrap().capacity.effective, 4);
+        for (id, key) in reduced.work_waits.clone() {
+            if id > 0 {
+                let next = process
+                    .exchange(WorkerCommand::DrainWorker { key })
+                    .await
+                    .unwrap();
+                reduced = pool_progress(&mut process, next).await;
+            }
+        }
+        assert!(reduced.worker_pool.as_ref().unwrap().capacity.settled());
+        assert_eq!(reduced.pending_call_capacity.unwrap().minimum, 2);
+        assert_eq!(reduced.root, identity);
+        assert_eq!(reduced.work_waits, vec![first_wait]);
+        assert_eq!(process.process_id(), pid);
+    }
+    process
+        .exchange(WorkerCommand::BeginShutdown)
+        .await
+        .unwrap();
+    let idle = process
+        .exchange(WorkerCommand::CloseWorker { key: first_wait.1 })
+        .await
+        .unwrap();
+    assert_eq!(idle.lifecycle, Lifecycle::Stopping);
+    let stopped = process
+        .exchange(WorkerCommand::ClosePoolCoordinator)
+        .await
+        .unwrap();
+    assert_eq!(stopped.lifecycle, Lifecycle::Stopped);
+    assert_eq!(stopped.root, identity);
+    assert!(stopped.outstanding.is_empty());
+    assert!(process.wait_stopped().await.unwrap().success());
+}
+
+#[tokio::test]
+async fn actual_pool_registry_grows_beyond_boot_capacity_and_preserves_busy_admission_debt() {
+    let (mut process, ready) = GlobalProcess::start(worker(), pool_boot(), limits())
+        .await
+        .unwrap();
+    let identity = ready.root;
+    let grown = process
+        .exchange(WorkerCommand::RequestWorkerPool { workers: 4 })
+        .await
+        .unwrap();
+    let mut state = pool_progress(&mut process, grown).await;
+    let waits = state.work_waits.clone();
+    let mut held = Vec::new();
+    for (id, key) in waits.iter().copied().filter(|(id, _)| *id > 0) {
+        let mut input = task();
+        input["run_id"] = json!(format!("busy-run-{id}"));
+        let admitted = process
+            .exchange(WorkerCommand::Admit { key, task: input })
+            .await
+            .unwrap();
+        assert!(admitted.admitted_task.is_some());
+        let Some(ProcessBoundary::HostCall { key, name, .. }) = admitted.boundary else {
+            panic!("the task must reach its actual unresolved intent port")
+        };
+        assert_eq!(name, "resolve_intent");
+        held.push(key);
+        state = process
+            .exchange(WorkerCommand::Defer { key })
+            .await
+            .unwrap();
+    }
+    assert_eq!(state.task_accounting.len(), 3);
+    let reduced = process
+        .exchange(WorkerCommand::RequestWorkerPool { workers: 1 })
+        .await
+        .unwrap();
+    state = pool_progress(&mut process, reduced).await;
+    assert_eq!(state.worker_pool.as_ref().unwrap().capacity.effective, 4);
+    assert!(!state.worker_pool.as_ref().unwrap().capacity.settled());
+    let key = state.work_waits[0].1;
+    let rejected = process
+        .exchange(WorkerCommand::Admit { key, task: task() })
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::ResourceLimit));
+    let retained = rejected.snapshot.unwrap();
+    assert_eq!(retained.task_accounting.len(), 3);
+    assert!(held.iter().all(|key| retained.outstanding.contains(key)));
+    let grown = process
+        .exchange(WorkerCommand::RequestWorkerPool { workers: 4 })
+        .await
+        .unwrap();
+    state = pool_progress(&mut process, grown).await;
+    assert_eq!(state.root, identity);
+    assert!(state.worker_pool.as_ref().unwrap().capacity.settled());
+    assert_eq!(state.task_accounting.len(), 3);
+    assert!(held.iter().all(|key| state.outstanding.contains(key)));
+    // No intent, model, Tool or task-completion result was fabricated.
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn sparse_draining_worker_is_additional_capacity_during_regrowth() {
+    use brassclaw_monty_host::process::RecipeCommand;
+    let mut configuration = pool_boot();
+    configuration.bounds.max_pending_calls = 10;
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    let identity = ready.root;
+    let grown = process
+        .exchange(WorkerCommand::RequestWorkerPool { workers: 8 })
+        .await
+        .unwrap();
+    let grown = pool_progress(&mut process, grown).await;
+    let key = grown.work_waits.iter().find(|(id, _)| *id == 7).unwrap().1;
+    let admitted = process
+        .exchange(WorkerCommand::Admit { key, task: task() })
+        .await
+        .unwrap();
+    let Some(ProcessBoundary::HostCall {
+        key: busy, name, ..
+    }) = admitted.boundary
+    else {
+        panic!("must retain the actual busy worker's port")
+    };
+    assert_eq!(name, "resolve_intent");
+    process
+        .exchange(WorkerCommand::Defer { key: busy })
+        .await
+        .unwrap();
+    let reduced = process
+        .exchange(WorkerCommand::RequestWorkerPool { workers: 1 })
+        .await
+        .unwrap();
+    let mut state = pool_progress(&mut process, reduced).await;
+    for (id, key) in state.work_waits.clone() {
+        if id > 0 {
+            let next = process
+                .exchange(WorkerCommand::DrainWorker { key })
+                .await
+                .unwrap();
+            state = pool_progress(&mut process, next).await;
+        }
+    }
+    assert_eq!(
+        state.worker_pool.as_ref().unwrap().capacity.active_ids,
+        vec![0, 7]
+    );
+    for (expected_revision, pending_limit) in [(1, 8), (2, 9)] {
+        let settings = TaskSettings {
+            revision: expected_revision + 1,
+            ..state.effective_task_settings.unwrap()
+        };
+        state = process
+            .exchange(WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings {
+                    expected_revision,
+                    settings,
+                    values: state.vm_bounds.unwrap(),
+                    max_recipe_contexts: None,
+                    max_pending_host_calls: Some(pending_limit),
+                    max_workers: None,
+                    adapter_reserve_bytes: None,
+                    heap_update: None,
+                    frame_update: None,
+                },
+            })
+            .await
+            .unwrap();
+        let before = state.worker_pool.clone();
+        let result = process
+            .exchange(WorkerCommand::RequestWorkerPool { workers: 7 })
+            .await;
+        if pending_limit == 8 {
+            let rejected = result.unwrap_err();
+            assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+            let snapshot = rejected.snapshot.unwrap();
+            assert_eq!(snapshot.worker_pool, before);
+            assert!(snapshot.outstanding.contains(&busy));
+        } else {
+            let first = result.unwrap();
+            // Before any new worker reaches its wait, the plan already counts
+            // target IDs0..6 plus retained draining ID7 and the coordinator.
+            assert_eq!(first.pending_call_capacity.unwrap().minimum, 9);
+            state = pool_progress(&mut process, first).await;
+        }
+    }
+    let pool = state.worker_pool.as_ref().unwrap();
+    assert_eq!((pool.capacity.desired, pool.capacity.effective), (7, 8));
+    assert_eq!(pool.capacity.active_ids, (0..8).collect::<Vec<_>>());
+    assert_eq!(state.pending_call_capacity.unwrap().pending, 9);
+    assert_eq!(state.pending_call_capacity.unwrap().minimum, 9);
+    assert_eq!(state.root, identity);
+    assert_eq!(state.task_accounting.len(), 1);
+    assert!(state.outstanding.contains(&busy));
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn live_pending_call_capacity_preserves_owned_futures_and_rejects_unsafe_reductions() {
+    use brassclaw_monty_host::process::{RecipeCommand, RuntimeSettingsCandidate};
+    // Mechanical interpreter probe only: actual pending futures are observed;
+    // no routing result, Tool result or completed effect is supplied.
+    let source = "import asyncio\nasync def worker(worker_id):\n    await host.await_next_task(worker_id)\nawait asyncio.gather(*[worker(i) for i in range(worker_count)])\n";
+    let mut configuration = boot(source);
+    configuration.bounds.workers = 129;
+    configuration.bounds.max_pending_calls = 256;
+    configuration.bounds.values.max_feeds = 1024;
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    let identity = ready.root;
+    let pid = process.process_id();
+    assert_eq!(ready.pending_call_capacity.unwrap().pending, 129);
+    assert_eq!(ready.pending_call_capacity.unwrap().minimum, 129);
+    assert_eq!(ready.work_waits.len(), 129);
+    let original = ready.outstanding.clone();
+    for (limit, accepted, revision) in [
+        (128, false, 1),
+        (257, true, 1),
+        (128, false, 2),
+        (129, true, 2),
+    ] {
+        let candidate = RuntimeSettingsCandidate {
+            expected_revision: revision,
+            settings: TaskSettings {
+                revision: revision + 1,
+                ..ready.effective_task_settings.unwrap()
+            },
+            values: ready.vm_bounds.unwrap(),
+            max_recipe_contexts: None,
+            max_pending_host_calls: Some(limit),
+            max_workers: None,
+            adapter_reserve_bytes: None,
+            heap_update: None,
+            frame_update: None,
+        };
+        let before = process.exchange(WorkerCommand::Inspect).await.unwrap();
+        let probe = process
+            .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+            .await;
+        if accepted {
+            assert_eq!(probe.unwrap().runtime_settings(), before.runtime_settings());
+        } else {
+            let denied = probe.unwrap_err();
+            assert_eq!(denied.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+            assert_eq!(
+                denied.snapshot.unwrap().runtime_settings(),
+                before.runtime_settings()
+            );
+        }
+        let publication = process
+            .exchange(WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings {
+                    expected_revision: revision,
+                    settings: candidate.settings,
+                    values: candidate.values,
+                    max_recipe_contexts: None,
+                    max_pending_host_calls: Some(limit),
+                    max_workers: None,
+                    adapter_reserve_bytes: None,
+                    heap_update: None,
+                    frame_update: None,
+                },
+            })
+            .await;
+        let observed = if accepted {
+            publication.unwrap()
+        } else {
+            let denied = publication.unwrap_err();
+            assert_eq!(denied.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+            *denied.snapshot.unwrap()
+        };
+        assert_eq!(observed.root, identity);
+        assert_eq!(process.process_id(), pid);
+        assert_eq!(observed.outstanding, original);
+        assert_eq!(observed.pending_call_capacity.unwrap().pending, 129);
+        if accepted {
+            assert_eq!(observed.pending_call_capacity.unwrap().limit, limit);
+        } else {
+            assert_eq!(observed.runtime_settings(), before.runtime_settings());
+        }
+    }
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
 #[tokio::test]
 async fn too_small_future_control_frame_is_rejected_before_runtime_publication() {
     use brassclaw_monty_host::{
@@ -34,6 +520,8 @@ async fn too_small_future_control_frame_is_rejected_before_runtime_publication()
     values.max_stdout_bytes = 1;
     values.max_value_bytes = 1;
     let candidate = RuntimeSettingsCandidate {
+        max_pending_host_calls: None,
+        max_workers: None,
         expected_revision: 1,
         settings: TaskSettings {
             revision: 2,
@@ -55,6 +543,8 @@ async fn too_small_future_control_frame_is_rejected_before_runtime_publication()
         WorkerCommand::ValidateRuntimeSettings { candidate },
         WorkerCommand::Recipe {
             command: RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls: None,
+                max_workers: None,
                 expected_revision: candidate.expected_revision,
                 settings: candidate.settings,
                 values,
@@ -90,6 +580,8 @@ async fn live_frame_growth_and_reduction_preserve_root_task_usage_and_old_exchan
     let mut values = ready.vm_bounds.unwrap();
     values.max_value_bytes = 512 * 1024;
     let growth = RuntimeSettingsCandidate {
+        max_pending_host_calls: None,
+        max_workers: None,
         expected_revision: 1,
         settings: TaskSettings {
             revision: 2,
@@ -140,6 +632,8 @@ async fn live_frame_growth_and_reduction_preserve_root_task_usage_and_old_exchan
     let published = process
         .exchange(WorkerCommand::Recipe {
             command: RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls: None,
+                max_workers: None,
                 expected_revision: growth.expected_revision,
                 settings: growth.settings,
                 values,
@@ -175,6 +669,8 @@ async fn live_frame_growth_and_reduction_preserve_root_task_usage_and_old_exchan
     let reduction = process
         .exchange(WorkerCommand::Recipe {
             command: RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls: None,
+                max_workers: None,
                 expected_revision: 2,
                 settings: TaskSettings {
                     revision: 3,
@@ -344,6 +840,8 @@ async fn complete_settings_probe_preserves_pending_heap_and_publishes_one_manual
         .unwrap();
     assert!(pending.heap.pending_reduction);
     let candidate = RuntimeSettingsCandidate {
+        max_pending_host_calls: None,
+        max_workers: None,
         expected_revision: 1,
         settings: TaskSettings {
             revision: 2,
@@ -419,6 +917,8 @@ async fn complete_settings_probe_preserves_pending_heap_and_publishes_one_manual
     let published = process
         .exchange(WorkerCommand::Recipe {
             command: RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls: None,
+                max_workers: None,
                 expected_revision: candidate.expected_revision,
                 settings: candidate.settings,
                 values: candidate.values,
@@ -752,7 +1252,7 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
         .await
         .unwrap();
     assert_eq!(pending.root, Some(root));
-    assert_eq!(pending.outstanding.len(), 2);
+    assert_eq!(pending.outstanding.len(), 3);
     assert_eq!(pending.work_waits.len(), 1);
     // Only a real port failure is supplied; no intent/model/Recipe success is
     // invented. Monty asks the durable finish port to record task failure.
@@ -811,6 +1311,12 @@ async fn actual_idle_worker_shutdown_is_explicit_and_reaped() {
         .exchange(WorkerCommand::CloseWorker {
             key: ready.work_waits[1].1,
         })
+        .await
+        .unwrap();
+    assert_eq!(last.lifecycle, Lifecycle::Stopping);
+    assert_eq!(last.outstanding.len(), 1);
+    let last = process
+        .exchange(WorkerCommand::ClosePoolCoordinator)
         .await
         .unwrap();
     assert_eq!(last.lifecycle, Lifecycle::Stopped);
@@ -957,7 +1463,7 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
 #[tokio::test]
 async fn real_worker_rejects_invalid_exchange_frames_before_boot() {
     for accepted in [0, 1, limits().max_frame_bytes + 1] {
-        let request = json!({"protocol":14,"sequence":1,"max_frame_bytes":accepted,
+        let request = json!({"protocol":20,"sequence":1,"max_frame_bytes":accepted,
             "command":WorkerCommand::Boot { boot:boot(SOURCE) }});
         let body = serde_json::to_vec(&request).unwrap();
         assert!(body.len() < limits().max_frame_bytes);
@@ -1039,7 +1545,7 @@ async fn task_cancellation_fences_children_and_settles_the_actual_root_future() 
     assert!(matches!(cancelled.recipe,
         Some(RecipeEvent::CancellationRequested { task: actual }) if actual == task));
     assert_eq!(cancelled.lifecycle, Lifecycle::Ready);
-    assert_eq!(cancelled.outstanding.len(), 2);
+    assert_eq!(cancelled.outstanding.len(), 3);
     assert_eq!(cancelled.task_accounting.len(), 1);
     let refused = process
         .exchange(WorkerCommand::Recipe {
@@ -1311,6 +1817,8 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
     let pending = process
         .exchange(WorkerCommand::Recipe {
             command: RecipeCommand::UpdateRuntimeSettings {
+                max_pending_host_calls: None,
+                max_workers: None,
                 expected_revision: 1,
                 settings,
                 values: ready.vm_bounds.unwrap(),
@@ -1336,6 +1844,8 @@ async fn actual_shared_vm_bytes_retain_child_state_and_refund_only_released_cont
         let rejected = process
             .exchange(WorkerCommand::Recipe {
                 command: RecipeCommand::UpdateRuntimeSettings {
+                    max_pending_host_calls: None,
+                    max_workers: None,
                     expected_revision: expected,
                     settings: TaskSettings {
                         revision: 3,
@@ -1808,5 +2318,539 @@ async fn worker_live_settings_and_uncatchable_child_abort_preserve_other_tasks()
         ProcessFailure::Vm(VmFailure::WrongBoundary)
     );
     assert_eq!(active_close.snapshot.unwrap().task_accounting.len(), 1);
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn dependent_worker_transport_preserves_actual_parent_result_and_releases_after_child_heaps()
+{
+    use brassclaw_monty_host::process::{
+        RecipeBoundary, RecipeCommand, RecipeEvent, SelectedPython,
+    };
+    use std::io::Write;
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("dependency-input");
+    let output = directory.path().join("child-result");
+    let text = "actual child effect: ü {{data}} 'quoted'\n";
+    std::fs::write(&input, text).unwrap();
+    let source = include_str!("support/dependent_pool.py");
+    let mut configuration = boot(source);
+    configuration.bounds.workers = 1;
+    configuration.bounds.max_pending_calls = 4;
+    configuration.aliases.extend([
+        "await_pool_update".into(),
+        "read_file".into(),
+        "persist_result".into(),
+    ]);
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    let identity = ready.root;
+    let pid = process.process_id();
+    let mut parent_input = task();
+    parent_input["user_input"] = json!(input.to_str().unwrap());
+    let parent = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: parent_input,
+        })
+        .await
+        .unwrap();
+    let parent_task = parent.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall {
+        key: parent_key,
+        name,
+        ..
+    }) = parent.boundary
+    else {
+        panic!("real parent read")
+    };
+    assert_eq!(name, "read_file");
+    let before = process
+        .exchange(WorkerCommand::Defer { key: parent_key })
+        .await
+        .unwrap();
+    let child_run = uuid::Uuid::new_v4();
+    let validate = || WorkerCommand::ValidateDependentWorker {
+        parent: parent_key,
+        parent_task,
+        child_run,
+    };
+    let narrow = serde_json::to_vec(&before).unwrap().len() + 128;
+    let rejected = process
+        .exchange_with_frame_limit(validate(), narrow)
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+    let unchanged = rejected.snapshot.unwrap();
+    assert_eq!(unchanged.worker_pool, before.worker_pool);
+    assert_eq!(unchanged.outstanding, before.outstanding);
+    let checked = process.exchange(validate()).await.unwrap();
+    assert_eq!(checked.worker_pool, before.worker_pool);
+    assert_eq!(checked.outstanding, before.outstanding);
+    assert_eq!(checked.task_accounting.len(), 1);
+    let reserved = process
+        .exchange(WorkerCommand::ReserveDependentWorker {
+            parent: parent_key,
+            parent_task,
+            child_run,
+        })
+        .await
+        .unwrap();
+    let pool = reserved.worker_pool.as_ref().unwrap();
+    assert_eq!((pool.capacity.desired, pool.capacity.effective), (1, 2));
+    assert_eq!(pool.capacity.borrowed_ids, [1]);
+    assert!(pool.capacity.settled());
+    assert!(!pool.capacity.has_draining_workers());
+    assert_eq!(pool.dependents[0].parent, parent_key);
+    assert_eq!(pool.dependents[0].parent_task, parent_task.to_string());
+    assert_eq!(pool.dependents[0].child_run, child_run);
+    assert!(pool.dependents[0].child_task.is_none());
+    let child_key = reserved
+        .work_waits
+        .iter()
+        .find(|(worker, _)| *worker == 1)
+        .unwrap()
+        .1;
+    let mut child_input = task();
+    child_input["run_id"] = json!(child_run.to_string());
+    child_input["user_input"] = json!(input.to_str().unwrap());
+    let child = process
+        .exchange(WorkerCommand::Admit {
+            key: child_key,
+            task: child_input,
+        })
+        .await
+        .unwrap();
+    let child_task = child.admitted_task.unwrap();
+    assert_eq!(child.task_accounting.len(), 2);
+    assert_eq!(
+        child.worker_pool.as_ref().unwrap().dependents[0].child_task,
+        Some(child_task.to_string())
+    );
+    let Some(ProcessBoundary::HostCall {
+        key: read_key,
+        name,
+        ..
+    }) = child.boundary
+    else {
+        panic!("actual child read")
+    };
+    assert_eq!(name, "read_file");
+    process
+        .exchange(WorkerCommand::Defer { key: read_key })
+        .await
+        .unwrap();
+    // Keep an actual child heap until the registry's real CloseTask operation.
+    let opened = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Open {
+                task: child_task,
+                parent: None,
+            },
+        })
+        .await
+        .unwrap();
+    let Some(RecipeEvent::Opened { context, .. }) = opened.recipe else {
+        panic!("real child context")
+    };
+    let code = "held = 'x' * 1048576\nresult = None";
+    let mut allocated = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Start {
+                context,
+                selected: SelectedPython {
+                    source: code.into(),
+                    checksum: Sha256::digest(code.as_bytes()).into(),
+                    aliases: Default::default(),
+                },
+                inputs: json!({}),
+            },
+        })
+        .await
+        .unwrap();
+    loop {
+        match allocated.recipe {
+            Some(RecipeEvent::Progress {
+                boundary: RecipeBoundary::ControlYield { key },
+                ..
+            }) => {
+                allocated = process
+                    .exchange(WorkerCommand::Recipe {
+                        command: RecipeCommand::ResumeControl { context, key },
+                    })
+                    .await
+                    .unwrap();
+            }
+            Some(RecipeEvent::Progress {
+                boundary: RecipeBoundary::Complete { value: Value::Null },
+                ..
+            }) => break,
+            _ => panic!("real retained child allocation"),
+        }
+    }
+    let initial_settings = allocated.effective_task_settings.unwrap();
+    for (expected, revision, workers) in [(1, 2, 3), (2, 3, 1)] {
+        let settings = TaskSettings {
+            revision,
+            ..initial_settings
+        };
+        if expected == 2 {
+            let before = process.exchange(WorkerCommand::Inspect).await.unwrap();
+            let rejected = process
+                .exchange(WorkerCommand::ValidateRuntimeSettings {
+                    candidate: brassclaw_monty_host::process::RuntimeSettingsCandidate {
+                        expected_revision: expected,
+                        settings,
+                        values: before.vm_bounds.unwrap(),
+                        max_workers: Some(workers),
+                        max_pending_host_calls: Some(2),
+                        max_recipe_contexts: None,
+                        adapter_reserve_bytes: None,
+                        heap_update: None,
+                        frame_update: None,
+                    },
+                })
+                .await
+                .unwrap_err();
+            assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+            assert_eq!(
+                rejected.snapshot.as_ref().unwrap().runtime_settings(),
+                before.runtime_settings()
+            );
+            assert_eq!(
+                rejected.snapshot.as_ref().unwrap().worker_pool,
+                before.worker_pool
+            );
+        }
+        let updated = process
+            .exchange(WorkerCommand::Recipe {
+                command: RecipeCommand::UpdateRuntimeSettings {
+                    expected_revision: expected,
+                    settings,
+                    values: allocated.vm_bounds.unwrap(),
+                    max_workers: Some(workers),
+                    max_pending_host_calls: Some(4),
+                    max_recipe_contexts: None,
+                    adapter_reserve_bytes: None,
+                    heap_update: None,
+                    frame_update: None,
+                },
+            })
+            .await
+            .unwrap();
+        let pool = updated.worker_pool.as_ref().unwrap();
+        assert_eq!(pool.capacity.desired, workers);
+        assert_eq!(pool.capacity.borrowed_ids, [1]);
+        assert_eq!(pool.dependents[0].child_task, Some(child_task.to_string()));
+        assert_eq!(updated.recipe_context_capacity.unwrap().active, 1);
+        assert!(updated.outstanding.contains(&parent_key));
+        assert!(updated.outstanding.contains(&read_key));
+        assert!(
+            updated
+                .task_accounting
+                .iter()
+                .all(|account| account.effective_revision == revision)
+        );
+        assert_eq!(updated.root, identity);
+    }
+    let inspect = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    let ordinary_surplus = inspect
+        .work_waits
+        .iter()
+        .find(|(worker, _)| *worker == 2)
+        .unwrap()
+        .1;
+    let drained = process
+        .exchange(WorkerCommand::DrainWorker {
+            key: ordinary_surplus,
+        })
+        .await
+        .unwrap();
+    pool_progress(&mut process, drained).await;
+    let followup = "result = len(held)";
+    let mut retained = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Start {
+                context,
+                selected: SelectedPython {
+                    source: followup.into(),
+                    checksum: Sha256::digest(followup.as_bytes()).into(),
+                    aliases: Default::default(),
+                },
+                inputs: json!({}),
+            },
+        })
+        .await
+        .unwrap();
+    loop {
+        match retained.recipe {
+            Some(RecipeEvent::Progress {
+                boundary: RecipeBoundary::ControlYield { key },
+                ..
+            }) => {
+                retained = process
+                    .exchange(WorkerCommand::Recipe {
+                        command: RecipeCommand::ResumeControl { context, key },
+                    })
+                    .await
+                    .unwrap();
+            }
+            Some(RecipeEvent::Progress {
+                boundary: RecipeBoundary::Complete { value },
+                ..
+            }) => {
+                assert_eq!(value, json!(1048576));
+                break;
+            }
+            _ => panic!("child state retained across dependent pool changes"),
+        }
+    }
+    let actual_parent = std::fs::read_to_string(&input).unwrap();
+    let mut rejected = process
+        .exchange(WorkerCommand::Resolve {
+            key: parent_key,
+            answer: PortAnswer::Return {
+                value: json!(actual_parent),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+    let held_parent = *rejected
+        .command
+        .take()
+        .expect("retain actual completed parent answer");
+    assert!(
+        rejected
+            .snapshot
+            .as_ref()
+            .unwrap()
+            .outstanding
+            .contains(&parent_key)
+    );
+    let actual_child = std::fs::read_to_string(&input).unwrap();
+    let persist = process
+        .exchange(WorkerCommand::Resolve {
+            key: read_key,
+            answer: PortAnswer::Return {
+                value: json!(actual_child),
+            },
+        })
+        .await
+        .unwrap();
+    let Some(ProcessBoundary::HostCall {
+        key: persist_key,
+        name,
+        args,
+        ..
+    }) = persist.boundary
+    else {
+        panic!("real persist request")
+    };
+    assert_eq!(name, "persist_result");
+    assert_eq!(args, [json!(child_task.to_string()), json!(text)]);
+    process
+        .exchange(WorkerCommand::Defer { key: persist_key })
+        .await
+        .unwrap();
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output)
+        .unwrap();
+    file.write_all(args[1].as_str().unwrap().as_bytes())
+        .unwrap();
+    file.sync_all().unwrap();
+    let reference = format!("file:{}", output.display());
+    let finish = process
+        .exchange(WorkerCommand::Resolve {
+            key: persist_key,
+            answer: PortAnswer::Return {
+                value: json!(reference),
+            },
+        })
+        .await
+        .unwrap();
+    let Some(ProcessBoundary::HostCall {
+        key: finish_key,
+        name,
+        args,
+        ..
+    }) = finish.boundary
+    else {
+        panic!("actual finish request")
+    };
+    assert_eq!(name, "finish_task");
+    assert_eq!(
+        args[1],
+        json!({"status":"internal_completed", "receipt_ref":reference})
+    );
+    process
+        .exchange(WorkerCommand::Defer { key: finish_key })
+        .await
+        .unwrap();
+    assert_eq!(
+        process
+            .exchange(WorkerCommand::ReleaseDependentWorker {
+                worker: 1,
+                child_task: Some(child_task)
+            })
+            .await
+            .unwrap_err()
+            .kind,
+        ProcessFailure::Vm(VmFailure::WrongBoundary)
+    );
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), text);
+    let finished = process
+        .exchange(WorkerCommand::Resolve {
+            key: finish_key,
+            answer: PortAnswer::Return { value: Value::Null },
+        })
+        .await
+        .unwrap();
+    let parked = pool_progress(&mut process, finished).await;
+    assert_eq!(parked.recipe_context_capacity.unwrap().active, 1);
+    assert_eq!(
+        process
+            .exchange(WorkerCommand::ReleaseDependentWorker {
+                worker: 1,
+                child_task: Some(child_task)
+            })
+            .await
+            .unwrap_err()
+            .kind,
+        ProcessFailure::Vm(VmFailure::WrongBoundary)
+    );
+    let closed = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::CloseTask { task: child_task },
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(closed.recipe, Some(RecipeEvent::Released { task: Some(task), .. }) if task == child_task)
+    );
+    assert_eq!(closed.recipe_context_capacity.unwrap().active, 0);
+    assert!(closed.vm_live_bytes + 524288 < parked.vm_live_bytes);
+    let released = process
+        .exchange(WorkerCommand::ReleaseDependentWorker {
+            worker: 1,
+            child_task: Some(child_task),
+        })
+        .await
+        .unwrap();
+    let pool = released.worker_pool.as_ref().unwrap();
+    assert!(pool.dependents.is_empty());
+    assert!(pool.capacity.borrowed_ids.is_empty());
+    assert!(pool.capacity.has_draining_workers());
+    let key = released
+        .work_waits
+        .iter()
+        .find(|(worker, _)| *worker == 1)
+        .unwrap()
+        .1;
+    let drained = process
+        .exchange(WorkerCommand::DrainWorker { key })
+        .await
+        .unwrap();
+    let drained = pool_progress(&mut process, drained).await;
+    assert!(drained.worker_pool.as_ref().unwrap().capacity.settled());
+    assert_eq!(drained.root, identity);
+    assert_eq!(process.process_id(), pid);
+    let continued = process.exchange(held_parent).await.unwrap();
+    let Some(ProcessBoundary::HostCall { name, args, .. }) = continued.boundary else {
+        panic!("parent continues with original result")
+    };
+    assert_eq!(name, "persist_result");
+    assert_eq!(args, [json!(parent_task.to_string()), json!(text)]);
+    // This parent's next effect has not run; preserve its actual command and
+    // terminate the contained fixture, never inventing chat/Recipe completion.
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
+async fn dependent_transport_rejects_wrong_parent_and_never_acknowledges_missing_coroutine() {
+    let good = include_str!("support/dependent_pool.py");
+    let broken = good.replace(
+        "for worker_id in update['borrowed_ids']:",
+        "for worker_id in []:",
+    );
+    let mut configuration = boot(&broken);
+    configuration.bounds.workers = 1;
+    configuration.aliases.extend([
+        "await_pool_update".into(),
+        "read_file".into(),
+        "persist_result".into(),
+    ]);
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    let parent = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let parent_task = parent.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall { key, .. }) = parent.boundary else {
+        panic!("actual parent wait")
+    };
+    let before = process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let wrong = serde_json::from_value(json!(uuid::Uuid::new_v4())).unwrap();
+    let rejected = process
+        .exchange(WorkerCommand::ValidateDependentWorker {
+            parent: key,
+            parent_task: wrong,
+            child_run: uuid::Uuid::new_v4(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        rejected.kind,
+        ProcessFailure::Vm(VmFailure::ForeignContinuation)
+    );
+    let unchanged = rejected.snapshot.unwrap();
+    assert_eq!(unchanged.worker_pool, before.worker_pool);
+    assert_eq!(unchanged.outstanding, before.outstanding);
+    let child_run = uuid::Uuid::new_v4();
+    let mut rejected = process
+        .exchange(WorkerCommand::ReserveDependentWorker {
+            parent: key,
+            parent_task,
+            child_run,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::WrongBoundary));
+    assert!(
+        matches!(rejected.command.take().as_deref(), Some(WorkerCommand::ReserveDependentWorker { child_run: actual, .. }) if *actual == child_run)
+    );
+    let failed = rejected.snapshot.unwrap();
+    assert_eq!(failed.lifecycle, Lifecycle::Failed);
+    assert!(failed.outstanding.contains(&key));
+    assert!(failed.admitted_task.is_none());
+    assert_eq!(
+        failed.worker_pool.as_ref().unwrap().capacity.active_ids,
+        [0]
+    );
+    assert_eq!(
+        failed.worker_pool.as_ref().unwrap().capacity.borrowed_ids,
+        [1]
+    );
+    assert!(
+        !failed
+            .worker_pool
+            .as_ref()
+            .unwrap()
+            .capacity
+            .target_present()
+    );
     assert!(process.terminate().await.is_some());
 }

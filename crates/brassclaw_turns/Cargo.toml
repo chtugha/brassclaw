@@ -35,4 +35,4 @@ uuid = { version = "1", features = ["v4", "serde"] }
 [dev-dependencies]
 static_assertions = "1"
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }

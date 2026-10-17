@@ -63,7 +63,12 @@ async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
         let program = program.clone();
         async move {
             admission
-                .begin_tool_invocation(&program, "0:2", &json!({"data":"{\"text\":\"held\"}"}))
+                .begin_tool_invocation(
+                    &program,
+                    "0:2",
+                    &json!({"data":"{\"text\":\"held\"}"}),
+                    brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+                )
                 .await
         }
     });
@@ -122,7 +127,12 @@ async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
     assert!(
         admitted
             .admission
-            .begin_tool_invocation(&program, "0:2", &json!({"data":"{}"}))
+            .begin_tool_invocation(
+                &program,
+                "0:2",
+                &json!({"data":"{}"}),
+                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
+            )
             .await
             .is_err()
     );
@@ -205,7 +215,12 @@ impl RetainedToolPort for KernelPort {
         let record = self
             .admitted
             .admission
-            .begin_tool_invocation(&self.prepared, invocation.step_id(), &arguments)
+            .begin_tool_invocation(
+                &self.prepared,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
             .await
             .unwrap();
         assert_eq!(binding.capability_id(), "builtin.json");
@@ -614,7 +629,8 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                 .begin_tool_invocation(
                     &prepared,
                     "0:2",
-                    &json!({"data":inputs["data"],"operation":"parse"})
+                    &json!({"data":inputs["data"],"operation":"parse"}),
+                    brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
                 )
                 .await
                 .is_err(),
@@ -627,7 +643,8 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                     .begin_tool_invocation(
                         &prepared,
                         "0:4",
-                        &json!({"data":inputs["data"],"operation":"parse"})
+                        &json!({"data":inputs["data"],"operation":"parse"}),
+                        brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
                     )
                     .await
                     .is_err(),

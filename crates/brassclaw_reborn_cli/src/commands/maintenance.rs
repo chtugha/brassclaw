@@ -83,9 +83,9 @@ impl PruneOldDataCommand {
 
 #[derive(Debug, Args)]
 struct BackfillEmbeddingsCommand {
-    /// Tenant ID to backfill (default: "default").
-    #[arg(long, default_value = "default")]
-    tenant: String,
+    /// Storage namespace to backfill; defaults to the same owner as serve/run.
+    #[arg(long)]
+    tenant: Option<String>,
 
     /// Number of records to process per batch (default: 100).
     #[arg(long, default_value_t = 100i64)]
@@ -102,6 +102,13 @@ impl BackfillEmbeddingsCommand {
 
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     async fn run_async(self, context: RebornCliContext) -> anyhow::Result<()> {
+        // Match serve's installation identity, independently of the data tenant
+        // passed to backfill. default_owner is an actor, not the secret-store owner.
+        let tenant = context.storage_namespace(self.tenant.as_deref())?;
+        let secret_store_tenant = context.storage_namespace(None)?;
+        brassclaw_reborn_composition::host_api::TenantId::new(&secret_store_tenant)
+            .map_err(|error| anyhow::anyhow!("invalid runtime secret-store owner: {error}"))?;
+        let runtime_storage_root = context.boot_config().home().path().join("db");
         crate::commands::config::pg_lifecycle::with_postgres(&context, |pool| async move {
             // Step 2: run schema migrations (idempotent) before any DB operation.
             brassclaw_pg::migrations::run_migrations(&pool)
@@ -110,13 +117,15 @@ impl BackfillEmbeddingsCommand {
 
             println!(
                 "brassclaw maintenance backfill-embeddings: tenant={}, batch_size={}",
-                self.tenant, self.batch_size
+                tenant, self.batch_size
             );
 
             let result = brassclaw_reborn_composition::retention_sweep::run_backfill_embeddings(
                 pool,
-                &self.tenant,
+                &tenant,
                 self.batch_size,
+                &runtime_storage_root,
+                &secret_store_tenant,
             )
             .await
             .map_err(|e| anyhow::anyhow!("backfill-embeddings failed: {e}"))?;

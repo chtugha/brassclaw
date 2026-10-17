@@ -30,6 +30,7 @@ struct AuthState {
 
 pub struct OpenAiCodexProvider {
     client: Client,
+    max_response_bytes: Option<u64>,
     model: String,
     api_base_url: String,
     auth: RwLock<AuthState>,
@@ -46,15 +47,19 @@ impl OpenAiCodexProvider {
         token: &str,
         request_timeout_secs: u64,
     ) -> Result<Self, LlmError> {
+        Self::new_with_response_limit(model, api_base_url, token, request_timeout_secs, None)
+    }
+    pub(crate) fn new_with_response_limit(
+        model: &str,
+        api_base_url: &str,
+        token: &str,
+        request_timeout_secs: u64,
+        max_response_bytes: Option<u64>,
+    ) -> Result<Self, LlmError> {
         let account_id = extract_account_id(token)?;
         Ok(Self {
-            client: Client::builder()
-                .timeout(std::time::Duration::from_secs(request_timeout_secs))
-                .build()
-                .map_err(|e| LlmError::RequestFailed {
-                    provider: "openai_codex".to_string(),
-                    reason: format!("Failed to create HTTP client: {e}"),
-                })?,
+            client: crate::registry_http_client("openai_codex", request_timeout_secs)?,
+            max_response_bytes,
             model: model.to_string(),
             api_base_url: api_base_url.trim_end_matches('/').to_string(),
             auth: RwLock::new(AuthState {
@@ -195,52 +200,18 @@ impl OpenAiCodexProvider {
 
         let status = response.status();
         if !status.is_success() {
-            // Extract Retry-After header before consuming the response body.
-            // Supports both delay-seconds (RFC 7231 §7.1.3) and HTTP-date formats.
-            let retry_after = response
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| {
-                    if let Ok(secs) = v.trim().parse::<u64>() {
-                        return Some(std::time::Duration::from_secs(secs));
-                    }
-                    if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(v.trim()) {
-                        let now = chrono::Utc::now();
-                        let delta = dt.signed_duration_since(now);
-                        return Some(std::time::Duration::from_secs(
-                            delta.num_seconds().max(0) as u64
-                        ));
-                    }
-                    None
-                });
-
-            let body_text = response.text().await.unwrap_or_default();
-            if status == reqwest::StatusCode::UNAUTHORIZED {
-                return Err(LlmError::AuthFailed {
-                    provider: "openai_codex".to_string(),
-                });
-            }
-            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                return Err(LlmError::RateLimited {
-                    provider: "openai_codex".to_string(),
-                    retry_after,
-                });
-            }
-            return Err(LlmError::RequestFailed {
-                provider: "openai_codex".to_string(),
-                reason: format!("HTTP {status}: {body_text}"),
-            });
+            return Err(crate::response_body::rejection(
+                response,
+                self.max_response_bytes,
+                "openai_codex",
+            )
+            .await);
         }
 
         // Read the full body and parse SSE events
-        let body_bytes = response
-            .bytes()
+        let body_bytes = crate::response_body::read(response, self.max_response_bytes)
             .await
-            .map_err(|e| LlmError::RequestFailed {
-                provider: "openai_codex".to_string(),
-                reason: format!("Failed to read response body: {e}"),
-            })?;
+            .map_err(|error| error.into_llm("openai_codex"))?;
 
         let body_text = String::from_utf8_lossy(&body_bytes);
         parse_sse_response(&body_text)
@@ -1401,5 +1372,78 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
                 .unwrap()
                 .contains("[Tool `search` returned:")
         );
+    }
+    #[tokio::test]
+    async fn actual_codex_http_applies_selected_response_capacity() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let answer = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n";
+            for (status, body) in [
+                (200, answer.to_owned()),
+                (200, answer.to_owned()),
+                (400, "error".repeat(100)),
+                (503, "private-upstream-error".repeat(100)),
+            ] {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 2048];
+                loop {
+                    let count = socket.read(&mut buffer).await.unwrap();
+                    assert!(count > 0);
+                    request.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&request[..end]);
+                        let length = headers
+                            .lines()
+                            .find_map(|line| {
+                                line.to_lowercase()
+                                    .strip_prefix("content-length: ")
+                                    .map(|value| value.parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if request.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let response = format!(
+                    "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let jwt = make_test_jwt("account-capacity");
+        let mut provider = OpenAiCodexProvider::new_with_response_limit(
+            "selected-model",
+            &format!("http://{address}"),
+            &jwt,
+            2,
+            Some(64),
+        )
+        .unwrap();
+        assert!(matches!(
+            provider.send_request(serde_json::json!({})).await,
+            Err(LlmError::ResponseTooLarge { limit: 64, .. })
+        ));
+        provider.max_response_bytes = Some(4096);
+        let reply = provider.send_request(serde_json::json!({})).await.unwrap();
+        assert_eq!(reply.text_content, "answer");
+        provider.max_response_bytes = Some(64);
+        assert!(matches!(
+            provider.send_request(serde_json::json!({})).await,
+            Err(LlmError::ResponseTooLarge { limit: 64, .. })
+        ));
+        let error = provider
+            .send_request(serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, LlmError::BadGateway { status: 503, .. }));
+        assert!(!format!("{error:?}").contains("private-upstream-error"));
+        server.await.unwrap();
     }
 }

@@ -141,6 +141,117 @@ impl RegistryProviderConfig {
     }
 }
 
+/// Technical policy for each model request, independent of VM compute time,
+/// model/context selection and completed-response caching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderRequestPolicy {
+    pub timeout_secs: u64,
+    /// Additional attempts after the initial model request; zero disables retries.
+    pub max_retries: u32,
+    /// None disables the circuit breaker. A configured threshold is positive.
+    pub circuit_breaker_threshold: Option<u32>,
+    pub circuit_breaker_recovery_secs: u64,
+    #[serde(default)]
+    pub retry_timing: crate::retry::RetryTimingPolicy,
+    /// Optional total decoded HTTP body ceiling. None keeps unrestricted bodies.
+    #[serde(default)]
+    pub max_response_bytes: Option<u64>,
+}
+impl Default for ProviderRequestPolicy {
+    fn default() -> Self {
+        Self {
+            timeout_secs: 120,
+            max_retries: 3,
+            circuit_breaker_threshold: None,
+            circuit_breaker_recovery_secs: 30,
+            retry_timing: Default::default(),
+            max_response_bytes: None,
+        }
+    }
+}
+impl ProviderRequestPolicy {
+    pub fn validate_for_protocol(
+        self,
+        protocol: crate::ProviderProtocol,
+    ) -> Result<(), &'static str> {
+        self.validate()?;
+        if self.max_response_bytes.is_some() && !protocol.supports_response_body_limit() {
+            return Err("this adapter does not yet support a response-body limit");
+        }
+        Ok(())
+    }
+    pub fn validate(self) -> Result<(), &'static str> {
+        if self.timeout_secs == 0
+            || self.circuit_breaker_recovery_secs == 0
+            || self.circuit_breaker_threshold == Some(0)
+            || [self.timeout_secs, self.circuit_breaker_recovery_secs]
+                .into_iter()
+                .any(|seconds| {
+                    std::time::Instant::now()
+                        .checked_add(std::time::Duration::from_secs(seconds))
+                        .is_none()
+                })
+        {
+            return Err(
+                "request deadlines/recovery must be positive and representable; a configured circuit threshold must be positive",
+            );
+        }
+        if self.max_response_bytes.is_some_and(|bytes| {
+            bytes == 0
+                || usize::try_from(bytes)
+                    .ok()
+                    .is_none_or(|bytes| bytes > isize::MAX as usize)
+        }) {
+            return Err(
+                "response bytes must be a positive representable capacity, or null for unrestricted bodies",
+            );
+        }
+        self.retry_timing.validate()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod request_capacity_tests {
+    use super::*;
+    #[test]
+    fn response_capacity_is_explicit_and_supported_before_construction() {
+        let defaults = ProviderRequestPolicy::default();
+        assert_eq!(defaults.max_response_bytes, None);
+        for limit in [0, u64::MAX] {
+            assert!(
+                ProviderRequestPolicy {
+                    max_response_bytes: Some(limit),
+                    ..defaults
+                }
+                .validate()
+                .is_err()
+            );
+        }
+        let bounded = ProviderRequestPolicy {
+            max_response_bytes: Some(1024),
+            ..defaults
+        };
+        for protocol in [
+            crate::ProviderProtocol::OpenAiCompletions,
+            crate::ProviderProtocol::NearAi,
+            crate::ProviderProtocol::GeminiOauth,
+            crate::ProviderProtocol::OpenAiCodex,
+        ] {
+            bounded.validate_for_protocol(protocol).unwrap();
+        }
+        assert!(
+            bounded
+                .validate_for_protocol(crate::ProviderProtocol::Bedrock)
+                .is_err()
+        );
+        defaults
+            .validate_for_protocol(crate::ProviderProtocol::Bedrock)
+            .unwrap();
+    }
+}
+
 /// Configuration for OpenAI Codex (ChatGPT subscription OAuth).
 #[derive(Debug, Clone)]
 pub struct OpenAiCodexConfig {
@@ -266,25 +377,31 @@ impl BedrockConfig {
 /// a generic `RegistryProviderConfig`.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
-    /// Backend identifier (e.g., "nearai", "openai", "groq", "tinfoil").
+    /// Canonical selected provider identifier; it does not select its protocol.
     pub backend: String,
+    /// Protocol selected from the exact resolved definition. The provider ID
+    /// is metadata, not an adapter selector. None is legacy manual input.
+    pub resolved_protocol: Option<ProviderProtocol>,
     /// Session manager configuration (auth URL, token persistence path).
     /// Used by the NearAI provider for OAuth/session-token auth.
     pub session: SessionConfig,
     /// NEAR AI config (always populated, also used for embeddings).
     pub nearai: NearAiConfig,
     /// Resolved provider config for registry-based providers.
-    /// `None` when backend is "nearai" or "bedrock".
+    /// None for dedicated protocols.
     pub provider: Option<RegistryProviderConfig>,
-    /// AWS Bedrock config (populated when backend=bedrock, requires --features bedrock).
+    /// AWS Bedrock config (populated for its protocol, requires --features bedrock).
     pub bedrock: Option<BedrockConfig>,
-    /// Gemini OAuth config (populated when backend=gemini_oauth).
+    /// Gemini OAuth config (populated for its protocol).
     pub gemini_oauth: Option<GeminiOauthConfig>,
-    /// OpenAI Codex config (populated when backend=openai_codex).
+    /// OpenAI Codex config (populated for its protocol).
     pub openai_codex: Option<OpenAiCodexConfig>,
+    /// Selected model retry delays, independent of VM task duration.
+    pub retry_timing: crate::retry::RetryTimingPolicy,
+    /// Optional decoded HTTP response capacity; None leaves it unrestricted.
+    pub max_response_bytes: Option<u64>,
     /// HTTP request timeout in seconds for LLM API calls.
-    /// Default: 120. Increase for local LLMs (Ollama, vLLM, LM Studio) that
-    /// need more time for prompt evaluation on consumer hardware.
+    /// Default: 120. Increase for local LLMs that need more evaluation time.
     pub request_timeout_secs: u64,
     /// Generic cheap/fast model for lightweight tasks (heartbeat, routing, evaluation).
     /// Works with any backend. Set via `LLM_CHEAP_MODEL` env var.
@@ -348,11 +465,26 @@ impl LlmBackendKind {
 
 impl LlmConfig {
     pub fn backend_kind(&self) -> LlmBackendKind {
-        LlmBackendKind::from_backend_id(&self.backend)
+        match self.resolved_protocol {
+            Some(ProviderProtocol::NearAi) => LlmBackendKind::NearAi,
+            Some(ProviderProtocol::Bedrock) => LlmBackendKind::Bedrock,
+            Some(ProviderProtocol::GeminiOauth) => LlmBackendKind::GeminiOauth,
+            Some(ProviderProtocol::OpenAiCodex) => LlmBackendKind::OpenAiCodex,
+            Some(_) => LlmBackendKind::Registry(self.backend.clone()),
+            None => self
+                .provider
+                .as_ref()
+                .map(|provider| LlmBackendKind::Registry(provider.provider_id.clone()))
+                .unwrap_or_else(|| LlmBackendKind::from_backend_id(&self.backend)),
+        }
     }
 
     pub fn active_provider_id(&self) -> String {
-        self.backend_kind().provider_id(self.provider.as_ref())
+        if self.resolved_protocol.is_some() {
+            self.backend.clone()
+        } else {
+            self.backend_kind().provider_id(self.provider.as_ref())
+        }
     }
 
     /// Resolve the effective cheap model name.
@@ -362,7 +494,7 @@ impl LlmConfig {
     /// 2. `NEARAI_CHEAP_MODEL` (NearAI-only, backward compatibility)
     pub fn cheap_model_name(&self) -> Option<&str> {
         self.cheap_model.as_deref().or_else(|| {
-            if self.backend == "nearai" {
+            if matches!(self.backend_kind(), LlmBackendKind::NearAi) {
                 self.nearai.cheap_model.as_deref()
             } else {
                 None
@@ -377,19 +509,19 @@ impl LlmConfig {
     /// without touching an active provider instance (e.g. before the first
     /// request lands on the new chain).
     pub fn active_model_name(&self) -> String {
-        match self.backend.as_str() {
-            "nearai" | "near_ai" | "near" => self.nearai.model.clone(),
-            "bedrock" | "aws_bedrock" | "aws" => self
+        match self.backend_kind() {
+            LlmBackendKind::NearAi => self.nearai.model.clone(),
+            LlmBackendKind::Bedrock => self
                 .bedrock
                 .as_ref()
                 .map(|cfg| cfg.model.clone())
                 .unwrap_or_else(|| self.nearai.model.clone()),
-            "gemini_oauth" | "gemini-oauth" => self
+            LlmBackendKind::GeminiOauth => self
                 .gemini_oauth
                 .as_ref()
                 .map(|cfg| cfg.model.clone())
                 .unwrap_or_else(|| self.nearai.model.clone()),
-            "openai_codex" | "openai-codex" | "codex" => self
+            LlmBackendKind::OpenAiCodex => self
                 .openai_codex
                 .as_ref()
                 .map(|cfg| cfg.model.clone())
@@ -436,60 +568,8 @@ pub struct NearAiConfig {
     pub smart_routing_cascade: bool,
 }
 
-impl NearAiConfig {
-    /// Create a minimal config suitable for listing available models.
-    ///
-    /// Reads `NEARAI_API_KEY` from the environment and selects the
-    /// appropriate base URL (cloud-api when API key is present,
-    /// private.near.ai for session-token auth).
-    pub(crate) fn for_model_discovery() -> Self {
-        let api_key = brassclaw_common::env_helpers::env_or_override("NEARAI_API_KEY")
-            .filter(|k| !k.is_empty())
-            .map(SecretString::from);
-
-        let default_base = if api_key.is_some() {
-            "https://cloud-api.near.ai"
-        } else {
-            "https://private.near.ai"
-        };
-        let base_url = brassclaw_common::env_helpers::env_or_override("NEARAI_BASE_URL")
-            .unwrap_or_else(|| default_base.to_string());
-
-        Self {
-            model: String::new(),
-            cheap_model: None,
-            base_url,
-            api_key,
-            fallback_model: None,
-            max_retries: 3,
-            circuit_breaker_threshold: None,
-            circuit_breaker_recovery_secs: 30,
-            response_cache_enabled: false,
-            response_cache_ttl_secs: 3600,
-            response_cache_max_entries: 1000,
-            failover_cooldown_secs: 300,
-            failover_cooldown_threshold: 3,
-            smart_routing_cascade: true,
-        }
-    }
-}
-
-/// Configuration for Gemini OAuth integration.
-///
-/// Extended generation config parameters (topP, topK, seed, etc.) are read from
-/// environment variables at request time:
-/// - `GEMINI_TOP_P` — nucleus sampling (0.0–1.0)
-/// - `GEMINI_TOP_K` — top-k sampling (integer)
-/// - `GEMINI_SEED` — deterministic generation seed
-/// - `GEMINI_PRESENCE_PENALTY` — presence penalty (-2.0–2.0)
-/// - `GEMINI_FREQUENCY_PENALTY` — frequency penalty (-2.0–2.0)
-/// - `GEMINI_RESPONSE_MIME_TYPE` — e.g. "application/json"
-/// - `GEMINI_RESPONSE_JSON_SCHEMA` — JSON schema string for structured output
-/// - `GEMINI_CACHED_CONTENT` — cached content resource name
-/// - `GEMINI_CLI_CUSTOM_HEADERS` — custom headers (key:value,key:value)
-/// - `GOOGLE_GENAI_API_VERSION` — API version (default: v1beta)
-/// - `GEMINI_API_KEY` — optional API key for non-OAuth auth mode
-/// - `GEMINI_API_KEY_AUTH_MECHANISM` — "x-goog-api-key" (default) or "bearer"
+/// Configuration for the selected Gemini OAuth integration. Request options
+/// are explicit; this adapter performs no process-environment overrides.
 #[derive(Debug, Clone)]
 pub struct GeminiOauthConfig {
     pub model: String,

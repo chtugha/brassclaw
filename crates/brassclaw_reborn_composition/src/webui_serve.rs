@@ -63,10 +63,10 @@ use crate::webui_route_match::{network_method_to_axum, parse_pattern, segments_m
 use crate::webui_ws_origin::{build_websocket_origin_state, enforce_websocket_origin};
 use brassclaw_product_workflow::WebUiAuthenticatedCaller;
 
-/// Default per-request body limit (14 MiB) — sized to cover ~10 MiB of
-/// decoded attachments plus base64/JSON overhead. Mirrors the existing
-/// gateway-owned limit used by host-owned surfaces today.
-pub(crate) const DEFAULT_WEBUI_MAX_BODY_BYTES: usize = 14 * 1024 * 1024;
+/// Finite outer request ceiling supporting the declared 64 MiB prefix artifact
+/// routes. Descriptor limits still enforce smaller chat/attachment/settings bodies;
+/// an explicitly configured smaller outer ceiling remains effective.
+pub(crate) const DEFAULT_WEBUI_MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 
 /// Default Content-Security-Policy applied to WebChat v2 responses.
 /// `default-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`
@@ -118,7 +118,7 @@ pub trait WebuiAuthenticator: Send + Sync + 'static {
 /// methods only. This routes every host through `new` /
 /// `parse_allowed_origins` / `with_*`, which fail-closed on invalid
 /// input (empty token, malformed origin, bad CSP). The fail-closed
-/// defaults — empty allow-origin list, locked-down CSP, 14 MiB outer
+/// defaults — empty allow-origin list, locked-down CSP, 64 MiB outer
 /// body cap — apply unless an explicit builder override changes them.
 ///
 /// Read access is intentionally not re-exposed: host binaries should

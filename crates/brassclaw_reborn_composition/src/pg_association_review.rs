@@ -143,4 +143,4 @@ pub(crate) async fn approve(
 
 #[cfg(test)]
 #[path = "pg_association_review_tests.rs"]
-mod tests;
+pub(crate) mod tests;

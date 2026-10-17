@@ -16,7 +16,6 @@ on:
       - "docs/reborn/**"
       - "scripts/reborn-e2e-rust.sh"
       - "tests/e2e/**"
-      - "providers.json"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/reborn-e2e.yml"

@@ -29,6 +29,7 @@ pub mod service;
 pub mod source_structure;
 #[cfg(test)]
 mod task_clock_tests;
+mod task_entry;
 pub mod transport_actor;
 pub mod utility;
 

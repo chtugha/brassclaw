@@ -424,7 +424,12 @@ impl RetainedToolPort for Tools {
         );
         let record = self
             .admission
-            .begin_tool_invocation(&self.program, invocation.step_id(), &arguments)
+            .begin_tool_invocation(
+                &self.program,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
             .await
             .unwrap();
         let actual = self.kernel.handles[binding.capability_id()]

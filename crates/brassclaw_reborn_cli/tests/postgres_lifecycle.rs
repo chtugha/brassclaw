@@ -49,6 +49,80 @@ fn stopped(home: &Path, port: u16) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cli_provider_catalogue_ignores_legacy_files_and_environment() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("reborn");
+    let port = free_port();
+    let mut config = EmbeddedPostgresConfig::from_reborn_home(&home);
+    config.port = port;
+    let managed = ManagedPostgres::start(config).await.unwrap();
+    let pool = brassclaw_pg::pool::build_pool(&managed.connection_url()).unwrap();
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .unwrap();
+    let namespace = "reborn-cli";
+    let repo = brassclaw_reborn_composition::PgProviderRepo::new(pool.clone(), namespace);
+    let definition = serde_json::from_value(serde_json::json!({
+        "id":"database-only", "aliases":["database-alias"], "protocol":"open_ai_completions",
+        "default_base_url":"http://127.0.0.1:8000/v1", "base_url_required":true,
+        "api_key_required":false, "model_env":"RETIRED_METADATA", "default_model":"database-default-model",
+        "description":"Database-only CLI acceptance"
+    })).unwrap();
+    repo.upsert(definition).await.unwrap();
+    brassclaw_reborn_composition::db_config::save_config_changes(
+        &pool,
+        namespace,
+        &[
+            ("llm.default.provider_id", Some("database-only")),
+            ("llm.default.model", Some("database-selected-model")),
+        ],
+        brassclaw_reborn_composition::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let config_source = "[llm.default]\nprovider_id='file-only'\nmodel='file-model'\n";
+    std::fs::write(home.join("config.toml"), config_source).unwrap();
+    let legacy_path = home.join("providers.json");
+    for legacy in ["malformed JSON", "[{\"id\":\"file-only\"}]"] {
+        std::fs::write(&legacy_path, legacy).unwrap();
+        for arguments in [
+            vec!["models", "list", "--json"],
+            vec!["models", "list", "database-alias", "--json"],
+        ] {
+            let output = command(&home, port, &arguments)
+                .env("LLM_BACKEND", "file-only")
+                .env("LLM_MODEL", "environment-model")
+                .env("LLM_BASE_URL", "https://unselected.example/v1")
+                .env("OPENAI_API_KEY", "unselected-environment-key")
+                .output()
+                .unwrap();
+            successful(&output);
+            let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            let providers = result["providers"].as_array().unwrap();
+            assert_eq!(providers.len(), 1, "no file or bundled-overlay catalogue");
+            assert_eq!(providers[0]["id"], "database-only");
+            assert_eq!(providers[0]["active_model"], "database-selected-model");
+        }
+        let output = command(&home, port, &["models", "status", "--json"])
+            .env("LLM_BACKEND", "file-only")
+            .env("LLM_MODEL", "environment-model")
+            .output()
+            .unwrap();
+        successful(&output);
+        let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(status["default"]["provider_id"], "database-only");
+        assert_eq!(status["default"]["model"], "database-selected-model");
+        assert_eq!(std::fs::read_to_string(&legacy_path).unwrap(), legacy);
+        assert_eq!(
+            std::fs::read_to_string(home.join("config.toml")).unwrap(),
+            config_source
+        );
+    }
+    pool.close();
+    managed.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn secret_ceremony_preserves_keys_and_rejects_uncertain_database_state() {
     use brassclaw_reborn_composition::secrets_master::{
         read_raw_master_key, unwrap_master_key_argon2id,
@@ -362,7 +436,7 @@ async fn reused_and_explicit_external_servers_keep_their_original_owner() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn models_list_uses_database_selection_and_never_hides_database_failure() {
+async fn models_readers_use_database_selection_and_never_hide_database_failure() {
     let directory = tempfile::tempdir().unwrap();
     let home = directory.path().join("reborn");
     let port = free_port();
@@ -375,20 +449,20 @@ async fn models_list_uses_database_selection_and_never_hides_database_failure() 
         .unwrap();
     let client = pool.get().await.unwrap();
     // A real DB-only custom definition; no provider/model call is made by list.
-    let definition = serde_json::json!({"id":"db-only-provider", "protocol":"open_ai_completions",
+    let definition = serde_json::json!({"id":"db-only-provider", "aliases":["database-alias"], "protocol":"open_ai_completions",
         "model_env":"LIFECYCLE_MODEL", "default_model":"db-default", "description":"Database fixture"});
-    client.execute("INSERT INTO brassclaw_llm_providers (tenant_id,id,definition) VALUES ('default','db-only-provider',$1)", &[&definition]).await.unwrap();
+    client.execute("INSERT INTO brassclaw_llm_providers (tenant_id,id,definition) VALUES ('native-model-owner','db-only-provider',$1)", &[&definition]).await.unwrap();
     client
         .batch_execute(
             "INSERT INTO brassclaw_config (tenant_id,key,value) VALUES
-        ('default','llm.default.provider_id','db-only-provider'),
-        ('default','llm.default.model','db-selected')",
+        ('native-model-owner','llm.default.provider_id','db-only-provider'),
+        ('native-model-owner','llm.default.model','db-selected')",
         )
         .await
         .unwrap();
     std::fs::write(
         home.join("config.toml"),
-        "[llm.default]\nprovider_id='openai'\nmodel='file-selected'\n",
+        "[identity]\ntenant='native-model-owner'\n[llm.default]\nprovider_id='openai'\nmodel='file-selected'\n",
     )
     .unwrap();
     let output = command(&home, port, &["models", "list", "--json"])
@@ -400,6 +474,22 @@ async fn models_list_uses_database_selection_and_never_hides_database_failure() 
     assert_eq!(list["providers"][0]["id"], "db-only-provider");
     assert_eq!(list["providers"][0]["active"], true);
     assert_eq!(list["providers"][0]["active_model"], "db-selected");
+    let output = command(&home, port, &["models", "list", "DATABASE-ALIAS", "--json"])
+        .output()
+        .unwrap();
+    successful(&output);
+    let alias: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(alias["providers"][0]["id"], "db-only-provider");
+    let output = command(&home, port, &["models", "status", "--json"])
+        .env("LIFECYCLE_MODEL", "env-selected")
+        .output()
+        .unwrap();
+    successful(&output);
+    let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(status["routes"], "configured");
+    assert_eq!(status["default"]["provider_id"], "db-only-provider");
+    assert_eq!(status["default"]["provider_known"], true);
+    assert_eq!(status["default"]["model"], "db-selected");
 
     client
         .execute(
@@ -408,18 +498,22 @@ async fn models_list_uses_database_selection_and_never_hides_database_failure() 
         )
         .await
         .unwrap();
-    let output = command(&home, port, &["models", "list", "--json"])
-        .output()
-        .unwrap();
-    assert!(
-        !output.status.success(),
-        "invalid authoritative row cannot become fallback success"
-    );
-    assert!(
-        output.stdout.is_empty(),
-        "failed list cannot emit a fallback catalogue"
-    );
-    assert!(!String::from_utf8_lossy(&output.stderr).contains("dropped without calling shutdown"));
+    for action in ["list", "status"] {
+        let output = command(&home, port, &["models", action, "--json"])
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "invalid DB row cannot become fallback success"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "failed read cannot emit fallback state"
+        );
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("dropped without calling shutdown")
+        );
+    }
     assert!(home.join("postgres/data/postmaster.pid").exists());
     drop(client);
     pool.close();
@@ -427,15 +521,121 @@ async fn models_list_uses_database_selection_and_never_hides_database_failure() 
     stopped(&home, port);
 
     let unavailable = format!("postgresql://brassclaw@127.0.0.1:{port}/brassclaw");
-    let output = command(&home, port, &["models", "list", "--json"])
-        .env("BRASSCLAW_PG_URL", unavailable)
+    for action in ["list", "status"] {
+        let output = command(&home, port, &["models", action, "--json"])
+            .env("BRASSCLAW_PG_URL", &unavailable)
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "unavailable DB cannot become catalogue success"
+        );
+        assert!(output.stdout.is_empty());
+    }
+    stopped(&home, port);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn configuration_commands_share_runtime_owner_and_import_atomically() {
+    use std::io::Write;
+    use std::process::Stdio;
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("reborn");
+    let port = free_port();
+    let mut config = EmbeddedPostgresConfig::from_reborn_home(&home);
+    config.port = port;
+    let managed = ManagedPostgres::start(config).await.unwrap();
+    let pool = brassclaw_pg::pool::build_pool(&managed.connection_url()).unwrap();
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        "[identity]\ntenant='native-config-owner'\n",
+    )
+    .unwrap();
+    let client = pool.get().await.unwrap();
+    client.batch_execute("INSERT INTO brassclaw_config(tenant_id,key,value) VALUES ('default','acceptance.value','legacy-retained')").await.unwrap();
+    let value = "Unicode ü, quote \", control \u{1}, slash \\, newline\n";
+    successful(
+        &command(&home, port, &["config", "set", "acceptance.value", value])
+            .output()
+            .unwrap(),
+    );
+    let output = command(&home, port, &["config", "export"])
         .output()
         .unwrap();
-    assert!(
-        !output.status.success(),
-        "unavailable database cannot become registry success"
+    successful(&output);
+    let exported = String::from_utf8(output.stdout).unwrap();
+    let decoded: std::collections::BTreeMap<String, String> = toml::from_str(&exported).unwrap();
+    assert_eq!(decoded["acceptance.value"], value);
+    let import = |text: &str| {
+        let mut child = command(&home, port, &["config", "import"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(text.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    };
+    successful(&import(&exported));
+    let output = command(
+        &home,
+        port,
+        &["config", "get", "acceptance.value", "--tenant", "default"],
+    )
+    .output()
+    .unwrap();
+    successful(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "legacy-retained"
     );
-    assert!(output.stdout.is_empty());
+    client.batch_execute("CREATE FUNCTION reject_cli_config_import() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='native-config-owner' AND NEW.key='acceptance.z_reject' THEN RAISE EXCEPTION 'deliberate late import rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_cli_config_import BEFORE INSERT OR UPDATE ON brassclaw_config FOR EACH ROW EXECUTE FUNCTION reject_cli_config_import();").await.unwrap();
+    let rejected =
+        import("\"acceptance.value\"='must-roll-back'\n\"acceptance.z_reject\"='reject'\n");
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("no keys changed"));
+    let retained: String = client.query_one("SELECT value FROM brassclaw_config WHERE tenant_id='native-config-owner' AND key='acceptance.value'", &[]).await.unwrap().get(0);
+    assert_eq!(retained, value);
+    // Quoted flat and nested dotted forms cannot silently overwrite one key.
+    assert!(
+        !import("\"acceptance.value\"='flat'\n[acceptance]\nvalue='nested'\n")
+            .status
+            .success()
+    );
+    client.batch_execute("DROP TRIGGER reject_cli_config_import ON brassclaw_config; DROP FUNCTION reject_cli_config_import();").await.unwrap();
+    successful(
+        &command(&home, port, &["config", "init", "--yes", "--no-llm"])
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(client.query_one("SELECT value FROM brassclaw_config WHERE tenant_id='native-config-owner' AND key='identity.tenant'", &[]).await.unwrap().get::<_,String>(0), "native-config-owner");
+    std::fs::write(home.join("config.toml"), "[identity\n").unwrap();
+    for args in [
+        vec!["models", "list", "--json"],
+        vec!["config", "set", "acceptance.value", "must-not-write"],
+        vec!["repair", "--dry-run"],
+    ] {
+        assert!(
+            !command(&home, port, &args)
+                .output()
+                .unwrap()
+                .status
+                .success(),
+            "invalid installation config cannot select another namespace"
+        );
+    }
+    assert_eq!(client.query_one("SELECT value FROM brassclaw_config WHERE tenant_id='native-config-owner' AND key='acceptance.value'", &[]).await.unwrap().get::<_,String>(0), value);
+    drop(client);
+    pool.close();
+    managed.shutdown().await.unwrap();
     stopped(&home, port);
 }
 
@@ -532,6 +732,101 @@ async fn retention_command_prunes_expired_events_and_preserves_recent_state() {
     assert_eq!(count, 1);
     let link: Option<String> = client.query_one("SELECT forensic_packet_id FROM brassclaw_memory_chat_records WHERE id='rollback-memory'", &[]).await.unwrap().get(0);
     assert_eq!(link.as_deref(), Some("rollback-packet"));
+    assert!(home.join("postgres/data/postmaster.pid").exists());
+    drop(client);
+    pool.close();
+    managed.shutdown().await.unwrap();
+    stopped(&home, port);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn embedding_maintenance_uses_serve_master_key_and_configured_secret_owner() {
+    use brassclaw_reborn_composition::db_config::{ConfigWriteContext, save_config_changes};
+    use std::sync::Arc;
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("reborn");
+    let port = free_port();
+    let mut config = EmbeddedPostgresConfig::from_reborn_home(&home);
+    config.port = port;
+    let managed = ManagedPostgres::start(config).await.unwrap();
+    let pool = Arc::new(brassclaw_pg::pool::build_pool(&managed.connection_url()).unwrap());
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .unwrap();
+    let master_key = "native-cli-embedding-master-key-material";
+    let secret_owner = "native-cli-configured-secret-owner";
+    let storage_root = home.join("db");
+    std::fs::create_dir_all(&storage_root).unwrap();
+    let key_path = storage_root.join(".reborn-local-dev-secrets-master-key");
+    std::fs::write(&key_path, master_key).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        format!("[identity]\ntenant='{secret_owner}'\ndefault_owner='separate-actor'\n"),
+    )
+    .unwrap();
+    let definition = serde_json::from_value(serde_json::json!({
+        "id": "native-cli-embedding", "aliases": [], "protocol": "open_ai_completions",
+        "default_base_url": "http://127.0.0.1:8000/v1", "base_url_env": null,
+        "base_url_required": true, "api_key_env": null, "api_key_required": true,
+        "model_env": "BRASSCLAW_UNUSED_CLI_EMBEDDING_MODEL", "default_model": "text-embedding-3-small",
+        "description": "Native CLI embedding credential test", "extra_headers_env": null,
+        "unsupported_params": [], "setup": null, "token_budget": null,
+        "context_window_tokens": 131072, "cache_retention": null
+    })).unwrap();
+    brassclaw_reborn_composition::PgProviderRepo::new(pool.as_ref().clone(), "default")
+        .upsert(definition)
+        .await
+        .unwrap();
+    save_config_changes(
+        &pool,
+        "default",
+        &[("embedding.provider_id", Some("native-cli-embedding"))],
+        ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let args = ["maintenance", "backfill-embeddings", "--tenant", "default"];
+    let without_key = command(&home, port, &args).output().unwrap();
+    assert!(!without_key.status.success());
+    assert!(String::from_utf8_lossy(&without_key.stderr).contains("Authentication failed"));
+    let keys = brassclaw_reborn_composition::LlmKeyStore::new(Arc::new(
+        brassclaw_secrets::PgSecretStore::new(
+            pool.as_ref().clone(),
+            secrecy::SecretString::from(master_key),
+            secret_owner,
+        )
+        .unwrap(),
+    ));
+    keys.put(
+        "native-cli-embedding",
+        secrecy::SecretString::from("native-cli-embedding-credential"),
+    )
+    .await
+    .unwrap();
+    let with_key = command(&home, port, &args).output().unwrap();
+    successful(&with_key);
+    assert!(String::from_utf8_lossy(&with_key.stdout).contains("indexed: 0, failed: 0"));
+    assert!(keys.read("native-cli-embedding").await.unwrap().is_some());
+    // A missing retained key must not cause maintenance to generate another key.
+    let retained_key = storage_root.join("retained-test-key");
+    std::fs::rename(&key_path, &retained_key).unwrap();
+    let missing = command(&home, port, &args).output().unwrap();
+    assert!(!missing.status.success());
+    assert!(
+        String::from_utf8_lossy(&missing.stderr)
+            .contains("runtime secret master key is unavailable")
+    );
+    assert!(!key_path.exists());
+    std::fs::rename(&retained_key, &key_path).unwrap();
+    let client = pool.get().await.unwrap();
+    assert_eq!(
+        client
+            .query_one("SELECT count(*) FROM brassclaw_memory_chat_records", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
     assert!(home.join("postgres/data/postmaster.pid").exists());
     drop(client);
     pool.close();

@@ -99,6 +99,7 @@ impl global_recipe_ports::RecipeCapacitySource for FixtureRecipeCapacity {
         Ok(global_recipe_ports::RecipeCapacity {
             revision: 1,
             max_recipes: 8,
+            data_limits: brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
         })
     }
 }
@@ -372,6 +373,14 @@ impl NativeTaskPortsFactory {
 }
 #[async_trait]
 impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
+    async fn settle_unsubmitted(
+        &self,
+        host: Arc<MontyTaskHost>,
+        proof: Arc<brassclaw_monty_host::service::UnsubmittedTask>,
+    ) -> Result<(), brassclaw_turns::run_profile::AgentLoopDriverError> {
+        global_monty_driver::GlobalTaskPortsFactory::settle_unsubmitted(&self.inner, host, proof)
+            .await
+    }
     fn retention_registry(&self) -> Arc<monty_attempt_retention::AttemptRetentionRegistry> {
         global_monty_driver::GlobalTaskPortsFactory::retention_registry(&self.inner)
     }
@@ -618,6 +627,7 @@ async fn admitted_with_text(
         .await
         .unwrap();
     let input = TaskInput {
+        entry: brassclaw_monty_host::service::TaskEntry::Chat,
         conversation_id: context.thread_id.to_string(),
         message_id: admitted_input.message.message_id.to_string(),
         turn_id: context.turn_id.to_string(),
@@ -1745,6 +1755,221 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
 }
 
 #[tokio::test]
+async fn unsubmitted_cancellation_retains_exact_proof_until_database_acknowledges() {
+    use global_monty_driver::GlobalTaskPortsFactory;
+    let database = native_pg::NativePostgres::start().await;
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    let mut owner = global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: 1,
+        },
+    )
+    .await
+    .unwrap();
+    let factory = Arc::new(
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
+    );
+    let provider = Arc::new(RecordingProvider::default());
+    let (input, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "unsubmitted-commit",
+        Arc::new(SelectedPrefix("preparation evidence".into())),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let host = Arc::new(MontyTaskHost::new(handoff));
+    let ports = factory.build(host.clone(), &input).await.unwrap();
+    let root = owner.client().root_identity();
+    let result = owner
+        .client()
+        .submit_unless_cancelled(input, ports.clone(), std::future::ready(()))
+        .await
+        .unwrap();
+    let brassclaw_monty_host::service::TaskSubmission::Cancelled(proof) = result else {
+        panic!("already-cancelled preparation must not enqueue");
+    };
+    assert!(proof.matches(root, &host.attempt().run_id.to_string(), &ports));
+    let proof = Arc::new(proof);
+    let client = database.pool.get().await.unwrap();
+    client
+        .batch_execute(
+            r#"
+        CREATE FUNCTION reject_unsubmitted_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF NEW.phase='settled' AND NEW.started_at IS NULL THEN
+                RAISE EXCEPTION 'deliberate unsubmitted commit rejection';
+            END IF;
+            RETURN NEW;
+        END $$;
+        CREATE CONSTRAINT TRIGGER reject_unsubmitted_commit
+            AFTER UPDATE ON brassclaw_monty_task_admissions
+            DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+            EXECUTE FUNCTION reject_unsubmitted_commit();
+    "#,
+        )
+        .await
+        .unwrap();
+    assert!(
+        factory
+            .settle_unsubmitted(host.clone(), proof.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(owner.client().retained_attempts().retained, 1);
+    assert_eq!(owner.client().admission_observation().tasks, 0);
+    let row = client
+        .query_one(
+            "SELECT phase,started_at,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&host.attempt().run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, String>(0), "reserved");
+    assert!(
+        row.get::<_, Option<chrono::DateTime<chrono::Utc>>>(1)
+            .is_none()
+    );
+    assert!(row.get::<_, Option<Value>>(2).is_none());
+    assert!(factory.last_receipt.lock().unwrap().is_none());
+    client.batch_execute("DROP TRIGGER reject_unsubmitted_commit ON brassclaw_monty_task_admissions; DROP FUNCTION reject_unsubmitted_commit();").await.unwrap();
+    factory
+        .settle_unsubmitted(host.clone(), proof)
+        .await
+        .unwrap();
+    assert_eq!(owner.client().retained_attempts().retained, 0);
+    assert_eq!(owner.client().root_identity(), root);
+    assert!(factory.last_receipt.lock().unwrap().is_none());
+    let row = client
+        .query_one(
+            "SELECT phase,started_at,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&host.attempt().run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, String>(0), "settled");
+    assert!(
+        row.get::<_, Option<chrono::DateTime<chrono::Utc>>>(1)
+            .is_none()
+    );
+    assert_eq!(
+        row.get::<_, Value>(2),
+        json!({"status":"failed","reason_kind":"task_cancelled"})
+    );
+    assert!(provider.requests.lock().unwrap().is_empty());
+    assert!(provider.policy_work.lock().unwrap().is_empty());
+    assert_eq!(host.review_dispatch_counts(), (0, 0));
+    // A vanished drive waiter must leave its queued preparation under the
+    // same attempt owner. The supervisor polls it after fencing, even while
+    // the original admission pause remains in effect.
+    owner
+        .client()
+        .publish_memory_backpressure(0, true)
+        .await
+        .unwrap();
+    let (_, handoff, threads, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "dropped-unsubmitted-drive",
+        Arc::new(SelectedPrefix("retained preparation".into())),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let (request, attempt, raw_host) = handoff.into_parts();
+    let handoff = MontyTaskHandoff::new(request, attempt, raw_host).unwrap();
+    let driver =
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
+            .unwrap();
+    let mut drive = Box::pin(driver.drive_turn(handoff));
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            tokio::select! {
+                result = &mut drive => panic!("admission is still paused: {result:?}"),
+                () = tokio::time::sleep(Duration::from_millis(10)) => {},
+            }
+            if owner.client().admission_observation().tasks == 1 {
+                break;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    drop(drive);
+    assert_eq!(owner.client().retained_attempts().retained, 1);
+    tokio::time::timeout(Duration::from_secs(10), driver.stop_attempt(attempt))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(owner.client().memory_admission_policy().backpressure);
+    assert_eq!(owner.client().admission_observation().tasks, 0);
+    assert_eq!(owner.client().retained_attempts().retained, 0);
+    assert!(
+        driver
+            .retained_host_for_run(attempt.run_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(provider.requests.lock().unwrap().is_empty());
+    let row = client
+        .query_one(
+            "SELECT phase,started_at,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, String>(0), "settled");
+    assert!(
+        row.get::<_, Option<chrono::DateTime<chrono::Utc>>>(1)
+            .is_none()
+    );
+    assert_eq!(
+        row.get::<_, Value>(2),
+        json!({"status":"failed","reason_kind":"task_cancelled"})
+    );
+    owner.request_shutdown();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    let service = exit.service.unwrap();
+    assert!(service.tasks.is_empty());
+    assert_eq!(service.failure, None);
+    assert_eq!(service.transport.unwrap().kind, StopKind::Graceful);
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => {
+            panic!("actual worker settlement required")
+        }
+    }
+}
+
+#[tokio::test]
 async fn owned_task_factory_fences_failed_preparation_without_replacing_its_admission() {
     use global_monty_driver::GlobalTaskPortsFactory;
 
@@ -2188,6 +2413,14 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     let program = retained_program::program(&store, false).await;
     let admitted = invocation_admission::reserve(rig.pool.clone(), "actual journal input").await;
+    assert!(
+        admitted
+            .admission
+            .settle_unsubmitted(brassclaw_monty_host::service::UnsubmittedReason::Cancelled)
+            .await
+            .is_err(),
+        "a started admission can never be reclassified as unsubmitted"
+    );
     admitted
         .admission
         .retain_recipe_selection(program.inputs().instruction())
@@ -2255,14 +2488,24 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     assert!(
         admitted
             .admission
-            .begin_tool_invocation(&replacement_program, "0:2", &arguments)
+            .begin_tool_invocation(
+                &replacement_program,
+                "0:2",
+                &arguments,
+                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
+            )
             .await
             .is_err(),
         "a replacement cannot slip into an unexecuted step of the retained workflow"
     );
     let pending = admitted
         .admission
-        .begin_tool_invocation(&program, "0:4", &arguments)
+        .begin_tool_invocation(
+            &program,
+            "0:4",
+            &arguments,
+            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        )
         .await
         .unwrap();
     // No Tool was called for this record. Losing the Rust handle leaves a real
@@ -2271,7 +2514,12 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     assert!(
         admitted
             .admission
-            .begin_tool_invocation(&program, "0:4", &arguments)
+            .begin_tool_invocation(
+                &program,
+                "0:4",
+                &arguments,
+                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
+            )
             .await
             .is_err()
     );
@@ -2280,13 +2528,25 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     let follow_on = retained_program::program(&store, false).await;
     let follow_on_record = admitted
         .admission
-        .begin_tool_invocation(&follow_on, "0:2", &arguments)
+        .begin_tool_invocation(
+            &follow_on,
+            "0:2",
+            &arguments,
+            brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS,
+        )
         .await
         .unwrap();
     drop(follow_on_record); // no Tool called; retain uncertainty honestly
+    // The real arguments/result fit these bounds; the answer envelope does not
+    // fit their node/depth graph. Journal only the value against those bounds.
+    let data_limits = brassclaw_skills::value_contract::ContractLimits {
+        max_depth: 1,
+        max_nodes: 5,
+        max_bytes: 1024,
+    };
     let record = admitted
         .admission
-        .begin_tool_invocation(&program, "0:2", &arguments)
+        .begin_tool_invocation(&program, "0:2", &arguments, data_limits)
         .await
         .unwrap();
     let (runtime, policy) = retained_kernel::runtime(&program, "0:2").await;
@@ -2336,7 +2596,12 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     assert!(
         admitted
             .admission
-            .begin_tool_invocation(&program, "0:2", &arguments)
+            .begin_tool_invocation(
+                &program,
+                "0:2",
+                &arguments,
+                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
+            )
             .await
             .is_err()
     );
@@ -2406,7 +2671,12 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         .unwrap();
     assert_eq!(row.get::<_, &str>(0), "dispatch_intent");
     assert!(row.get::<_, Option<String>>(1).is_none());
+    let bounds = client.query_one("SELECT data_max_depth,data_max_nodes,data_max_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND recipe_id=$2 AND step_id='0:2'", &[&admitted.context.run_id.as_uuid(), &program.inputs().instruction().recipe().uuid]).await.unwrap();
+    assert_eq!(bounds.get::<_, i64>(0), 1);
+    assert_eq!(bounds.get::<_, i64>(1), 5);
+    assert_eq!(bounds.get::<_, i64>(2), 1024);
     for statement in [
+        "UPDATE brassclaw_monty_tool_invocations SET data_max_bytes=data_max_bytes+1",
         "UPDATE brassclaw_monty_tool_invocations SET phase='dispatch_intent',answer_bytes=NULL,answer_checksum=NULL,answered_at=NULL WHERE step_id='0:2'",
         "UPDATE brassclaw_monty_tool_invocations SET attempt_count=2",
         "UPDATE brassclaw_monty_tool_invocations SET step_id='replacement'",
@@ -2422,7 +2692,12 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
     assert!(
         admitted
             .admission
-            .begin_tool_invocation(&program, "0:4", &arguments)
+            .begin_tool_invocation(
+                &program,
+                "0:4",
+                &arguments,
+                brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
+            )
             .await
             .is_err()
     );
@@ -3047,4 +3322,427 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
             panic!("actual clean settlement required")
         }
     }
+}
+
+#[path = "support/pg_commit_proxy.rs"]
+mod pg_commit_proxy;
+
+async fn rejection_owner(
+    database: &native_pg::NativePostgres,
+) -> global_monty_owner::GlobalMontyOwner {
+    rejection_owner_with_retention(database, 1).await
+}
+async fn rejection_owner_with_retention(
+    database: &native_pg::NativePostgres,
+    retained: u32,
+) -> global_monty_owner::GlobalMontyOwner {
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            ownership: global_monty_owner::OwnershipLimits::from_execution(Default::default()),
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+            queue_bytes: 64 * 1024 * 1024,
+            max_pending_settings: 8,
+            max_retained_attempts: retained,
+        },
+    )
+    .await
+    .unwrap()
+}
+async fn stop_rejection_owner(owner: &mut global_monty_owner::GlobalMontyOwner) {
+    owner.request_shutdown();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    let service = exit.service.unwrap();
+    assert!(service.tasks.is_empty());
+    assert_eq!(service.failure, None);
+    assert_eq!(service.transport.unwrap().kind, StopKind::Graceful);
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => {
+            panic!("actual clean ownership release required")
+        }
+    }
+}
+
+#[tokio::test]
+async fn rejected_admission_keeps_proof_across_a_committed_but_lost_database_reply() {
+    use brassclaw_monty_host::service::{ServiceFailure, TaskSubmission, UnsubmittedReason};
+    use global_monty_driver::GlobalTaskPortsFactory;
+    let database = native_pg::NativePostgres::start().await;
+    let mut owner = rejection_owner(&database).await;
+    let client = database.pool.get().await.unwrap();
+    let endpoint = client
+        .query_one(
+            "SELECT inet_server_port(),current_user,current_database()",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(endpoint.get::<_, String>(1), "brassclaw");
+    assert_eq!(endpoint.get::<_, String>(2), "brassclaw_test");
+    let proxy = pg_commit_proxy::CommitResponseProxy::start(
+        u16::try_from(endpoint.get::<_, i32>(0)).unwrap(),
+    )
+    .await;
+    let proxy_pool = Arc::new(
+        brassclaw_pg::pool::build_pool_with_max_size(
+            &format!(
+                "postgresql://brassclaw@127.0.0.1:{}/brassclaw_test?sslmode=disable",
+                proxy.port
+            ),
+            2,
+        )
+        .unwrap(),
+    );
+    let factory = NativeTaskPortsFactory::new(
+        proxy_pool.clone(),
+        owner.ownership_check(),
+        owner.client(),
+        None,
+    )
+    .await;
+    let provider = Arc::new(RecordingProvider::default());
+    // The original input is persisted through the real transcript/turn writer.
+    // Its full value exceeds the worker transport policy; it is never truncated.
+    let text = "x".repeat(owner.client().vm_bounds().max_value_bytes + 1);
+    let (input, handoff, _, _, _) = admitted_with_text(
+        database.pool.clone(),
+        provider.clone(),
+        AdmissionInput {
+            name: "rejected-unknown-commit",
+            text: &text,
+        },
+        Arc::new(SelectedPrefix("rejection evidence".into())),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let host = Arc::new(MontyTaskHost::new(handoff));
+    let ports = factory.build(host.clone(), &input).await.unwrap();
+    let root = owner.client().root_identity();
+    let submission = owner
+        .client()
+        .submit_unless_cancelled(input, ports.clone(), std::future::pending())
+        .await
+        .unwrap();
+    let TaskSubmission::Rejected(proof) = submission else {
+        panic!("invalid transport needs explicit rejection");
+    };
+    assert!(proof.matches(root, &host.attempt().run_id.to_string(), &ports));
+    assert_eq!(
+        proof.reason(),
+        UnsubmittedReason::Rejected(ServiceFailure::InvalidInput)
+    );
+    let proof = Arc::new(proof);
+    proxy.arm();
+    assert!(
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            factory.settle_unsubmitted(host.clone(), proof.clone())
+        )
+        .await
+        .unwrap()
+        .is_err()
+    );
+    tokio::time::timeout(Duration::from_secs(5), proxy.dropped_response())
+        .await
+        .unwrap();
+    // Inspect through a different, direct connection: COMMIT really happened,
+    // while the factory did not receive acknowledgement and must keep capacity.
+    let row = client
+        .query_one(
+            "SELECT phase,started_at,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&host.attempt().run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, String>(0), "settled");
+    assert!(
+        row.get::<_, Option<chrono::DateTime<chrono::Utc>>>(1)
+            .is_none()
+    );
+    assert_eq!(
+        row.get::<_, Value>(2),
+        json!({"status":"failed","reason_kind":"monty_input_rejected"})
+    );
+    assert_eq!(owner.client().retained_attempts().retained, 1);
+    assert_eq!(owner.client().admission_observation().tasks, 0);
+    assert!(factory.last_receipt.lock().unwrap().is_none());
+    factory
+        .settle_unsubmitted(host.clone(), proof)
+        .await
+        .unwrap();
+    assert_eq!(owner.client().retained_attempts().retained, 0);
+    assert_eq!(host.review_dispatch_counts(), (0, 0));
+    assert!(provider.requests.lock().unwrap().is_empty());
+    assert!(provider.policy_work.lock().unwrap().is_empty());
+    assert_eq!(owner.client().root_identity(), root);
+    let effects: bool = client
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_recipe_selections WHERE run_id=$1)
+        OR EXISTS(SELECT 1 FROM brassclaw_monty_tool_invocations WHERE run_id=$1)",
+            &[&host.attempt().run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(!effects);
+    // The durable terminal outcome cannot be reopened or relabelled cancellation.
+    assert!(
+        client
+            .execute(
+                "UPDATE brassclaw_monty_task_admissions SET outcome=$2 WHERE run_id=$1",
+                &[
+                    &host.attempt().run_id.as_uuid(),
+                    &json!({"status":"failed","reason_kind":"task_cancelled"})
+                ]
+            )
+            .await
+            .is_err()
+    );
+    proxy_pool.close();
+    proxy.shutdown().await;
+    stop_rejection_owner(&mut owner).await;
+}
+
+#[tokio::test]
+async fn global_driver_repeated_rejections_release_attempt_capacity_without_cancellation_or_replay()
+{
+    let database = native_pg::NativePostgres::start().await;
+    let mut owner = rejection_owner(&database).await;
+    let factory = Arc::new(
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
+    );
+    let provider = Arc::new(RecordingProvider::default());
+    let threads = Arc::new(PgSessionThreadService::new(
+        database.pool.clone(),
+        "native-global-host",
+    ));
+    let driver =
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
+            .unwrap();
+    let root = owner.client().root_identity();
+    let text = "ü".repeat(owner.client().vm_bounds().max_value_bytes);
+    for index in 0..4 {
+        let name = format!("driver-rejected-{index}");
+        let (_, handoff, _, _, _) = admitted_with_text(
+            database.pool.clone(),
+            provider.clone(),
+            AdmissionInput {
+                name: &name,
+                text: &text,
+            },
+            Arc::new(SelectedPrefix("rejection evidence".into())),
+            0,
+            owner.client().live_task_settings(),
+            None,
+        )
+        .await;
+        let (request, attempt, raw_host) = handoff.into_parts();
+        let handoff = MontyTaskHandoff::new(request, attempt, raw_host).unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(10), driver.drive_turn(handoff))
+            .await
+            .unwrap();
+        assert!(
+            matches!(result, Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind })
+            if reason_kind == "monty_input_rejected")
+        );
+        assert_eq!(owner.client().retained_attempts().retained, 0);
+        assert_eq!(owner.client().admission_observation().tasks, 0);
+        assert!(factory.last_receipt.lock().unwrap().is_none());
+        assert!(driver.take_settlement(attempt).unwrap().is_none());
+        let client = database.pool.get().await.unwrap();
+        let row = client
+            .query_one(
+                "SELECT started_at,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+                &[&attempt.run_id.as_uuid()],
+            )
+            .await
+            .unwrap();
+        assert!(
+            row.get::<_, Option<chrono::DateTime<chrono::Utc>>>(0)
+                .is_none()
+        );
+        assert_eq!(
+            row.get::<_, Value>(1),
+            json!({"status":"failed","reason_kind":"monty_input_rejected"})
+        );
+    }
+    assert!(provider.requests.lock().unwrap().is_empty());
+    assert!(provider.policy_work.lock().unwrap().is_empty());
+    assert_eq!(owner.client().root_identity(), root);
+    stop_rejection_owner(&mut owner).await;
+}
+
+#[tokio::test]
+async fn global_driver_settles_queued_value_rejection_before_releasing_its_retention() {
+    let database = native_pg::NativePostgres::start().await;
+    let mut owner = rejection_owner_with_retention(&database, 3).await;
+    let hold = Arc::new(ProviderHold::default());
+    let provider = Arc::new(RecordingProvider {
+        hold: Some(hold.clone()),
+        ..Default::default()
+    });
+    let factory = Arc::new(
+        NativeTaskPortsFactory::new(
+            database.pool.clone(),
+            owner.ownership_check(),
+            owner.client(),
+            None,
+        )
+        .await,
+    );
+    let threads = Arc::new(PgSessionThreadService::new(
+        database.pool.clone(),
+        "native-global-host",
+    ));
+    let driver = Arc::new(
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory).unwrap(),
+    );
+    let mut running = Vec::new();
+    for name in ["queue-holder-one", "queue-holder-two"] {
+        let (_, handoff, _, _, _) = admitted(
+            database.pool.clone(),
+            provider.clone(),
+            name,
+            Arc::new(SelectedPrefix("short selected prefix".into())),
+            0,
+            owner.client().live_task_settings(),
+            None,
+        )
+        .await;
+        let driver = driver.clone();
+        running.push(tokio::spawn(
+            async move { driver.drive_turn(handoff).await },
+        ));
+        tokio::time::timeout(Duration::from_secs(5), hold.entered.notified())
+            .await
+            .unwrap();
+    }
+    let (_, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "queued-value-rejected",
+        Arc::new(SelectedPrefix("short selected prefix".into())),
+        10,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let (request, attempt, raw_host) = handoff.into_parts();
+    let handoff = MontyTaskHandoff::new(request, attempt, raw_host).unwrap();
+    let queued_driver = driver.clone();
+    let queued = tokio::spawn(async move { queued_driver.drive_turn(handoff).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while owner.client().admission_observation().tasks != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(owner.client().retained_attempts().retained, 3);
+    let original_values = owner.client().vm_bounds();
+    let mut reduced_values = original_values;
+    reduced_values.max_value_bytes = 1024;
+    let settings = owner.client().live_task_settings().current();
+    let ownership = owner.ownership_check();
+    let policy = ownership.snapshot().unwrap();
+    owner
+        .client()
+        .publish_runtime_settings(
+            settings.revision,
+            brassclaw_monty_host::process::TaskSettings {
+                revision: settings.revision + 1,
+                max_compute_time: settings.limits.max_compute_time,
+                token_budgets_enabled: settings.limits.token_budgets_enabled,
+            },
+            reduced_values,
+        )
+        .await
+        .unwrap();
+    ownership
+        .publish(policy.revision, settings.revision + 1, policy.limits)
+        .unwrap();
+    hold.released.notify_one();
+    let rejected = tokio::time::timeout(Duration::from_secs(10), queued)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(rejected, Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind })
+        if reason_kind == "monty_input_rejected")
+    );
+    let client = database.pool.get().await.unwrap();
+    let row = client
+        .query_one(
+            "SELECT phase,started_at,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, String>(0), "settled");
+    assert!(
+        row.get::<_, Option<chrono::DateTime<chrono::Utc>>>(1)
+            .is_none()
+    );
+    assert_eq!(
+        row.get::<_, Value>(2),
+        json!({"status":"failed","reason_kind":"monty_input_rejected"})
+    );
+    assert!(owner.client().retained_attempts().retained < 3);
+    assert!(driver.take_settlement(attempt).unwrap().is_none());
+    let settings = owner.client().live_task_settings().current();
+    let policy = ownership.snapshot().unwrap();
+    owner
+        .client()
+        .publish_runtime_settings(
+            settings.revision,
+            brassclaw_monty_host::process::TaskSettings {
+                revision: settings.revision + 1,
+                max_compute_time: settings.limits.max_compute_time,
+                token_budgets_enabled: settings.limits.token_budgets_enabled,
+            },
+            original_values,
+        )
+        .await
+        .unwrap();
+    ownership
+        .publish(policy.revision, settings.revision + 1, policy.limits)
+        .unwrap();
+    hold.released.notify_one();
+    for task in running {
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(10), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap(),
+            brassclaw_turns::LoopExit::Completed(_)
+        ));
+    }
+    assert_eq!(provider.requests.lock().unwrap().len(), 2);
+    assert_eq!(owner.client().retained_attempts().retained, 0);
+    stop_rejection_owner(&mut owner).await;
 }

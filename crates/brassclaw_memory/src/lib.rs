@@ -28,7 +28,10 @@ pub use chat_memory::ChatMemoryWriterPort;
 pub use chunking::{
     ChunkConfig, MemoryChunkWrite, chunk_document, content_bytes_sha256, content_sha256,
 };
-pub use embedding::{EmbeddingError, EmbeddingProvider};
+pub use embedding::{
+    EmbeddingError, EmbeddingProvider, EmbeddingProviderSource, EmbeddingProviderSourceSlot,
+    EmbeddingSpaceId,
+};
 pub use events::{
     MemoryAuditContext, MemoryEventSinkError, MemorySignificantEvent, MemorySignificantEventKind,
     MemorySignificantEventSink, MemorySignificantEventSource, MemorySignificantEventStatus,

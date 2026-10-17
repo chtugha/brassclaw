@@ -46,10 +46,20 @@ pub mod completed_turn_analysis;
 /// Private consumer Recipe, canonical usage variants and executable associations.
 mod builtin_bootstrap;
 pub mod completed_turn_review_components;
+/// Pure validator rule aggregation; full class review and approval are separate.
+pub mod validator_components;
 
 /// Packaged typed reply/history drafts and exact source-integrity comparison.
 /// Existing Tool artifacts, behavioral review, approval and activation are separate.
 pub mod global_bootstrap_components;
+/// Shared effect-free prefix rendering draft; qualification and activation are separate.
+pub mod prefix_reference_components;
+/// Pure reusable source-compiler stages; qualification and activation are separate.
+pub mod prefix_compiler_components;
+/// One reusable ordered UTF-8 hashing usage of the existing JSON Tool.
+pub mod utf8_digest_components;
+/// Reusable immutable-generation usages; runtime bootstrap/activation are separate.
+pub mod prefix_generation_components;
 
 /// Immutable class-10 root source/compiler/port definitions. Parsing is neither
 /// protected-root review nor a system-seed provenance/activation shortcut.

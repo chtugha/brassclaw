@@ -123,10 +123,11 @@ Inbound order (outer → inner → handler):
 2. `CorsLayer` — allow-origin from `config.allowed_origins`; empty list
    means fail-closed (no echoing attacker-supplied origin).
 3. `CatchPanicLayer` — panic boundary, logs truncated detail.
-4. **Outer `RequestBodyLimitLayer`** — `config.max_body_bytes` (14 MiB
+4. **Outer `RequestBodyLimitLayer`** — `config.max_body_bytes` (64 MiB
    default). Defense in depth for paths that don't match any v2
    descriptor (e.g. axum's 404 fallback). v2 routes are additionally
-   capped, strictly tighter, by the per-route limit below.
+   capped independently by the per-route limit below; ordinary chat and settings
+   routes retain their smaller caps. Explicit smaller outer ceilings still apply.
 5. **Descriptor-driven per-route body limit**
    (`webui_body_limit::enforce_body_limit`) — reads each route's
    `BodyLimitPolicy` from `brassclaw_webui_v2::webui_v2_routes()` and,
@@ -351,7 +352,7 @@ rows are inventoried here, not implemented in the current PR.
   `brassclaw_webui_v2::webui_v2_routes()`: `create_thread` 16 KiB,
   `send_message` 1 MiB, `cancel_run` / `resolve_gate` 4 KiB,
   `get_timeline` / `stream_events` `NoBody`. The outer
-  `RequestBodyLimitLayer` at `config.max_body_bytes` (14 MiB default)
+  `RequestBodyLimitLayer` at `config.max_body_bytes` (64 MiB default)
   is kept as defense in depth for paths that don't match any v2
   descriptor.
 - **Rate limit** — descriptor-driven; the v2 crate declares mutation

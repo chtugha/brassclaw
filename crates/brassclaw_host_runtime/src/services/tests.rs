@@ -183,6 +183,78 @@ async fn runtime_secret_material_stager_stages_secret_material_into_target_scope
 }
 
 #[tokio::test]
+async fn hardened_http_cache_control_tracks_actual_host_egress_and_replacement() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        for _ in 0..3 {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut head = Vec::new();
+            while !head.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let mut bytes = [0u8; 1024];
+                let received = stream.read(&mut bytes).unwrap();
+                assert!(received > 0);
+                head.extend_from_slice(&bytes[..received]);
+                assert!(head.len() <= 4096);
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .unwrap();
+        }
+    });
+    let services = test_services()
+        .with_secret_store(Arc::new(InMemorySecretStore::new()))
+        .try_with_hardened_http_transport_with_body_store(
+            brassclaw_network::ReqwestNetworkTransport::new(Duration::from_secs(2)),
+            Arc::new(crate::http_body::UnsupportedRuntimeHttpBodyStore),
+        )
+        .unwrap();
+    let control = services.http_client_cache_control().unwrap();
+    let port = services.host_runtime_http_egress_port().unwrap();
+    for (revision, capacity) in [(1, 1), (2, 0), (3, 2)] {
+        control
+            .publish_capacity(revision - 1, revision, capacity)
+            .unwrap();
+        let mut request = request_without_credentials(sample_scope(), sample_capability_id());
+        request.url = format!("http://{address}/test");
+        request.network_policy = NetworkPolicy {
+            allowed_targets: vec![NetworkTargetPattern {
+                scheme: Some(NetworkScheme::Http),
+                host_pattern: "127.0.0.1".into(),
+                port: Some(address.port()),
+            }],
+            deny_private_ip_ranges: false,
+            max_egress_bytes: None,
+        };
+        let response = port
+            .execute(HostRuntimeHttpEgressRequest {
+                extension_id: ExtensionId::new("test-extension").unwrap(),
+                trust: TrustClass::System,
+                request,
+                credentials: Vec::new(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.body, b"ok");
+        let status = control.status().unwrap();
+        assert_eq!(status.revision, revision);
+        assert_eq!(status.retained_entries, usize::from(capacity != 0));
+    }
+    server.join().unwrap();
+    let services = services
+        .try_with_host_http_egress(RecordingNetwork::ok())
+        .unwrap();
+    assert!(
+        services.http_client_cache_control().is_none(),
+        "an unrelated replacement cannot retain a misleading cache control"
+    );
+}
+
+#[tokio::test]
 async fn host_runtime_http_egress_port_executes_with_host_staged_credentials() {
     let network = RecordingNetwork::ok();
     let recorded_requests = Arc::clone(&network.requests);

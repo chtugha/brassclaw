@@ -5,6 +5,7 @@ use std::sync::Arc;
 use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
 use brassclaw_pg::PgPool;
 use brassclaw_secrets::SecretMaterial;
+use secrecy::ExposeSecret;
 
 static NATIVE_INSTANCES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
 
@@ -53,21 +54,30 @@ impl NativePostgres {
         brassclaw_pg::migrations::run_migrations(&rig.pool)
             .await
             .expect("native PostgreSQL schema migrations");
-        let linked_snapshots: bool = rig
+        let verified = rig
             .pool
             .get()
             .await
             .expect("native PostgreSQL migration verification connection")
             .query_one(
-                "SELECT to_regclass('brassclaw_turn_snapshot_threads') IS NOT NULL",
+                "SELECT to_regclass('brassclaw_turn_snapshot_threads') IS NOT NULL, inet_server_port()",
                 &[],
             )
             .await
-            .expect("native PostgreSQL migration verification")
-            .get(0);
+            .expect("native PostgreSQL migration verification");
         assert!(
-            linked_snapshots,
+            verified.get::<_, bool>(0),
             "the compiled migration bundle must include V089 before exercising turn persistence"
+        );
+        let retained_url: tokio_postgres::Config = rig
+            .url
+            .expose_secret()
+            .parse()
+            .expect("native PostgreSQL retained URL");
+        assert_eq!(
+            verified.get::<_, i32>(1),
+            i32::from(retained_url.get_ports()[0]),
+            "native pool must address this fixture's retained server"
         );
         rig
     }

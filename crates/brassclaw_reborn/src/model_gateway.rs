@@ -373,37 +373,18 @@ where
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
-        self.check_total_input_budget(&request.messages)?;
-        let route = self
-            .policy
-            .route_for(&request.model_profile_id)
-            .ok_or_else(|| {
-                HostManagedModelError::safe(
-                    HostManagedModelErrorKind::PolicyDenied,
-                    "model profile is not permitted",
-                )
-            })?;
-        let model_override = request_model_override(route, self.provider.as_ref())?;
-        let model_profile_id = request.model_profile_id.clone();
-        let run_id = request.run_id;
-        let turn_id = request.turn_id;
-        let replay_identity = ProviderReplayIdentity::new(&self.provider_id, &model_override)?;
-        let mut completion =
-            CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
-        completion.model = Some(model_override);
-        if let Some(cap) = self.max_output_tokens.as_ref().and_then(|s| s.get()) {
-            completion.max_tokens = Some(cap as u32);
+        if let Some(retained) = self.provider.retained_provider() {
+            self.stream_selected(
+                request,
+                retained.provider.as_ref(),
+                Some((&retained.provider_id, &retained.model)),
+                None,
+            )
+            .await
+        } else {
+            self.stream_selected(request, self.provider.as_ref(), None, None)
+                .await
         }
-        add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
-
-        complete_model_request(
-            self.provider.as_ref(),
-            completion,
-            None,
-            None,
-            replay_identity,
-        )
-        .await
     }
 
     async fn stream_model_with_capabilities(
@@ -411,6 +392,35 @@ where
         request: HostManagedModelRequest,
         capabilities: Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        if let Some(retained) = self.provider.retained_provider() {
+            self.stream_selected(
+                request,
+                retained.provider.as_ref(),
+                Some((&retained.provider_id, &retained.model)),
+                Some(capabilities),
+            )
+            .await
+        } else {
+            self.stream_selected(request, self.provider.as_ref(), None, Some(capabilities))
+                .await
+        }
+    }
+}
+
+impl<P> LlmProviderModelGateway<P>
+where
+    P: LlmProvider + ?Sized + Send + Sync,
+{
+    async fn stream_selected<Q>(
+        &self,
+        request: HostManagedModelRequest,
+        provider: &Q,
+        selection: Option<(&str, &str)>,
+        capabilities: Option<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>>,
+    ) -> Result<HostManagedModelResponse, HostManagedModelError>
+    where
+        Q: LlmProvider + ?Sized,
+    {
         self.check_total_input_budget(&request.messages)?;
         let route = self
             .policy
@@ -421,28 +431,50 @@ where
                     "model profile is not permitted",
                 )
             })?;
-        let model_override = request_model_override(route, self.provider.as_ref())?;
+        let model_override =
+            request_model_override(route, provider, selection.map(|(_, model)| model))?;
         let model_profile_id = request.model_profile_id.clone();
         let run_id = request.run_id;
         let turn_id = request.turn_id;
-        let replay_identity = ProviderReplayIdentity::new(&self.provider_id, &model_override)?;
+        let identity = selection
+            .map(|(identity, _)| identity)
+            .unwrap_or(&self.provider_id);
+        let replay_identity = ProviderReplayIdentity::new(identity, &model_override)?;
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
         completion.model = Some(model_override);
-        if let Some(cap) = self.max_output_tokens.as_ref().and_then(|s| s.get()) {
-            completion.max_tokens = Some(cap as u32);
+        if let Some(cap) = self.max_output_tokens.as_ref().and_then(|slot| slot.get()) {
+            completion.max_tokens = Some(u32::try_from(cap).map_err(|_| {
+                HostManagedModelError::safe(
+                    HostManagedModelErrorKind::ConfigurationError,
+                    "configured output token limit exceeds the provider protocol representation",
+                )
+            })?);
         }
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
-
-        let provider_turn_scope = format!(
-            "run={run_id}\nturn={turn_id}\nmodel_call={}",
-            self.provider_turn_sequence.fetch_add(1, Ordering::Relaxed)
-        );
+        let provider_turn_scope = if capabilities.is_some() {
+            let sequence = self
+                .provider_turn_sequence
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                    value.checked_add(1)
+                })
+                .map_err(|_| {
+                    HostManagedModelError::safe(
+                        HostManagedModelErrorKind::PolicyDenied,
+                        "model-call identity exhausted",
+                    )
+                })?;
+            Some(format!(
+                "run={run_id}\nturn={turn_id}\nmodel_call={sequence}"
+            ))
+        } else {
+            None
+        };
         complete_model_request(
-            self.provider.as_ref(),
+            provider,
             completion,
-            Some(capabilities),
-            Some(provider_turn_scope),
+            capabilities,
+            provider_turn_scope,
             replay_identity,
         )
         .await
@@ -810,6 +842,7 @@ fn host_error_to_model_gateway_error(error: AgentLoopHostError) -> LoopModelGate
 fn request_model_override<P>(
     route: &LlmModelProfileRoute,
     provider: &P,
+    retained_model: Option<&str>,
 ) -> Result<String, HostManagedModelError>
 where
     P: LlmProvider + ?Sized,
@@ -817,6 +850,7 @@ where
     let model_override = route
         .model_override
         .as_deref()
+        .or(retained_model)
         .map(str::to_string)
         .unwrap_or_else(|| provider.active_model_name());
     let trimmed = model_override.trim();
@@ -1521,6 +1555,18 @@ fn map_provider_error(error: LlmError) -> HostManagedModelError {
         .with_reason_kind(MODEL_CREDITS_EXHAUSTED_REASON_KIND);
     }
     match error {
+        LlmError::ResponseTooLarge { limit, .. } => HostManagedModelError::safe(
+            HostManagedModelErrorKind::BudgetExceeded,
+            format!("model response exceeded its configured {limit} byte capacity"),
+        ),
+        LlmError::RequestRejected { status, .. } => HostManagedModelError::safe(
+            if (400..500).contains(&status) {
+                HostManagedModelErrorKind::InvalidRequest
+            } else {
+                HostManagedModelErrorKind::ConfigurationError
+            },
+            format!("model request was rejected (HTTP {status})"),
+        ),
         LlmError::ContextLengthExceeded { .. } => HostManagedModelError::safe(
             HostManagedModelErrorKind::BudgetExceeded,
             "model request exceeded its context budget",

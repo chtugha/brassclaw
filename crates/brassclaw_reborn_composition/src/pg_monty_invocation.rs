@@ -1,6 +1,9 @@
 //! Durable dispatch-intent/answer retention for the stop-only candidate path.
 //! No latest lookup, activation, permission, retry or automatic effect replay.
-use std::sync::Arc;
+use std::{
+    io::{self, Write},
+    sync::Arc,
+};
 
 use brassclaw_engine::memory::{
     retained_instruction::{RetainedRecipeInstruction, RetainedSelectionError},
@@ -8,8 +11,9 @@ use brassclaw_engine::memory::{
 };
 use brassclaw_monty_host::process::PortAnswer;
 use brassclaw_skills::{
-    association_contract::ComponentRevisionRef, component_revision::REVISION_LIMITS,
-    value_contract::validate_data_bounds,
+    association_contract::ComponentRevisionRef,
+    component_revision::REVISION_LIMITS,
+    value_contract::{ContractLimits, validate_data_bounds},
 };
 use brassclaw_turns::run_profile::AgentLoopDriverError;
 use serde_json::{Value, json};
@@ -26,6 +30,7 @@ pub(crate) struct PgMontyInvocation {
     admission: Arc<PgMontyAdmission>,
     id: Uuid,
     key: [u8; 32],
+    data_limits: ContractLimits,
 }
 fn reference(value: ComponentRevisionRef) -> Value {
     let checksum: String = value
@@ -38,16 +43,84 @@ fn reference(value: ComponentRevisionRef) -> Value {
 fn digest(bytes: &str) -> String {
     format!("{:x}", Sha256::digest(bytes.as_bytes()))
 }
-fn encoded(value: &Value) -> Result<String, AgentLoopDriverError> {
-    validate_data_bounds(value, REVISION_LIMITS)
-        .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
-    let bytes =
-        serde_json::to_string(value).map_err(|_| failed("monty_invocation_data_invalid"))?;
-    if bytes.len() > REVISION_LIMITS.max_bytes {
-        return Err(failed("monty_invocation_capacity_exceeded"));
-    }
-    Ok(bytes)
+// Stream escaping/envelope bytes through the admitted journal bound instead of
+// allocating an unlimited String or a second complete copy of the host answer.
+struct BoundedJson {
+    bytes: Vec<u8>,
+    limit: usize,
+    capacity_failed: bool,
 }
+impl Write for BoundedJson {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let required = self
+            .bytes
+            .len()
+            .checked_add(bytes.len())
+            .filter(|size| *size <= self.limit);
+        let Some(required) = required else {
+            self.capacity_failed = true;
+            return Err(io::Error::other("invocation data capacity exceeded"));
+        };
+        if required > self.bytes.capacity() {
+            let target = self
+                .bytes
+                .capacity()
+                .checked_mul(2)
+                .unwrap_or(self.limit)
+                .max(required)
+                .min(self.limit);
+            if self
+                .bytes
+                .try_reserve_exact(target - self.bytes.len())
+                .is_err()
+            {
+                self.capacity_failed = true;
+                return Err(io::Error::other("invocation data capacity exceeded"));
+            }
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+fn encode_json(
+    value: &impl serde::Serialize,
+    limit: usize,
+) -> Result<String, AgentLoopDriverError> {
+    let mut writer = BoundedJson {
+        bytes: Vec::new(),
+        limit,
+        capacity_failed: false,
+    };
+    if serde_json::to_writer(&mut writer, value).is_err() {
+        return Err(failed(if writer.capacity_failed {
+            "monty_invocation_capacity_exceeded"
+        } else {
+            "monty_invocation_data_invalid"
+        }));
+    }
+    String::from_utf8(writer.bytes).map_err(|_| failed("monty_invocation_data_invalid"))
+}
+fn encoded(value: &Value, limits: ContractLimits) -> Result<String, AgentLoopDriverError> {
+    validate_data_bounds(value, limits)
+        .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
+    encode_json(value, limits.max_bytes)
+}
+fn encoded_answer(
+    answer: &PortAnswer,
+    limits: ContractLimits,
+) -> Result<String, AgentLoopDriverError> {
+    // The classified transport wrapper is metadata, not part of the returned
+    // value's node/depth graph. Complete encoded bytes still obey the DB bound.
+    if let PortAnswer::Return { value } = answer {
+        validate_data_bounds(value, limits)
+            .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
+    }
+    encode_json(answer, limits.max_bytes)
+}
+
 impl PgMontyAdmission {
     /// Retain before the first executable feed, including a pure-logic step.
     /// Exact repetition retains the original record; a changed revision,
@@ -138,6 +211,7 @@ impl PgMontyAdmission {
         program: &RetainedToolProgram,
         step_id: &str,
         arguments: &Value,
+        data_limits: ContractLimits,
     ) -> Result<PgMontyInvocation, AgentLoopDriverError> {
         let binding = program
             .bindings()
@@ -155,7 +229,13 @@ impl PgMontyAdmission {
         let instruction = program.inputs().instruction();
         let workflow = workflow_selection(instruction)?;
         let selection = Self::invocation_selection(program, step_id)?;
-        let arguments = encoded(arguments)?;
+        let arguments = encoded(arguments, data_limits)?;
+        let depth = i64::try_from(data_limits.max_depth)
+            .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
+        let nodes = i64::try_from(data_limits.max_nodes)
+            .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
+        let bytes = i64::try_from(data_limits.max_bytes)
+            .map_err(|_| failed("monty_invocation_capacity_exceeded"))?;
         let id = Uuid::new_v4();
         let key: [u8; 32] = Sha256::digest(Uuid::new_v4().as_bytes()).into();
         let mut client = self
@@ -173,11 +253,12 @@ impl PgMontyAdmission {
         let inserted = tx.execute(
             "INSERT INTO brassclaw_monty_tool_invocations
              (invocation_id,run_id,recipe_id,step_id,admission_key,invocation_key,
-              selection_bytes,selection_checksum,arguments_bytes,arguments_checksum,attempt_count,phase)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,'dispatch_intent')
+              selection_bytes,selection_checksum,arguments_bytes,arguments_checksum,attempt_count,phase,
+              data_max_depth,data_max_nodes,data_max_bytes)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,'dispatch_intent',$11,$12,$13)
              ON CONFLICT (run_id,recipe_id,step_id) DO NOTHING",
             &[&id,&self.attempt.run_id.as_uuid(),&instruction.recipe().uuid,&step_id,&&self.key[..],&&key[..],
-                &selection,&digest(&selection),&arguments,&digest(&arguments)],
+                &selection,&digest(&selection),&arguments,&digest(&arguments),&depth,&nodes,&bytes],
         ).await.map_err(|_| failed("monty_invocation_database_failed"))?;
         if inserted != 1 {
             return Err(failed("monty_invocation_replay_requires_reconciliation"));
@@ -192,6 +273,7 @@ impl PgMontyAdmission {
             admission: self.clone(),
             id,
             key,
+            data_limits,
         })
     }
 }
@@ -227,7 +309,7 @@ impl PgMontyAdmission {
         if !instruction.association_approvals().is_empty() {
             selection["association_approvals"] = json!(instruction.association_approvals());
         }
-        encoded(&selection)
+        encoded(&selection, REVISION_LIMITS)
     }
 }
 
@@ -252,8 +334,7 @@ impl PgMontyInvocation {
         answer: &PortAnswer,
     ) -> Result<(), AgentLoopDriverError> {
         match answer {
-            PortAnswer::Return { value } => validate_data_bounds(value, REVISION_LIMITS)
-                .map_err(|_| failed("monty_invocation_capacity_exceeded"))?,
+            PortAnswer::Return { .. } => {}
             PortAnswer::DomainError { reason_kind } | PortAnswer::TerminalError { reason_kind }
                 if reason_kind.is_empty()
                     || reason_kind.len() > 64
@@ -265,9 +346,7 @@ impl PgMontyInvocation {
             }
             _ => {}
         }
-        let value =
-            serde_json::to_value(answer).map_err(|_| failed("monty_invocation_data_invalid"))?;
-        let answer = encoded(&value)?;
+        let answer = encoded_answer(answer, self.data_limits)?;
         let mut client = self
             .admission
             .pool
@@ -305,5 +384,68 @@ impl PgMontyInvocation {
         tx.commit()
             .await
             .map_err(|_| failed("monty_invocation_database_failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn invocation_encoding_bounds_value_separately_from_answer_envelope() {
+        let limits = ContractLimits {
+            max_depth: 1,
+            max_nodes: 2,
+            max_bytes: 1024,
+        };
+        let answer = PortAnswer::Return {
+            value: json!([null]),
+        };
+        let encoded = encoded_answer(&answer, limits).unwrap();
+        assert_eq!(encoded, serde_json::to_string(&answer).unwrap());
+        assert!(
+            encoded_answer(
+                &PortAnswer::Return {
+                    value: json!([null, null])
+                },
+                limits
+            )
+            .is_err()
+        );
+        assert!(
+            encoded_answer(
+                &PortAnswer::Return {
+                    value: json!([[null]])
+                },
+                limits
+            )
+            .is_err()
+        );
+        let exact = ContractLimits {
+            max_bytes: encoded.len(),
+            ..limits
+        };
+        assert_eq!(encoded_answer(&answer, exact).unwrap(), encoded);
+        assert!(
+            encoded_answer(
+                &answer,
+                ContractLimits {
+                    max_bytes: exact.max_bytes - 1,
+                    ..limits
+                }
+            )
+            .is_err()
+        );
+        // Escaped wire bytes, not just the unescaped payload, obey the ceiling.
+        let escaped = json!("\u{0000}".repeat(20));
+        assert!(
+            encoded_answer(
+                &PortAnswer::Return { value: escaped },
+                ContractLimits {
+                    max_bytes: 64,
+                    ..limits
+                }
+            )
+            .is_err()
+        );
     }
 }

@@ -1,5 +1,4 @@
 import { React } from "../../../lib/html.js";
-import { ApiError } from "../../../lib/api.js";
 import { useLlmProviders } from "./useLlmProviders.js";
 
 function matchesProvider(provider, query) {
@@ -48,7 +47,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
             t(err.message === "base_url" ? "llm.baseUrlRequired" : err.message === "model" ? "llm.modelRequired" : "llm.configureToUse")
           );
         } else {
-          showMessage("error", err.message);
+          showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
         }
       }
     },
@@ -61,7 +60,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
         await providerState.setSempaiProvider(provider);
         showMessage("success", t("llm.sempaiActivated", { name: provider.name || provider.id }));
       } catch (err) {
-        showMessage("error", err.message);
+        showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
       }
     },
     [providerState, showMessage, t]
@@ -73,7 +72,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
         await providerState.setEmbeddingProvider(provider);
         showMessage("success", t("llm.embeddingActivated", { name: provider.name || provider.id }));
       } catch (err) {
-        showMessage("error", err.message);
+        showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
       }
     },
     [providerState, showMessage, t]
@@ -99,7 +98,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
         await providerState.deactivateProvider();
         showMessage("success", t("llm.providerDeactivated"));
       } catch (err) {
-        showMessage("error", err.message);
+        showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
       }
     },
     [providerState, showMessage, t]
@@ -112,25 +111,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
         await providerState.deleteCustomProvider(provider);
         showMessage("success", t("llm.providerDeleted"));
       } catch (err) {
-        showMessage("error", err.message);
-      }
-    },
-    [providerState, showMessage, t]
-  );
-
-  const handleReset = React.useCallback(
-    async (provider) => {
-      if (!window.confirm(t("llm.confirmReset", { id: provider.id }))) return;
-      try {
-        await providerState.deleteCustomProvider(provider);
-        showMessage("success", t("llm.providerReset"));
-      } catch (err) {
-        // 404 = no overlay — provider is already at defaults
-        if (err instanceof ApiError && err.status === 404) {
-          showMessage("success", t("llm.providerReset"));
-        } else {
-          showMessage("error", err.message);
-        }
+        showMessage("error", err.status === 409 ? t("llm.providerChanged") : err.message);
       }
     },
     [providerState, showMessage, t]
@@ -153,6 +134,5 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     handleSave,
     handleDeactivate,
     handleDelete,
-    handleReset,
   };
 }

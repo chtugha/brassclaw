@@ -48,7 +48,7 @@ mod retained_program;
 mod retained_program_variants;
 use retained_program_variants::{program_with_preload_source, program_with_source};
 #[path = "runtime.rs"]
-mod support;
+pub(crate) mod support;
 
 use pg_retained_q1::{
     BehavioralExpectation, BehavioralReviewSet, ExpectedStepResult, StructuralReviewFailure,
@@ -430,7 +430,12 @@ impl RetainedToolPort for ObservedJsonPort {
         let record = self
             .admitted
             .admission
-            .begin_tool_invocation(&self.prepared, invocation.step_id(), &arguments)
+            .begin_tool_invocation(
+                &self.prepared,
+                invocation.step_id(),
+                &arguments,
+                invocation.data_limits(),
+            )
             .await
             .unwrap();
         let context = ExecutionContext::local_default(
@@ -478,6 +483,334 @@ async fn progress(transport: &TransportClient, mut snapshot: ProcessSnapshot) ->
         snapshot = exchange(transport, WorkerCommand::ResumeControl { key }).await;
     }
     snapshot
+}
+
+#[tokio::test]
+async fn retained_workflow_review_uses_each_steps_accepted_limits_for_complete_handoff() {
+    use brassclaw_engine::{
+        executor::retained_recipe::RetainedTaskContext,
+        memory::{
+            retained_inputs::prepare_retained_unbound_program,
+            retained_instruction::{WorkflowClass, compile_retained_recipe},
+        },
+    };
+    use brassclaw_monty_host::{
+        heap::HeapSettings,
+        process::{RecipeCommand, TaskSettings},
+    };
+    use pg_workflow_review::{
+        ExpectedWorkflowTermination, WorkflowReview, WorkflowStepExpectation,
+        persist_workflow_review,
+    };
+    use std::time::Duration;
+    use uuid::Uuid;
+
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let (recipe, first, second) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let result = json!({"type":"object","allow_extra_fields":false,"fields":{"values":{"type":"list","required":true,"items":{"type":"string"}}}});
+    let mut refs = Vec::new();
+    for (id, class, document, dependencies) in [
+        (
+            first,
+            22,
+            json!({"content":"def make_values(inputs):\n    return {'values': [inputs['text']] * 300000}",
+            "includes":[],"dependency_registry":null,
+            "preload":{"format":"python-preload/2","exports":{"make":{"symbol":"make_values","parameters":["inputs"],"mapping":true}},"private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"make"},
+            "input_contract":{"text":{"type":"string","required":true,"checks":[]}},"result_contract":result}),
+            Vec::new(),
+        ),
+        (
+            second,
+            22,
+            json!({"content":"def count_values(inputs):\n    return {'count': len(inputs['previous'])}",
+            "includes":[],"dependency_registry":null,
+            "preload":{"format":"python-preload/2","exports":{"count":{"symbol":"count_values","parameters":["inputs"],"mapping":true}},"private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"count"},
+            "input_contract":{"previous":{"type":"list","required":true,"checks":[],"items":{"type":"string"}}},
+            "result_contract":{"type":"object","allow_extra_fields":false,"fields":{"count":{"type":"integer","required":true}}}}),
+            Vec::new(),
+        ),
+        (
+            recipe,
+            21,
+            json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
+            "step_descriptions":[{"desc_idx":0,"label":"complete typed handoff","yaml_source":"","steps":[
+                {"stepnumber":1,"knowledge":"orchestrator","goal":"Prepare complete list","content":"","type":"component","include":[first]},
+                {"stepnumber":2,"knowledge":"orchestrator","goal":"Count complete list","content":"","type":"component","include":[second]}]}],
+            "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{"value":{"type":"string","required":true,"checks":[]}},"steps":{
+                "0:1":{"text":{"kind":"task_input","reference":"{{vars.value}}"}},
+                "0:2":{"previous":{"kind":"result","step_id":"0:1","path":["values"]}}}}}}),
+            vec![first, second],
+        ),
+    ] {
+        let draft = ComponentRevisionDraft::from_json(
+            &json!({"format":"component-revision/1","uuid":id,"class_code":class,
+            "document":document,"dependencies":dependencies,"association":null})
+            .to_string(),
+        )
+        .unwrap();
+        refs.push(store.stage(&draft, 0).await.unwrap());
+    }
+    let selected = compile_retained_recipe(
+        Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+        recipe,
+        "selected",
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    let program = Arc::new(prepare_retained_unbound_program(selected).unwrap());
+    let inspected = Arc::new(
+        InspectedRetainedProgram::inspect(RetainedProgram::Unbound(program.clone()), worker())
+            .await
+            .unwrap(),
+    );
+    let definitions =
+        include_str!("../../../../crates/brassclaw_engine/orchestrator/global_mode.py")
+            .strip_suffix("asyncio.run(_global_main())\n")
+            .unwrap();
+    let source = format!(
+        "{definitions}\nasync def validate_draft():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    value = await _execute_recipe(task['task_token'], 'retained-draft', '0:1-0:E', {{'user_input': task['user_input']}})\n    await host.validation_result(task['task_token'], value)\nasyncio.run(validate_draft())\n"
+    );
+    let mut boot = support::boot(&source);
+    boot.bounds.workers = 1;
+    boot.aliases.insert("validation_result".into());
+    boot.heap_settings = Some(HeapSettings {
+        revision: 1,
+        max_vm_bytes: 512 * 1024 * 1024,
+    });
+    boot.bounds.values.max_value_nodes = 1_048_576;
+    boot.bounds.values.max_value_bytes = 4 * 1024 * 1024;
+    let first_bounds = boot.bounds.values;
+    let mut limits = support::limits();
+    limits.hard_memory_bytes = 1024 * 1024 * 1024;
+    limits.max_frame_bytes = 8 * 1024 * 1024;
+    // The larger actual list requires larger complete IPC frames, not truncation.
+    // Keep one finite transport deadline independently from task compute time.
+    limits.response_timeout = Duration::from_secs(30);
+    let (mut owner, ready) = TransportOwner::start(
+        worker(),
+        boot,
+        limits,
+        ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: 64 * 1024 * 1024,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: 64 * 1024 * 1024,
+        },
+    )
+    .await
+    .unwrap();
+    let admitted = admission::reserve(rig.pool.clone(), "actual complete handoff").await;
+    let transport = owner.client();
+    let snapshot = exchange(
+        &transport,
+        WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: admitted.input.clone(),
+        },
+    )
+    .await;
+    let task = snapshot.admitted_task.unwrap();
+    let root = progress(&transport, snapshot).await;
+    let Some(ProcessBoundary::HostCall { name, key, .. }) = root.boundary else {
+        panic!("actual compose boundary required");
+    };
+    assert_eq!(name, "compose_orchestrator");
+    exchange(&transport, WorkerCommand::Defer { key }).await;
+    let reference = Uuid::new_v4().to_string();
+    let inputs = program
+        .inputs()
+        .bind_task_inputs(&json!({"value":"x"}))
+        .unwrap();
+    let snapshot = exchange(&transport, WorkerCommand::Resolve { key, answer: PortAnswer::Return { value: json!({
+        "ok":true,"program_ref":reference,"inputs":inputs,"flow":program.inputs().monty_flow().unwrap(),
+        "steps":program.program().steplist.iter().map(|step|json!({"step_id":step.step_id})).collect::<Vec<_>>()
+    }) }}).await;
+    let mut root = progress(&transport, snapshot).await;
+    let mut parent = RetainedTaskContext::new(task);
+    let context = parent.open(&transport).await.unwrap();
+    let mut execution =
+        RetainedRecipeExecution::new_child_for_behavioral_validation(task, context, inspected)
+            .unwrap();
+    let mut second_bounds = first_bounds;
+    second_bounds.max_value_nodes = 600_000;
+    second_bounds.max_value_bytes = 3 * 1024 * 1024;
+    for step in ["0:1", "0:2"] {
+        let Some(ProcessBoundary::HostCall {
+            name,
+            key,
+            args,
+            kwargs,
+        }) = root.boundary.take()
+        else {
+            panic!("actual next-step boundary required");
+        };
+        assert_eq!(name, "run_program");
+        assert_eq!(args[1], reference);
+        assert_eq!(args[2], step);
+        assert!(kwargs.is_empty());
+        exchange(&transport, WorkerCommand::Defer { key }).await;
+        if step == "0:2" {
+            let update = exchange(
+                &transport,
+                WorkerCommand::Recipe {
+                    command: RecipeCommand::UpdateRuntimeSettings {
+                        max_pending_host_calls: None,
+                        max_workers: None,
+                        expected_revision: 1,
+                        settings: TaskSettings {
+                            revision: 2,
+                            max_compute_time: Duration::from_secs(600),
+                            token_budgets_enabled: false,
+                        },
+                        values: second_bounds,
+                        max_recipe_contexts: None,
+                        adapter_reserve_bytes: None,
+                        heap_update: None,
+                        frame_update: None,
+                    },
+                },
+            )
+            .await;
+            assert_eq!(update.root, ready.root);
+            assert_eq!(*transport.live_vm_bounds().borrow(), second_bounds);
+            assert_eq!(
+                args[3]["inputs"]["previous"].as_array().unwrap().len(),
+                300_000
+            );
+        }
+        let value = execution
+            .run_step(&transport, step, &args[3]["inputs"], None)
+            .await
+            .unwrap();
+        if step == "0:1" {
+            assert_eq!(value["values"].as_array().unwrap().len(), 300_000);
+        } else {
+            assert_eq!(value, json!({"count":300000}));
+        }
+        let snapshot = exchange(
+            &transport,
+            WorkerCommand::Resolve {
+                key,
+                answer: PortAnswer::Return {
+                    value: json!({"ok":true,"return_value":value}),
+                },
+            },
+        )
+        .await;
+        root = progress(&transport, snapshot).await;
+    }
+    let Some(ProcessBoundary::HostCall { name, args, .. }) = root.boundary else {
+        panic!("actual result boundary required");
+    };
+    assert_eq!(name, "validation_result");
+    assert_eq!(args[1], json!({"count":300000}));
+    assert!(execution.is_complete());
+    assert!(execution.host_answers().is_empty());
+    assert_eq!(
+        execution.observations()["0:1"].data_limits().max_nodes,
+        first_bounds.max_value_nodes
+    );
+    assert_eq!(
+        execution.observations()["0:2"].data_limits().max_nodes,
+        second_bounds.max_value_nodes
+    );
+    let values = json!(vec!["x"; 300_000]);
+    let mut expected = BTreeMap::from([
+        (
+            "0:1".into(),
+            WorkflowStepExpectation {
+                inputs: json!({"text":"x"}),
+                tool: None,
+                result: ExpectedStepResult::Return(json!({"values":values})),
+            },
+        ),
+        (
+            "0:2".into(),
+            WorkflowStepExpectation {
+                inputs: json!({"previous":values}),
+                tool: None,
+                result: ExpectedStepResult::Return(json!({"count":300000})),
+            },
+        ),
+    ]);
+    let review = Arc::new(
+        WorkflowReview::behavior(
+            &execution,
+            &expected,
+            ExpectedWorkflowTermination::CompletedSteps,
+        )
+        .unwrap(),
+    );
+    let evidence: Value = serde_json::from_str(review.evidence()).unwrap();
+    assert_eq!(evidence["succeeded"], true);
+    assert_eq!(evidence["report"]["semantic_approval"], false);
+    assert_eq!(evidence["report"]["task_completion"], false);
+    assert_eq!(
+        evidence["report"]["observations"][0]["data_limits"]["max_nodes"],
+        first_bounds.max_value_nodes
+    );
+    assert_eq!(
+        evidence["report"]["observations"][1]["data_limits"]["max_nodes"],
+        second_bounds.max_value_nodes
+    );
+    persist_workflow_review(&rig.pool, review.clone())
+        .await
+        .unwrap();
+    let client = rig.pool.get().await.unwrap();
+    let stored: String = client
+        .query_one(
+            "SELECT evidence_bytes FROM reborn_workflow_review_evidence WHERE evidence_id=$1",
+            &[&review.id()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(stored, review.evidence());
+    // The first step's retained larger bound applies even after a reduction.
+    // A different expected value is a failed comparison, never approval.
+    expected.get_mut("0:1").unwrap().result =
+        ExpectedStepResult::Return(json!({"values":vec!["x";900_000]}));
+    let incorrect = WorkflowReview::behavior(
+        &execution,
+        &expected,
+        ExpectedWorkflowTermination::CompletedSteps,
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(incorrect.evidence()).unwrap()["succeeded"],
+        false
+    );
+    expected.get_mut("0:1").unwrap().result = ExpectedStepResult::Return(json!({"values":values}));
+    expected.get_mut("0:2").unwrap().inputs = json!({"previous":vec!["x";700_000]});
+    assert!(matches!(
+        WorkflowReview::behavior(
+            &execution,
+            &expected,
+            ExpectedWorkflowTermination::CompletedSteps
+        ),
+        Err(StructuralReviewFailure::Preparation(_))
+    ));
+    let counts = client.query_one("SELECT (SELECT count(*) FROM reborn_skill_association_approvals),(SELECT count(*) FROM reborn_component_graduation_receipts)", &[]).await.unwrap();
+    assert_eq!(counts.get::<_, i64>(0), 0);
+    assert_eq!(counts.get::<_, i64>(1), 0);
+    // A successful draft observation never fabricates a completed product task.
+    assert!(
+        !admitted
+            .state
+            .get_run_state(GetRunStateRequest {
+                scope: admitted.context.scope.clone(),
+                run_id: admitted.context.run_id
+            })
+            .await
+            .unwrap()
+            .status
+            .is_terminal()
+    );
+    owner.request_termination();
+    let exit = owner.join().await.unwrap();
+    assert!(exit.containment_error.is_none() && exit.reap_error.is_none());
+    assert!(exit.exit_status.is_some());
 }
 
 #[tokio::test]
@@ -706,9 +1039,18 @@ pub(crate) trait ReviewObserver: Send + Sync {
 }
 
 pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserver>) {
+    exercise_behavior_cases(observer, &[(false, false), (true, false)]).await;
+}
+
+#[tokio::test]
+async fn retained_usage_review_accepts_large_actual_answers_and_exact_negative_expectations() {
+    exercise_behavior_cases(None, &[(true, true)]).await;
+}
+
+async fn exercise_behavior_cases(observer: Option<&dyn ReviewObserver>, cases: &[(bool, bool)]) {
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());
-    for invalid_output in [false, true] {
+    for &(invalid_output, large) in cases {
         let before_approvals: i64 = rig
             .pool
             .get()
@@ -723,7 +1065,13 @@ pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserve
             .get(0);
         let prepared = retained_program::program(&store, invalid_output).await;
         let skill = prepared.bindings()["0:2"].skill().uuid;
-        let data = json!({"text":"'quotes'\\slashes\n Ü {{vars.data}} host.forbidden()"});
+        // The large unapproved draft is a negative output case. Its real Tool
+        // answer crosses the former node ceiling; no approval is manufactured.
+        let data = if large {
+            json!({"text":vec![0u8;300_000]})
+        } else {
+            json!({"text":"'quotes'\\slashes\n Ü {{vars.data}} host.forbidden()"})
+        };
         let inputs = json!({"data":data.to_string()});
         let admitted =
             Arc::new(admission::reserve(rig.pool.clone(), inputs["data"].as_str().unwrap()).await);
@@ -738,19 +1086,31 @@ pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserve
         let mut boot = support::boot(&source);
         boot.bounds.workers = 1;
         boot.aliases.insert("validation_result".into());
-        let (mut owner, ready) = TransportOwner::start(
-            support::worker(),
-            boot,
-            support::limits(),
-            ActorLimits {
-                max_unclaimed: 8,
-                max_reserved_frame_bytes: 4 * 1024 * 1024,
-                max_control_unclaimed: 8,
-                max_control_reserved_frame_bytes: 4 * 1024 * 1024,
-            },
-        )
-        .await
-        .unwrap();
+        let mut process_limits = support::limits();
+        let mut actor_limits = ActorLimits {
+            max_unclaimed: 8,
+            max_reserved_frame_bytes: 4 * 1024 * 1024,
+            max_control_unclaimed: 8,
+            max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+        };
+        if large {
+            boot.heap_settings = Some(brassclaw_monty_host::heap::HeapSettings {
+                revision: 1,
+                max_vm_bytes: 512 * 1024 * 1024,
+            });
+            boot.bounds.values.max_value_nodes = 1_048_576;
+            boot.bounds.values.max_value_bytes = 4 * 1024 * 1024;
+            process_limits.hard_memory_bytes = 1024 * 1024 * 1024;
+            process_limits.max_frame_bytes = 8 * 1024 * 1024;
+            process_limits.response_timeout = std::time::Duration::from_secs(30);
+            actor_limits.max_reserved_frame_bytes = 64 * 1024 * 1024;
+            actor_limits.max_control_reserved_frame_bytes = 64 * 1024 * 1024;
+        }
+        let bounds = boot.bounds.values;
+        let (mut owner, ready) =
+            TransportOwner::start(support::worker(), boot, process_limits, actor_limits)
+                .await
+                .unwrap();
         let transport = owner.client();
         let snapshot = exchange(
             &transport,
@@ -1000,6 +1360,22 @@ pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserve
         assert_eq!(actual["kind"], "behavior");
         assert_eq!(actual["succeeded"], !invalid_output);
         assert_eq!(actual["report"]["semantic_approval"], false);
+        assert_eq!(
+            actual["report"]["observations"][0]["data_limits"]["max_nodes"],
+            bounds.max_value_nodes
+        );
+        if large {
+            let answer = &execution.host_answers()[0].1;
+            let PortAnswer::Return { value } = answer else {
+                panic!("actual completed JSON result required");
+            };
+            assert_eq!(value["text"].as_array().unwrap().len(), 300_000);
+            assert_eq!(
+                execution.observations()["0:2"].data_limits().max_nodes,
+                bounds.max_value_nodes
+            );
+        }
+
         assert_eq!(actual["report"]["workflow_completion"], false);
         assert_eq!(
             actual["report"]["observations"].as_array().unwrap().len(),

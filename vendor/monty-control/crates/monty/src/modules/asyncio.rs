@@ -4,6 +4,7 @@
 //! - `run(coro)`: Runs a coroutine to completion, equivalent to `await coro`
 //! - `gather(*awaitables)`: Collects coroutines for concurrent execution
 //! - `sleep(delay, result=None)`: An awaitable governed by the session's `SleepMode`
+//! - `_replace_sibling(slot, coro)`: BrassClaw-only reusable owning-group slot
 //!
 //! Other asyncio functions (`create_task`, `wait`, etc.) are not implemented.
 //! The host acts as the event loop - Monty yields control when tasks are blocked.
@@ -36,12 +37,13 @@ pub(crate) enum AsyncioFunctions {
     Gather,
     Run,
     Sleep,
+    ReplaceSibling,
 }
 
 /// Creates the `asyncio` module and allocates it on the heap.
 ///
-/// The module contains only the `run`, `gather` and `sleep` functions. Other asyncio
-/// functions are not implemented as they would require additional VM/scheduler features.
+/// Standard support is `run`, `gather` and `sleep`. The private BrassClaw
+/// `_replace_sibling` extension is not CPython's `create_task` or a detached task.
 pub fn create_module(vm: &mut VM<'_>) -> HeapId {
     let mut module = Module::new(StaticStrings::Asyncio, vm.interns);
 
@@ -60,6 +62,11 @@ pub fn create_module(vm: &mut VM<'_>) -> HeapId {
         Value::ModuleFunction(ModuleFunctions::Asyncio(AsyncioFunctions::Sleep)),
         vm,
     );
+    module.set_attr(
+        StaticStrings::ReplaceSibling,
+        Value::ModuleFunction(ModuleFunctions::Asyncio(AsyncioFunctions::ReplaceSibling)),
+        vm,
+    );
 
     vm.heap.allocate(HeapData::Module(Box::new(module)))
 }
@@ -68,7 +75,34 @@ pub(super) fn call(vm: &mut VM<'_>, functions: AsyncioFunctions, args: ArgValues
         AsyncioFunctions::Gather => gather(vm, args).map(CallResult::Value),
         AsyncioFunctions::Run => run(vm.heap, args),
         AsyncioFunctions::Sleep => sleep(vm, args),
+        AsyncioFunctions::ReplaceSibling => replace_sibling(vm, args).map(CallResult::Value),
     }
+}
+
+/// Private BrassClaw extension, not CPython's create_task. Only an executing
+/// child can extend its own still-awaited gather or replace a completed slot.
+/// The group keeps its original waiter and ordinary failure/cancellation path.
+fn replace_sibling(vm: &mut VM<'_>, args: ArgValues) -> RunResult<Value> {
+    let (slot, coroutine) = args.get_two_args("asyncio._replace_sibling", vm.heap)?;
+    let mut coroutine_guard = DropGuard::new(coroutine, vm);
+    let slot = {
+        let (_, vm) = coroutine_guard.as_parts_mut();
+        defer_drop!(slot, vm);
+        match slot {
+            Value::Int(index) if *index >= 0 => {
+                usize::try_from(*index).map_err(|_| ExcType::value_error("gather slot is outside the group"))?
+            }
+            _ => return Err(ExcType::type_error("gather slot must be a nonnegative integer")),
+        }
+    };
+    let (coroutine, vm) = coroutine_guard.as_parts_mut();
+    let Value::Ref(coroutine_id) = coroutine else {
+        return Err(ExcType::type_error("a new coroutine is required"));
+    };
+    vm.replace_gather_sibling(slot, *coroutine_id)?;
+    // The group has taken its own reference. The argument guard releases the
+    // call's reference on success as well as on every rejected request.
+    Ok(Value::None)
 }
 
 /// Returns an awaitable producing `result`, retained by [`PostConversionEffect::SleepResult`].

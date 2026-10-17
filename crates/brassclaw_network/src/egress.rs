@@ -93,7 +93,12 @@ where
         })
         .await
         .map_err(|error| NetworkHttpError::Transport {
-            reason: format!("network resolver worker failed: {error}"),
+            reason: if error.is_panic() {
+                "network resolver worker failed: panic"
+            } else {
+                "network resolver worker failed: cancellation"
+            }
+            .to_string(),
             request_bytes: estimated_request_bytes,
             response_bytes: 0,
         })??;

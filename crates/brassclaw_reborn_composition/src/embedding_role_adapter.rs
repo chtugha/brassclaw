@@ -57,7 +57,14 @@ fn map_error(e: brassclaw_embeddings::EmbeddingError) -> MemoryEmbeddingError {
 /// Wrap the inner provider in a `CachedEmbeddingProvider` before passing it
 /// here to avoid redundant HTTP calls for repeated identical texts.
 pub(crate) struct EmbeddingRoleAdapter {
+    space: brassclaw_memory::EmbeddingSpaceId,
     inner: Arc<dyn brassclaw_embeddings::EmbeddingProvider>,
+}
+
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub(crate) struct PreparedMemoryEmbeddingProvider {
+    pub(crate) provider: Arc<dyn brassclaw_memory::EmbeddingProvider>,
+    pub(crate) cache: Arc<CachedEmbeddingProvider>,
 }
 
 impl EmbeddingRoleAdapter {
@@ -66,23 +73,36 @@ impl EmbeddingRoleAdapter {
     pub(crate) fn new_cached(
         provider: Arc<dyn brassclaw_embeddings::EmbeddingProvider>,
         cache_config: EmbeddingCacheConfig,
-    ) -> Arc<dyn brassclaw_memory::EmbeddingProvider> {
-        let cached: Arc<dyn brassclaw_embeddings::EmbeddingProvider> =
-            Arc::new(CachedEmbeddingProvider::new(provider, cache_config));
-        Arc::new(Self { inner: cached })
+        space: brassclaw_memory::EmbeddingSpaceId,
+    ) -> PreparedMemoryEmbeddingProvider {
+        let cache = Arc::new(CachedEmbeddingProvider::new(provider, cache_config));
+        PreparedMemoryEmbeddingProvider {
+            provider: Arc::new(Self {
+                inner: cache.clone(),
+                space,
+            }),
+            cache,
+        }
     }
 
     /// Wrap an embeddings provider without a cache (for tests / backfill worker).
     #[allow(dead_code)] // Used by backfill-embeddings CLI (S10 item 8)
     pub(crate) fn new_uncached(
         provider: Arc<dyn brassclaw_embeddings::EmbeddingProvider>,
+        space: brassclaw_memory::EmbeddingSpaceId,
     ) -> Arc<dyn brassclaw_memory::EmbeddingProvider> {
-        Arc::new(Self { inner: provider })
+        Arc::new(Self {
+            inner: provider,
+            space,
+        })
     }
 }
 
 #[async_trait]
 impl brassclaw_memory::EmbeddingProvider for EmbeddingRoleAdapter {
+    fn space_id(&self) -> &brassclaw_memory::EmbeddingSpaceId {
+        &self.space
+    }
     fn dimension(&self) -> usize {
         self.inner.dimension()
     }

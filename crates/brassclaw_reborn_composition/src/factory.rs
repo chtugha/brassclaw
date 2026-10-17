@@ -206,6 +206,15 @@ where
 }
 
 pub struct RebornServices {
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) memory_embedding_source: Option<Arc<brassclaw_memory::EmbeddingProviderSourceSlot>>,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) source_inspection: Option<Arc<crate::source_inspection::ContainedSourceInspection>>,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) primitive_settings:
+        Option<Arc<crate::host_primitive_settings::AcknowledgedPrimitiveSettings>>,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    pub(crate) http_client_cache_control: Option<brassclaw_network::HttpClientCacheControl>,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     pub(crate) monty_kernel: Option<Arc<dyn crate::monty_kernel::MontyKernelSnapshot>>,
     pub host_runtime: Option<Arc<dyn brassclaw_host_runtime::HostRuntime>>,
@@ -224,6 +233,8 @@ pub struct RebornServices {
     /// rather than standing up a second authority.
     #[cfg(feature = "root-llm-provider")]
     pub(crate) secret_store: Arc<dyn SecretStore>,
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pg_secret_store: Option<Arc<brassclaw_secrets::PgSecretStore>>,
     /// Postgres-backed safety config store (production path).
     #[cfg(feature = "postgres")]
     pub(crate) pg_safety_config_store: Option<Arc<brassclaw_product_workflow::PgSafetyConfigStore>>,
@@ -240,6 +251,14 @@ pub struct RebornServices {
 }
 
 impl RebornServices {
+    #[cfg(feature = "root-llm-provider")]
+    pub(crate) fn llm_key_store(&self) -> crate::LlmKeyStore {
+        #[cfg(feature = "postgres")]
+        if let Some(store) = &self.pg_secret_store {
+            return crate::LlmKeyStore::new_postgres(store.clone());
+        }
+        crate::LlmKeyStore::new(self.secret_store())
+    }
     /// The shared scoped secret store backing this composition.
     #[cfg(feature = "root-llm-provider")]
     pub(crate) fn secret_store(&self) -> Arc<dyn SecretStore> {
@@ -481,6 +500,14 @@ impl std::fmt::Debug for RebornServices {
 impl RebornServices {
     pub fn disabled() -> Self {
         Self {
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            memory_embedding_source: None,
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            source_inspection: None,
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            primitive_settings: None,
+            #[cfg(all(feature = "postgres", feature = "skills-db"))]
+            http_client_cache_control: None,
             #[cfg(all(feature = "postgres", feature = "skills-db"))]
             monty_kernel: None,
             host_runtime: None,
@@ -492,6 +519,8 @@ impl RebornServices {
             pg_pool: None,
             #[cfg(feature = "root-llm-provider")]
             secret_store: Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            pg_secret_store: None,
             #[cfg(feature = "postgres")]
             pg_safety_config_store: None,
             #[cfg(feature = "postgres")]
@@ -548,6 +577,13 @@ pub async fn build_reborn_services(
             .await
             .map_err(|e| RebornBuildError::InvalidConfig {
                 reason: format!("postgres schema migrations failed: {e}"),
+            })?;
+        #[cfg(feature = "root-llm-provider")]
+        crate::PgProviderRepo::new(pool.clone(), effective_tenant_id)
+            .initialize()
+            .await
+            .map_err(|_| RebornBuildError::InvalidConfig {
+                reason: "provider data initialization failed".into(),
             })?;
         let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc))).await?;
         services.pg_pool = Some(Arc::clone(&pg_pool_arc));
@@ -815,15 +851,22 @@ async fn build_local_dev(
     //   `build_local_dev(input, None).await`  // "used in unit tests only"
     // Production serve paths always pass a pool. This filesystem fallback is
     // intentional for test isolation and is NOT a production postgres-less path.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    let mut pg_secret_store = None;
     #[cfg(feature = "postgres")]
     let secret_store: Arc<dyn SecretStore> = if let Some(pool) = pg_pool.as_ref() {
         let master_key = resolve_local_dev_secret_master_key(&root)?;
         let effective_tenant_id = tenant_id.as_deref().unwrap_or("reborn-cli");
-        Arc::new(brassclaw_secrets::PgSecretStore::new(
+        let store = Arc::new(brassclaw_secrets::PgSecretStore::new(
             (**pool).clone(),
             master_key,
             effective_tenant_id,
-        )?)
+        )?);
+        #[cfg(feature = "root-llm-provider")]
+        {
+            pg_secret_store = Some(store.clone());
+        }
+        store
     } else {
         let local_dev_secret_store =
             build_local_dev_secret_store(&root, Arc::clone(&local_dev_product_auth_filesystem))?;
@@ -847,10 +890,8 @@ async fn build_local_dev(
     )
     .with_trust_policy(Arc::clone(&local_dev_trust_policy))
     .with_secret_store_dyn(Arc::clone(&secret_store))
-    .try_with_host_http_egress_with_body_store(
-        brassclaw_network::PolicyNetworkHttpEgress::new(
-            brassclaw_network::ReqwestNetworkTransport::default(),
-        ),
+    .try_with_hardened_http_transport_with_body_store(
+        brassclaw_network::ReqwestNetworkTransport::default(),
         http_body_filesystem,
     )?
     .with_run_state(Arc::clone(&store_graph.run_state))
@@ -1061,11 +1102,80 @@ async fn build_local_dev(
     });
     #[cfg(not(feature = "postgres"))]
     let prefix_bundle_backends = None;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let prefix_generation_backend = pg_pool.as_ref().map(|pool| {
+        Arc::new(crate::pg_prefix_generation_backend::PgPrefixGenerationBackend::new(pool.clone()))
+            as Arc<dyn brassclaw_host_runtime::PrefixGenerationBackend>
+    });
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+    let prefix_generation_backend = None;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let source_inspection = Arc::new(crate::source_inspection::ContainedSourceInspection::new());
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let source_inspection_backend =
+        Some(source_inspection.clone() as Arc<dyn brassclaw_host_runtime::SourceInspectionBackend>);
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+    let source_inspection_backend = None;
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    let memory_embedding_source = pg_pool
+        .as_ref()
+        .map(|_| Arc::new(brassclaw_memory::EmbeddingProviderSourceSlot::default()));
+    #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+    let memory_embedding_source: Option<Arc<brassclaw_memory::EmbeddingProviderSourceSlot>> = None;
+    // Native image retention is a startup consumer of the same configurable
+    // preparation policy used by the global owner. Read before capturing bytes;
+    // a failed/corrupt settings read cannot fall back to a hardcoded ceiling.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let native_registration_limits = {
+        use brassclaw_product_workflow::MontyVmSettingsStore;
+        match pg_pool.as_ref() {
+            Some(pool) => {
+                crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+                    pool.clone(),
+                    "default",
+                    "default",
+                )
+                .get("default", "default")
+                .await
+                .map_err(|_| RebornBuildError::InvalidConfig {
+                    reason: "native registration settings are unavailable or invalid".into(),
+                })?
+                .execution_limits
+            }
+            // Local-only composition is a test consumer. A first installation
+            // with no settings row uses the settings store's canonical defaults.
+            None => brassclaw_host_api::MontyExecutionLimits::default(),
+        }
+    };
+    #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+    let native_registration_limits = brassclaw_host_api::MontyExecutionLimits::default();
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    let primitive_settings =
+        Arc::new(crate::host_primitive_settings::AcknowledgedPrimitiveSettings::new());
     let mut first_party_registry = builtin_first_party_registry_with_trigger_create_hook(
-        Arc::clone(&store_graph.trigger_repository),
-        trigger_create_hook,
-        component_db_backend,
-        prefix_bundle_backends,
+        BuiltinFirstPartyRegistrationInputs {
+            trigger_repository: Arc::clone(&store_graph.trigger_repository),
+            trigger_create_hook,
+            component_db_backend,
+            prefix_bundle_backends,
+            prefix_generation_backend,
+            source_inspection_backend,
+            primitive_settings: {
+                #[cfg(all(feature = "postgres", feature = "skills-db"))]
+                {
+                    Some(primitive_settings.clone()
+                        as Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>)
+                }
+                #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
+                {
+                    None
+                }
+            },
+            memory_embedding_source: memory_embedding_source
+                .as_ref()
+                .map(|source| source.clone() as Arc<dyn brassclaw_memory::EmbeddingProviderSource>),
+            native_registration_limits,
+        },
     )
     .await?;
     register_bundled_gsuite_first_party_handlers(
@@ -1110,6 +1220,14 @@ async fn build_local_dev(
     let monty_kernel = crate::monty_kernel::capture(&services)?;
 
     Ok(RebornServices {
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        memory_embedding_source,
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        source_inspection: Some(source_inspection),
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        primitive_settings: Some(primitive_settings),
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        http_client_cache_control: services.http_client_cache_control(),
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         monty_kernel: Some(monty_kernel),
         host_runtime: Some(host_runtime),
@@ -1124,6 +1242,8 @@ async fn build_local_dev(
         pg_pool: None,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        pg_secret_store,
         #[cfg(feature = "postgres")]
         pg_safety_config_store: None,
         #[cfg(feature = "postgres")]
@@ -1791,7 +1911,7 @@ pub(crate) fn builtin_extension_registry() -> Result<ExtensionRegistry, RebornBu
     Ok(registry)
 }
 
-async fn builtin_first_party_registry_with_trigger_create_hook(
+struct BuiltinFirstPartyRegistrationInputs {
     trigger_repository: Arc<dyn TriggerRepository>,
     trigger_create_hook: Arc<dyn TriggerCreateHook>,
     component_db_backend: Option<Arc<dyn brassclaw_host_runtime::ComponentDbBackend>>,
@@ -1799,9 +1919,54 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
         Arc<dyn brassclaw_host_runtime::SweepValidatedComponentsBackend>,
         Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
     )>,
+    prefix_generation_backend: Option<Arc<dyn brassclaw_host_runtime::PrefixGenerationBackend>>,
+    source_inspection_backend: Option<Arc<dyn brassclaw_host_runtime::SourceInspectionBackend>>,
+    primitive_settings: Option<Arc<dyn brassclaw_host_runtime::HostPrimitiveSettingsSource>>,
+    memory_embedding_source: Option<Arc<dyn brassclaw_memory::EmbeddingProviderSource>>,
+    native_registration_limits: brassclaw_host_api::MontyExecutionLimits,
+}
+
+async fn builtin_first_party_registry_with_trigger_create_hook(
+    inputs: BuiltinFirstPartyRegistrationInputs,
 ) -> Result<FirstPartyCapabilityRegistry, RebornBuildError> {
+    let BuiltinFirstPartyRegistrationInputs {
+        trigger_repository,
+        trigger_create_hook,
+        component_db_backend,
+        prefix_bundle_backends,
+        prefix_generation_backend,
+        source_inspection_backend,
+        primitive_settings,
+        memory_embedding_source,
+        native_registration_limits,
+    } = inputs;
     if cfg!(feature = "skills-db") {
+        let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
+            native_registration_limits,
+        )
+        .map_err(|_| RebornBuildError::InvalidConfig {
+            reason: "native registration preparation limits are invalid".into(),
+        })?;
+        let verification = brassclaw_host_runtime::NativeVerificationLimits::new(
+            preparation.bounds.max_stdout_bytes,
+            preparation.process.response_timeout,
+        )
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("native registration verification limits are invalid: {error}"),
+        })?;
         let mut tools = brassclaw_host_runtime::BuiltinFirstPartyTools::default();
+        if let Some(source) = primitive_settings {
+            tools = tools.with_primitive_settings_source(source);
+        }
+        if let Some(source) = memory_embedding_source {
+            tools = tools.with_memory_embedding_source(source);
+        }
+        if let Some(backend) = source_inspection_backend {
+            tools = tools.with_source_inspection_backend(backend);
+        }
+        if let Some(backend) = prefix_generation_backend {
+            tools = tools.with_prefix_generation_backend(backend);
+        }
         if let Some(backend) = component_db_backend {
             tools = tools.with_component_db(backend);
         }
@@ -1812,7 +1977,8 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
             tools,
             trigger_repository,
             trigger_create_hook,
-            1024 * 1024 * 1024,
+            preparation.max_native_artifact_bytes,
+            verification,
         )
         .await
         .map_err(|error| RebornBuildError::InvalidConfig {
@@ -1822,8 +1988,26 @@ async fn builtin_first_party_registry_with_trigger_create_hook(
     let map_err = |error: brassclaw_host_api::HostApiError| RebornBuildError::InvalidConfig {
         reason: format!("built-in first-party handlers are invalid: {error}"),
     };
-    if component_db_backend.is_some() || prefix_bundle_backends.is_some() {
+    if component_db_backend.is_some()
+        || prefix_bundle_backends.is_some()
+        || prefix_generation_backend.is_some()
+        || source_inspection_backend.is_some()
+        || primitive_settings.is_some()
+        || memory_embedding_source.is_some()
+    {
         let mut tools = brassclaw_host_runtime::BuiltinFirstPartyTools::default();
+        if let Some(source) = primitive_settings {
+            tools = tools.with_primitive_settings_source(source);
+        }
+        if let Some(source) = memory_embedding_source {
+            tools = tools.with_memory_embedding_source(source);
+        }
+        if let Some(backend) = source_inspection_backend {
+            tools = tools.with_source_inspection_backend(backend);
+        }
+        if let Some(backend) = prefix_generation_backend {
+            tools = tools.with_prefix_generation_backend(backend);
+        }
         if let Some(backend) = component_db_backend {
             tools = tools.with_component_db(backend);
         }
@@ -2040,10 +2224,8 @@ where
     let services = apply_production_runtime_process_binding(services, process_binding);
 
     let services = services
-        .try_with_host_http_egress_with_body_store(
-            brassclaw_network::PolicyNetworkHttpEgress::new(
-                brassclaw_network::ReqwestNetworkTransport::default(),
-            ),
+        .try_with_hardened_http_transport_with_body_store(
+            brassclaw_network::ReqwestNetworkTransport::default(),
             Arc::clone(&scoped_filesystem),
         )
         .map_err(crate::RebornCompositionError::from)?;
@@ -2126,121 +2308,209 @@ async fn resolve_explicit_or_keychain_master_key(
     }
 }
 
-/// Resolve the embedding provider from `brassclaw_config` for the given tenant.
-///
-/// Returns `None` when no `embedding.provider_id` is configured or the provider
-/// cannot be resolved.  All errors are logged at debug level and swallowed.
+/// Resolve one embedding selection and its definition from the same committed
+/// catalogue snapshot. Only an absent selection disables embeddings.
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-async fn resolve_pg_embedding_provider(
+pub(crate) async fn resolve_pg_embedding_provider_pub(
     pool: &deadpool_postgres::Pool,
     tenant_id: &str,
-) -> Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> {
-    use crate::embedding_providers::{ProviderDeps, create_provider};
-    use crate::embedding_role_adapter::EmbeddingRoleAdapter;
-    use crate::pg_provider_repo::PgProviderRepo;
-    use brassclaw_embeddings::EmbeddingCacheConfig;
+    runtime_storage_root: &Path,
+    secret_store_tenant: &str,
+) -> Result<
+    Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     use brassclaw_llm::{SessionConfig, SessionManager};
 
-    // Load config snapshot to get embedding.provider_id.
-    let config = match crate::db_config::load_config_snapshot(pool, tenant_id).await {
-        Ok(c) => c,
-        Err(err) => {
-            tracing::debug!(error = %err, "failed to load config for embedding resolution");
-            return None;
-        }
-    };
-    let embedding = config.embedding?;
-    let provider_id = embedding.provider_id?;
-    if provider_id.is_empty() {
-        return None;
+    let admin = crate::RebornProviderAdmin::new(pool.clone(), tenant_id);
+    // An unconfigured embedding role needs no master key. This preflight has
+    // no effects; the configured path captures the role again with its key.
+    let (snapshot, _) = admin.snapshot().await?;
+    if snapshot
+        .embedding
+        .as_ref()
+        .and_then(|selection| selection.provider_id.as_deref())
+        .is_none_or(str::is_empty)
+    {
+        return Ok(None);
     }
-    let model = embedding.model.clone();
 
-    // Look up the provider definition from the DB — load_all() returns both
-    // builtin and custom providers, so embedding configs pointing at a builtin
-    // provider (e.g. "openai") are resolved correctly.
-    let provider_repo = PgProviderRepo::new(pool.clone(), tenant_id.to_string());
-    let providers = match provider_repo.load_all().await {
-        Ok(pairs) => pairs.into_iter().map(|(def, _)| def).collect::<Vec<_>>(),
-        Err(err) => {
-            tracing::debug!(error = %err, "failed to load providers for embedding resolution");
-            return None;
-        }
+    // Maintenance uses the same persisted master key and physical secret-store
+    // owner as serve. It never generates a replacement key or copies ciphertext
+    // into the chat-memory data owner's namespace.
+    let master_key = std::fs::read_to_string(
+        runtime_storage_root.join(LOCAL_DEV_SECRETS_MASTER_KEY_PATH),
+    ).map_err(|_| crate::RebornLlmCatalogError::DbError {
+        reason: "runtime secret master key is unavailable; initialize the instance before embedding maintenance".into(),
+    })?;
+    let secret_store = Arc::new(brassclaw_secrets::PgSecretStore::new(
+        pool.clone(),
+        secrecy::SecretString::from(master_key.trim().to_string()),
+        secret_store_tenant,
+    )?);
+    let keys = crate::LlmKeyStore::new_postgres(secret_store);
+    let Some(captured) = admin
+        .capture_selection(
+            crate::provider_admin::ProviderSelectionSource::Role(
+                brassclaw_llm::ProviderRole::Embedding,
+            ),
+            &keys,
+        )
+        .await?
+    else {
+        return Ok(None);
     };
-    let provider_def = providers.into_iter().find(|p| p.id == provider_id);
-
-    // Build the embeddings config from the provider definition.
-    let embeddings_config = build_embeddings_config_from_provider(provider_def.as_ref(), &model)?;
-
-    // Build the provider.
     let session = Arc::new(SessionManager::new(SessionConfig::default()));
+    build_captured_embedding_provider(tenant_id, captured, session)
+        .await
+        .map(|prepared| Some(prepared.provider))
+}
+
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub(crate) async fn build_captured_embedding_provider(
+    tenant_id: &str,
+    captured: crate::provider_admin::CapturedProviderSelection,
+    session: Arc<brassclaw_llm::SessionManager>,
+) -> Result<
+    crate::embedding_role_adapter::PreparedMemoryEmbeddingProvider,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
+    use crate::embedding_providers::{ProviderDeps, create_provider};
+    use crate::embedding_role_adapter::EmbeddingRoleAdapter;
+    use brassclaw_embeddings::EmbeddingCacheConfig;
+    use sha2::Digest as _;
+    let config = build_embeddings_config_from_provider(
+        &captured.definition,
+        captured.selection.model,
+        captured.credential,
+    )?;
     let deps = ProviderDeps {
         session,
         #[cfg(feature = "bedrock")]
         bedrock_setup: None,
     };
-    let raw_provider = create_provider(&embeddings_config, deps).await?;
-
-    // Wrap in EmbeddingRoleAdapter with default cache config.
-    Some(EmbeddingRoleAdapter::new_cached(
+    let raw_provider = tokio::time::timeout(
+        std::time::Duration::from_secs(config.request_policy.timeout_secs),
+        create_provider(&config, deps),
+    )
+    .await
+    .map_err(|_| {
+        brassclaw_embeddings::EmbeddingError::HttpError(
+            "embedding provider construction timed out".into(),
+        )
+    })??
+    .ok_or_else(|| {
+        brassclaw_embeddings::EmbeddingError::InvalidResponse(
+            "configured embedding selection unexpectedly disabled its adapter".into(),
+        )
+    })?;
+    let contract = captured
+        .definition
+        .embedding_models
+        .0
+        .get(&config.model)
+        .ok_or_else(|| {
+            brassclaw_embeddings::EmbeddingError::InvalidResponse(
+                "selected embedding contract missing".into(),
+            )
+        })?;
+    let space_bytes = serde_json::to_vec(&(
+        "brassclaw-embedding-space/1",
+        tenant_id,
+        &captured.definition.id,
+        captured.definition.protocol,
+        config
+            .openai_base_url
+            .as_deref()
+            .unwrap_or(&config.ollama_base_url)
+            .trim_end_matches('/'),
+        &config.model,
+        config.dimension,
+        contract.vector_revision.get(),
+    ))?;
+    let space =
+        brassclaw_memory::EmbeddingSpaceId::from_digest(sha2::Sha256::digest(&space_bytes).into());
+    Ok(EmbeddingRoleAdapter::new_cached(
         raw_provider,
-        EmbeddingCacheConfig::default(),
+        EmbeddingCacheConfig {
+            max_entries: config.cache_size,
+        },
+        space,
     ))
 }
 
-/// Build `EmbeddingsConfig` from a provider definition (optional) and a model override.
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 fn build_embeddings_config_from_provider(
-    provider_def: Option<&brassclaw_llm::ProviderDefinition>,
-    model_override: &Option<String>,
-) -> Option<crate::embedding_providers::EmbeddingsConfig> {
-    use crate::embedding_providers::{EmbeddingsConfig, default_dimension_for_model};
+    definition: &brassclaw_llm::ProviderDefinition,
+    model_override: Option<String>,
+    stored_key: Option<secrecy::SecretString>,
+) -> Result<crate::embedding_providers::EmbeddingsConfig, brassclaw_embeddings::EmbeddingError> {
+    use crate::embedding_providers::EmbeddingsConfig;
+    use brassclaw_embeddings::EmbeddingError;
     use brassclaw_llm::registry::ProviderProtocol;
+    use secrecy::ExposeSecret as _;
 
-    let Some(def) = provider_def else {
-        tracing::debug!("embedding.provider_id not found in provider catalog — embedding disabled");
-        return None;
-    };
-
-    // Map ProviderProtocol to the EmbeddingsConfig provider string.
-    let provider_str = match def.protocol {
+    let provider = match definition.protocol {
         ProviderProtocol::Ollama => "ollama",
         ProviderProtocol::NearAi => "nearai",
         ProviderProtocol::Bedrock => "bedrock",
-        // OpenAI-compatible variants all use the openai embeddings backend.
-        _ => "openai",
+        ProviderProtocol::OpenAiCompletions | ProviderProtocol::OpenRouter => "openai",
+        _ => {
+            return Err(EmbeddingError::InvalidResponse(
+                "selected provider protocol has no supported embedding adapter".into(),
+            ));
+        }
     };
-
-    let model = model_override
-        .clone()
-        .unwrap_or_else(|| def.default_model.clone());
-    let dimension = default_dimension_for_model(&model);
-    let base_url = def.default_base_url.clone();
-
-    let config = EmbeddingsConfig {
-        enabled: true,
-        provider: provider_str.to_string(),
-        model,
-        dimension,
-        openai_base_url: base_url,
-        // API key resolved from env via api_key_env at composition startup.
-        openai_api_key: def
+    let model = model_override.unwrap_or_else(|| definition.default_model.clone());
+    if model.trim().is_empty() {
+        return Err(EmbeddingError::InvalidResponse(
+            "embedding model is empty".into(),
+        ));
+    }
+    let contract = definition.embedding_models.0.get(&model).ok_or_else(|| {
+        EmbeddingError::InvalidResponse(
+            "configure this model's embedding dimension and cache limit in provider settings"
+                .into(),
+        )
+    })?;
+    // A named external credential source is still a secret-broker input. It
+    // never overrides the selected catalogue model, protocol or endpoint.
+    let key = stored_key.or_else(|| {
+        definition
             .api_key_env
             .as_deref()
-            .and_then(|var| std::env::var(var).ok().map(secrecy::SecretString::from)),
-        ..EmbeddingsConfig::default()
-    };
-    Some(config)
-}
-
-/// Public alias for `resolve_pg_embedding_provider` — used by the
-/// `backfill-embeddings` CLI command in `retention_sweep.rs`.
-#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-pub(crate) async fn resolve_pg_embedding_provider_pub(
-    pool: &deadpool_postgres::Pool,
-    tenant_id: &str,
-) -> Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> {
-    resolve_pg_embedding_provider(pool, tenant_id).await
+            .and_then(|name| std::env::var(name).ok())
+            .map(secrecy::SecretString::from)
+    });
+    if key
+        .as_ref()
+        .is_some_and(|value| value.expose_secret().trim().is_empty())
+        || (definition.api_key_required && key.is_none())
+    {
+        return Err(EmbeddingError::AuthFailed);
+    }
+    let base_url = definition
+        .default_base_url
+        .as_deref()
+        .filter(|url| !url.trim().is_empty())
+        .ok_or_else(|| {
+            EmbeddingError::InvalidResponse(
+                "embedding endpoint must be specified in the provider catalogue".into(),
+            )
+        })?;
+    Ok(EmbeddingsConfig {
+        enabled: true,
+        provider: provider.into(),
+        dimension: contract.dimension.get() as usize,
+        cache_size: contract.cache_max_entries as usize,
+        request_policy: definition.request_policy,
+        model,
+        openai_api_key: key,
+        api_key_required: definition.api_key_required,
+        openai_base_url: Some(base_url.into()),
+        ollama_base_url: base_url.into(),
+        nearai_base_url: base_url.into(),
+    })
 }
 
 fn readiness_for(

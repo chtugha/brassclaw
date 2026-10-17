@@ -490,6 +490,24 @@ impl TurnStateStore for PgTurnStateStore {
         .await
     }
 
+    async fn request_cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        if request.scope.tenant_id.as_str() != self.tenant_id {
+            return Err(TurnError::ScopeNotFound);
+        }
+        let thread_id = request.scope.thread_id.clone();
+        self.apply(&thread_id, |store| {
+            let request = request.clone();
+            async move {
+                let outcome = store.request_cancel_tree(request).await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
         let thread_id = request.scope.thread_id.clone();
         let (snapshot, _) = self.read_snapshot(&thread_id).await?;
@@ -548,8 +566,38 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
         scope: &TurnScope,
         run_id: TurnRunId,
     ) -> Result<Option<TurnRunRecord>, TurnError> {
-        let (snapshot, _) = self.read_snapshot(&scope.thread_id).await?;
-        Ok(project_run_record(&snapshot, scope, run_id))
+        if scope.tenant_id.as_str() != self.tenant_id {
+            return Ok(None);
+        }
+        // Lifecycle observers need one record, not a decoded copy of every
+        // run, event and checkpoint in the tree. Resolve the child-to-root
+        // snapshot link in the same statement as this committed projection.
+        // Two matches suffice to detect corruption; never pick one duplicate.
+        let client = self.pool.get().await.map_err(map_pg_pool)?;
+        let rows = client
+            .query(
+                "SELECT run FROM brassclaw_turns AS snapshot \
+                 CROSS JOIN LATERAL jsonb_array_elements(snapshot.payload->'runs') AS selected(run) \
+                 WHERE snapshot.tenant_id = $1 AND snapshot.status = 'snapshot' \
+                   AND snapshot.turn_id = \
+                     COALESCE((SELECT snapshot_thread_id FROM brassclaw_turn_snapshot_threads \
+                               WHERE tenant_id = $1 AND thread_id = $2), $2) \
+                   AND run->>'run_id' = $3 LIMIT 2",
+                &[&self.tenant_id, &scope.thread_id.as_str(), &run_id.to_string()],
+            )
+            .await
+            .map_err(map_pg)?;
+        if rows.len() > 1 {
+            return Err(TurnError::Unavailable {
+                reason: "turn-state snapshot contains duplicate run identities".to_string(),
+            });
+        }
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let record: TurnRunRecord =
+            serde_json::from_value(row.get::<_, Value>(0)).map_err(map_json_de)?;
+        Ok((record.run_id == run_id && record.scope == *scope).then_some(record))
     }
 
     async fn reserve_tree_descendants(
@@ -873,18 +921,6 @@ fn project_children_of(
         .collect();
     children.sort_by_key(|r| r.received_at);
     children
-}
-
-fn project_run_record(
-    snapshot: &TurnPersistenceSnapshot,
-    scope: &TurnScope,
-    run_id: TurnRunId,
-) -> Option<TurnRunRecord> {
-    snapshot
-        .runs
-        .iter()
-        .find(|r| r.run_id == run_id && r.scope == *scope)
-        .cloned()
 }
 
 // ---------------------------------------------------------------------------

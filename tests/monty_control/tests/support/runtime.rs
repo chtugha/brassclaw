@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, path::Path, time::Duration};
 
 pub(crate) fn boot(source: &str) -> RootBoot {
-    RootBoot {
+    let mut boot = RootBoot {
         adapter_reserve_bytes: brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize,
         heap_settings: Some(HeapSettings {
             revision: 1,
@@ -57,7 +57,13 @@ pub(crate) fn boot(source: &str) -> RootBoot {
             token_budgets_enabled: false,
         },
         max_recipe_contexts: 8,
+    };
+    // Only the exact shipped entry starts its pool coordinator. Draft entry
+    // points may reuse definitions without calling _global_main.
+    if source == include_str!("../../../../crates/brassclaw_engine/orchestrator/global_mode.py") {
+        boot.aliases.insert("await_pool_update".into());
     }
+    boot
 }
 pub(crate) fn limits() -> ProcessLimits {
     ProcessLimits {

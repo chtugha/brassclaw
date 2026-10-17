@@ -29,7 +29,7 @@ not completed runtime or database functionality.
   Python source. Monty owns each task's intermediate results; unrelated tasks
   and attempts stay isolated, including across child execution and waits.
 - Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
 
 Current code still has plain text substitution, fresh state in nested step
@@ -185,10 +185,10 @@ operator tabs and their backend reality (per `settings-api.js`):
 | `orchestrator` | `OrchestratorTab` | `/api/settings/orchestrators` | Phase 6 |
 | `scaffold` | `ScaffoldTab` | `/api/settings/scaffolds` | Phase 6 |
 | `monty-vm` | `MontyVmTab` | `/api/settings/monty-vm`, `.../restart`, `.../status` | Phase 6 |
-| `validation-queue` | `ValidationQueueTab` | `/api/webchat/v2/validation-queue`, `.../count`, `/components/{class}/{id}/validate|reject` | **live** |
+| `validation-queue` | `ValidationQueueTab` | `/api/webchat/v2/validation-queue`, `.../count`, `/components/{class}/{id}/validate\|reject` | **live** |
 | `reliability` | `ReliabilityTab` | (settings) | Phase 6 |
-| `interceptor` | `InterceptorTab` | `/api/webchat/v2/interceptor/config|reassemble|prewarm` | **live** ← holds the base-prompt compile UI today |
-| `safety` | `SafetyPanel` | `/api/webchat/v2/safety/sensitive-paths|workspace-rules|blocked-paths` | **live** |
+| `interceptor` | `InterceptorTab` | `/api/webchat/v2/interceptor/config\|reassemble\|prewarm` | **live** ← holds the base-prompt compile UI today |
+| `safety` | `SafetyPanel` | `/api/webchat/v2/safety/sensitive-paths\|workspace-rules\|blocked-paths` | **live** |
 | `tokens` | `TokensTab` | `/api/webchat/v2/providers/{id}/tokens` | live (per-provider; global removed) |
 | `users` | `UsersTab` | (stub: `TODO: requires v2 users endpoint`) | stub |
 | `language` | `LanguageTab` | (client-side i18n) | live |

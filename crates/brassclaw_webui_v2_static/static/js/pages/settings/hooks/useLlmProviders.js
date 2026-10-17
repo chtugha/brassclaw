@@ -11,6 +11,9 @@ import {
   isProviderConfigured,
   providerDefaultModel,
   providerMissingReason,
+  providerModelDiscoveryPolicy,
+  providerRequestPolicy,
+  providerEmbeddingModels,
 } from "../lib/llm-providers.js";
 
 // The v2 `/llm/providers` snapshot is the single source of truth: a unified
@@ -33,6 +36,9 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     ...provider,
     name: provider.description,
     has_api_key: provider.api_key_set === true,
+  }));
+  const inactiveProviders = (snapshot.inactive_providers || []).map((provider) => ({
+    ...provider, name: provider.description, has_api_key: provider.api_key_set === true,
   }));
   // Whether the backend has a usable active provider. Prefer the persisted
   // operator snapshot, but also honor runtime/env-configured LLMs surfaced by
@@ -69,18 +75,21 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     onSuccess: refresh,
   });
 
-  // Both custom and built-in saves go through one upsert endpoint. A built-in
-  // "override" is just an overlay entry that shadows the compiled-in provider
-  // by id; the backend resolves later entries last.
+  // All origins edit the same DB definition with its displayed revision.
   const saveProviderMutation = useMutation({
     mutationFn: async ({ provider, form, apiKey, editingProvider }) => {
-      const isBuiltin = Boolean(provider?.builtin);
-      const id = (isBuiltin ? provider.id : form.id.trim()).trim();
+      const editing = provider || editingProvider;
+      const id = (editing?.id || form.id.trim()).trim();
       const payload = {
         id,
-        name: isBuiltin ? provider.name || provider.id : form.name.trim(),
-        adapter: isBuiltin ? provider.adapter : form.adapter,
-        base_url: form.baseUrl.trim() || provider?.base_url || "",
+        expected_revision: editing?.revision,
+        model_discovery: providerModelDiscoveryPolicy(form),
+        request_policy: providerRequestPolicy(form),
+        embedding_models: providerEmbeddingModels(form),
+        response_cache: { enabled: form.cacheEnabled === true, max_entries: Number(form.cacheEntries), ttl_secs: Number(form.cacheTtlSecs) },
+        name: form.name.trim(),
+        adapter: form.adapter,
+        base_url: form.baseUrl.trim() || editing?.base_url || "",
         default_model: form.model.trim() || undefined,
       };
       // Only send a key when a new value was typed; otherwise leave the stored
@@ -96,14 +105,16 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
       return payload;
     },
     onSuccess: refresh,
+    onError: refresh,
   });
 
   const deleteCustomMutation = useMutation({
     mutationFn: async (provider) => {
-      await deleteLlmProvider(provider.id);
+      await deleteLlmProvider(provider.id, provider.revision);
       return provider;
     },
     onSuccess: refresh,
+    onError: refresh,
   });
 
   const deactivateMutation = useMutation({
@@ -140,6 +151,10 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     builtinProviders,
     customProviders,
     builtinOverrides,
+    inactiveProviders,
+    responseCacheDefaults: snapshot.response_cache_defaults,
+    modelDiscoveryDefaults: snapshot.model_discovery_defaults,
+    requestPolicyDefaults: snapshot.request_policy_defaults,
     activeProviderId,
     selectedModel,
     hasActiveProvider,

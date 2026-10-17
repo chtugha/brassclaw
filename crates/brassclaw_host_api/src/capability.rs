@@ -15,6 +15,17 @@ use crate::{
     RuntimeCredentialTarget, RuntimeKind, SecretHandle, Timestamp, TrustClass,
 };
 
+/// Host-selected dispatch authorization model. This is an adapter contract,
+/// not a caller-supplied permission or a serializable execution-context field.
+/// Technical enforcement and the final authorization decision stay in the kernel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DispatchAuthorityModel {
+    /// Transitional hosts require scoped grants or operation leases.
+    ScopedGrants,
+    /// The host checks current instance-wide Tool policy on every dispatch.
+    InstancePolicy,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectKind {

@@ -671,6 +671,17 @@ pub trait ResourceGovernor: Send + Sync {
         actual: ResourceUsage,
     ) -> Result<ResourceReceipt, ResourceError>;
 
+    /// Opt-in exact-result recovery. Repeating the same reservation and usage
+    /// must read back the same settlement without charging twice. A different
+    /// usage or a released reservation fails closed. None means unsupported.
+    fn reconcile_retained(
+        &self,
+        _reservation_id: ResourceReservationId,
+        _actual: ResourceUsage,
+    ) -> Option<Result<ResourceReceipt, ResourceError>> {
+        None
+    }
+
     /// Releases an active reservation without usage when work is cancelled or fails before reconciliation.
     fn release(
         &self,
@@ -1242,6 +1253,25 @@ where
         result
     }
 
+    fn reconcile_retained(
+        &self,
+        reservation_id: ResourceReservationId,
+        actual: ResourceUsage,
+    ) -> Option<Result<ResourceReceipt, ResourceError>> {
+        let now = self.clock.now();
+        let result = self.store.update(move |snapshot| {
+            reconcile_retained_in_state(&mut snapshot.state, reservation_id, actual, now)
+        });
+        if let Ok((receipt, true)) = &result {
+            self.event_sink.emit(BudgetEvent::Reconciled {
+                account: most_specific_account(&receipt.scope),
+                receipt: receipt.clone(),
+                at: now,
+            });
+        }
+        Some(result.map(|(receipt, _)| receipt))
+    }
+
     fn release(
         &self,
         reservation_id: ResourceReservationId,
@@ -1649,6 +1679,24 @@ impl ResourceGovernor for InMemoryResourceGovernor {
         result
     }
 
+    fn reconcile_retained(
+        &self,
+        reservation_id: ResourceReservationId,
+        actual: ResourceUsage,
+    ) -> Option<Result<ResourceReceipt, ResourceError>> {
+        let now = self.clock.now();
+        let result =
+            reconcile_retained_in_state(&mut self.lock_state(), reservation_id, actual, now);
+        if let Ok((receipt, true)) = &result {
+            self.event_sink.emit(BudgetEvent::Reconciled {
+                account: most_specific_account(&receipt.scope),
+                receipt: receipt.clone(),
+                at: now,
+            });
+        }
+        Some(result.map(|(receipt, _)| receipt))
+    }
+
     fn release(
         &self,
         reservation_id: ResourceReservationId,
@@ -1916,6 +1964,31 @@ fn reserve_with_outcome_in_state(
         reservation,
         warnings,
     })
+}
+
+fn reconcile_retained_in_state(
+    state: &mut ResourceState,
+    reservation_id: ResourceReservationId,
+    actual: ResourceUsage,
+    now: DateTime<Utc>,
+) -> Result<(ResourceReceipt, bool), ResourceError> {
+    let record = state
+        .reservations
+        .get(&reservation_id)
+        .ok_or(ResourceError::UnknownReservation { id: reservation_id })?;
+    if record.status == ReservationStatus::Reconciled && record.actual.as_ref() == Some(&actual) {
+        return Ok((
+            ResourceReceipt {
+                id: reservation_id,
+                scope: record.reservation.scope.clone(),
+                status: record.status,
+                estimate: record.reservation.estimate.clone(),
+                actual: record.actual.clone(),
+            },
+            false,
+        ));
+    }
+    reconcile_in_state(state, reservation_id, actual, now).map(|receipt| (receipt, true))
 }
 
 fn reconcile_in_state(

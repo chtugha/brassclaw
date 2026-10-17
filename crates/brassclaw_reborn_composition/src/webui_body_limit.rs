@@ -14,8 +14,8 @@
 //! - It runs **after** the outer `RequestBodyLimitLayer` global cap
 //!   that [`crate::webui_serve::webui_v2_app`] keeps as a defense in
 //!   depth for paths that don't match any v2 descriptor (e.g. axum's
-//!   404 fallback). Per-route enforcement is strictly tighter than that
-//!   global cap.
+//!   404 fallback). Per-route enforcement is no larger than that by default;
+//!   an explicit smaller global cap still limits every route.
 //!
 //! `BodyLimitPolicy` has only two variants today (`NoBody` and
 //! `Limited { max_bytes }`); both are supported. The `match` is

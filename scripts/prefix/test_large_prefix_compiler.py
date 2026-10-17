@@ -149,6 +149,11 @@ class CompilerTests(unittest.TestCase):
         self.assertNotEqual(after['evidence_cards_sha256'],before['evidence_cards_sha256'])
         self.assertEqual(after['sha256'],before['sha256'])
         self.assertEqual(after['shared_prefix_token_sha256'],before['shared_prefix_token_sha256'])
+        self.assertEqual(after['compiler_procedure']['execution_attestation'], 'unqualified-development-process')
+        for name, expected in after['compiler_procedure']['files'].items():
+            artifact = c.BASE/'generations'/after['generation']/name
+            self.assertEqual(hashlib.sha256(artifact.read_bytes()).hexdigest(), expected)
+        self.assertEqual((c.BASE/'generations'/after['generation']/'compiler/entry.py').read_bytes(), Path(c.__file__).read_bytes())
         self.assertTrue((c.BASE/'generations'/before['generation']/'prefix_manifest.json').is_file())
 
     def test_refresh_preserves_publication_and_crlf_snapshot(self):

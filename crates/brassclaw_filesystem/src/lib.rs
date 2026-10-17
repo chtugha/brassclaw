@@ -15,6 +15,10 @@
 //! with `RESOLVE_BENEATH`, `O_NOFOLLOW`, or a capability filesystem crate.
 #![warn(unreachable_pub)]
 
+// The same real-backend contract is compiled here and in native consumers.
+#[cfg(test)]
+extern crate self as brassclaw_filesystem;
+
 mod backend;
 mod catalog;
 #[cfg(feature = "postgres")]
@@ -40,7 +44,8 @@ pub use local::LocalFilesystem;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresRootFilesystem;
 pub use record::{
-    CasExpectation, ContentType, Entry, RecordKind, RecordVersion, SeqNo, VersionedEntry,
+    CasExpectation, ContentType, Entry, EntryIndexMetadata, EntryMetadata, RecordKind,
+    RecordVersion, SeqNo, VersionedEntry,
 };
 pub use root::RootFilesystem;
 pub use scoped::{MountViewResolver, ScopedFilesystem};

@@ -89,7 +89,7 @@ fn unavailable<T>(_: T) -> McpDiscoveryError {
 /// A conservative language intersection check for the matcher's SQL LIKE
 /// grammar. Compatible literal prefixes AND suffixes may intersect; decline
 /// qualification rather than rely on scores/row order or a finite sample.
-fn may_overlap(left: &str, right: &str) -> bool {
+pub(crate) fn may_overlap(left: &str, right: &str) -> bool {
     let (lp, ls) = (
         left.split('%').next().unwrap(),
         left.rsplit('%').next().unwrap(),
@@ -111,6 +111,38 @@ pub(crate) async fn qualify_installed_commands(
     programs: &[&InspectedRetainedProgram],
     routing: &[&InspectedRetainedProgram],
     approval: Option<&crate::bootstrap_reply_approval::BootstrapReplyApproval>,
+) -> Result<QualifiedCommands, McpDiscoveryError> {
+    qualify_catalogue_commands(pool, scope, generation, programs, routing, approval, None).await
+}
+
+pub(crate) async fn qualify_authored_commands(
+    pool: &PgPool,
+    scope: &IntentScope,
+    generation: Uuid,
+    programs: &[&InspectedRetainedProgram],
+    routing: &[&InspectedRetainedProgram],
+    owner: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
+) -> Result<QualifiedCommands, McpDiscoveryError> {
+    qualify_catalogue_commands(
+        pool,
+        scope,
+        generation,
+        programs,
+        routing,
+        owner.reply_approval.as_ref(),
+        Some(owner),
+    )
+    .await
+}
+
+async fn qualify_catalogue_commands(
+    pool: &PgPool,
+    scope: &IntentScope,
+    generation: Uuid,
+    programs: &[&InspectedRetainedProgram],
+    routing: &[&InspectedRetainedProgram],
+    approval: Option<&crate::bootstrap_reply_approval::BootstrapReplyApproval>,
+    owner: Option<&crate::installed_monty_catalogue::InstalledMontyCatalogue>,
 ) -> Result<QualifiedCommands, McpDiscoveryError> {
     let contracts = McpRecipeDiscovery::contracts(generation, programs)?;
     let mut client = pool.get().await.map_err(unavailable)?;
@@ -157,7 +189,7 @@ pub(crate) async fn qualify_installed_commands(
                 .checksum(),
         ));
     }
-    if !contracts.is_empty() {
+    if !contracts.is_empty() && owner.is_none() {
         approval
             .ok_or(McpDiscoveryError::Unqualified)?
             .verify_in_transaction(&tx)
@@ -169,6 +201,15 @@ pub(crate) async fn qualify_installed_commands(
         let selected = programs
             .iter()
             .find(|program| {
+                let instruction = program.program().inputs().instruction();
+                let document = instruction.snapshot().revisions()[&instruction.recipe().uuid]
+                    .draft()
+                    .document();
+                if document["mcp_call"]["variant_key"].as_str()
+                    != Some(instruction.variant().variant_key.as_str())
+                {
+                    return false;
+                }
                 program
                     .program()
                     .inputs()
@@ -188,16 +229,30 @@ pub(crate) async fn qualify_installed_commands(
         if !routing_selections.contains(&hex::encode(selection.checksum())) {
             return Err(McpDiscoveryError::Unqualified);
         }
-        approval
-            .ok_or(McpDiscoveryError::Unqualified)?
-            .require_selected_program(selected)
-            .map_err(unavailable)?;
         let catalogue_document: Value =
             serde_json::from_str(&catalogue_bytes).map_err(|_| McpDiscoveryError::Unqualified)?;
-        let retained_reply_bytes = serde_json::to_string(&catalogue_document["reply_selection"])
-            .map_err(|_| McpDiscoveryError::Unqualified)?;
-        if retained_reply_bytes != selection.exact_bytes() {
-            return Err(McpDiscoveryError::Unqualified);
+        let selection_value: Value =
+            serde_json::from_str(selection.exact_bytes()).map_err(unavailable)?;
+        if let Some(owner) = owner {
+            owner
+                .verify_selected_approvals(&tx, selected)
+                .await
+                .map_err(unavailable)?;
+            let retained = catalogue_document["reply_selection"] == selection_value
+                || catalogue_document["recipe_selections"]
+                    .as_array()
+                    .is_some_and(|items| items.contains(&selection_value));
+            if !retained {
+                return Err(McpDiscoveryError::Unqualified);
+            }
+        } else {
+            approval
+                .ok_or(McpDiscoveryError::Unqualified)?
+                .require_selected_program(selected)
+                .map_err(unavailable)?;
+            if catalogue_document["reply_selection"] != selection_value {
+                return Err(McpDiscoveryError::Unqualified);
+            }
         }
         check_export(selected, contract)?;
         for candidate in &instructions {
@@ -265,28 +320,70 @@ pub(crate) async fn verify_routing_metadata(
     scope: &IntentScope,
     instructions: &[&RetainedRecipeInstruction],
 ) -> Result<String, McpDiscoveryError> {
-    let mut observed = BTreeMap::new();
+    let mut ids = Vec::new();
+    let mut links = Vec::new();
+    let mut templates = Vec::new();
+    let mut flags = Vec::new();
+    let mut prefixes = Vec::new();
+    let mut suffixes = Vec::new();
+    let mut keys = Vec::new();
     for instruction in instructions {
-        let id = instruction.recipe().uuid;
         for template in &instruction.variant().intent_examples {
             let (is_template, prefix, suffix) = match parse_template(template) {
                 Some((prefix, suffix)) => (true, Some(prefix), Some(suffix)),
                 None => (false, None, None),
             };
-            let rows = tx.query("SELECT input_class,is_template,template_prefix,template_suffix FROM reborn_intent_inputs WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4 AND component_id=$5 AND component_class_code=21 AND step_link=$6 AND input_text=$7 AND needs_review=false ORDER BY input_class", &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&id,&instruction.variant().step_link,&template]).await.map_err(unavailable)?;
-            if rows.is_empty()
-                || rows.iter().any(|row| {
-                    row.get::<_, bool>(1) != is_template
-                        || row.get::<_, Option<String>>(2) != prefix
-                        || row.get::<_, Option<String>>(3) != suffix
-                })
-            {
-                return Err(McpDiscoveryError::Unqualified);
-            }
-            observed.insert(format!("{id}:{}:{template}", instruction.variant().variant_key),
-                json!({"step_link":instruction.variant().step_link,"is_template":is_template,"prefix":prefix,"suffix":suffix,
-                    "classes":rows.iter().map(|row| row.get::<_,i16>(0)).collect::<Vec<_>>()}));
+            ids.push(instruction.recipe().uuid);
+            links.push(instruction.variant().step_link.as_deref());
+            templates.push(template.as_str());
+            flags.push(is_template);
+            prefixes.push(prefix);
+            suffixes.push(suffix);
+            keys.push(format!(
+                "{}:{}:{template}",
+                instruction.recipe().uuid,
+                instruction.variant().variant_key
+            ));
         }
+    }
+    // One coherent read checks all canonical anchors, including duplicate input
+    // classes. A missing or corrupt row is not hidden by batching. Keep the same
+    // ordered class arrays and exact checksum document as the former N queries.
+    let rows = tx.query("WITH wanted AS (
+        SELECT * FROM unnest($5::uuid[],$6::text[],$7::text[],$8::boolean[],$9::text[],$10::text[])
+            WITH ORDINALITY AS w(component_id,step_link,input_text,is_template,prefix,suffix,ordinal)
+        ) SELECT w.ordinal,
+            array_agg(i.input_class ORDER BY i.input_class) FILTER (WHERE i.id IS NOT NULL),
+            bool_and(i.is_template=w.is_template
+                AND i.template_prefix IS NOT DISTINCT FROM w.prefix
+                AND i.template_suffix IS NOT DISTINCT FROM w.suffix) FILTER (WHERE i.id IS NOT NULL)
+        FROM wanted w LEFT JOIN reborn_intent_inputs i
+            ON i.tenant_id=$1 AND i.user_id=$2 AND i.agent_id=$3 AND i.project_id=$4
+                AND i.component_id=w.component_id AND i.component_class_code=21
+                AND i.step_link=w.step_link AND i.input_text=w.input_text AND i.needs_review=false
+        GROUP BY w.ordinal ORDER BY w.ordinal", &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,
+            &ids,&links,&templates,&flags,&prefixes,&suffixes]).await.map_err(unavailable)?;
+    if rows.len() != keys.len() {
+        return Err(McpDiscoveryError::Unqualified);
+    }
+    let mut observed = BTreeMap::new();
+    for (index, row) in rows.iter().enumerate() {
+        let ordinal = i64::try_from(index)
+            .ok()
+            .and_then(|n| n.checked_add(1))
+            .ok_or(McpDiscoveryError::Contract)?;
+        let classes = row
+            .get::<_, Option<Vec<i16>>>(1)
+            .filter(|v| !v.is_empty())
+            .ok_or(McpDiscoveryError::Unqualified)?;
+        if row.get::<_, i64>(0) != ordinal || row.get::<_, Option<bool>>(2) != Some(true) {
+            return Err(McpDiscoveryError::Unqualified);
+        }
+        observed.insert(
+            keys[index].clone(),
+            json!({"step_link":links[index],"is_template":flags[index],
+            "prefix":prefixes[index],"suffix":suffixes[index],"classes":classes}),
+        );
     }
     Ok(digest(
         serde_json::to_vec(&observed).map_err(|_| McpDiscoveryError::Contract)?,
@@ -554,15 +651,23 @@ async fn check_invocation(
         };
         locals.insert(name.clone(), value);
     }
-    let locals = program
-        .inputs()
-        .bind_step_inputs(step, &Value::Object(locals))
-        .map_err(|_| McpDiscoveryError::Unqualified)?;
-    let rows = tx.query("SELECT i.invocation_id,i.step_id,i.selection_bytes,i.selection_checksum,i.arguments_bytes,i.arguments_checksum,i.answer_bytes,i.answer_checksum,i.phase,i.attempt_count,a.scope FROM brassclaw_monty_tool_invocations i JOIN brassclaw_monty_task_admissions a USING(run_id) WHERE i.run_id=$1 AND i.recipe_id=$2", &[&run, &program.inputs().instruction().recipe().uuid]).await.map_err(unavailable)?;
+    let rows = tx.query("SELECT i.invocation_id,i.step_id,i.selection_bytes,i.selection_checksum,i.arguments_bytes,i.arguments_checksum,i.answer_bytes,i.answer_checksum,i.phase,i.attempt_count,a.scope,i.data_max_depth,i.data_max_nodes,i.data_max_bytes FROM brassclaw_monty_tool_invocations i JOIN brassclaw_monty_task_admissions a USING(run_id) WHERE i.run_id=$1 AND i.recipe_id=$2", &[&run, &program.inputs().instruction().recipe().uuid]).await.map_err(unavailable)?;
     if rows.len() != 1 {
         return Err(McpDiscoveryError::Unqualified);
     }
     let row = &rows[0];
+    let native_limit = |index| {
+        usize::try_from(row.get::<_, i64>(index)).map_err(|_| McpDiscoveryError::Unqualified)
+    };
+    let limits = brassclaw_skills::value_contract::ContractLimits {
+        max_depth: native_limit(11)?,
+        max_nodes: native_limit(12)?,
+        max_bytes: native_limit(13)?,
+    };
+    let locals = program
+        .inputs()
+        .bind_step_inputs_with_limits(step, &Value::Object(locals), limits)
+        .map_err(|_| McpDiscoveryError::Unqualified)?;
     let selection =
         crate::pg_monty_admission::PgMontyAdmission::invocation_selection(program, step)
             .map_err(unavailable)?;
@@ -580,10 +685,10 @@ async fn check_invocation(
     {
         return Err(McpDiscoveryError::Unqualified);
     }
-    let arguments = brassclaw_skills::value_contract::strict_json(&arguments, REVISION_LIMITS)
+    let arguments = brassclaw_skills::value_contract::strict_json(&arguments, limits)
         .map_err(|_| McpDiscoveryError::Unqualified)?;
     binding
-        .bind_tool_arguments(&locals, &arguments)
+        .bind_tool_arguments_with_limits(&locals, &arguments, limits)
         .map_err(|_| McpDiscoveryError::Unqualified)?;
     let actual: PortAnswer =
         serde_json::from_str(&answer).map_err(|_| McpDiscoveryError::Unqualified)?;
@@ -591,7 +696,7 @@ async fn check_invocation(
         (PortAnswer::Return { value }, None) if value == outcome["reply_ref"] => {
             program
                 .inputs()
-                .validate_step_result(step, &value)
+                .validate_step_result_with_limits(step, &value, limits)
                 .map_err(|_| McpDiscoveryError::Unqualified)?;
         }
         (PortAnswer::TerminalError { reason_kind }, Some(case))

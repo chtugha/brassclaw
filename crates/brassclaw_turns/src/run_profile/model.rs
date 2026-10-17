@@ -67,6 +67,18 @@ pub trait LoopModelBudgetAccountant: Send + Sync {
             .await
     }
 
+    /// Opt-in reconciliation of an already-observed provider success. Must be
+    /// safe after an unknown accounting commit; never dispatch provider work.
+    /// None means the retained reservation cannot be reconciled automatically.
+    async fn reconcile_retained_model_work(
+        &self,
+        _context: &LoopRunContext,
+        _request: &ModelWorkRequest,
+        _response: &LoopModelResponse,
+    ) -> Option<Result<(), LoopModelGatewayError>> {
+        None
+    }
+
     /// Called **before** dispatching the model request. Return `Err` with
     /// `AgentLoopHostErrorKind::BudgetExceeded` to reject the call.
     async fn pre_model_call(
@@ -240,6 +252,15 @@ pub struct NoOpBudgetAccountant;
 
 #[async_trait]
 impl LoopModelBudgetAccountant for NoOpBudgetAccountant {
+    async fn reconcile_retained_model_work(
+        &self,
+        _context: &LoopRunContext,
+        _request: &ModelWorkRequest,
+        _response: &LoopModelResponse,
+    ) -> Option<Result<(), LoopModelGatewayError>> {
+        Some(Ok(()))
+    }
+
     fn isolated_work_accountant(&self) -> Option<Arc<dyn LoopModelBudgetAccountant>> {
         Some(Arc::new(NoOpBudgetAccountant))
     }

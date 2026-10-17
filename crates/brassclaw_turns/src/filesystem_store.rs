@@ -261,6 +261,20 @@ where
         .await
     }
 
+    async fn request_cancel_tree(
+        &self,
+        request: CancelRunRequest,
+    ) -> Result<Vec<(CancelRunRequest, CancelRunResponse)>, TurnError> {
+        self.apply(|store| {
+            let request = request.clone();
+            async move {
+                let outcome = store.request_cancel_tree(request).await;
+                (outcome, store)
+            }
+        })
+        .await
+    }
+
     async fn get_run_state(&self, request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
         let (snapshot, _) = self.read_snapshot().await?;
         self.build_in_memory_store(snapshot)?

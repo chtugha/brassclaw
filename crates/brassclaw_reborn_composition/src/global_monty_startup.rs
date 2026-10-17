@@ -45,16 +45,6 @@ pub(crate) async fn start(
     )
     .await
     .map_err(|error| invalid(error.to_string()))?;
-    let catalogue = InstalledMontyCatalogue::boot(
-        pool.clone(),
-        kernel.clone(),
-        &worker,
-        scope,
-        mounts,
-        root.reference(),
-    )
-    .await
-    .map_err(|error| invalid(error.to_string()))?;
     // Upgrade revision-zero settings without changing any operator values.
     // One instance settings address; conversation IDs are never settings keys.
     let client = pool
@@ -78,6 +68,19 @@ pub(crate) async fn start(
         "default",
     )
     .get("default", "default")
+    .await
+    .map_err(|error| invalid(error.to_string()))?;
+    crate::live_monty_settings::validate_http_defaults(settings.execution_limits)
+        .map_err(|error| invalid(error.to_string()))?;
+    let catalogue = InstalledMontyCatalogue::boot(
+        pool.clone(),
+        kernel.clone(),
+        &worker,
+        scope,
+        mounts,
+        root.reference(),
+        settings.execution_limits,
+    )
     .await
     .map_err(|error| invalid(error.to_string()))?;
     let task_settings = TaskSettings {
@@ -127,8 +130,9 @@ pub(crate) async fn start(
         aliases: root.ports().clone(),
         bounds: GlobalBounds {
             values,
-            workers: 2,
-            max_pending_calls: 128,
+            workers: settings.execution_limits.max_workers,
+            max_pending_calls: usize::try_from(settings.execution_limits.max_pending_host_calls)
+                .map_err(|_| invalid("Monty pending host-call capacity out of range"))?,
         },
         startup_timeout: deadlines.startup_timeout,
         task_settings,

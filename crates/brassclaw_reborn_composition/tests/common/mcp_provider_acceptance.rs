@@ -56,7 +56,30 @@ pub(super) async fn gateway(_: &PgPool) -> Arc<dyn HostManagedModelGateway> {
     panic!("live provider acceptance requires root-llm-provider");
 }
 
-pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, pool: &PgPool) {
+pub(super) struct NativeMcpListener {
+    port: u16,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    join: Option<tokio::task::JoinHandle<()>>,
+    alive: Arc<std::sync::atomic::AtomicBool>,
+}
+impl NativeMcpListener {
+    pub(super) fn is_running(&self) -> bool {
+        self.alive.load(std::sync::atomic::Ordering::SeqCst)
+            && self.join.as_ref().is_some_and(|join| !join.is_finished())
+    }
+    pub(super) fn port(&self) -> u16 {
+        self.port
+    }
+    pub(super) async fn shutdown(mut self) {
+        self.stop.take().unwrap().send(()).unwrap();
+        self.join.take().unwrap().await.unwrap();
+        assert!(!self.alive.load(std::sync::atomic::Ordering::SeqCst));
+    }
+}
+
+pub(super) async fn start_listener(
+    runtime: &Arc<crate::runtime::RebornRuntime>,
+) -> NativeMcpListener {
     use crate::mcp_server_service::{McpListenerStatus, McpServerState, McpServerStatusResponse};
     struct TestSocket(u16, Arc<std::sync::atomic::AtomicBool>);
     impl McpListenerStatus for TestSocket {
@@ -81,7 +104,7 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
     let port = socket.local_addr().unwrap().port();
     let router = crate::orchestrator_mcp_server::orchestrator_mcp_router_with_chat(
         crate::orchestrator_mcp_server::OrchestratorMcpServerConfig::default(),
-        bridge.clone(),
+        bridge,
     );
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
     let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
@@ -98,6 +121,18 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
     runtime
         .attach_mcp_listener_status(Arc::new(TestSocket(port, alive.clone())))
         .unwrap();
+    NativeMcpListener {
+        port,
+        stop: Some(stop_tx),
+        join: Some(listener),
+        alive,
+    }
+}
+
+pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, pool: &PgPool) {
+    let server = start_listener(runtime).await;
+    let port = server.port();
+    let bridge = runtime.mcp_chat_bridge().unwrap();
     let client = pool.get().await.unwrap();
     client.execute("UPDATE brassclaw_instance_tool_settings SET enabled=true,revision=revision+1 WHERE tool_id IN(SELECT id FROM reborn_tools WHERE capability_id='host.post_reply')", &[]).await.unwrap();
     drop(client);
@@ -180,7 +215,7 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
     );
     drop(client);
     assert!(
-        !listener.is_finished(),
+        server.is_running(),
         "provider disconnect must leave listener running"
     );
     let response = reqwest::Client::new()
@@ -190,7 +225,5 @@ pub(super) async fn round_trip(runtime: &Arc<crate::runtime::RebornRuntime>, poo
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
     bridge.disconnect_all().await.unwrap();
-    stop_tx.send(()).unwrap();
-    listener.await.unwrap();
-    assert!(!alive.load(std::sync::atomic::Ordering::SeqCst));
+    server.shutdown().await;
 }

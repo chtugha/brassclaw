@@ -135,7 +135,7 @@ function customProvider(id, overrides = {}) {
   };
 }
 
-function useProviderManagementActionsStub({ providers, activeProviderId }) {
+function useProviderManagementActionsStub({ providers, activeProviderId, inactiveProviders, opened }) {
   return () => ({
     allProviderIds: providers.map((provider) => provider.id),
     closeDialog: () => {},
@@ -146,8 +146,9 @@ function useProviderManagementActionsStub({ providers, activeProviderId }) {
     handleUse: () => {},
     isDialogOpen: false,
     message: null,
-    openDialog: () => {},
+    openDialog: (provider) => opened.push(provider),
     providerState: {
+      inactiveProviders,
       activeProviderId,
       builtinOverrides: {},
       error: null,
@@ -158,10 +159,12 @@ function useProviderManagementActionsStub({ providers, activeProviderId }) {
   });
 }
 
-function renderProviderManagement({ providers, activeProviderId = "nearai", searchQuery = "" }) {
+function renderProviderManagement({ providers, activeProviderId = "nearai", searchQuery = "", inactiveProviders = [] }) {
+  const opened = [];
   const ProviderCard = "ProviderCard";
   const context = {
     Button: "Button",
+    Select: "Select",
     Card: "Card",
     Icon: "Icon",
     ProviderCard,
@@ -174,6 +177,8 @@ function renderProviderManagement({ providers, activeProviderId = "nearai", sear
     useProviderManagementActions: useProviderManagementActionsStub({
       providers,
       activeProviderId,
+      inactiveProviders,
+      opened,
     }),
     useProviderLogin: () => ({
       codexBusy: false,
@@ -197,7 +202,7 @@ function renderProviderManagement({ providers, activeProviderId = "nearai", sear
   const cardProps = findComponentNodes(rendered, ProviderCard).map((node) =>
     componentProps(node, ProviderCard)
   );
-  return { rendered, cardProps };
+  return { rendered, cardProps, opened };
 }
 
 function groupLabels(rendered) {
@@ -504,6 +509,22 @@ test("ProviderCard renders login actions instead of generic use for login provid
   assert.ok(!labels.includes("llm.use"));
 });
 
+test("ProviderCard offers wallet action only with a bound handler", () => {
+  const calls = [];
+  const harness = createProviderCardHarness();
+  const props = {
+    activeProviderId: "openai",
+    provider: builtinProvider("nearai", { adapter: "nearai", has_api_key: false }),
+  };
+  let rendered = harness.render({ ...props, onNearaiWallet: undefined });
+  assert.ok(!collectScalars(rendered).includes("onboarding.nearWallet"));
+  const walletHandler = () => calls.push("wallet");
+  rendered = harness.render({ ...props, onNearaiWallet: walletHandler });
+  const wallet = findComponentNodes(rendered, "Button").find((node) => componentProps(node, "Button").onClick === walletHandler);
+  componentProps(wallet, "Button").onClick();
+  assert.deepEqual(calls, ["wallet"]);
+});
+
 test("ProviderCard renders generic use action for NEAR when an API key is configured", () => {
   const calls = [];
   const harness = createProviderCardHarness();
@@ -564,6 +585,13 @@ test("NearAiSetupMenu keeps NEAR onboarding SSO choices behind setup dropdown", 
   assert.deepEqual(harness.calls.at(-1), ["sso", "github"]);
 });
 
+test("NearAiSetupMenu does not advertise an unbound wallet action", () => {
+  const harness = createNearAiSetupMenuHarness();
+  const login = { nearaiBusy: false, startNearai: () => {} };
+  firstButtonProps(harness.render({ login })).onClick();
+  assert.ok(!collectScalars(harness.render({ login })).includes("onboarding.nearWallet"));
+});
+
 test("NearAiSetupMenu disables setup trigger while setup or login is busy", () => {
   const harness = createNearAiSetupMenuHarness();
 
@@ -593,4 +621,19 @@ test("NearAiSetupMenu closes the setup dropdown on Escape", () => {
 
   harness.state.listeners.keydown({ key: "Escape" });
   assert.equal(harness.state.open, false);
+});
+
+test("ProviderManagement restores only the selected retained provider through its configure dialog", () => {
+  const retained = builtinProvider("removed-provider", { revision: 7 });
+  const { rendered, cardProps, opened } = renderProviderManagement({ providers: [], inactiveProviders: [retained] });
+  assert.equal(cardProps.length, 0, "removed definitions are not active cards");
+  const select = findComponentNodes(rendered, "Select")[0];
+  assert.ok(select);
+  const props = componentProps(select, "Select");
+  props.onChange({ target: { value: "removed-provider" } });
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0], retained);
+  assert.equal(opened[0].revision, 7);
+  props.onChange({ target: { value: "missing-provider" } });
+  assert.equal(opened.length, 1, "a stale choice cannot invent a definition");
 });

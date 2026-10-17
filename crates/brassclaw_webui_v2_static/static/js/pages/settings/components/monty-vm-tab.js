@@ -19,9 +19,11 @@ import {
 } from "../lib/settings-api.js";
 
 const EXECUTION_FIELDS = [
-  "max_ipc_frame_bytes",
+  "utility_worker_memory_bytes", "max_native_artifact_bytes",
+  "max_catalogue_recipes", "max_catalogue_components_per_recipe", "max_catalogue_variants_per_recipe", "max_catalogue_bytes", "max_catalogue_actor_bytes",
+  "max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes",
   "worker_adapter_reserve_bytes",
-  "max_recipe_contexts", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
+  "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_queued_bytes", "max_pending_settings", "max_retained_attempts",
   "max_actor_requests", "max_actor_reserved_bytes", "max_actor_control_requests", "max_actor_control_reserved_bytes",
   "startup_timeout_millis", "response_timeout_millis",
   "settings_source_timeout_millis", "settings_uptake_timeout_millis",
@@ -34,6 +36,7 @@ const pendingSettings = (status, desiredRevision) => status.state === "running" 
   ((Number.isSafeInteger(desiredRevision) && status.task_budget?.desired_revision < desiredRevision) ||
     status.execution_limits?.ipc_frame_capacity_pending_reduction === true ||
     status.execution_limits?.effective_ipc_frame_capacity_bytes > status.execution_limits?.configured_ipc_frame_bytes ||
+    status.execution_limits?.workers_draining === true ||
     status.execution_limits?.recipe_contexts_over_capacity === true ||
     status.execution_limits?.queue_over_capacity === true ||
     status.execution_limits?.settings_over_capacity === true ||
@@ -174,16 +177,25 @@ export function MontyVmTab({ searchQuery = "" }) {
       for (const key of EXECUTION_FIELDS) {
         if (String(settings.execution_limits?.[key] ?? "").trim() === "") throw new Error(t("montyVm.executionLimitsInvalid"));
         const value = Number(settings.execution_limits?.[key]);
-        if (!Number.isSafeInteger(value) || value < (key === "worker_adapter_reserve_bytes" ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
-        if (["max_ipc_frame_bytes", "max_recipe_contexts", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (!Number.isSafeInteger(value) || value < (["worker_adapter_reserve_bytes", "max_http_client_cache_entries"].includes(key) ? 0 : 1)) throw new Error(t("montyVm.executionLimitsInvalid"));
+        if (["max_http_client_cache_entries", "max_mcp_inflight_calls", "max_mcp_request_bytes", "max_mcp_response_bytes", "default_http_request_timeout_millis", "default_http_response_body_bytes", "default_memory_tree_depth", "max_memory_tree_depth", "max_ipc_frame_bytes", "max_workers", "max_recipe_contexts", "max_pending_host_calls", "max_queued_tasks", "max_pending_settings", "max_retained_attempts", "max_actor_requests", "max_actor_control_requests", "max_pending_ownership_checks"].includes(key) && value > 4294967295) throw new Error(t("montyVm.executionLimitsInvalid"));
         if (key === "status_poll_interval_millis" && value > 2147483647) throw new Error(t("montyVm.statusPollInvalid"));
         executionLimits[key] = value;
+      }
+      if (executionLimits.default_memory_tree_depth > executionLimits.max_memory_tree_depth) {
+        throw new Error(t("montyVm.memoryTreeDepthInvalid"));
       }
       if (executionLimits.response_timeout_millis < executionLimits.startup_timeout_millis ||
           executionLimits.execution_slice_millis >= executionLimits.response_timeout_millis) {
         throw new Error(t("montyVm.hostingDeadlinesInvalid"));
       }
+      if (executionLimits.max_pending_host_calls <= executionLimits.max_workers) {
+        throw new Error(t("montyVm.workerCapacityInvalid"));
+      }
       const frame = executionLimits.max_ipc_frame_bytes;
+      if (executionLimits.utility_worker_memory_bytes <= frame) {
+        throw new Error(t("montyVm.preparationPolicyInvalid"));
+      }
       if (["max_source_bytes", "max_stdout_bytes", "max_value_bytes"].some((key) => executionLimits[key] > frame) ||
           executionLimits.max_actor_reserved_bytes <= frame || executionLimits.max_actor_control_reserved_bytes < 2 * frame) {
         throw new Error(t("montyVm.framePolicyInvalid"));
@@ -361,6 +373,11 @@ function StatusCard({ status, isPolling, t }) {
             · ${t("montyVm.desiredRevision")}: ${status.execution_limits.desired_revision}
             · ${t("montyVm.effectiveRevision")}: ${status.execution_limits.effective_revision}
             · ${t(`montyVm.uptake.${status.execution_limits.uptake}`)}
+            · ${t("montyVm.effectiveWorkers")}: ${status.execution_limits.effective_workers} / ${status.execution_limits.limits.max_workers}
+            · ${t("montyVm.dependentWorkers")}: ${status.execution_limits.dependent_workers}
+            ${status.execution_limits.workers_draining && html`<span> · ${t("montyVm.workersDraining")}</span>`}
+            · ${t("montyVm.pendingHostCalls")}: ${status.execution_limits.pending_host_calls} / ${status.execution_limits.limits.max_pending_host_calls}
+            · ${t("montyVm.withheldHostAnswers")}: ${status.execution_limits.withheld_host_answers}
             · ${t("montyVm.activeRecipeContexts")}: ${status.execution_limits.active_recipe_contexts} / ${status.execution_limits.limits.max_recipe_contexts}
             ${status.execution_limits.recipe_contexts_over_capacity && html`<span> · ${t("montyVm.contextCapacityDraining")}</span>`}
             · ${t("montyVm.queuedTasks")}: ${status.execution_limits.queued_tasks} / ${status.execution_limits.limits.max_queued_tasks}
@@ -524,7 +541,7 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
               <label htmlFor=${`monty-${key}`} className="text-sm">${t(`montyVm.execution.${key}`)}</label>
               <p id=${`monty-${key}-help`} className="mt-1 text-xs text-[var(--v2-text-muted)]">${t(`montyVm.executionHelp.${key}`)}</p>
             </div>
-            <input id=${`monty-${key}`} type="number" min=${key === "worker_adapter_reserve_bytes" ? "0" : "1"} step="1"
+            <input id=${`monty-${key}`} type="number" min=${["worker_adapter_reserve_bytes", "max_http_client_cache_entries"].includes(key) ? "0" : "1"} step="1"
               aria-describedby=${`monty-${key}-help`}
               className="col-span-2 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-1.5 font-mono text-sm"
               value=${settings.execution_limits?.[key] ?? ""} disabled=${isSaving}

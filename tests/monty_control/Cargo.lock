@@ -937,6 +937,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "brassclaw_host_api",
+ "lru",
  "percent-encoding",
  "reqwest 0.12.28",
  "thiserror 2.0.21",
